@@ -88,9 +88,7 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
         MainContract.artifact,
         {
             publicKeys: PublicKeys.default(),
-            constructorArtifact: getDefaultInitializer(
-                MainContract.artifact
-            ),
+            constructorArtifact: getDefaultInitializer(MainContract.artifact),
             constructorArgs: [deployer.toField()],
             deployer: deployer,
             salt,
@@ -101,8 +99,7 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
         contract.publicKeys,
         wallet,
         MainContract.artifact,
-        (instance, wallet) =>
-            MainContract.at(instance.address, wallet),
+        (instance, wallet) => MainContract.at(instance.address, wallet),
         [deployer.toField()],
         getDefaultInitializer(MainContract.artifact)?.name
     );

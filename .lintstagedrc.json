@@ -1,0 +1,11 @@
+{
+  "client/**/*.{ts,tsx,js,jsx,json,css,scss,md}": [
+    "prettier --write"
+  ],
+  "packages/**/*.{ts,tsx,js,jsx,json}": [
+    "prettier --write"
+  ],
+  "contracts/scripts/**/*.{ts,js,json}": [
+    "prettier --write"
+  ]
+}
