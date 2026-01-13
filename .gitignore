@@ -1,0 +1,94 @@
+############################################
+# General
+############################################
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.swo
+
+############################################
+# Node.js / pnpm
+############################################
+node_modules/
+.pnpm-debug.log*
+.pnpm-store/
+
+############################################
+# TypeScript / Build outputs
+############################################
+dist/
+build/
+lib/
+out/
+coverage/
+
+*.tsbuildinfo
+
+############################################
+# Vite / React
+############################################
+client/dist/
+client/.vite/
+vite.config.ts.timestamp-*
+
+############################################
+# Aztec Noir (IMPORTANT)
+############################################
+# Noir compilation outputs
+**/target/
+**/build/
+**/noir-*.json
+
+# Aztec PXE / Sandbox runtime data
+.aztec/
+.pxe/
+.sandbox/
+.aztec-sandbox/
+
+# Aztec local state & cache (nested)
+**/.aztec/
+**/.pxe/
+**/.sandbox/
+
+############################################
+# Smart contract generated files
+############################################
+contracts/artifacts/
+contracts/target/
+contracts/build/
+
+# Typechain / codegen outputs
+**/typechain/
+**/typechain-types/
+
+############################################
+# Workspace packages build outputs
+############################################
+packages/*/dist/
+packages/*/build/
+
+############################################
+# Environment variables
+############################################
+.env
+.env.*
+!.env.example
+
+############################################
+# Editor / IDE
+############################################
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.idea/
+*.iml
+
+############################################
+# Temporary / cache
+############################################
+tmp/
+temp/
+.cache/
