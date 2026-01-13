@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+target/
+*.tsbuildinfo
+
+# Generated files
+codegenCache.json
+*.json
+
+# Store
+.store/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log

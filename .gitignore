@@ -46,11 +46,13 @@ vite.config.ts.timestamp-*
 .pxe/
 .sandbox/
 .aztec-sandbox/
+.store/
 
 # Aztec local state & cache (nested)
 **/.aztec/
 **/.pxe/
 **/.sandbox/
+**/.store/
 
 ############################################
 # Smart contract generated files
@@ -58,6 +60,7 @@ vite.config.ts.timestamp-*
 contracts/artifacts/
 contracts/target/
 contracts/build/
+**/artifacts/
 
 # Typechain / codegen outputs
 **/typechain/

@@ -1,0 +1,7 @@
+[package]
+name = "main"
+type = "contract"
+authors = [""]
+
+[dependencies]
+aztec = { git="https://github.com/AztecProtocol/aztec-nr", tag="v3.0.0-devnet.20251212", directory="aztec" }
