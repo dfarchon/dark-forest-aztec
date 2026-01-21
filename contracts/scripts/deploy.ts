@@ -168,6 +168,24 @@ async function createAccountAndDeployContract() {
         await writeEnvFile(deploymentInfo);
     }
 
+    // Call get_admin
+    try {
+        console.log('Simulating contract (calling get_admin)...\n');
+        const main = MainContract.at(
+            AztecAddress.fromString(deploymentInfo.contractAddress),
+            wallet
+        );
+
+        const admin = await main.methods
+            .get_admin()
+            .simulate({ from: accountAddress });
+
+        console.log('admin in contract:', admin.toString());
+        console.log('accountAddress:', accountAddress);
+    } catch (err) {
+        console.error('Failed to call contract get_admin():', err);
+    }
+
     // Clean up the PXE store
     fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
 }
