@@ -61,6 +61,7 @@ contracts/artifacts/
 contracts/target/
 contracts/build/
 **/artifacts/
+contracts/codegenCache.json
 
 # Typechain / codegen outputs
 **/typechain/

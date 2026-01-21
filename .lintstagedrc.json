@@ -1,11 +1,14 @@
 {
   "client/**/*.{ts,tsx,js,jsx,json,css,scss,md}": [
-    "prettier --write"
+    "cd client && pnpm format"
   ],
   "packages/**/*.{ts,tsx,js,jsx,json}": [
     "prettier --write"
   ],
   "contracts/scripts/**/*.{ts,js,json}": [
-    "prettier --write"
+    "cd contracts && pnpm format"
+  ],
+  "package.json": [
+    "pnpm fix:package-json"
   ]
 }

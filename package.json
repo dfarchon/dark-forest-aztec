@@ -1,26 +1,43 @@
 {
-  "name": "dfpunk-monorepo",
-  "private": true,
+  "name": "dfpunk-aztec",
   "version": "0.0.0",
+  "private": true,
   "description": "",
+  "keywords": [],
+  "license": "",
+  "author": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json'",
+    "format": "pnpm -r run format",
     "prepare": "husky",
-    "format": "pnpm -r run format"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "",
-  "packageManager": "pnpm@10.28.0",
-  "engines": {
-    "node": "24.12.0"
+  "dependencies": {
+    "@aztec/accounts": "3.0.0-devnet.6-patch.1",
+    "@aztec/aztec.js": "3.0.0-devnet.6-patch.1",
+    "@aztec/constants": "3.0.0-devnet.6-patch.1",
+    "@aztec/entrypoints": "3.0.0-devnet.6-patch.1",
+    "@aztec/foundation": "3.0.0-devnet.6-patch.1",
+    "@aztec/kv-store": "3.0.0-devnet.6-patch.1",
+    "@aztec/noir-contracts.js": "3.0.0-devnet.6-patch.1",
+    "@aztec/pxe": "3.0.0-devnet.6-patch.1",
+    "@aztec/stdlib": "3.0.0-devnet.6-patch.1",
+    "@aztec/test-wallet": "3.0.0-devnet.6-patch.1",
+    "@aztec/wallet-sdk": "3.0.0-devnet.6-patch.1"
   },
   "devDependencies": {
     "@commitlint/cli": "19.6.0",
     "@commitlint/config-conventional": "19.6.0",
+    "@types/node": "24.10.7",
+    "dotenv": "17.2.3",
     "husky": "9.1.7",
     "lint-staged": "15.2.11",
-    "prettier": "3.7.4"
+    "prettier": "3.7.4",
+    "sort-package-json": "2.10.1"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": "24.12.0"
   }
 }

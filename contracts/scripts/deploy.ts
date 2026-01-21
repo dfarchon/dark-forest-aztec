@@ -6,19 +6,22 @@ import {
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import { PublicKeys } from '@aztec/aztec.js/keys';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
+import { type AztecNode, createAztecNodeClient } from '@aztec/aztec.js/node';
 import type { DeployAccountOptions, Wallet } from '@aztec/aztec.js/wallet';
-import { type AztecNode } from '@aztec/aztec.js/node';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { createStore } from '@aztec/kv-store/lmdb';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { getPXEConfig } from '@aztec/pxe/server';
 import { getDefaultInitializer } from '@aztec/stdlib/abi';
 import { TestWallet } from '@aztec/test-wallet/server';
+import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-// @ts-ignore
+
 import { MainContract } from './artifacts/Main.ts';
+
+// Load environment variables
+dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
@@ -190,9 +193,11 @@ async function createAccountAndDeployContract() {
     fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
 }
 
-createAccountAndDeployContract().catch((error) => {
-    console.error(error);
-    process.exit(1);
-});
+createAccountAndDeployContract()
+    .then(() => process.exit(0))
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });
 
 export { createAccountAndDeployContract };
