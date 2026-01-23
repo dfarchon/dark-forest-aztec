@@ -58,6 +58,49 @@ async function getSponsoredPFCContract() {
     return instance;
 }
 
+// Append account configuration to .env file
+function appendAccountConfigToEnv(
+    salt: Fr,
+    secretKey: Fr,
+    signingKey: Buffer,
+    accountAddress: AztecAddress
+) {
+    const envFilePath = path.join(import.meta.dirname, '../.env');
+    const config = [
+        `ACCOUNT_SALT=${salt.toString()}`,
+        `ACCOUNT_SECRET_KEY=${secretKey.toString()}`,
+        `ACCOUNT_SIGNING_KEY=${signingKey.toString('hex')}`,
+        `ACCOUNT_ADDRESS=${accountAddress.toString()}`,
+    ].join('\n');
+
+    fs.appendFileSync(envFilePath, '\n\n\n' + config);
+}
+
+async function loadAccount(wallet: TestWallet): Promise<AztecAddress> {
+    // Load account information from .env file
+    if (
+        !process.env.ACCOUNT_SALT ||
+        !process.env.ACCOUNT_SECRET_KEY ||
+        !process.env.ACCOUNT_SIGNING_KEY
+    ) {
+        throw new Error(
+            'Account information not found in .env file. Please create an account first.'
+        );
+    }
+
+    const salt = Fr.fromString(process.env.ACCOUNT_SALT);
+    const secretKey = Fr.fromString(process.env.ACCOUNT_SECRET_KEY);
+    const signingKey = Buffer.from(process.env.ACCOUNT_SIGNING_KEY, 'hex');
+
+    const accountManager = await wallet.createECDSARAccount(
+        secretKey,
+        salt,
+        signingKey
+    );
+
+    return accountManager.address;
+}
+
 async function createAccount(wallet: TestWallet) {
     const salt = Fr.random();
     const secretKey = Fr.random();
@@ -81,6 +124,16 @@ async function createAccount(wallet: TestWallet) {
         skipInstancePublication: true,
     };
     await deployMethod.send(deployOpts).wait({ timeout: 120 });
+
+    // Save account information to .env file after successful deployment
+    if (WRITE_ENV_FILE) {
+        appendAccountConfigToEnv(
+            salt,
+            secretKey,
+            signingKey,
+            accountManager.address
+        );
+    }
 
     return accountManager.address;
 }
@@ -140,7 +193,7 @@ async function writeEnvFile(deploymentInfo) {
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
 
-    fs.writeFileSync(envFilePath, envConfig);
+    fs.appendFileSync(envFilePath, '\n\n\n' + envConfig);
 
     console.log(`
       \n\n\n
@@ -160,8 +213,19 @@ async function createAccountAndDeployContract() {
         SponsoredFPCContractArtifact
     );
 
-    // Create a new account
-    const accountAddress = await createAccount(wallet);
+    // Check if account information exists in .env, then load or create account
+    let accountAddress: AztecAddress;
+    if (
+        process.env.ACCOUNT_SALT &&
+        process.env.ACCOUNT_SECRET_KEY &&
+        process.env.ACCOUNT_SIGNING_KEY
+    ) {
+        console.log('Loading existing account from .env file...');
+        accountAddress = await loadAccount(wallet);
+    } else {
+        console.log('Creating new account...');
+        accountAddress = await createAccount(wallet);
+    }
 
     // Deploy the contract
     const deploymentInfo = await deployContract(wallet, accountAddress);
@@ -190,7 +254,7 @@ async function createAccountAndDeployContract() {
     }
 
     // Clean up the PXE store
-    fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
+    // fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
 }
 
 createAccountAndDeployContract()

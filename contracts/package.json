@@ -15,6 +15,7 @@
         "deploy-contracts": "node --experimental-transform-types scripts/deploy.ts",
         "format": "pnpm run lint:fix && pnpm run prettier",
         "format:check": "pnpm prettier:check && pnpm lint",
+        "interact": "node --experimental-transform-types scripts/interact.ts",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
