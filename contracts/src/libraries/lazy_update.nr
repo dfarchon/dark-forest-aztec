@@ -10,14 +10,14 @@ use dep::aztec::protocol_types::address::AztecAddress;
 /// This function should never be called directly and should only be called
 /// by the refresh planet function. This assert is in place to make sure
 /// no one tries to updateSilver on non silver producing planet.
-pub fn update_silver(update_to_time: u128, mut planet: Planet) -> Planet {
+pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
     // This function should only be called for silver-producing planets
     // PlanetType::SilverMine = 1
     assert(planet.planet_type == 1, "Can only update silver on silver producing planet");
     
     if planet.owner != AztecAddress::zero() {
         if planet.silver < planet.silver_cap {
-            let time_diff: u128 = update_to_time - planet.last_updated;
+            let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
             let silver_mined: u128 = planet.silver_growth * time_diff;
 
             let max_silver: u128 = planet.silver_cap;
@@ -32,11 +32,11 @@ pub fn update_silver(update_to_time: u128, mut planet: Planet) -> Planet {
 
 /// Updates population using linear growth formula (similar to silver growth).
 /// Uses simple linear growth instead of exponential formula from ABDKMath64x64.
-pub fn update_population(update_to_time: u128, mut planet: Planet) -> Planet {
+pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
     if planet.owner != AztecAddress::zero() {
         // Use linear growth formula similar to silver growth
         if planet.population < planet.population_cap {
-            let time_diff: u128 = update_to_time - planet.last_updated;
+            let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
             let population_gained: u128 = planet.population_growth * time_diff;
 
             let max_population: u128 = planet.population_cap;
@@ -72,7 +72,7 @@ pub fn update_population(update_to_time: u128, mut planet: Planet) -> Planet {
 
 /// Updates planet population and silver based on time elapsed.
 /// This is the main function to call when updating a planet's state.
-pub fn update_planet(update_to_time: u128, mut planet: Planet) -> Planet {
+pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
     planet = update_population(update_to_time, planet);
 
     // PlanetType::SilverMine = 1
@@ -153,7 +153,7 @@ pub fn apply_arrival(mut planet: Planet, arrival: ArrivalData) -> (u128, Planet)
 /// Returns (updated_planet, event_ids_and_artifacts)
 /// - event_ids_and_artifacts: first 12 are event ids to remove, last 12 are artifact ids that are new on the planet
 pub fn apply_pending_events(
-    current_timestamp: u128,
+    current_timestamp: u64,
     mut planet: Planet,
     events: [PlanetEventMetadata; 24],
     events_length: u128,
@@ -165,7 +165,7 @@ pub fn apply_pending_events(
 
     let mut num_events_to_remove: u128 = 0;
     let mut num_new_artifacts_on_planet: u128 = 0;
-    let mut earliest_event_time: u128 = 0;
+    let mut earliest_event_time: u64 = 0;
     let mut earliest_event_index: u128 = 0;
     let mut should_continue: bool = true;
 
@@ -180,8 +180,8 @@ pub fn apply_pending_events(
             } else if planet.destroyed {
                 should_continue = false;
             } else {
-                // set to the upperbound of u128
-                earliest_event_time = 340282366920938463463374607431768211455u128;
+                // set to the upperbound of u64
+                earliest_event_time = 18446744073709551615u64;
 
                 // loops through the array and find the earliest event time that hasn't already been applied
                 for i in 0..24 {
@@ -206,9 +206,9 @@ pub fn apply_pending_events(
 
                 // only process the event if it occurs before the current time and the timeTrigger is not 0
                 // which comes from uninitialized PlanetEventMetadata
-                let max_u128: u128 = 340282366920938463463374607431768211455u128;
+                let max_u64: u64 = 18446744073709551615u64;
                 if events[earliest_event_index as u32].time_trigger <= current_timestamp {
-                    if earliest_event_time != max_u128 {
+                    if earliest_event_time != max_u64 {
                         planet = update_planet(events[earliest_event_index as u32].time_trigger, planet);
 
                         // PlanetEventType::Arrival = 0

@@ -5,7 +5,7 @@ use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 pub struct ArtifactsConfig {
     /// From TOML:
     /// 2022-10-05T04:00:00.000Z -> unix timestamp in milliseconds.
-    pub token_mint_end_timestamp_ms: u128,
+    pub token_mint_end_timestamp_ms: u64,
     pub artifact_point_values: [u128; 6],
     /// Seconds.
     pub photoid_activation_delay_s: u128,
@@ -22,7 +22,7 @@ impl ArtifactsConfig {
     }
 
     // ---- getters ----
-    pub fn get_token_mint_end_timestamp_ms(&self) -> u128 {
+    pub fn get_token_mint_end_timestamp_ms(&self) -> u64 {
         self.token_mint_end_timestamp_ms
     }
     pub fn get_artifact_point_values(&self) -> [u128; 6] {
@@ -33,7 +33,7 @@ impl ArtifactsConfig {
     }
 
     // ---- setters ----
-    pub fn set_token_mint_end_timestamp_ms(&mut self, value: u128) {
+    pub fn set_token_mint_end_timestamp_ms(&mut self, value: u64) {
         self.token_mint_end_timestamp_ms = value;
     }
     pub fn set_artifact_point_values(&mut self, value: [u128; 6]) {

@@ -92,9 +92,9 @@ pub enum Biome {
 pub struct Player {
     pub is_initialized: bool,
     pub player: AztecAddress,
-    pub init_timestamp: u128,
+    pub init_timestamp: u64,
     pub home_planet_id: Field,
-    pub last_reveal_timestamp: u128,
+    pub last_reveal_timestamp: u64,
     pub score: u128,
     pub space_junk: u128,
     pub space_junk_limit: u128,
@@ -119,8 +119,8 @@ pub struct Planet {
     pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
     pub is_home_planet: bool,
     pub is_initialized: bool,
-    pub created_at: u128,        // Block number
-    pub last_updated: u128,       // Block number
+    pub created_at: u64,        // Block number
+    pub last_updated: u64,       // Block number
     pub perlin: u8,
     pub space_type: u8, // SpaceType enum (stored as u8, use helper functions to convert)
     pub upgrade_state_0: u128,
@@ -128,14 +128,14 @@ pub struct Planet {
     pub upgrade_state_2: u128,
     pub hat_level: u128,
     pub has_tried_finding_artifact: bool,
-    pub prospected_block_number: u128,
+    pub prospected_block_number: u32,
     pub destroyed: bool,
     pub space_junk: u128,
     pub pausers: u128,
     pub energy_gro_doublers: u128,
     pub silver_gro_doublers: u128,
     pub invader: AztecAddress,
-    pub invade_start_block: u128,
+    pub invade_start_block: u32,
     pub capturer: AztecAddress,
     pub location_id: Field,
 }
@@ -162,8 +162,8 @@ pub struct ArrivalData {
     pub to_planet: Field,
     pub pop_arriving: u128,
     pub silver_moved: u128,
-    pub departure_time: u128,
-    pub arrival_time: u128,
+    pub departure_time: u64,
+    pub arrival_time: u64,
     pub arrival_type: u8, // ArrivalType enum (stored as u8, use helper functions to convert)
     pub carried_artifact_id: u128,
     pub distance: u128,
@@ -176,12 +176,12 @@ pub struct Artifact {
     pub planet_discovered_on: Field,
     pub rarity: u8, // ArtifactRarity enum (stored as u8, use helper functions to convert)
     pub planet_biome: u8, // Biome enum (stored as u8, use helper functions to convert)
-    pub minted_at_timestamp: u128,
+    pub minted_at_timestamp: u64,
     pub discoverer: AztecAddress,
     pub artifact_type: u8, // ArtifactType enum (stored as u8, use helper functions to convert)
     pub activations: u128,
-    pub last_activated: u128,
-    pub last_deactivated: u128,
+    pub last_activated: u64,
+    pub last_deactivated: u64,
     pub wormhole_to: Field,
     pub controller: AztecAddress,
 }
@@ -211,6 +211,17 @@ pub struct PlanetDefaultStats {
 pub struct PlanetEventMetadata {
     pub id: u128,
     pub event_type: u8, // PlanetEventType enum (stored as u8, use helper functions to convert)
-    pub time_trigger: u128,
-    pub time_created: u128,
+    pub time_trigger: u64,
+    pub time_created: u64,
+}
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct DFPInitPlanetArgs {
+    pub location: Field,
+    pub perlin: u128,
+    pub level: u8,
+    pub time_factor_hundredths: u128,
+    pub space_type: u8, // SpaceType enum (stored as u8, use helper functions to convert)
+    pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
+    pub is_home_planet: bool,
 }

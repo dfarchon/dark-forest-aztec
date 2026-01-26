@@ -11,7 +11,7 @@ pub struct WorldConfig {
     pub world_radius_min: u128,
 
     /// Seconds.
-    pub location_reveal_cooldown_s: u128,
+    pub location_reveal_cooldown_s: u64,
     pub silver_score_value: u128,
     pub planet_transfer_enabled: bool,
     pub admin_can_add_planets: bool,
@@ -48,7 +48,7 @@ impl WorldConfig {
     pub fn get_world_radius_min(&self) -> u128 {
         self.world_radius_min
     }
-    pub fn get_location_reveal_cooldown_s(&self) -> u128 {
+    pub fn get_location_reveal_cooldown_s(&self) -> u64 {
         self.location_reveal_cooldown_s
     }
     pub fn get_silver_score_value(&self) -> u128 {
@@ -77,7 +77,7 @@ impl WorldConfig {
     pub fn set_world_radius_min(&mut self, value: u128) {
         self.world_radius_min = value;
     }
-    pub fn set_location_reveal_cooldown_s(&mut self, value: u128) {
+    pub fn set_location_reveal_cooldown_s(&mut self, value: u64) {
         self.location_reveal_cooldown_s = value;
     }
     pub fn set_silver_score_value(&mut self, value: u128) {

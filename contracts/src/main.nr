@@ -11,6 +11,7 @@ pub contract Main {
         protocol_types::address::AztecAddress,
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
+    use dep::aztec::oracle::execution::get_utility_context;
 
     use crate::config::{
         ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetLevelThresholds,
@@ -19,7 +20,7 @@ pub contract Main {
 
     use crate::types::{
         PlanetDefaultStats, Upgrade, Planet, RevealedCoords, Player,
-        ArrivalData, Artifact, PlanetEventMetadata,
+        ArrivalData, Artifact, PlanetEventMetadata, DFPInitPlanetArgs,
     };
 
     use crate::libraries::game_utils::{
@@ -29,7 +30,10 @@ pub contract Main {
         is_range_boost,
         is_speed_boost,
         is_def_boost,
+        is_half_space_junk,
     };
+    use crate::libraries::lazy_update::{apply_pending_events, update_planet};
+    use crate::libraries::planet::apply_spaceship_arrive;
 
     // ========== Storage Structure ==========
     // Full storage structure
@@ -59,7 +63,7 @@ pub contract Main {
         // ========== Game Storage (from LibStorage.GameStorage) ==========
         // Contract housekeeping
         paused: PublicMutable<bool, Context>,
-        token_mint_end_timestamp: PublicMutable<u128, Context>,
+        token_mint_end_timestamp: PublicMutable<u64, Context>,
         planet_levels_count: PublicMutable<u128, Context>,
         // Arrays stored as Maps with index keys (or use counters + Maps for dynamic arrays)
         cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
@@ -93,7 +97,7 @@ pub contract Main {
         // Artifacts: mapping(uint256 => Artifact)
         artifacts: Map<Field, PublicMutable<Artifact, Context>, Context>, // artifact_id -> Artifact
         // Capture Zones
-        next_change_block: PublicMutable<u128, Context>,
+        next_change_block: PublicMutable<u32, Context>,
 
     }
 
@@ -529,6 +533,44 @@ pub contract Main {
         loc.lt(max_valid_loc)
     }
 
+    /// Noir port of Solidity `LibGameUtils.revertIfBadSnarkPerlinFlags`.
+    /// Validates that the SNARK perlin flags match the configured constants.
+    /// 
+    /// This function ensures that SNARK proofs use the correct keys and parameters
+    /// for this universe. Without this check, a player could create a valid SNARK
+    /// proof with wrong keys, creating an invalid planet.
+    /// 
+    /// # Arguments
+    /// - `perlin_flags`: Array of 5 flags [planethash_key, spacetype/biomebase_key, perlin_length_scale, mirror_x, mirror_y]
+    /// - `checking_biome`: If true, checks biomebase_key instead of spacetype_key
+    /// 
+    /// # Returns
+    /// `true` if all flags match the configured constants
+    #[internal("public")]
+    fn revert_if_bad_snark_perlin_flags(
+        planethash_key: u128, 
+        spacetype_key: u128,
+        biomebase_key: u128,
+        perlin_mirror_x: bool,
+        perlin_mirror_y: bool,
+        perlin_length_scale: u128,
+        checking_biome: bool
+    ) -> bool {
+
+        let snark_constants = self.storage.snark_constants.read();
+        assert(planethash_key == snark_constants.planethash_key, "bad planethash mimc key");
+        if( checking_biome ) {
+            assert(spacetype_key == snark_constants.spacetype_key, "bad spacetype mimc key");
+        } else {
+            assert(biomebase_key == snark_constants.biomebase_key, "bad biomebase mimc key");
+        }
+        assert(perlin_length_scale == snark_constants.perlin_length_scale, "bad perlin length scale");
+        assert(perlin_mirror_x == snark_constants.perlin_mirror_x, "bad perlin mirror x");
+        assert(perlin_mirror_y == snark_constants.perlin_mirror_y, "bad perlin mirror y");
+        
+        true
+    }
+
     /// Noir port of Solidity `LibGameUtils.spaceTypeFromPerlin`.
     /// Returns SpaceType as u8 (0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace).
     #[internal("public")]
@@ -642,6 +684,8 @@ pub contract Main {
         (level, planet_type, space_type)
     }
 
+
+
     /// Noir port of Solidity `LibGameUtils._getRadius`.
     /// Calculates the world radius based on player count and initialized planets.
     /// todo: introduce a better algorithm
@@ -662,6 +706,47 @@ pub contract Main {
             world_radius_min
         } else {
             r4
+        }
+    }
+
+    /// Noir port of Solidity `LibGameUtils._putArtifactOnPlanet`.
+    /// Updates internal contract book-keeping to reflect that the given artifact was put on a planet.
+    /// Note: This function does not transfer the artifact, it only updates the book-keeping.
+    /// 
+    /// # Arguments
+    /// - `artifact_id`: The ID of the artifact to put on the planet
+    /// - `location_id`: The location ID (planet ID) where the artifact is being placed
+    #[internal("public")]
+    fn put_artifact_on_planet(artifact_id: Field, location_id: Field) {
+        // Set artifact_id -> planet_id mapping
+        self.storage.artifact_id_to_planet_id.at(artifact_id).write(location_id);
+        
+        // Get current count of artifacts on this planet
+        let current_count = self.storage.planet_artifacts_count.at(location_id).read();
+        
+        // Add artifact to the planet's artifact list at the next index
+        self.storage.planet_artifacts.at(location_id).at(current_count).write(artifact_id);
+        
+        // Increment the artifact count for this planet
+        self.storage.planet_artifacts_count.at(location_id).write(current_count + 1);
+    }
+
+    /// Noir port of Solidity `LibGameUtils.getPlanetDefaultSpaceJunk`.
+    /// Returns the default space junk for a planet based on its level.
+    /// Home planets have 0 space junk.
+    /// 
+    /// # Arguments
+    /// - `planet`: The planet to get default space junk for
+    /// 
+    /// # Returns
+    /// The default space junk value for the planet
+    #[internal("public")]
+    fn get_planet_default_space_junk(planet: Planet) -> u128 {
+        if planet.is_home_planet {
+            0
+        } else {
+            let space_junk_config = self.storage.space_junk_config.read();
+            space_junk_config.planet_level_junk[planet.planet_level as u32]
         }
     }
 
@@ -865,4 +950,438 @@ pub contract Main {
 
         planet
     }
+
+    // ========== LibPlanet ==========
+
+    /// Noir port of Solidity `LibPlanet.revealLocation`.
+    /// Reveals the coordinates of a planet location.
+    /// 
+    /// This function:
+    /// 1. Optionally checks if enough time has passed since the last reveal (cooldown)
+    /// 2. Verifies the location hasn't been revealed already
+    /// 3. Adds the location to the revealed planets list
+    /// 4. Stores the revealed coordinates
+    /// 5. Updates the player's last reveal timestamp
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID to reveal
+    /// - `perlin`: The perlin value at that location
+    /// - `x`: The x coordinate
+    /// - `y`: The y coordinate
+    /// - `check_timestamp`: Whether to check the cooldown period
+    /// - `timestamp`: The current timestamp
+    #[internal("public")]
+    fn reveal_location(
+        location: Field,
+        perlin: u128,
+        x: u128,
+        y: u128,
+        check_timestamp: bool
+    ) {
+        let sender = self.msg_sender().unwrap();
+        let timestamp = get_utility_context().timestamp();
+
+        // Check cooldown if requested
+        if check_timestamp {
+            let player: Player = self.storage.players.at(sender).read();
+            let world_config = self.storage.world_config.read();
+            let cooldown = world_config.location_reveal_cooldown_s;
+            assert(
+                timestamp > player.last_reveal_timestamp + cooldown,
+                "wait for cooldown before revealing again"
+            );
+        }
+        
+        // Check if location is already revealed
+        let existing_coords: RevealedCoords = self.storage.revealed_coords.at(location).read();
+        assert(existing_coords.location_id == 0 as Field, "Location already revealed");
+        
+        // Add location to revealed planets list
+        let revealed_count = self.storage.revealed_planet_ids_count.read();
+        self.storage.revealed_planet_ids.at(revealed_count).write(location);
+        self.storage.revealed_planet_ids_count.write(revealed_count + 1);
+        
+        // Store revealed coordinates
+        let revealed_coords = RevealedCoords {
+            location_id: location,
+            x: x,
+            y: y,
+            revealer: sender,
+        };
+        self.storage.revealed_coords.at(location).write(revealed_coords);
+        
+        // Update player's last reveal timestamp
+        let mut player: Player = self.storage.players.at(sender).read();
+        player.last_reveal_timestamp = timestamp;
+        self.storage.players.at(sender).write(player);
+    }
+
+    /// Noir port of Solidity `LibPlanet.getDefaultInitPlanetArgs`.
+    /// Returns default initialization arguments for a planet.
+    /// 
+    /// This function calls `get_planet_level_type_and_space_type` internally
+    /// and accesses world config to get `time_factor_hundredths`.
+    #[internal("public")]
+    fn get_default_init_planet_args(
+        location: Field,
+        perlin: u128,
+        is_home_planet: bool,
+    ) -> DFPInitPlanetArgs {
+        let (level, planet_type, space_type) = get_planet_level_type_and_space_type(location, perlin);
+
+        // Validate home planet requirements (matching Solidity behavior)
+        if is_home_planet {
+            assert(level == 0, "Can only initialize on planet level 0");
+            assert(planet_type == 0, "Can only initialize on regular planets"); // PlanetType::Planet = 0
+        }
+
+        let time_factor_hundredths: u128 = self.storage.world_config.read().time_factor_hundredths;
+
+        DFPInitPlanetArgs {
+            location,
+            perlin,
+            level,
+            time_factor_hundredths,
+            space_type,
+            planet_type,
+            is_home_planet,
+        }
+    }
+
+ 
+
+    /// Noir port of Solidity `LibPlanet.initializePlanetWithDefaults`.
+    /// Initializes a planet with default values using location and perlin.
+    /// 
+    /// This function:
+    /// 1. Validates the location ID
+    /// 2. Gets default initialization arguments
+    /// 3. Initializes the planet
+    /// 4. Adds the planet to the planet IDs list
+    /// 5. Increments the initialized planet count for the level
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet
+    /// - `perlin`: The perlin value at that location
+    /// - `is_home_planet`: Whether this is a home planet
+    #[internal("public")]
+    fn initialize_planet_with_defaults(
+        location: Field,
+        perlin: u128,
+        is_home_planet: bool,
+    ) {
+        // Validate location
+        assert(self.internal.location_id_valid(location), "Not a valid planet location");
+
+        // Get default initialization arguments
+        let init_args = self.internal.get_default_init_planet_args(location, perlin, is_home_planet);
+
+        // Initialize the planet
+        self.internal._initialize_planet(init_args);
+
+        // Add planet to planet IDs list
+        let planet_ids_count = self.storage.planet_ids_count.read();
+        self.storage.planet_ids.at(planet_ids_count).write(location);
+        self.storage.planet_ids_count.write(planet_ids_count + 1);
+
+        // Increment initialized planet count for the level
+        let level_count = self.storage.initialized_planet_count_by_level.at(init_args.level as u128).read();
+        self.storage.initialized_planet_count_by_level.at(init_args.level as u128).write(level_count + 1);
+    }
+
+    /// Noir port of Solidity `LibPlanet._initializePlanet`.
+    /// Internal function to initialize a planet with the given arguments.
+    /// 
+    /// This function:
+    /// 1. Checks the planet is not already initialized
+    /// 2. Gets default planet values
+    /// 3. Sets all planet fields
+    /// 4. Handles home planet special cases
+    /// 5. Sets space junk for non-home planets
+    /// 
+    /// # Arguments
+    /// - `args`: The initialization arguments for the planet
+    #[internal("public")]
+    fn _initialize_planet(args: DFPInitPlanetArgs) {
+        let mut planet: Planet = self.storage.planets.at(args.location).read();
+        
+        // Can't initialize a planet twice
+        assert(!planet.is_initialized, "Planet is already initialized");
+
+        // Get default planet
+        let default_planet = self.internal.default_planet(
+            args.location,
+            args.level as u128,
+            args.planet_type,
+            args.space_type,
+        );
+
+        // Set all planet fields from default planet
+        planet.location_id = args.location;
+        planet.owner = default_planet.owner;
+        planet.is_home_planet = default_planet.is_home_planet;
+        planet.range = default_planet.range;
+        planet.speed = default_planet.speed;
+        planet.defense = default_planet.defense;
+        planet.population = default_planet.population;
+        planet.population_cap = default_planet.population_cap;
+        planet.population_growth = default_planet.population_growth;
+        planet.silver_cap = default_planet.silver_cap;
+        planet.silver_growth = default_planet.silver_growth;
+        planet.silver = default_planet.silver;
+        planet.planet_level = default_planet.planet_level;
+        planet.planet_type = default_planet.planet_type;
+
+        planet.is_initialized = true;
+        planet.perlin = args.perlin as u8;
+        planet.space_type = args.space_type;
+        
+        // Set timestamps using utility context
+        let timestamp = get_utility_context().timestamp();
+        planet.created_at = timestamp;
+        planet.last_updated = timestamp;
+        
+        planet.upgrade_state_0 = 0;
+        planet.upgrade_state_1 = 0;
+        planet.upgrade_state_2 = 0;
+        planet.pausers = 0;
+        planet.energy_gro_doublers = 0;
+        planet.silver_gro_doublers = 0;
+
+        // Handle home planet special cases
+        if args.is_home_planet {
+            planet.is_home_planet = true;
+            planet.owner = self.msg_sender().unwrap();
+            planet.population = 50000;
+        } else {
+            // Set space junk for non-home planets
+            planet.space_junk = self.internal.get_planet_default_space_junk(planet);
+            
+            // Check if half space junk applies
+            if is_half_space_junk(args.location) {
+                planet.space_junk = planet.space_junk / 2;
+            }
+        }
+
+        // Write planet to storage
+        self.storage.planets.at(args.location).write(planet);
+    }
+
+    /// Noir port of Solidity `LibPlanet.checkPlayerInit`.
+    /// Validates that a player can initialize at the given location.
+    /// 
+    /// Checks:
+    /// - Player is not already initialized
+    /// - Radius is within world radius
+    /// - If SPAWN_RIM_AREA is set, player must spawn at the universe rim
+    /// - Perlin value is within allowed range (INIT_PERLIN_MIN <= perlin < INIT_PERLIN_MAX)
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID where the player wants to initialize
+    /// - `perlin`: The perlin value at that location
+    /// - `radius`: The radius of the initialization
+    /// - `sender`: The address of the player attempting to initialize
+    /// 
+    /// # Returns
+    /// `true` if all checks pass
+    #[internal("public")]
+    fn check_player_init(
+        location: Field,
+        perlin: u128,
+        radius: u128,
+        sender: AztecAddress,
+    ) -> bool {
+        let player: Player = self.storage.players.at(sender).read();
+        assert(!player.is_initialized, "Player is already initialized");
+
+        let world_radius: u128 = self.storage.world_radius.read();
+        assert(radius <= world_radius, "Init radius is bigger than the current world radius");
+
+        let game_config: GameConfigCore = self.storage.game_config_core.read();
+        let world_config: WorldConfig = self.storage.world_config.read();
+
+        if world_config.spawn_rim_area != 0 {
+            let radius_squared_times_pi: u128 = (radius * radius * 314) / 100;
+            let world_radius_squared_times_pi: u128 = (world_radius * world_radius * 314) / 100;
+            assert(
+                radius_squared_times_pi + world_config.spawn_rim_area >= world_radius_squared_times_pi,
+                "Player can only spawn at the universe rim"
+            );
+        }
+
+        assert(
+            perlin >= game_config.init_perlin_min,
+            "Init not allowed in perlin value less than INIT_PERLIN_MIN"
+        );
+        assert(
+            perlin < game_config.init_perlin_max,
+            "Init not allowed in perlin value greater than or equal to the INIT_PERLIN_MAX"
+        );
+
+        true
+    }
+
+    /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.
+    /// Refreshes a planet's state by applying pending events and updating resources.
+    /// 
+    /// This function:
+    /// 1. Reads the planet and its events from storage
+    /// 2. Applies pending events (arrivals, etc.)
+    /// 3. Applies spaceship artifacts that have arrived
+    /// 4. Updates planet resources (population, silver) based on time elapsed
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet to refresh
+    /// - `timestamp`: The current timestamp to update to
+    /// 
+    /// # Returns
+    /// A tuple containing:
+    /// - `planet`: The refreshed planet
+    /// - `events_to_remove`: Array of 12 event IDs to remove
+    /// - `artifacts_to_add`: Array of 12 artifact IDs that are new on the planet
+    #[internal("public")]
+    fn get_refreshed_planet(
+        location: Field,
+        timestamp: u64,
+    ) -> (Planet, [u128; 12], [u128; 12]) {
+        let mut planet: Planet = self.storage.planets.at(location).read();
+
+        // Read events from storage
+        let events_count: u128 = self.storage.planet_events_count_by_location.at(location).read();
+        let mut events: [PlanetEventMetadata; 24] = [PlanetEventMetadata {
+            id: 0,
+            event_type: 0,
+            time_trigger: 0,
+            time_created: 0,
+        }; 24];
+        let mut arrivals: [ArrivalData; 24] = [ArrivalData {
+            id: 0,
+            player: AztecAddress::zero(),
+            from_planet: 0 as Field,
+            to_planet: 0 as Field,
+            pop_arriving: 0,
+            silver_moved: 0,
+            departure_time: 0,
+            arrival_time: 0,
+            arrival_type: 0,
+            carried_artifact_id: 0,
+            distance: 0,
+        }; 24];
+
+        // Read events and corresponding arrivals
+        for i in 0..events_count {
+            if i < 24 {
+                events[i as u32] = self.storage.planet_events.at(location).at(i).read();
+                // PlanetEventType::Arrival = 0
+                if events[i as u32].event_type == 0 {
+                    arrivals[i as u32] = self.storage.planet_arrivals.at(events[i as u32].id).read();
+                }
+            }
+        }
+
+        // Apply pending events
+        let (updated_planet, event_ids_and_artifacts) = apply_pending_events(
+            timestamp,
+            planet,
+            events,
+            events_count,
+            arrivals,
+        );
+        planet = updated_planet;
+
+        // Split the result: first 12 are event ids to remove, last 12 are artifact ids
+        let mut events_to_remove: [u128; 12] = [0; 12];
+        let mut artifacts_to_add: [u128; 12] = [0; 12];
+        for i in 0..12 {
+            events_to_remove[i] = event_ids_and_artifacts[i];
+            artifacts_to_add[i] = event_ids_and_artifacts[i + 12];
+        }
+
+        // Apply spaceship artifacts
+        for i in 0..12 {
+            if artifacts_to_add[i] != 0 {
+                let artifact: Artifact = self.storage.artifacts.at(artifacts_to_add[i] as Field).read();
+                planet = apply_spaceship_arrive(artifact, planet);
+            }
+        }
+
+        // Update planet resources
+        planet = update_planet(timestamp, planet);
+
+        (planet, events_to_remove, artifacts_to_add)
+    }
+
+    /// Noir port of Solidity `LibPlanet.refreshPlanet`.
+    /// Refreshes a planet's state by applying pending events and updating resources.
+    /// 
+    /// This function:
+    /// 1. Gets the refreshed planet state from `get_refreshed_planet`
+    /// 2. Updates the planet in storage
+    /// 3. Removes completed events
+    /// 4. Adds artifacts that have arrived to the planet
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet to refresh
+    /// - `timestamp`: The current timestamp to update to
+    #[internal("public")]
+    fn refresh_planet(location: Field, timestamp: u64) {
+        // Check if planet is initialized
+        let planet: Planet = self.storage.planets.at(location).read();
+        assert(planet.is_initialized, "Planet has not been initialized");
+
+        // Get refreshed planet state
+        let (refreshed_planet, events_to_remove, artifact_ids_to_add_to_planet) = 
+            self.internal.get_refreshed_planet(location, timestamp);
+
+        // Update planet in storage
+        self.storage.planets.at(location).write(refreshed_planet);
+
+        // Remove events
+        // In Solidity, this uses swap-and-pop pattern
+        // In Noir with Map storage, we need to find and remove events differently
+        let mut events_count = self.storage.planet_events_count_by_location.at(location).read();
+        
+        // For each event to remove, find it and remove it
+        for to_remove_idx in 0..12 {
+            let event_id_to_remove = events_to_remove[to_remove_idx];
+            if event_id_to_remove != 0 {
+                // Find the event with matching ID
+                let mut found_index: u128 = events_count; // Use events_count as "not found" marker
+                let mut found: bool = false;
+                for i in 0..events_count {
+                    let event = self.storage.planet_events.at(location).at(i).read();
+                    if event.id == event_id_to_remove {
+                        found_index = i;
+                        found = true;
+                    }
+                }
+                
+                // If found, remove it by swapping with last element
+                if found {
+                    // Get the last event
+                    let last_index = events_count - 1;
+                    if found_index < last_index {
+                        // Swap: copy last event to found position
+                        let last_event = self.storage.planet_events.at(location).at(last_index).read();
+                        self.storage.planet_events.at(location).at(found_index).write(last_event);
+                    }
+                    // Decrement count (effectively removes the last element)
+                    events_count = events_count - 1;
+                    self.storage.planet_events_count_by_location.at(location).write(events_count);
+                }
+            }
+        }
+
+        // Add artifacts that have arrived to the planet
+        for i in 0..12 {
+            let artifact_id = artifact_ids_to_add_to_planet[i];
+            if artifact_id != 0 {
+                // Set voyage_id to 0 (artifact has arrived)
+                self.storage.artifact_id_to_voyage_id.at(artifact_id as Field).write(0);
+                // Add artifact to planet
+                self.internal.put_artifact_on_planet(artifact_id as Field, location);
+            }
+        }
+    }
+
 }
