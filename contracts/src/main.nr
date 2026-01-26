@@ -29,7 +29,6 @@ pub contract Main {
         is_range_boost,
         is_speed_boost,
         is_def_boost,
-        is_half_space_junk,
     };
 
     // ========== Storage Structure ==========
