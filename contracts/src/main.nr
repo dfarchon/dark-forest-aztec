@@ -17,7 +17,8 @@ pub contract Main {
     };
 
     use crate::types::{
-        PlanetDefaultStats, Upgrade,
+        PlanetDefaultStats, Upgrade, PlanetType, SpaceType, Planet, RevealedCoords, Player,
+        ArrivalData, Artifact, PlanetEventMetadata,
     };
 
     // ========== Storage Structure ==========
@@ -44,6 +45,45 @@ pub contract Main {
         // ========== Default Stats & Upgrades ==========
         planet_default_stats: Map<u8, PublicMutable<PlanetDefaultStats, Context>, Context>, // level 0-9
         upgrades: Map<u128, PublicMutable<Upgrade, Context>, Context>, // key = branch * 10 + level
+
+        // ========== Game Storage (from LibStorage.GameStorage) ==========
+        // Contract housekeeping
+        paused: PublicMutable<bool, Context>,
+        token_mint_end_timestamp: PublicMutable<u128, Context>,
+        planet_levels_count: PublicMutable<u128, Context>,
+        // Arrays stored as Maps with index keys (or use counters + Maps for dynamic arrays)
+        cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
+        initialized_planet_count_by_level: Map<u128, PublicMutable<u128, Context>, Context>, // level -> count
+        // Dynamic arrays: use counters + Maps
+        planet_ids_count: PublicMutable<u128, Context>, // length of planet_ids array
+        planet_ids: Map<u128, PublicMutable<Field, Context>, Context>, // index -> planet_id (location_id)
+        revealed_planet_ids_count: PublicMutable<u128, Context>,
+        revealed_planet_ids: Map<u128, PublicMutable<Field, Context>, Context>, // index -> planet_id (location_id)
+        player_ids_count: PublicMutable<u128, Context>,
+        player_ids: Map<u128, PublicMutable<AztecAddress, Context>, Context>, // index -> player address
+        // Game world state
+        world_radius: PublicMutable<u128, Context>,
+        planet_events_count: PublicMutable<u128, Context>,
+        misc_nonce: PublicMutable<u128, Context>,
+        // Mappings - planet/location keys use Field
+        planets: Map<Field, PublicMutable<Planet, Context>, Context>, // location_id -> Planet
+        revealed_coords: Map<Field, PublicMutable<RevealedCoords, Context>, Context>, // location_id -> RevealedCoords
+        artifact_id_to_planet_id: Map<Field, PublicMutable<Field, Context>, Context>, // artifact_id -> planet_id (location_id)
+        artifact_id_to_voyage_id: Map<Field, PublicMutable<u128, Context>, Context>, // artifact_id -> voyage_id
+        players: Map<AztecAddress, PublicMutable<Player, Context>, Context>, // player address -> Player
+        // Planet events: mapping(uint256 => PlanetEventMetadata[])
+        // Stored as: Map<location_id, Map<event_index, PlanetEventMetadata>>
+        planet_events: Map<Field, Map<u128, PublicMutable<PlanetEventMetadata, Context>, Context>, Context>, // location_id -> (index -> event)
+        planet_events_count_by_location: Map<Field, PublicMutable<u128, Context>, Context>, // location_id -> count
+        // Arrivals: mapping(uint256 => ArrivalData)
+        planet_arrivals: Map<u128, PublicMutable<ArrivalData, Context>, Context>, // event_id -> ArrivalData
+        // Planet artifacts: mapping(uint256 => uint256[])
+        planet_artifacts_count: Map<Field, PublicMutable<u128, Context>, Context>, // planet_id (location_id) -> count
+        planet_artifacts: Map<Field, Map<u128, PublicMutable<Field, Context>, Context>, Context>, // planet_id (location_id) -> (index -> artifact_id)
+        // Artifacts: mapping(uint256 => Artifact)
+        artifacts: Map<Field, PublicMutable<Artifact, Context>, Context>, // artifact_id -> Artifact
+        // Capture Zones
+        next_change_block: PublicMutable<u128, Context>,
 
     }
 
@@ -116,6 +156,33 @@ pub contract Main {
     fn set_planet_level_thresholds(config: PlanetLevelThresholds) {
         assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
         self.storage.planet_level_thresholds.write(config);
+    }
+
+    /// Initialize game state arrays: initializedPlanetCountByLevel and cumulativeRarities.
+    /// Noir port of DFInitialize.sol lines 204-209.
+    ///
+    /// - Sets initializedPlanetCountByLevel[0..9] = 0
+    /// - Computes cumulativeRarities[i] = (2^24 / thresholds[i]) * planet_rarity for i in 0..9
+    #[external("public")]
+    fn initialize_game_state_arrays() {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+
+        let thresholds = self.storage.planet_level_thresholds.read().thresholds;
+        let planet_rarity: u128 = self.storage.game_config_core.read().planet_rarity;
+        let base: u128 = 1 << 24; // 2^24
+
+        // Initialize initializedPlanetCountByLevel[0..9] = 0
+        for level in 0..10 {
+            self.storage.initialized_planet_count_by_level.at(level as u128).write(0);
+        }
+
+        // Compute cumulativeRarities[i] = (2^24 / thresholds[i]) * planet_rarity
+        for i in 0..10 {
+            let threshold: u128 = thresholds[i];
+            assert(threshold != 0, "threshold must be nonzero");
+            let cumulative_rarity: u128 = (base / threshold) * planet_rarity;
+            self.storage.cumulative_rarities.at(i as u128).write(cumulative_rarity);
+        }
     }
 
     #[external("public")]
@@ -403,5 +470,15 @@ pub contract Main {
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).read()
     }
-      
+
+    // ---- game state arrays getters (utility) ----
+    #[external("utility")]
+    unconstrained fn get_initialized_planet_count_by_level(level: u128) -> u128 {
+        self.storage.initialized_planet_count_by_level.at(level).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_cumulative_rarity(index: u128) -> u128 {
+        self.storage.cumulative_rarities.at(index).read()
+    }
 }
