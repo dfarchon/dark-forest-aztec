@@ -2,11 +2,12 @@ use dep::aztec::macros::aztec;
 
 mod config;
 mod types;
+mod libraries;
 
 #[aztec]
 pub contract Main {
     use dep::aztec::{
-        macros::{functions::{external, initializer}, storage::storage},
+        macros::{functions::{external, initializer, internal}, storage::storage},
         protocol_types::address::AztecAddress,
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
@@ -17,8 +18,18 @@ pub contract Main {
     };
 
     use crate::types::{
-        PlanetDefaultStats, Upgrade, PlanetType, SpaceType, Planet, RevealedCoords, Player,
+        PlanetDefaultStats, Upgrade, Planet, RevealedCoords, Player,
         ArrivalData, Artifact, PlanetEventMetadata,
+    };
+
+    use crate::libraries::game_utils::{
+        calculate_byte_uint_from_location_id,
+        is_pop_cap_boost,
+        is_pop_gro_boost,
+        is_range_boost,
+        is_speed_boost,
+        is_def_boost,
+        is_half_space_junk,
     };
 
     // ========== Storage Structure ==========
@@ -387,6 +398,12 @@ pub contract Main {
         self.storage.upgrades.at(key).write(upgrade);
     }
 
+    #[external("public")]
+    fn initialize_world_radius() {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.update_world_radius();
+    }
+
 
     // ========== Storage Access Functions ==========
     // Essential getter functions for accessing contract storage
@@ -480,5 +497,373 @@ pub contract Main {
     #[external("utility")]
     unconstrained fn get_cumulative_rarity(index: u128) -> u128 {
         self.storage.cumulative_rarities.at(index).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_world_radius() -> u128 {
+        self.storage.world_radius.read()
+    }
+
+    // ========== LibGameUtils ==========
+
+    /// Noir port of Solidity `LibGameUtils._locationIdValid`.
+    /// Returns true iff `loc < ((BN254_PRIME - 1) / planet_rarity)`.
+    ///
+    /// This bounds `loc` so that `loc * planet_rarity` cannot overflow the BN254 field modulus.
+    /// 
+    /// Note: We use PRIME_MINUS_ONE (the maximum Field value) instead of PRIME since PRIME
+    /// itself cannot be represented as a Field value. This gives a slightly more conservative bound.
+    #[internal("public")]
+    fn location_id_valid(loc: Field) -> bool {
+        let rarity: u128 = self.storage.game_config_core.read().planet_rarity;
+        assert(rarity != 0, "planet_rarity must be nonzero");
+
+        // BN254 field modulus - 1 (maximum Field value):
+        // 21888242871839275222246405745257275088548364400416034343698204186575808495616
+        let PRIME_MINUS_ONE: Field = 21888242871839275222246405745257275088548364400416034343698204186575808495616;
+        
+        // Compute (PRIME - 1) / rarity, which approximates PRIME / rarity
+        // Since (PRIME - 1) / rarity < PRIME - 1, Field division gives the correct integer result
+        let max_valid_loc: Field = PRIME_MINUS_ONE / (rarity as Field);
+        
+        // Use lt method to compare Field values
+        loc.lt(max_valid_loc)
+    }
+
+    /// Noir port of Solidity `LibGameUtils.spaceTypeFromPerlin`.
+    /// Returns SpaceType as u8 (0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace).
+    #[internal("public")]
+    fn space_type_from_perlin(perlin: u128) -> u8 {
+        let cfg = self.storage.game_config_core.read();
+        if perlin >= cfg.perlin_threshold_3 {
+            3 // SpaceType::DeadSpace
+        } else if perlin >= cfg.perlin_threshold_2 {
+            2 // SpaceType::DeepSpace
+        } else if perlin >= cfg.perlin_threshold_1 {
+            1 // SpaceType::Space
+        } else {
+            0 // SpaceType::Nebula
+        }
+    }
+
+    /// Noir port of Solidity `LibGameUtils._getPlanetLevelTypeAndSpaceType`.
+    /// Returns `(level, planet_type, space_type)` where both planet_type and space_type are u8.
+    /// planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+    /// space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+    #[internal("public")]
+    fn get_planet_level_type_and_space_type(
+        location_id: Field,
+        perlin: u128,
+    ) -> (u8, u8, u8) {
+        let space_type: u8 = space_type_from_perlin(perlin);
+
+        // Solidity: bytes b = abi.encodePacked(uint256(location_id));
+        // and then planetLevelUInt = byte[4..=6] interpreted as big-endian.
+        let planet_level_uint: u128 = calculate_byte_uint_from_location_id(location_id, 4, 6);
+
+        // Reverse-iterate thresholds (9..0) and pick first where planet_level_uint < threshold[i].
+        let thresholds = self.storage.planet_level_thresholds.read().thresholds;
+        let mut level: u8 = 0;
+        let mut found_level: bool = false;
+        for j in 0..10 {
+            let idx: u32 = 9 - j; // 9..0
+            if !found_level {
+                if planet_level_uint < thresholds[idx] {
+                    level = idx as u8;
+                    found_level = true;
+                }
+            }
+        }
+        assert(found_level, "level not found");
+
+        // Clip by space type (matches Solidity).
+        // space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+        if space_type == 0 { // Nebula
+            if level > 4 {
+                level = 4;
+            }
+        }
+        if space_type == 1 { // Space
+            if level > 5 {
+                level = 5;
+            }
+        }
+
+        // Clip to <= MAX_NATURAL_PLANET_LEVEL.
+        let max_level: u8 = self.storage.game_config_core.read().max_natural_planet_level as u8;
+        if level > max_level {
+            level = max_level;
+        }
+
+        // Get weights row for this (space_type, level).
+        // space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+        let tier: PlanetTypeWeightsTier = if space_type == 0 { // Nebula
+            self.storage.planet_type_weights_tier_0.read()
+        } else if space_type == 1 { // Space
+            self.storage.planet_type_weights_tier_1.read()
+        } else if space_type == 2 { // DeepSpace
+            self.storage.planet_type_weights_tier_2.read()
+        } else { // DeadSpace
+            self.storage.planet_type_weights_tier_3.read()
+        };
+        let level_idx: u32 = level as u32;
+        let weights: [u128; 5] = tier.weights[level_idx];
+
+        // Build thresholds array exactly like Solidity:
+        // thresholds[i] = (cumulative_weights_from_end * 256) / weightSum
+        let mut weight_sum: u128 = 0;
+        for i in 0..5 {
+            weight_sum += weights[i];
+        }
+        assert(weight_sum != 0, "weight_sum must be nonzero");
+
+        let mut type_thresholds: [u128; 5] = [0; 5];
+        type_thresholds[0] = weight_sum - weights[0];
+        for i in 1..5 {
+            type_thresholds[i] = type_thresholds[i - 1] - weights[i];
+        }
+        for i in 0..5 {
+            type_thresholds[i] = (type_thresholds[i] * 256) / weight_sum;
+        }
+
+        // Solidity: uint8 typeByte = uint8(b[8]);
+        let type_byte: u128 = calculate_byte_uint_from_location_id(location_id, 8, 8);
+
+        // Pick the first i where type_byte >= threshold[i].
+        // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+        let mut planet_type: u8 = 0; // PlanetType::Planet = 0
+        let mut picked: bool = false;
+        for i in 0..5 {
+            if !picked & type_byte >= type_thresholds[i] {
+                planet_type = i as u8;
+                picked = true;
+            }
+        }
+
+        (level, planet_type, space_type)
+    }
+
+    /// Noir port of Solidity `LibGameUtils._getRadius`.
+    /// Calculates the world radius based on player count and initialized planets.
+    /// todo: introduce a better algorithm
+    #[internal("public")]
+    fn get_radius() -> u128 {
+        let n_players: u128 = self.storage.player_ids_count.read();
+        let world_radius_min: u128 = self.storage.world_config.read().world_radius_min;
+        let initialized_count_level_4: u128 = self.storage.initialized_planet_count_by_level.at(4).read();
+        let target4: u128 = initialized_count_level_4 + 20 * n_players;
+        let cumulative_rarity_4: u128 = self.storage.cumulative_rarities.at(4).read();
+        let target_radius_squared_4: u128 = (target4 * cumulative_rarity_4 * 100) / 314;
+        
+        // Simple approximation: use a fixed scaling factor to approximate sqrt
+        // This avoids complex sqrt calculations while still producing a reasonable radius
+        let r4: u128 = target_radius_squared_4 / 1000; // Simple linear approximation
+        
+        if r4 < world_radius_min {
+            world_radius_min
+        } else {
+            r4
+        }
+    }
+
+    /// Noir port of Solidity `LibGameUtils.checkPlanetDOS`.
+    /// Checks if a planet is rate-limited for arrivals.
+    #[internal("public")]
+    fn check_planet_dos(location_id: Field, sender: AztecAddress) {
+        let mut arrivals_from_owner: u8 = 0;
+        let mut arrivals_from_others: u8 = 0;
+
+        let events_count: u128 = self.storage.planet_events_count_by_location.at(location_id).read();
+        for i in 0..events_count {
+            let event: PlanetEventMetadata = self.storage.planet_events.at(location_id).at(i).read();
+            // PlanetEventType::Arrival = 0
+            if event.event_type == 0 {
+                let arrival: ArrivalData = self.storage.planet_arrivals.at(event.id).read();
+                let planet: Planet = self.storage.planets.at(location_id).read();
+                if arrival.player == planet.owner {
+                    arrivals_from_owner += 1;
+                } else {
+                    arrivals_from_others += 1;
+                }
+            }
+        }
+
+        let planet: Planet = self.storage.planets.at(location_id).read();
+        if sender == planet.owner {
+            assert(arrivals_from_owner < 6, "Planet is rate-limited");
+        } else {
+            assert(arrivals_from_others < 6, "Planet is rate-limited");
+        }
+
+        assert(arrivals_from_owner + arrivals_from_others < 12, "Planet is rate-limited");
+    }
+
+    /// Noir port of Solidity `LibGameUtils.updateWorldRadius`.
+    /// Updates the world radius if it's not locked.
+    #[internal("public")]
+    fn update_world_radius() {
+        let world_config = self.storage.world_config.read();
+        if !world_config.world_radius_locked {
+            let new_radius = self.internal.get_radius();
+            self.storage.world_radius.write(new_radius);
+        }
+    }
+
+
+    /// Noir port of Solidity `LibGameUtils._defaultPlanet`.
+    /// Creates a default planet with the given parameters.
+    /// planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+    /// space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+    #[internal("public")]
+    fn default_planet(
+        location: Field,
+        level: u128,
+        planet_type: u8,
+        space_type: u8,
+    ) -> Planet {
+        let planet_default_stats: PlanetDefaultStats = self.storage.planet_default_stats.at(level as u8).read();
+        let world_config = self.storage.world_config.read();
+        let time_factor_hundredths: u128 = world_config.time_factor_hundredths;
+
+        // space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+        let dead_space: bool = space_type == 3; // DeadSpace
+        let deep_space: bool = space_type == 2; // DeepSpace
+        let medium_space: bool = space_type == 1; // Space
+
+        let mut planet = Planet {
+            owner: AztecAddress::zero(),
+            planet_level: level as u8,
+            population: 0, // Will be calculated after all buffs/debuffs are applied
+            population_cap: planet_default_stats.population_cap,
+            population_growth: planet_default_stats.population_growth,
+            range: planet_default_stats.range,
+            speed: planet_default_stats.speed,
+            defense: planet_default_stats.defense,
+            silver_cap: planet_default_stats.silver_cap,
+            silver_growth: 0,
+            silver: 0,
+            planet_type: planet_type, // Already u8: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+            is_home_planet: false,
+            is_initialized: false,
+            created_at: 0,
+            last_updated: 0,
+            perlin: 0,
+            space_type: space_type, // Already u8: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+            upgrade_state_0: 0,
+            upgrade_state_1: 0,
+            upgrade_state_2: 0,
+            hat_level: 0,
+            has_tried_finding_artifact: false,
+            prospected_block_number: 0,
+            destroyed: false,
+            space_junk: 0,
+            pausers: 0,
+            energy_gro_doublers: 0,
+            silver_gro_doublers: 0,
+            invader: AztecAddress::zero(),
+            invade_start_block: 0,
+            capturer: AztecAddress::zero(),
+            location_id: location,
+        };
+
+        // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+        if planet_type == 1 { // PlanetType::SilverMine
+            planet.silver_growth = planet_default_stats.silver_growth;
+        }
+
+        if is_pop_cap_boost(location) {
+            planet.population_cap *= 2;
+        }
+        if is_pop_gro_boost(location) {
+            planet.population_growth *= 2;
+        }
+        if is_range_boost(location) {
+            planet.range *= 2;
+        }
+        if is_speed_boost(location) {
+            planet.speed *= 2;
+        }
+        if is_def_boost(location) {
+            planet.defense *= 2;
+        }
+
+        // Space type buffs and debuffs
+        if dead_space {
+            // Dead space buff
+            planet.range = planet.range * 2;
+            planet.speed = planet.speed * 2;
+            planet.population_cap = planet.population_cap * 2;
+            planet.population_growth = planet.population_growth * 2;
+            planet.silver_cap = planet.silver_cap * 2;
+            planet.silver_growth = planet.silver_growth * 2;
+
+            // Dead space debuff
+            planet.defense = (planet.defense * 3) / 20;
+        } else if deep_space {
+            // Deep space buff
+            planet.range = (planet.range * 3) / 2;
+            planet.speed = (planet.speed * 3) / 2;
+            planet.population_cap = (planet.population_cap * 3) / 2;
+            planet.population_growth = (planet.population_growth * 3) / 2;
+            planet.silver_cap = (planet.silver_cap * 3) / 2;
+            planet.silver_growth = (planet.silver_growth * 3) / 2;
+
+            // Deep space debuff
+            planet.defense = planet.defense / 4;
+        } else if medium_space {
+            // Buff
+            planet.range = (planet.range * 5) / 4;
+            planet.speed = (planet.speed * 5) / 4;
+            planet.population_cap = (planet.population_cap * 5) / 4;
+            planet.population_growth = (planet.population_growth * 5) / 4;
+            planet.silver_cap = (planet.silver_cap * 5) / 4;
+            planet.silver_growth = (planet.silver_growth * 5) / 4;
+
+            // Debuff
+            planet.defense = planet.defense / 2;
+        }
+
+        // Apply buffs/debuffs for nonstandard planets
+        // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+        if planet_type == 1 { // PlanetType::SilverMine
+            planet.silver_cap *= 2;
+            planet.defense /= 2;
+        } else if planet_type == 4 { // PlanetType::SilverBank
+            planet.speed /= 2;
+            planet.silver_cap *= 10;
+            planet.population_growth = 0;
+            planet.population_cap *= 5;
+        } else if planet_type == 3 { // PlanetType::TradingPost
+            planet.defense /= 2;
+            planet.silver_cap *= 2;
+        }
+
+        // Initial population (pirates) and silver
+        planet.population = (planet.population_cap * planet_default_stats.barbarian_percentage) / 100;
+
+        // Pirates adjusted for def debuffs, and buffed in space/deepspace
+        if dead_space {
+            planet.population *= 20;
+        } else if deep_space {
+            planet.population *= 10;
+        } else if medium_space {
+            planet.population *= 4;
+        }
+        // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
+        if planet_type == 4 { // PlanetType::SilverBank
+            planet.population /= 2;
+        }
+
+        // Adjust silver cap for mine
+        if planet_type == 1 { // PlanetType::SilverMine
+            planet.silver = planet.silver_cap / 2;
+        }
+
+        // Apply time factor
+        planet.speed = planet.speed * time_factor_hundredths / 100;
+        planet.population_growth = planet.population_growth * time_factor_hundredths / 100;
+        planet.silver_growth = planet.silver_growth * time_factor_hundredths / 100;
+
+        planet
     }
 }

@@ -506,6 +506,20 @@ async function interactWithContract() {
                 }
             });
 
+            // Initialize world radius
+            await run('initialize_world_radius()', async () => {
+                if (INTERACT_MODE === 'send') {
+                    const tx = await main.methods
+                        .initialize_world_radius()
+                        .send(sendOpts);
+                    await tx.wait();
+                } else {
+                    await main.methods
+                        .initialize_world_radius()
+                        .simulate({ from: accountAddress });
+                }
+            });
+
             // ---- read back initialized configs and print in DF-style format ----
             type WorldConfig = {
                 start_paused: boolean;
@@ -841,6 +855,13 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
                 const rarity = fmtUWithUnderscores(cumulativeRarities[i]);
                 console.log(`  ${i}   | ${rarity}`);
             }
+
+            // Read world radius
+            console.log('\n## World Radius');
+            const worldRadius = await main.methods
+                .get_world_radius()
+                .simulate({ from: accountAddress });
+            console.log(`WORLD_RADIUS = ${fmtUWithUnderscores(worldRadius)}`);
         } catch (err) {
             console.error('❌ Failed to call get_admin():', err);
             throw err;
