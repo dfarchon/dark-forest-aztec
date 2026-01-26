@@ -492,6 +492,20 @@ async function interactWithContract() {
                 }
             });
 
+            // Initialize game state arrays: initializedPlanetCountByLevel and cumulativeRarities
+            await run('initialize_game_state_arrays()', async () => {
+                if (INTERACT_MODE === 'send') {
+                    const tx = await main.methods
+                        .initialize_game_state_arrays()
+                        .send(sendOpts);
+                    await tx.wait();
+                } else {
+                    await main.methods
+                        .initialize_game_state_arrays()
+                        .simulate({ from: accountAddress });
+                }
+            });
+
             // ---- read back initialized configs and print in DF-style format ----
             type WorldConfig = {
                 start_paused: boolean;
@@ -793,6 +807,39 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
                     console.log(`\n### Level ${level} (key=${key.toString()})`);
                     printKeyValues(upgrade);
                 }
+            }
+
+            // Read game state arrays: initializedPlanetCountByLevel and cumulativeRarities
+            console.log('\n# Game State Arrays');
+            
+            console.log('\n## Initialized Planet Count By Level');
+            const initializedCounts = await Promise.all(
+                Array.from({ length: 10 }, (_, i) =>
+                    main.methods
+                        .get_initialized_planet_count_by_level(BigInt(i))
+                        .simulate({ from: accountAddress })
+                )
+            );
+            console.log('Level | Count');
+            console.log('------|------');
+            for (let level = 0; level < 10; level++) {
+                const count = fmtU(initializedCounts[level]);
+                console.log(`  ${level}   | ${count}`);
+            }
+
+            console.log('\n## Cumulative Rarities');
+            const cumulativeRarities = await Promise.all(
+                Array.from({ length: 10 }, (_, i) =>
+                    main.methods
+                        .get_cumulative_rarity(BigInt(i))
+                        .simulate({ from: accountAddress })
+                )
+            );
+            console.log('Index | Cumulative Rarity');
+            console.log('------|------------------');
+            for (let i = 0; i < 10; i++) {
+                const rarity = fmtUWithUnderscores(cumulativeRarities[i]);
+                console.log(`  ${i}   | ${rarity}`);
             }
         } catch (err) {
             console.error('❌ Failed to call get_admin():', err);
