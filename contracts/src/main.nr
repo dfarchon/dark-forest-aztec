@@ -3,15 +3,15 @@ use dep::aztec::macros::aztec;
 mod config;
 mod types;
 mod libraries;
+mod circuits;
 
 #[aztec]
 pub contract Main {
     use dep::aztec::{
-        macros::{functions::{external, initializer, internal}, storage::storage},
+        macros::{events::event, functions::{external, initializer, internal, only_self}, storage::storage},
         protocol_types::address::AztecAddress,
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::aztec::oracle::execution::get_utility_context;
 
     use crate::config::{
         ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetLevelThresholds,
@@ -21,6 +21,7 @@ pub contract Main {
     use crate::types::{
         PlanetDefaultStats, Upgrade, Planet, RevealedCoords, Player,
         ArrivalData, Artifact, PlanetEventMetadata, DFPInitPlanetArgs,
+        AdminCreatePlanetArgs,
     };
 
     use crate::libraries::game_utils::{
@@ -34,6 +35,7 @@ pub contract Main {
     };
     use crate::libraries::lazy_update::{apply_pending_events, update_planet};
     use crate::libraries::planet::apply_spaceship_arrive;
+    use crate::circuits::init::init_proof;
 
     // ========== Storage Structure ==========
     // Full storage structure
@@ -596,7 +598,7 @@ pub contract Main {
         location_id: Field,
         perlin: u128,
     ) -> (u8, u8, u8) {
-        let space_type: u8 = space_type_from_perlin(perlin);
+        let space_type: u8 = self.internal.space_type_from_perlin(perlin);
 
         // Solidity: bytes b = abi.encodePacked(uint256(location_id));
         // and then planetLevelUInt = byte[4..=6] interpreted as big-endian.
@@ -976,10 +978,10 @@ pub contract Main {
         perlin: u128,
         x: u128,
         y: u128,
-        check_timestamp: bool
+        check_timestamp: bool,
+        timestamp: u64,
     ) {
         let sender = self.msg_sender().unwrap();
-        let timestamp = get_utility_context().timestamp();
 
         // Check cooldown if requested
         if check_timestamp {
@@ -1027,7 +1029,7 @@ pub contract Main {
         perlin: u128,
         is_home_planet: bool,
     ) -> DFPInitPlanetArgs {
-        let (level, planet_type, space_type) = get_planet_level_type_and_space_type(location, perlin);
+        let (level, planet_type, space_type) = self.internal.get_planet_level_type_and_space_type(location, perlin);
 
         // Validate home planet requirements (matching Solidity behavior)
         if is_home_planet {
@@ -1047,7 +1049,7 @@ pub contract Main {
             is_home_planet,
         }
     }
-
+   
  
 
     /// Noir port of Solidity `LibPlanet.initializePlanetWithDefaults`.
@@ -1064,11 +1066,13 @@ pub contract Main {
     /// - `location`: The location ID of the planet
     /// - `perlin`: The perlin value at that location
     /// - `is_home_planet`: Whether this is a home planet
+    /// - `timestamp`: The current timestamp
     #[internal("public")]
     fn initialize_planet_with_defaults(
         location: Field,
         perlin: u128,
         is_home_planet: bool,
+        timestamp: u64,
     ) {
         // Validate location
         assert(self.internal.location_id_valid(location), "Not a valid planet location");
@@ -1077,7 +1081,7 @@ pub contract Main {
         let init_args = self.internal.get_default_init_planet_args(location, perlin, is_home_planet);
 
         // Initialize the planet
-        self.internal._initialize_planet(init_args);
+        self.internal._initialize_planet(init_args, timestamp);
 
         // Add planet to planet IDs list
         let planet_ids_count = self.storage.planet_ids_count.read();
@@ -1101,8 +1105,9 @@ pub contract Main {
     /// 
     /// # Arguments
     /// - `args`: The initialization arguments for the planet
+    /// - `timestamp`: The current timestamp
     #[internal("public")]
-    fn _initialize_planet(args: DFPInitPlanetArgs) {
+    fn _initialize_planet(args: DFPInitPlanetArgs, timestamp: u64) {
         let mut planet: Planet = self.storage.planets.at(args.location).read();
         
         // Can't initialize a planet twice
@@ -1136,8 +1141,7 @@ pub contract Main {
         planet.perlin = args.perlin as u8;
         planet.space_type = args.space_type;
         
-        // Set timestamps using utility context
-        let timestamp = get_utility_context().timestamp();
+        // Set timestamps
         planet.created_at = timestamp;
         planet.last_updated = timestamp;
         
@@ -1384,4 +1388,280 @@ pub contract Main {
         }
     }
 
+    // ========== DFAdminFacet ==========
+
+    // Event definitions
+    #[event]
+    struct PauseStateChanged {
+        paused: bool,
+    }
+
+    #[event]
+    struct AdminOwnershipChanged {
+        loc: Field,
+        new_owner: AztecAddress,
+    }
+
+    #[event]
+    struct AdminPlanetCreated {
+        loc: Field,
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.pause`.
+    /// Pauses the game. Only admin can call this.
+    #[external("public")]
+    fn pause() {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(!self.storage.paused.read(), "Game is already paused");
+        self.storage.paused.write(true);
+        self.emit(PauseStateChanged { paused: true });
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.unpause`.
+    /// Unpauses the game. Only admin can call this.
+    #[external("public")]
+    fn unpause() {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(self.storage.paused.read(), "Game is already unpaused");
+        self.storage.paused.write(false);
+        self.emit(PauseStateChanged { paused: false });
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.setOwner`.
+    /// Sets the owner of an initialized planet. Only admin can call this.
+    /// Only works for initialized planets.
+    #[external("public")]
+    fn set_owner(planet_id: Field, new_owner: AztecAddress) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut planet: Planet = self.storage.planets.at(planet_id).read();
+        assert(planet.is_initialized, "Planet is not initialized");
+        planet.owner = new_owner;
+        self.storage.planets.at(planet_id).write(planet);
+        self.emit(AdminOwnershipChanged { loc: planet_id, new_owner: new_owner });
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.deductScore`.
+    /// Deducts score from a player. Only admin can call this.
+    #[external("public")]
+    fn deduct_score(player_address: AztecAddress, amount: u128) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut player: Player = self.storage.players.at(player_address).read();
+        assert(player.is_initialized, "player does not exist");
+        assert(amount <= player.score, "tried to deduct much score");
+        player.score -= amount;
+        self.storage.players.at(player_address).write(player);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.addScore`.
+    /// Adds score to a player. Only admin can call this.
+    #[external("public")]
+    fn add_score(player_address: AztecAddress, amount: u128) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut player: Player = self.storage.players.at(player_address).read();
+        assert(player.is_initialized, "player does not exist");
+        player.score += amount;
+        self.storage.players.at(player_address).write(player);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.changeWorldRadiusMin`.
+    /// Changes the minimum world radius constant and updates the world radius.
+    #[external("public")]
+    fn change_world_radius_min(new_constant: u128) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut world_config = self.storage.world_config.read();
+        world_config.world_radius_min = new_constant;
+        self.storage.world_config.write(world_config);
+        self.internal.update_world_radius();
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.adminSetWorldRadius`.
+    /// Sets the world radius directly. Only admin can call this.
+    #[external("public")]
+    fn admin_set_world_radius(new_radius: u128) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.storage.world_radius.write(new_radius);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.changeLocationRevealCooldown`.
+    /// Changes the location reveal cooldown. Only admin can call this.
+    #[external("public")]
+    fn change_location_reveal_cooldown(new_cooldown: u64) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut world_config = self.storage.world_config.read();
+        world_config.location_reveal_cooldown_s = new_cooldown;
+        self.storage.world_config.write(world_config);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.setTokenMintEndTime`.
+    /// Sets the token mint end timestamp. Only admin can call this.
+    #[external("public")]
+    fn set_token_mint_end_time(new_token_mint_end_time: u64) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.storage.token_mint_end_timestamp.write(new_token_mint_end_time);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.createPlanet`.
+    /// Creates a planet with the given arguments. Only admin can call this.
+    #[external("public")]
+    fn create_planet(args: AdminCreatePlanetArgs) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let world_config = self.storage.world_config.read();
+        assert(world_config.admin_can_add_planets, "admin can no longer add planets");
+        
+        if args.require_valid_location_id {
+            assert(self.internal.location_id_valid(args.location), "Not a valid planet location");
+        }
+        
+        let space_type = self.internal.space_type_from_perlin(args.perlin);
+        let time_factor_hundredths = world_config.time_factor_hundredths;
+        
+        let init_args = DFPInitPlanetArgs {
+            location: args.location,
+            perlin: args.perlin,
+            level: args.level,
+            time_factor_hundredths: time_factor_hundredths,
+            space_type: space_type,
+            planet_type: args.planet_type,
+            is_home_planet: false,
+        };
+        
+        // Get timestamp for initialization
+        let timestamp = self.context.timestamp();
+        self.internal._initialize_planet(init_args, timestamp);
+        
+        // Add planet to planet IDs list
+        let planet_ids_count = self.storage.planet_ids_count.read();
+        self.storage.planet_ids.at(planet_ids_count).write(args.location);
+        self.storage.planet_ids_count.write(planet_ids_count + 1);
+        
+        // Increment initialized planet count for the level
+        let level_count = self.storage.initialized_planet_count_by_level.at(args.level as u128).read();
+        self.storage.initialized_planet_count_by_level.at(args.level as u128).write(level_count + 1);
+        
+        self.emit(AdminPlanetCreated { loc: args.location });
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.adminInitializePlanet`.
+    /// Initializes a planet with defaults. Only admin can call this.
+    #[external("public")]
+    fn admin_initialize_planet(location_id: Field, perlin: u128) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let planet: Planet = self.storage.planets.at(location_id).read();
+        assert(!planet.is_initialized, "planet is already initialized");
+        
+        // Get timestamp for initialization
+        let timestamp = self.context.timestamp();
+        self.internal.initialize_planet_with_defaults(location_id, perlin, false, timestamp);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.setPlanetTransferEnabled`.
+    /// Sets whether planet transfer is enabled. Only admin can call this.
+    #[external("public")]
+    fn set_planet_transfer_enabled(enabled: bool) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        let mut world_config = self.storage.world_config.read();
+        world_config.planet_transfer_enabled = enabled;
+        self.storage.world_config.write(world_config);
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.safeSetOwner`.
+    /// Sets the owner of a planet, even if it's not initialized.
+    /// If the planet is not initialized, it will be initialized first.
+    /// After setting owner, sets silver and population to their maximum values.
+    /// 
+    /// Note: In Noir, we use direct coordinates instead of SNARK proof parameters.
+    /// The caller must provide valid coordinates that satisfy the init circuit constraints.
+    /// Private function that validates ZK proof and enqueues public state change
+    #[external("private")]
+    fn safe_set_owner(
+        location_id: Field,
+        perlin: u8,
+        new_owner: AztecAddress,
+        disable_zk_checks: bool,
+        planet_hash_key: u128, 
+        space_type_key: u128, 
+        biomebase_key: u128,
+        scale: u128, 
+        x_mirror: bool, 
+        y_mirror: bool, 
+        r: Field, 
+        x: Field, 
+        y: Field,
+    ) {
+        if !disable_zk_checks {
+            // init_proof takes: r, planet_hash_key, space_type_key, scale, x_mirror, y_mirror, x, y
+            // Returns (planet_hash: Field, perlin: u8)
+            let (planet_hash, computed_perlin) = init_proof(
+                r,
+                planet_hash_key as Field,
+                space_type_key as Field,
+                scale,
+                x_mirror,
+                y_mirror,
+                x,
+                y,
+            );
+
+            assert(planet_hash == location_id, "Planet hash mismatch");
+            assert(computed_perlin == perlin, "Perlin value mismatch");
+        }
+
+        // Enqueue the public function call
+        self.enqueue_self.pub_safe_set_owner(
+            location_id, 
+            perlin,
+            new_owner,
+            planet_hash_key,
+            space_type_key, 
+            biomebase_key,
+            scale, 
+            x_mirror, 
+            y_mirror
+        );
+    }
+ 
+    /// Public function that updates planet state
+    #[external("public")]
+    #[only_self]
+    fn pub_safe_set_owner(
+        planet_id: Field,
+        perlin: u8,
+        new_owner: AztecAddress,
+        planethash_key: u128, 
+        spacetype_key: u128, 
+        biomebase_key: u128,
+        perlin_length_scale: u128, 
+        perlin_mirror_x: bool, 
+        perlin_mirror_y: bool
+    ) {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+
+        let planet = self.storage.planets.at(planet_id).read();
+        if !planet.is_initialized {
+            // revert_if_bad_snark_perlin_flags expects: planethash_key, spacetype_key, biomebase_key, mirror_x, mirror_y, scale, checking_biome
+            let _ = self.internal.revert_if_bad_snark_perlin_flags(
+                planethash_key,
+                spacetype_key,
+                biomebase_key,
+                perlin_mirror_x,
+                perlin_mirror_y,
+                perlin_length_scale,
+                false
+            );      
+    
+            self.internal.initialize_planet_with_defaults(planet_id, perlin as u128, planet.is_home_planet, self.context.timestamp());
+        }        
+
+        // Set silver and population to maximum
+        let mut updated_planet: Planet = self.storage.planets.at(planet_id).read();
+        updated_planet.silver = updated_planet.silver_cap;
+        updated_planet.population = updated_planet.population_cap;
+        updated_planet.owner = new_owner;
+        
+        // Write updated planet
+        self.storage.planets.at(planet_id).write(updated_planet);
+
+        // Emit event
+        self.emit(AdminOwnershipChanged { loc: planet_id, new_owner: new_owner });
+    }
 }

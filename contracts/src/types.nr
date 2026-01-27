@@ -225,3 +225,12 @@ pub struct DFPInitPlanetArgs {
     pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
     pub is_home_planet: bool,
 }
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct AdminCreatePlanetArgs {
+    pub location: Field,
+    pub perlin: u128,
+    pub level: u8,
+    pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
+    pub require_valid_location_id: bool,
+}
