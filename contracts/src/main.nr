@@ -36,6 +36,7 @@ pub contract Main {
     use crate::libraries::lazy_update::{apply_pending_events, update_planet};
     use crate::libraries::planet::apply_spaceship_arrive;
     use crate::circuits::init::init_proof;
+    use crate::circuits::reveal::reveal_proof;
 
     // ========== Storage Structure ==========
     // Full storage structure
@@ -575,14 +576,16 @@ pub contract Main {
 
     /// Noir port of Solidity `LibGameUtils.spaceTypeFromPerlin`.
     /// Returns SpaceType as u8 (0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace).
+    /// `perlin` here is a u8 value in [0, 255].
     #[internal("public")]
-    fn space_type_from_perlin(perlin: u128) -> u8 {
+    fn space_type_from_perlin(perlin: u8) -> u8 {
         let cfg = self.storage.game_config_core.read();
-        if perlin >= cfg.perlin_threshold_3 {
+        let perlin_u128: u128 = perlin as u128;
+        if perlin_u128 >= cfg.perlin_threshold_3 {
             3 // SpaceType::DeadSpace
-        } else if perlin >= cfg.perlin_threshold_2 {
+        } else if perlin_u128 >= cfg.perlin_threshold_2 {
             2 // SpaceType::DeepSpace
-        } else if perlin >= cfg.perlin_threshold_1 {
+        } else if perlin_u128 >= cfg.perlin_threshold_1 {
             1 // SpaceType::Space
         } else {
             0 // SpaceType::Nebula
@@ -596,7 +599,7 @@ pub contract Main {
     #[internal("public")]
     fn get_planet_level_type_and_space_type(
         location_id: Field,
-        perlin: u128,
+        perlin: u8,
     ) -> (u8, u8, u8) {
         let space_type: u8 = self.internal.space_type_from_perlin(perlin);
 
@@ -975,9 +978,9 @@ pub contract Main {
     #[internal("public")]
     fn reveal_location(
         location: Field,
-        perlin: u128,
-        x: u128,
-        y: u128,
+        perlin: u8,
+        x: Field,
+        y: Field,
         check_timestamp: bool,
         timestamp: u64,
     ) {
@@ -1026,7 +1029,7 @@ pub contract Main {
     #[internal("public")]
     fn get_default_init_planet_args(
         location: Field,
-        perlin: u128,
+        perlin: u8,
         is_home_planet: bool,
     ) -> DFPInitPlanetArgs {
         let (level, planet_type, space_type) = self.internal.get_planet_level_type_and_space_type(location, perlin);
@@ -1070,7 +1073,7 @@ pub contract Main {
     #[internal("public")]
     fn initialize_planet_with_defaults(
         location: Field,
-        perlin: u128,
+        perlin: u8,
         is_home_planet: bool,
         timestamp: u64,
     ) {
@@ -1191,7 +1194,7 @@ pub contract Main {
     #[internal("public")]
     fn check_player_init(
         location: Field,
-        perlin: u128,
+        perlin: u8,
         radius: u128,
         sender: AztecAddress,
     ) -> bool {
@@ -1214,11 +1217,11 @@ pub contract Main {
         }
 
         assert(
-            perlin >= game_config.init_perlin_min,
+            (perlin as u128) >= game_config.init_perlin_min,
             "Init not allowed in perlin value less than INIT_PERLIN_MIN"
         );
         assert(
-            perlin < game_config.init_perlin_max,
+            (perlin as u128) < game_config.init_perlin_max,
             "Init not allowed in perlin value greater than or equal to the INIT_PERLIN_MAX"
         );
 
@@ -1544,7 +1547,7 @@ pub contract Main {
     /// Noir port of Solidity `DFAdminFacet.adminInitializePlanet`.
     /// Initializes a planet with defaults. Only admin can call this.
     #[external("public")]
-    fn admin_initialize_planet(location_id: Field, perlin: u128) {
+    fn admin_initialize_planet(location_id: Field, perlin: u8) {
         assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
         let planet: Planet = self.storage.planets.at(location_id).read();
         assert(!planet.is_initialized, "planet is already initialized");
@@ -1649,7 +1652,12 @@ pub contract Main {
                 false
             );      
     
-            self.internal.initialize_planet_with_defaults(planet_id, perlin as u128, planet.is_home_planet, self.context.timestamp());
+            self.internal.initialize_planet_with_defaults(
+                planet_id,
+                perlin,
+                planet.is_home_planet,
+                self.context.timestamp(),
+            );
         }        
 
         // Set silver and population to maximum
@@ -1663,5 +1671,269 @@ pub contract Main {
 
         // Emit event
         self.emit(AdminOwnershipChanged { loc: planet_id, new_owner: new_owner });
+    }
+
+    // ========== DFCoreFacet ==========
+
+    #[event]
+    struct LocationRevealed {
+        revealer: AztecAddress,
+        loc: Field,
+        x: Field,
+        y: Field,
+    }
+
+    #[event]
+    struct PlayerInitialized {
+        player: AztecAddress,
+        loc: Field,
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.refreshPlanet`.
+    /// Public function to refresh a planet's state.
+    /// 
+    /// This function requires the game to not be paused.
+    /// It updates the planet's state by applying all pending events and resource growth.
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet to refresh
+    #[external("public")]
+    fn refresh_planet_public(location: Field) {
+        // Check game is not paused (notPaused modifier)
+        assert(!self.storage.paused.read(), "Game is paused");
+        
+        // Get current timestamp and call internal refresh_planet
+        let timestamp = self.context.timestamp();
+        self.internal.refresh_planet(location, timestamp);
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.revealLocation`.
+    /// Reveals the coordinates of a planet location.
+    /// 
+    /// Since x, y are being revealed publicly, no privacy is needed.
+    /// The proof verifies that the coordinates hash to the location_id.
+    /// 
+    /// This function:
+    /// 1. Verifies the proof that coordinates match the location hash and perlin
+    /// 2. Initializes the planet if not already initialized
+    /// 3. Reveals the location coordinates
+    /// 4. Emits a LocationRevealed event
+    /// 
+    /// # Arguments
+    /// - `location_id`: The expected planet hash (location ID)
+    /// - `perlin`: The expected perlin value
+    /// - `x`: The x coordinate to reveal
+    /// - `y`: The y coordinate to reveal
+    #[external("public")]
+    fn reveal_location_public(
+        location_id: Field,
+        perlin: u8,
+        x: Field,
+        y: Field,
+    ) {
+        // Check game is not paused
+        assert(!self.storage.paused.read(), "Game is paused");
+
+        // Verify proof: coordinates hash to location_id and perlin is correct
+        let snark_constants = self.storage.snark_constants.read();
+        if !snark_constants.disable_zk_checks {
+            let (computed_hash, computed_perlin) = reveal_proof(
+                x,
+                y,
+                snark_constants.planethash_key as Field,
+                snark_constants.spacetype_key as Field,
+                snark_constants.perlin_length_scale,
+                snark_constants.perlin_mirror_x,
+                snark_constants.perlin_mirror_y,
+            );
+            
+            assert(computed_hash == location_id, "Planet hash mismatch");
+            assert(computed_perlin == perlin, "Perlin value mismatch");
+        }
+
+        // Validate SNARK perlin flags
+        let _ = self.internal.revert_if_bad_snark_perlin_flags(
+            snark_constants.planethash_key,
+            snark_constants.spacetype_key,
+            snark_constants.biomebase_key,
+            snark_constants.perlin_mirror_x,
+            snark_constants.perlin_mirror_y,
+            snark_constants.perlin_length_scale,
+            false, // checking_biome = false
+        );
+
+        // Initialize planet if not already initialized
+        let planet = self.storage.planets.at(location_id).read();
+        if !planet.is_initialized {
+            self.internal.initialize_planet_with_defaults(
+                location_id,
+                perlin,
+                false, // is_home_planet = false
+                self.context.timestamp(),
+            );
+        }
+
+        // Check if sender is admin (for cooldown bypass)
+        let sender = self.msg_sender().unwrap();
+        let admin = self.storage.admin.read();
+        let check_timestamp = sender != admin;
+
+        // Reveal the location
+        self.internal.reveal_location(
+            location_id,
+            perlin,
+            x,
+            y,
+            check_timestamp,
+            self.context.timestamp(),
+        );
+
+        // Emit event
+        self.emit(LocationRevealed {
+            revealer: sender,
+            loc: location_id,
+            x: x,
+            y: y,
+        });
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
+    /// Initializes a new player at their home planet.
+    /// 
+    /// This is a private function because the player's home planet coordinates (x, y)
+    /// must remain secret - only the location hash is revealed publicly.
+    /// 
+    /// This function:
+    /// 1. Verifies the ZK proof that coordinates hash to location_id
+    /// 2. Validates player can initialize at this location
+    /// 3. Initializes the home planet
+    /// 4. Creates player data
+    /// 5. Updates world radius
+    /// 6. Emits PlayerInitialized event
+    /// 
+    /// # Arguments
+    /// - `location_id`: The planet hash (home planet location)
+    /// - `perlin`: The perlin value at the location
+    /// - `radius`: The distance from origin (for spawn validation)
+    /// - `x`: The x coordinate (private)
+    /// - `y`: The y coordinate (private)
+    /// - `planet_hash_key`: Key for planet hash calculation
+    /// - `space_type_key`: Key for space type perlin
+    /// - `scale`: Perlin scale
+    /// - `x_mirror`: X mirror flag
+    /// - `y_mirror`: Y mirror flag
+    #[external("private")]
+    fn initialize_player(
+        location_id: Field,
+        perlin: u8,
+        radius: u128,
+        x: Field,
+        y: Field,
+        planet_hash_key: u128,
+        space_type_key: u128,
+        scale: u128,
+        x_mirror: bool,
+        y_mirror: bool,
+    ) {
+        // Verify ZK proof: coordinates hash to location_id
+        let (computed_hash, computed_perlin) = init_proof(
+            radius as Field,
+            planet_hash_key as Field,
+            space_type_key as Field,
+            scale,
+            x_mirror,
+            y_mirror,
+            x,
+            y,
+        );
+        
+        assert(computed_hash == location_id, "Planet hash mismatch");
+        assert(computed_perlin == perlin, "Perlin value mismatch");
+
+        // Enqueue public function
+        self.enqueue_self.pub_initialize_player(
+            location_id,
+            perlin,
+            radius,
+            planet_hash_key,
+            space_type_key,
+            scale,
+            x_mirror,
+            y_mirror,
+        );
+    }
+
+    /// Public function that updates state for player initialization
+    #[external("public")]
+    #[only_self]
+    fn pub_initialize_player(
+        location_id: Field,
+        perlin: u8,
+        radius: u128,
+        planethash_key: u128,
+        spacetype_key: u128,
+        perlin_length_scale: u128,
+        perlin_mirror_x: bool,
+        perlin_mirror_y: bool,
+    ) {
+        // Validate SNARK perlin flags
+        let snark_constants = self.storage.snark_constants.read();
+        let _ = self.internal.revert_if_bad_snark_perlin_flags(
+            planethash_key,
+            spacetype_key,
+            snark_constants.biomebase_key,
+            perlin_mirror_x,
+            perlin_mirror_y,
+            perlin_length_scale,
+            false, // checking_biome = false
+        );
+
+        // Initialize the home planet
+        self.internal.initialize_planet_with_defaults(
+            location_id,
+            perlin,
+            true, // is_home_planet = true
+            self.context.timestamp(),
+        );
+
+        // Check player init requirements
+        let sender = self.msg_sender().unwrap();
+        let _ = self.internal.check_player_init(
+            location_id,
+            perlin,
+            radius,
+            sender,
+        );
+
+        // Initialize player data
+        let player_ids_count = self.storage.player_ids_count.read();
+        self.storage.player_ids.at(player_ids_count).write(sender);
+        self.storage.player_ids_count.write(player_ids_count + 1);
+
+        // Create player struct
+        let space_junk_config = self.storage.space_junk_config.read();
+        let player = Player {
+            is_initialized: true,
+            player: sender,
+            init_timestamp: self.context.timestamp(),
+            home_planet_id: location_id,
+            last_reveal_timestamp: 0,
+            score: 0,
+            space_junk: 0,
+            space_junk_limit: space_junk_config.space_junk_limit,
+            claimed_ships: false,
+            final_rank: 0,
+            claimed_reward: false,
+        };
+        self.storage.players.at(sender).write(player);
+
+        // Update world radius
+        self.internal.update_world_radius();
+
+        // Emit event
+        self.emit(PlayerInitialized {
+            player: sender,
+            loc: location_id,
+        });
     }
 }

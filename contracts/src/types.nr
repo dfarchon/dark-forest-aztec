@@ -143,8 +143,8 @@ pub struct Planet {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct RevealedCoords {
     pub location_id: Field,
-    pub x: u128,
-    pub y: u128,
+    pub x: Field,
+    pub y: Field,
     pub revealer: AztecAddress,
 }
 
@@ -218,7 +218,7 @@ pub struct PlanetEventMetadata {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct DFPInitPlanetArgs {
     pub location: Field,
-    pub perlin: u128,
+    pub perlin: u8,
     pub level: u8,
     pub time_factor_hundredths: u128,
     pub space_type: u8, // SpaceType enum (stored as u8, use helper functions to convert)
@@ -229,7 +229,7 @@ pub struct DFPInitPlanetArgs {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct AdminCreatePlanetArgs {
     pub location: Field,
-    pub perlin: u128,
+    pub perlin: u8,
     pub level: u8,
     pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
     pub require_valid_location_id: bool,
