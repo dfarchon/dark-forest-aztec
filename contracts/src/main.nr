@@ -4,6 +4,10 @@ mod config;
 mod types;
 mod libraries;
 mod circuits;
+mod u256;
+mod i256;
+mod i128;
+mod abdk_math_64x64;
 
 #[aztec]
 pub contract Main {
