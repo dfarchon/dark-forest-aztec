@@ -713,7 +713,7 @@ pub contract Main {
             r4
         }
     }
-
+    
     /// Noir port of Solidity `LibGameUtils._putArtifactOnPlanet`.
     /// Updates internal contract book-keeping to reflect that the given artifact was put on a planet.
     /// Note: This function does not transfer the artifact, it only updates the book-keeping.
@@ -1689,6 +1689,20 @@ pub contract Main {
         loc: Field,
     }
 
+    #[event]
+    struct PlanetTransferred {
+        from: AztecAddress,
+        loc: Field,
+        to: AztecAddress,
+    }
+
+    #[event]
+    struct PlanetSilverWithdrawn {
+        player: AztecAddress,
+        loc: Field,
+        amount: u128,
+    }
+
     /// Noir port of Solidity `DFCoreFacet.refreshPlanet`.
     /// Public function to refresh a planet's state.
     /// 
@@ -1795,7 +1809,7 @@ pub contract Main {
             x: x,
             y: y,
         });
-    }
+    } 
 
     /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
     /// Initializes a new player at their home planet.
@@ -1934,6 +1948,139 @@ pub contract Main {
         self.emit(PlayerInitialized {
             player: sender,
             loc: location_id,
+        });
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.transferPlanet`.
+    /// Transfers ownership of a planet to another initialized player.
+    ///
+    /// This function:
+    /// 1. Checks that planet transfer is enabled
+    /// 2. Ensures the planet is initialized
+    /// 3. Refreshes the planet state
+    /// 4. Validates ownership and target player
+    /// 5. Transfers ownership and emits a PlanetTransferred event
+    ///
+    /// # Arguments
+    /// - `location`: The location ID of the planet to transfer
+    /// - `new_owner`: The address of the player to receive the planet
+    #[external("public")]
+    fn transfer_planet(location: Field, new_owner: AztecAddress) {
+        // Check game is not paused (notPaused modifier)
+        assert(!self.storage.paused.read(), "Game is paused");
+
+        // Check that planet transfer is enabled
+        let world_config = self.storage.world_config.read();
+        assert(world_config.planet_transfer_enabled, "planet transferring is disabled");
+
+        // Ensure planet is initialized
+        let mut planet: Planet = self.storage.planets.at(location).read();
+        assert(planet.is_initialized, "Planet is not initialized");
+
+        // Refresh planet state
+        let timestamp = self.context.timestamp();
+        self.internal.refresh_planet(location, timestamp);
+
+        // Re-read planet after refresh
+        planet = self.storage.planets.at(location).read();
+
+        // Ownership check
+        let sender = self.msg_sender().unwrap();
+        assert(
+            planet.owner == sender,
+            "Only owner account can perform that operation on planet."
+        );
+
+        // Cannot transfer to self
+        assert(new_owner != sender, "Cannot transfer planet to self");
+
+        // Target player must be initialized
+        let target_player: Player = self.storage.players.at(new_owner).read();
+        assert(
+            target_player.is_initialized,
+            "Can only transfer ownership to initialized players"
+        );
+
+        // Planet must not be destroyed
+        assert(!planet.destroyed, "can't transfer a destroyed planet");
+
+        // Perform transfer
+        planet.owner = new_owner;
+        self.storage.planets.at(location).write(planet);
+
+        // Emit event
+        self.emit(PlanetTransferred {
+            from: sender,
+            loc: location,
+            to: new_owner,
+        });
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.withdrawSilver`.
+    /// Withdraws silver from a trading post planet and converts it to player score.
+    ///
+    /// This function:
+    /// 1. Refreshes the planet state
+    /// 2. Checks ownership and planet type
+    /// 3. Ensures sufficient silver is available
+    /// 4. Deducts silver and increases player score
+    /// 5. Emits PlanetSilverWithdrawn event
+    ///
+    /// # Arguments
+    /// - `location`: The location ID of the planet to withdraw from
+    /// - `amount`: The amount of silver to withdraw (contract precision units)
+    #[external("public")]
+    fn withdraw_silver(location: Field, amount: u128) {
+        // Check game is not paused
+        assert(!self.storage.paused.read(), "Game is paused");
+
+        // Refresh planet first
+        let timestamp = self.context.timestamp();
+        self.internal.refresh_planet(location, timestamp);
+
+        // Load planet
+        let mut planet: Planet = self.storage.planets.at(location).read();
+
+        // Ownership check
+        let sender = self.msg_sender().unwrap();
+        assert(planet.owner == sender, "you must own this planet");
+
+        // Planet type must be TradingPost
+        // PlanetType::TradingPost = 3
+        assert(
+            planet.planet_type == 3,
+            "can only withdraw silver from trading posts"
+        );
+
+        // Planet must not be destroyed
+        assert(!planet.destroyed, "planet is destroyed");
+
+        // Sufficient silver check
+        assert(
+            planet.silver >= amount,
+            "tried to withdraw more silver than exists on planet"
+        );
+
+        // Deduct silver
+        planet.silver -= amount;
+        self.storage.planets.at(location).write(planet);
+
+        // Convert silver to score
+        // CONTRACT_PRECISION = 1000 (as in Solidity comment)
+        let mut score_gained: u128 = amount / 1000;
+        let world_config = self.storage.world_config.read();
+        score_gained = (score_gained * world_config.silver_score_value) / 100;
+
+        // Add score to player
+        let mut player: Player = self.storage.players.at(sender).read();
+        player.score += score_gained;
+        self.storage.players.at(sender).write(player);
+
+        // Emit event
+        self.emit(PlanetSilverWithdrawn {
+            player: sender,
+            loc: location,
+            amount,
         });
     }
 }

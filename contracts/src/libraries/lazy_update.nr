@@ -4,6 +4,7 @@
 use crate::types::{Planet, ArrivalData, PlanetEventMetadata};
 use dep::aztec::protocol_types::address::AztecAddress;
 
+/// Noir port of Solidity `LibLazyUpdate._updateSilver`.
 /// Updates silver for silver-producing planets using linear growth formula.
 /// Only called for PlanetType::SilverMine (planet_type == 1).
 ///
@@ -30,6 +31,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
     planet
 }
 
+/// Noir port of Solidity `LibLazyUpdate._updatePopulation`.
 /// Updates population using linear growth formula (similar to silver growth).
 /// Uses simple linear growth instead of exponential formula from ABDKMath64x64.
 pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
@@ -70,6 +72,7 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
     planet
 }
 
+/// Noir port of Solidity `LibLazyUpdate.updatePlanet`.
 /// Updates planet population and silver based on time elapsed.
 /// This is the main function to call when updating a planet's state.
 pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
@@ -85,6 +88,7 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
     planet
 }
 
+/// Noir port of Solidity `LibLazyUpdate.applyArrival`.
 /// Applies an arrival event to a planet.
 /// Assumes that the planet last updated time is equal to the arrival time trigger.
 /// Returns (carried_artifact_id, updated_planet).
@@ -142,6 +146,7 @@ pub fn apply_arrival(mut planet: Planet, arrival: ArrivalData) -> (u128, Planet)
     (arrival.carried_artifact_id, planet)
 }
 
+/// Noir port of Solidity `LibLazyUpdate.applyPendingEvents`.
 /// Applies pending events to a planet.
 /// This function processes events in chronological order and updates the planet state.
 /// 

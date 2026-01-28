@@ -1,6 +1,7 @@
 // Game utility functions that don't require storage access
 // Pure computation functions extracted from LibGameUtils
 
+/// Noir port of Solidity `LibPlanet._calculateByteUInt`.
 /// Extract a big-endian integer from the byte slice of `location_id`.
 ///
 /// Matches Solidity `bytes memory b = abi.encodePacked(uint256(location_id));`:
