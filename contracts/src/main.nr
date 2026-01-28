@@ -755,6 +755,44 @@ pub contract Main {
         }
     }
 
+    /// Noir port of Solidity `LibGameUtils._buffPlanet`.
+    /// Applies upgrade multipliers to a planet's stats.
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet
+    /// - `upgrade`: The upgrade multipliers to apply
+    #[internal("public")]
+    fn buff_planet(location: Field, upgrade: Upgrade) {
+        let mut planet: Planet = self.storage.planets.at(location).read();
+        
+        planet.population_cap = (planet.population_cap * upgrade.pop_cap_multiplier) / 100;
+        planet.population_growth = (planet.population_growth * upgrade.pop_gro_multiplier) / 100;
+        planet.range = (planet.range * upgrade.range_multiplier) / 100;
+        planet.speed = (planet.speed * upgrade.speed_multiplier) / 100;
+        planet.defense = (planet.defense * upgrade.def_multiplier) / 100;
+        
+        self.storage.planets.at(location).write(planet);
+    }
+
+    /// Noir port of Solidity `LibGameUtils._debuffPlanet`.
+    /// Removes upgrade multipliers from a planet's stats.
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet
+    /// - `upgrade`: The upgrade multipliers to remove
+    #[internal("public")]
+    fn debuff_planet(location: Field, upgrade: Upgrade) {
+        let mut planet: Planet = self.storage.planets.at(location).read();
+        
+        planet.population_cap = (planet.population_cap * 100) / upgrade.pop_cap_multiplier;
+        planet.population_growth = (planet.population_growth * 100) / upgrade.pop_gro_multiplier;
+        planet.range = (planet.range * 100) / upgrade.range_multiplier;
+        planet.speed = (planet.speed * 100) / upgrade.speed_multiplier;
+        planet.defense = (planet.defense * 100) / upgrade.def_multiplier;
+        
+        self.storage.planets.at(location).write(planet);
+    }
+
     /// Noir port of Solidity `LibGameUtils.checkPlanetDOS`.
     /// Checks if a planet is rate-limited for arrivals.
     #[internal("public")]
@@ -976,7 +1014,7 @@ pub contract Main {
     /// - `check_timestamp`: Whether to check the cooldown period
     /// - `timestamp`: The current timestamp
     #[internal("public")]
-    fn reveal_location(
+    fn reveal_location_internal(
         location: Field,
         perlin: u8,
         x: Field,
@@ -1331,7 +1369,7 @@ pub contract Main {
     /// - `location`: The location ID of the planet to refresh
     /// - `timestamp`: The current timestamp to update to
     #[internal("public")]
-    fn refresh_planet(location: Field, timestamp: u64) {
+    fn refresh_planet_internal(location: Field, timestamp: u64) {
         // Check if planet is initialized
         let planet: Planet = self.storage.planets.at(location).read();
         assert(planet.is_initialized, "Planet has not been initialized");
@@ -1703,6 +1741,14 @@ pub contract Main {
         amount: u128,
     }
 
+    #[event]
+    struct PlanetUpgraded {
+        player: AztecAddress,
+        loc: Field,
+        branch: u128,
+        new_level: u128,
+    }
+
     /// Noir port of Solidity `DFCoreFacet.refreshPlanet`.
     /// Public function to refresh a planet's state.
     /// 
@@ -1712,13 +1758,13 @@ pub contract Main {
     /// # Arguments
     /// - `location`: The location ID of the planet to refresh
     #[external("public")]
-    fn refresh_planet_public(location: Field) {
+    fn refresh_planet(location: Field) {
         // Check game is not paused (notPaused modifier)
         assert(!self.storage.paused.read(), "Game is paused");
         
         // Get current timestamp and call internal refresh_planet
         let timestamp = self.context.timestamp();
-        self.internal.refresh_planet(location, timestamp);
+        self.internal.refresh_planet_internal(location, timestamp);
     }
 
     /// Noir port of Solidity `DFCoreFacet.revealLocation`.
@@ -1739,7 +1785,7 @@ pub contract Main {
     /// - `x`: The x coordinate to reveal
     /// - `y`: The y coordinate to reveal
     #[external("public")]
-    fn reveal_location_public(
+    fn reveal_location(
         location_id: Field,
         perlin: u8,
         x: Field,
@@ -1793,7 +1839,7 @@ pub contract Main {
         let check_timestamp = sender != admin;
 
         // Reveal the location
-        self.internal.reveal_location(
+        self.internal.reveal_location_internal(
             location_id,
             perlin,
             x,
@@ -1979,7 +2025,7 @@ pub contract Main {
 
         // Refresh planet state
         let timestamp = self.context.timestamp();
-        self.internal.refresh_planet(location, timestamp);
+        self.internal.refresh_planet_internal(location, timestamp);
 
         // Re-read planet after refresh
         planet = self.storage.planets.at(location).read();
@@ -2036,7 +2082,7 @@ pub contract Main {
 
         // Refresh planet first
         let timestamp = self.context.timestamp();
-        self.internal.refresh_planet(location, timestamp);
+        self.internal.refresh_planet_internal(location, timestamp);
 
         // Load planet
         let mut planet: Planet = self.storage.planets.at(location).read();
@@ -2082,5 +2128,129 @@ pub contract Main {
             loc: location,
             amount,
         });
+    }
+
+    /// Noir port of Solidity `LibPlanet.upgradePlanet`.
+    /// Upgrades a planet along the specified branch, applying buffs and deducting silver.
+    /// 
+    /// # Arguments
+    /// - `location`: The location ID of the planet to upgrade
+    /// - `branch`: The upgrade branch (0=Defense, 1=Range, 2=Speed)
+    #[internal("public")]
+    fn upgrade_planet_internal(location: Field, branch: u128) {
+        let sender = self.msg_sender().unwrap();
+        let mut planet: Planet = self.storage.planets.at(location).read();
+
+        // Ownership and basic checks
+        assert(planet.owner == sender, "Only owner account can perform that operation on planet.");
+        assert(planet.planet_level as u128 > 0, "Planet level is not high enough for this upgrade");
+        assert(branch < 3, "Upgrade branch not valid");
+        // PlanetType::Planet = 0
+        assert(planet.planet_type == 0, "Can only upgrade regular planets");
+        assert(!planet.destroyed, "planet is destroyed");
+
+        // Total upgrade level limits by space type
+        let total_level: u128 =
+            planet.upgrade_state_0 + planet.upgrade_state_1 + planet.upgrade_state_2;
+        // SpaceType: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+        let nebula: bool = planet.space_type == 0;
+        let space: bool = planet.space_type == 1;
+        let deep_space: bool = planet.space_type == 2;
+        let dead_space: bool = planet.space_type == 3;
+        // Noir does not support && / || operators; expand logic with ifs.
+        let mut can_upgrade: bool = false;
+        if nebula {
+            if total_level < 3 {
+                can_upgrade = true;
+            }
+        }
+        if space {
+            if total_level < 4 {
+                can_upgrade = true;
+            }
+        }
+        if deep_space {
+            if total_level < 5 {
+                can_upgrade = true;
+            }
+        }
+        if dead_space {
+            if total_level < 5 {
+                can_upgrade = true;
+            }
+        }
+        assert(can_upgrade, "Planet at max total level");
+
+        // Current level for the selected branch
+        let mut branch_level: u128 = 0;
+        if branch == 0 {
+            branch_level = planet.upgrade_state_0;
+        } else if branch == 1 {
+            branch_level = planet.upgrade_state_1;
+        } else {
+            // branch == 2 by assertion above
+            branch_level = planet.upgrade_state_2;
+        }
+        assert(branch_level < 4, "Upgrade branch already maxed");
+
+        // Lookup upgrade parameters
+        let key: u128 = branch * 10 + branch_level;
+        let upgrade: Upgrade = self.storage.upgrades.at(key).read();
+
+        // Compute and check upgrade cost
+        let upgrade_cost: u128 = (planet.silver_cap * 20 * (total_level + 1)) / 100;
+        assert(planet.silver >= upgrade_cost, "Insufficient silver to upgrade");
+
+        // Apply upgrade buffs
+        self.internal.buff_planet(location, upgrade);
+
+        // Update planet silver and branch level
+        let mut updated_planet: Planet = self.storage.planets.at(location).read();
+        updated_planet.silver -= upgrade_cost;
+        if branch == 0 {
+            updated_planet.upgrade_state_0 += 1;
+        } else if branch == 1 {
+            updated_planet.upgrade_state_1 += 1;
+        } else {
+            updated_planet.upgrade_state_2 += 1;
+        }
+        self.storage.planets.at(location).write(updated_planet);
+
+        // Emit event
+        self.emit(PlanetUpgraded {
+            player: sender,
+            loc: location,
+            branch,
+            new_level: branch_level + 1,
+        });
+    }
+
+    /// Noir port of Solidity `DFCoreFacet.upgradePlanet`.
+    /// Upgrades a planet along one of three upgrade branches.
+    ///
+    /// This function:
+    /// 1. Refreshes the planet state
+    /// 2. Calls internal `upgrade_planet_internal`
+    /// 3. Returns the location and branch
+    ///
+    /// # Arguments
+    /// - `location`: The location ID of the planet to upgrade
+    /// - `branch`: The upgrade branch (0=Defense, 1=Range, 2=Speed)
+    ///
+    /// # Returns
+    /// - `(location, branch)` for convenience / parity with Solidity
+    #[external("public")]
+    fn upgrade_planet(location: Field, branch: u128) -> (Field, u128) {
+        // Check game is not paused
+        assert(!self.storage.paused.read(), "Game is paused");
+
+        // Refresh planet first
+        let timestamp = self.context.timestamp();
+        self.internal.refresh_planet_internal(location, timestamp);
+
+        // Perform upgrade
+        self.internal.upgrade_planet_internal(location, branch);
+
+        (location, branch)
     }
 }
