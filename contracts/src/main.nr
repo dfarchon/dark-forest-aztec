@@ -19,7 +19,7 @@ pub contract Main {
     };
 
     use crate::types::{
-        PlanetDefaultStats, Upgrade, Planet, RevealedCoords, Player,
+        PlanetDefaultStats, Upgrade, Planet, RevealedCoords, PlanetData, Player,
         ArrivalData, Artifact, PlanetEventMetadata, DFPInitPlanetArgs,
         AdminCreatePlanetArgs,
     };
@@ -419,6 +419,27 @@ pub contract Main {
         self.storage.admin.read()
     }
 
+    /// Noir port of Solidity `DFGetterFacet.adminAddress`.
+    /// Returns the admin/owner address of the contract.
+    #[external("utility")]
+    unconstrained fn admin_address() -> AztecAddress {
+        self.storage.admin.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.paused`.
+    /// Returns whether the game is currently paused.
+    #[external("utility")]
+    unconstrained fn paused() -> bool {
+        self.storage.paused.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.TOKEN_MINT_END_TIMESTAMP`.
+    /// Returns the token mint end timestamp.
+    #[external("utility")]
+    unconstrained fn token_mint_end_timestamp() -> u64 {
+        self.storage.token_mint_end_timestamp.read()
+    }
+
     // ---- config getters (utility) ----
     #[external("utility")]
     unconstrained fn get_world_config() -> WorldConfig {
@@ -477,6 +498,8 @@ pub contract Main {
     }
 
     // ---- defaults & upgrades getters (utility) ----
+    /// Noir port of Solidity `DFGetterFacet.planetDefaultStats`.
+    /// Returns the default stats for a given planet level.
     #[external("utility")]
     unconstrained fn get_planet_default_stats(level: u8) -> PlanetDefaultStats {
         self.storage.planet_default_stats.at(level).read()
@@ -505,9 +528,701 @@ pub contract Main {
         self.storage.cumulative_rarities.at(index).read()
     }
 
+    /// Noir port of Solidity `DFGetterFacet.planetLevelsCount`.
+    /// Returns the total number of planet levels configured.
     #[external("utility")]
-    unconstrained fn get_world_radius() -> u128 {
+    unconstrained fn get_planet_levels_count() -> u128 {
+        self.storage.planet_levels_count.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.worldRadius`.
+    /// Returns the current world radius.
+    #[external("utility")]
+    unconstrained fn world_radius() -> u128 {
         self.storage.world_radius.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.planetEventsCount`.
+    /// Returns the total number of planet events.
+    #[external("utility")]
+    unconstrained fn planet_events_count() -> u128 {
+        self.storage.planet_events_count.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.planetIds`.
+    /// Returns planet ID at a given index.
+    #[external("utility")]
+    unconstrained fn get_planet_id(index: u128) -> Field {
+        self.storage.planet_ids.at(index).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.revealedPlanetIds`.
+    /// Returns revealed planet ID at a given index.
+    #[external("utility")]
+    unconstrained fn get_revealed_planet_id(index: u128) -> Field {
+        self.storage.revealed_planet_ids.at(index).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.playerIds`.
+    /// Returns player address at a given index in the player IDs list.
+    #[external("utility")]
+    unconstrained fn get_player_id(index: u128) -> AztecAddress {
+        self.storage.player_ids.at(index).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.planets`.
+    /// Returns full planet struct for a given location ID.
+    #[external("utility")]
+    unconstrained fn get_planet(location: Field) -> Planet {
+        self.storage.planets.at(location).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.revealedCoords`.
+    /// Noir port of Solidity `DFGetterFacet.getRevealedCoords`.
+    /// Returns revealed coordinates for a given location ID.
+    #[external("utility")]
+    unconstrained fn get_revealed_coords(location: Field) -> RevealedCoords {
+        self.storage.revealed_coords.at(location).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.artifactIdToPlanetId`.
+    /// Returns the planet ID (location) for a given artifact ID.
+    #[external("utility")]
+    unconstrained fn get_artifact_planet_id(artifact_id: Field) -> Field {
+        self.storage.artifact_id_to_planet_id.at(artifact_id).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.planetEvents`.
+    /// Returns the voyage ID for a given artifact ID.
+    #[external("utility")]
+    unconstrained fn get_artifact_voyage_id(artifact_id: Field) -> u128 {
+        self.storage.artifact_id_to_voyage_id.at(artifact_id).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.players`.
+    /// Returns player struct for a given address.
+    #[external("utility")]
+    unconstrained fn get_player(address: AztecAddress) -> Player {
+        self.storage.players.at(address).read()
+    }
+    
+    /// Noir port of Solidity `DFGetterFacet.planetArrivals`.
+    /// Noir port of Solidity `DFGetterFacet.getPlanetArrival`.
+    /// Returns arrival data for a given arrival/event ID.
+    #[external("utility")]
+    unconstrained fn get_planet_arrival(arrival_id: u128) -> ArrivalData {
+        self.storage.planet_arrivals.at(arrival_id).read()
+    }
+
+
+    /// Noir port of Solidity `DFGetterFacet.planetArtifacts`.
+    /// Returns a single artifact ID at a given index for a planet.
+    #[external("utility")]
+    unconstrained fn get_planet_artifact(planet_id: Field, index: u128) -> Field {
+        self.storage.planet_artifacts.at(planet_id).at(index).read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getNPlanets`.
+    /// Returns the number of initialized planet IDs tracked.
+    #[external("utility")]
+    unconstrained fn get_n_planets() -> u128 {
+        self.storage.planet_ids_count.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getNRevealedPlanets`.
+    /// Returns the number of revealed planet IDs.
+    #[external("utility")]
+    unconstrained fn get_n_revealed_planets() -> u128 {
+        self.storage.revealed_planet_ids_count.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getNPlayers`.
+    /// Returns the number of initialized players.
+    #[external("utility")]
+    unconstrained fn get_n_players() -> u128 {
+        self.storage.player_ids_count.read()
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getPlanetEventsCount`.
+    /// Returns the number of events for a given planet/location.
+    #[external("utility")]
+    unconstrained fn get_planet_events_count(location: Field) -> u128 {
+        self.storage.planet_events_count_by_location.at(location).read()
+    }
+    
+    /// Noir port of Solidity `DFGetterFacet.getPlanetEvent`.
+    /// Returns a single planet event metadata entry for a location and index.
+    #[external("utility")]
+    unconstrained fn get_planet_event(location: Field, index: u128) -> PlanetEventMetadata {
+        self.storage.planet_events.at(location).at(index).read()
+    }
+
+  
+
+
+    /// Noir port of Solidity `DFGetterFacet.getUpgrades`.
+    /// Returns the full [3][4] upgrades table: [branch][level].
+    #[external("utility")]
+    unconstrained fn get_upgrades() -> [[Upgrade; 4]; 3] {
+        // Branch 0 (Defense): keys 0..3
+        let branch0: [Upgrade; 4] = [
+            self.storage.upgrades.at(0).read(),
+            self.storage.upgrades.at(1).read(),
+            self.storage.upgrades.at(2).read(),
+            self.storage.upgrades.at(3).read(),
+        ];
+
+        // Branch 1 (Range): keys 10..13
+        let branch1: [Upgrade; 4] = [
+            self.storage.upgrades.at(10).read(),
+            self.storage.upgrades.at(11).read(),
+            self.storage.upgrades.at(12).read(),
+            self.storage.upgrades.at(13).read(),
+        ];
+
+        // Branch 2 (Speed): keys 20..23
+        let branch2: [Upgrade; 4] = [
+            self.storage.upgrades.at(20).read(),
+            self.storage.upgrades.at(21).read(),
+            self.storage.upgrades.at(22).read(),
+            self.storage.upgrades.at(23).read(),
+        ];
+
+        [branch0, branch1, branch2]
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getTypeWeights`.
+    /// Returns the full [4][10][5] planet type weights table.
+    #[external("utility")]
+    unconstrained fn get_type_weights() -> [[[u128; 5]; 10]; 4] {
+        let tier0: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_0.read();
+        let tier1: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_1.read();
+        let tier2: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_2.read();
+        let tier3: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_3.read();
+
+        [tier0.weights, tier1.weights, tier2.weights, tier3.weights]
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getPlayerSpaceJunkLimit`.
+    /// Returns the space junk limit for a given player.
+    #[external("utility")]
+    unconstrained fn get_player_space_junk_limit(player_id: AztecAddress) -> u128 {
+        let player: Player = self.storage.players.at(player_id).read();
+        player.space_junk_limit
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getArtifactPointValues`.
+    /// Returns the artifact point values array [6].
+    #[external("utility")]
+    unconstrained fn get_artifact_point_values() -> [u128; 6] {
+        let artifacts_config = self.storage.artifacts_config.read();
+        artifacts_config.artifact_point_values
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getRevealCooldown`.
+    /// Returns the location reveal cooldown in seconds.
+    #[external("utility")]
+    unconstrained fn get_reveal_cooldown() -> u64 {
+        let world_config = self.storage.world_config.read();
+        world_config.location_reveal_cooldown_s
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getDefaultStats`.
+    /// Returns the full array of default planet stats for levels 0..9.
+    #[external("utility")]
+    unconstrained fn get_default_stats() -> [PlanetDefaultStats; 10] {
+        [
+            self.storage.planet_default_stats.at(0).read(),
+            self.storage.planet_default_stats.at(1).read(),
+            self.storage.planet_default_stats.at(2).read(),
+            self.storage.planet_default_stats.at(3).read(),
+            self.storage.planet_default_stats.at(4).read(),
+            self.storage.planet_default_stats.at(5).read(),
+            self.storage.planet_default_stats.at(6).read(),
+            self.storage.planet_default_stats.at(7).read(),
+            self.storage.planet_default_stats.at(8).read(),
+            self.storage.planet_default_stats.at(9).read(),
+        ]
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.getCumulativeRarities`.
+    /// Returns the full cumulative rarities array for levels 0..9.
+    #[external("utility")]
+    unconstrained fn get_cumulative_rarities() -> [u128; 10] {
+        [
+            self.storage.cumulative_rarities.at(0).read(),
+            self.storage.cumulative_rarities.at(1).read(),
+            self.storage.cumulative_rarities.at(2).read(),
+            self.storage.cumulative_rarities.at(3).read(),
+            self.storage.cumulative_rarities.at(4).read(),
+            self.storage.cumulative_rarities.at(5).read(),
+            self.storage.cumulative_rarities.at(6).read(),
+            self.storage.cumulative_rarities.at(7).read(),
+            self.storage.cumulative_rarities.at(8).read(),
+            self.storage.cumulative_rarities.at(9).read(),
+        ]
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetIds`.
+    /// Returns up to `MAX_BULK_PLANETS` planet IDs starting from `start_idx`.
+    /// If `end_idx - start_idx < MAX_BULK_PLANETS`, the remaining entries are left as 0.
+    #[external("utility")]
+    unconstrained fn bulk_get_planet_ids(start_idx: u128, end_idx: u128) -> [Field; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total: u128 = self.storage.planet_ids_count.read();
+        assert(end_idx <= total, "end_idx out of bounds");
+
+        let max_len: u128 = 1000;
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len <= max_len, "requested range too large");
+
+        let mut ret: [Field; 1000] = [0 as Field; 1000];
+        let mut i: u128 = 0;
+        while i < requested_len {
+            let idx = start_idx + i;
+            let planet_id = self.storage.planet_ids.at(idx).read();
+            ret[i as u32] = planet_id;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetRevealedPlanetIds`.
+    /// Returns up to `MAX_BULK_PLANETS` revealed planet IDs starting from `start_idx`.
+    /// If `end_idx - start_idx < MAX_BULK_PLANETS`, the remaining entries are left as 0.
+    #[external("utility")]
+    unconstrained fn bulk_get_revealed_planet_ids(start_idx: u128, end_idx: u128) -> [Field; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total: u128 = self.storage.revealed_planet_ids_count.read();
+        assert(end_idx <= total, "end_idx out of bounds");
+
+        let max_len: u128 = 1000;
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len <= max_len, "requested range too large");
+
+        let mut ret: [Field; 1000] = [0 as Field; 1000];
+        let mut i: u128 = 0;
+        while i < requested_len {
+            let idx = start_idx + i;
+            let planet_id = self.storage.revealed_planet_ids.at(idx).read();
+            ret[i as u32] = planet_id;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetsByIds`.
+    /// Takes up to 1000 planet location IDs and returns up to 1000 Planet structs.
+    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
+    #[external("utility")]
+    unconstrained fn bulk_get_planets_by_ids(ids: [Field; 1000], count: u32) -> [Planet; 1000] {
+        assert(count > 0, "count must be > 0");
+        assert((count as u128) <= 1000, "count too large");
+
+        // Initialize array with the first planet, then overwrite up to `count`.
+        let first_id: Field = ids[0];
+        let first_planet: Planet = self.storage.planets.at(first_id).read();
+        let mut ret: [Planet; 1000] = [first_planet; 1000];
+
+        let mut i: u32 = 0;
+        while i < count {
+            let planet_id = ids[i];
+            let planet = self.storage.planets.at(planet_id).read();
+            ret[i] = planet;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetRevealedCoordsByIds`.
+    /// Takes up to 1000 planet location IDs and returns up to 1000 RevealedCoords structs.
+    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
+    #[external("utility")]
+    unconstrained fn bulk_get_revealed_coords_by_ids(ids: [Field; 1000], count: u32) -> [RevealedCoords; 1000] {
+        assert(count > 0, "count must be > 0");
+        assert((count as u128) <= 1000, "count too large");
+
+        let first_id: Field = ids[0];
+        let first_coords: RevealedCoords = self.storage.revealed_coords.at(first_id).read();
+        let mut ret: [RevealedCoords; 1000] = [first_coords; 1000];
+
+        let mut i: u32 = 0;
+        while i < count {
+            let planet_id = ids[i];
+            let coords = self.storage.revealed_coords.at(planet_id).read();
+            ret[i] = coords;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetArrivalsByIds`.
+    /// NOTE: This Noir version takes an array of arrival IDs (not planet IDs)
+    /// and returns the corresponding ArrivalData entries.
+    /// - `ids`: up to 1000 arrival IDs
+    /// - `count`: number of valid entries in `ids` (must be <= 1000)
+    #[external("utility")]
+    unconstrained fn bulk_get_planet_arrivals_by_ids(ids: [u128; 1000], count: u32) -> [ArrivalData; 1000] {
+        assert(count > 0, "count must be > 0");
+        assert((count as u128) <= 1000, "count too large");
+
+        let first_id: u128 = ids[0];
+        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_id).read();
+        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
+
+        let mut i: u32 = 0;
+        while i < count {
+            let arrival_id = ids[i];
+            let arrival = self.storage.planet_arrivals.at(arrival_id).read();
+            ret[i] = arrival;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetsDataByIds`.
+    /// Takes up to 1000 planet location IDs and returns up to 1000 PlanetData structs.
+    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
+    #[external("utility")]
+    unconstrained fn bulk_get_planets_data_by_ids(ids: [Field; 1000], count: u32) -> [PlanetData; 1000] {
+        assert(count > 0, "count must be > 0");
+        assert((count as u128) <= 1000, "count too large");
+
+        let first_id: Field = ids[0];
+        let first_planet: Planet = self.storage.planets.at(first_id).read();
+        let first_coords: RevealedCoords = self.storage.revealed_coords.at(first_id).read();
+        let first_data: PlanetData = PlanetData {
+            planet: first_planet,
+            revealed_coords: first_coords,
+        };
+        let mut ret: [PlanetData; 1000] = [first_data; 1000];
+
+        let mut i: u32 = 0;
+        while i < count {
+            let planet_id = ids[i];
+            let planet: Planet = self.storage.planets.at(planet_id).read();
+            let coords: RevealedCoords = self.storage.revealed_coords.at(planet_id).read();
+            let data: PlanetData = PlanetData {
+                planet,
+                revealed_coords: coords,
+            };
+            ret[i] = data;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetVoyagesByIds`.
+    /// Takes up to 1000 voyage/arrival IDs and returns up to 1000 ArrivalData structs.
+    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
+    #[external("utility")]
+    unconstrained fn bulk_get_voyages_by_ids(ids: [u128; 1000], count: u32) -> [ArrivalData; 1000] {
+        assert(count > 0, "count must be > 0");
+        assert((count as u128) <= 1000, "count too large");
+
+        let first_id: u128 = ids[0];
+        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_id).read();
+        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
+
+        let mut i: u32 = 0;
+        while i < count {
+            let arrival_id = ids[i];
+            let arrival = self.storage.planet_arrivals.at(arrival_id).read();
+            ret[i] = arrival;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanets`.
+    /// Returns up to 1000 Planet structs corresponding to planetIds[start_idx..end_idx).
+    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first planet.
+    #[external("utility")]
+    unconstrained fn bulk_get_planets(start_idx: u128, end_idx: u128) -> [Planet; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total: u128 = self.storage.planet_ids_count.read();
+        assert(end_idx <= total, "end_idx out of bounds");
+
+        let max_len: u128 = 1000;
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len <= max_len, "requested range too large");
+
+        // Initialize with the first planet in the range
+        let first_idx: u128 = start_idx;
+        let first_planet_id: Field = self.storage.planet_ids.at(first_idx).read();
+        let first_planet: Planet = self.storage.planets.at(first_planet_id).read();
+        let mut ret: [Planet; 1000] = [first_planet; 1000];
+
+        let mut i: u128 = 0;
+        while i < requested_len {
+            let idx = start_idx + i;
+            let planet_id = self.storage.planet_ids.at(idx).read();
+            let planet: Planet = self.storage.planets.at(planet_id).read();
+            ret[i as u32] = planet;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlayerIds`.
+    /// Returns up to 1000 player addresses corresponding to playerIds[start_idx..end_idx).
+    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first player.
+    #[external("utility")]
+    unconstrained fn bulk_get_player_ids(start_idx: u128, end_idx: u128) -> [AztecAddress; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total: u128 = self.storage.player_ids_count.read();
+        assert(end_idx <= total, "end_idx out of bounds");
+
+        let max_len: u128 = 1000;
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len <= max_len, "requested range too large");
+
+        // Initialize with the first player in the range
+        let first_idx: u128 = start_idx;
+        let first_player: AztecAddress = self.storage.player_ids.at(first_idx).read();
+        let mut ret: [AztecAddress; 1000] = [first_player; 1000];
+
+        let mut i: u128 = 0;
+        while i < requested_len {
+            let idx = start_idx + i;
+            let player_addr: AztecAddress = self.storage.player_ids.at(idx).read();
+            ret[i as u32] = player_addr;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlayers`.
+    /// Returns up to 1000 Player structs corresponding to players[playerIds[start_idx..end_idx)].
+    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first player struct.
+    #[external("utility")]
+    unconstrained fn bulk_get_players(start_idx: u128, end_idx: u128) -> [Player; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total: u128 = self.storage.player_ids_count.read();
+        assert(end_idx <= total, "end_idx out of bounds");
+
+        let max_len: u128 = 1000;
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len <= max_len, "requested range too large");
+
+        // Initialize with the first player struct in the range
+        let first_idx: u128 = start_idx;
+        let first_player_addr: AztecAddress = self.storage.player_ids.at(first_idx).read();
+        let first_player_struct: Player = self.storage.players.at(first_player_addr).read();
+        let mut ret: [Player; 1000] = [first_player_struct; 1000];
+
+        let mut i: u128 = 0;
+        while i < requested_len {
+            let idx = start_idx + i;
+            let player_addr: AztecAddress = self.storage.player_ids.at(idx).read();
+            let player_struct: Player = self.storage.players.at(player_addr).read();
+            ret[i as u32] = player_struct;
+            i += 1;
+        }
+
+        ret
+    }
+
+    /// Approximate Noir port of Solidity `DFGetterFacet.getPlanetArrivals`.
+    /// For a given location, returns up to 1000 ArrivalData entries whose type is ARRIVAL.
+    /// Reverts if the location has no ARRIVAL events.
+    #[external("utility")]
+    unconstrained fn get_planet_arrivals(location: Field) -> [ArrivalData; 1000] {
+        let events_count: u128 = self.storage.planet_events_count_by_location.at(location).read();
+
+        // First pass: count ARRIVAL events (PlanetEventType::Arrival = 0).
+        let mut arrival_count: u128 = 0;
+        let mut i: u128 = 0;
+        while i < events_count {
+            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(i).read();
+            if event.event_type == 0 {
+                arrival_count += 1;
+            }
+            i += 1;
+        }
+
+        // Require at least one arrival to avoid undefined dummy initialization.
+        assert(arrival_count > 0, "no arrivals for this planet");
+
+        let max_len: u128 = 1000;
+        assert(arrival_count <= max_len, "too many arrivals for this planet");
+
+        // Find the first ARRIVAL event to seed the fixed-size array.
+        let mut first_index: u128 = 0;
+        let mut found_first: bool = false;
+        let mut j: u128 = 0;
+        while j < events_count {
+            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(j).read();
+            if event.event_type == 0 {
+                if !found_first {
+                    first_index = j;
+                    found_first = true;
+                }
+            }
+            j += 1;
+        }
+
+        // Initialize array with the first arrival, then overwrite up to arrival_count entries.
+        let first_event: PlanetEventMetadata = self.storage.planet_events.at(location).at(first_index).read();
+        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_event.id).read();
+        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
+
+        let mut out_idx: u128 = 0;
+        let mut k: u128 = 0;
+        while k < events_count {
+            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(k).read();
+            if event.event_type == 0 {
+                let arrival: ArrivalData = self.storage.planet_arrivals.at(event.id).read();
+                ret[out_idx as u32] = arrival;
+                out_idx += 1;
+            }
+            k += 1;
+        }
+
+        ret
+    }
+
+    /// Noir port of Solidity `DFGetterFacet.bulkGetPlanetArrivals`.
+    /// Solidity logic is equivalent to:
+    /// - for i in [startIdx, endIdx):
+    ///   - let planetId = planetIds[i];
+    ///   - set ret[i - startIdx] = getPlanetArrivals(planetId);
+    ///
+    /// Noir cannot return a dynamic 2D array `ArrivalData[][]`, so we instead
+    /// return a fixed-size `[[ArrivalData; 1000]; 1000]`:
+    /// - outer index row = i - start_idx, 0 <= row < (end_idx - start_idx) <= 1000
+    /// - inner array contains all ARRIVAL events for that planet (up to 1000),
+    ///   in the same order as `get_planet_arrivals`
+    /// - unused rows keep their seeded default value
+    #[external("utility")]
+    unconstrained fn bulk_get_planet_arrivals(
+        start_idx: u128,
+        end_idx: u128,
+    ) -> [[ArrivalData; 1000]; 1000] {
+        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
+
+        let total_planets: u128 = self.storage.planet_ids_count.read();
+        assert(end_idx <= total_planets, "end_idx out of bounds");
+
+        let requested_len: u128 = end_idx - start_idx;
+        assert(requested_len > 0, "empty planet range");
+        assert(requested_len <= 1000, "requested range too large");
+
+        // To avoid calling `self.get_planet_arrivals` (Aztec has restrictions on
+        // nested unconstrained external calls), we inline the per-planet logic here.
+        //
+        // First, choose a seed row for the whole 2D array: use the first ARRIVAL
+        // event of the planet at `start_idx`.
+        let first_planet_id: Field = self.storage.planet_ids.at(start_idx).read();
+        let first_events_count: u128 =
+            self.storage.planet_events_count_by_location.at(first_planet_id).read();
+
+        // Count ARRIVAL events for this planet and find the index of the first ARRIVAL.
+        let mut first_arrival_count: u128 = 0;
+        let mut first_found_index: u128 = 0;
+        let mut first_found: bool = false;
+
+        let mut i: u128 = 0;
+        while i < first_events_count {
+            let ev: PlanetEventMetadata =
+                self.storage.planet_events.at(first_planet_id).at(i).read();
+            if ev.event_type == 0 {
+                first_arrival_count += 1;
+                if !first_found {
+                    first_found_index = i;
+                    first_found = true;
+                }
+            }
+            i += 1;
+        }
+
+        assert(first_arrival_count > 0, "no arrivals for first planet in range");
+        assert(first_arrival_count <= 1000, "too many arrivals for first planet");
+
+        let first_event: PlanetEventMetadata =
+            self.storage.planet_events.at(first_planet_id).at(first_found_index).read();
+        let first_arrival: ArrivalData =
+            self.storage.planet_arrivals.at(first_event.id).read();
+        let seed_row: [ArrivalData; 1000] = [first_arrival; 1000];
+        let mut ret: [[ArrivalData; 1000]; 1000] = [seed_row; 1000];
+
+        // Then, for each planet in the range, inline its own `getPlanetArrivals` logic.
+        let mut offset: u128 = 0;
+        while offset < requested_len {
+            let idx: u128 = start_idx + offset;
+            let planet_id: Field = self.storage.planet_ids.at(idx).read();
+
+            let events_count: u128 =
+                self.storage.planet_events_count_by_location.at(planet_id).read();
+
+            // Count ARRIVAL events for this planet and find the index of the first ARRIVAL.
+            let mut arrival_count: u128 = 0;
+            let mut first_index: u128 = 0;
+            let mut found_first: bool = false;
+
+            let mut j: u128 = 0;
+            while j < events_count {
+                let event: PlanetEventMetadata =
+                    self.storage.planet_events.at(planet_id).at(j).read();
+                if event.event_type == 0 {
+                    arrival_count += 1;
+                    if !found_first {
+                        first_index = j;
+                        found_first = true;
+                    }
+                }
+                j += 1;
+            }
+
+            // If this planet has no ARRIVAL events, keep the seeded row
+            // (this differs from Solidity, which would return an empty array).
+            if arrival_count == 0 {
+                offset += 1;
+                continue;
+            }
+
+            assert(arrival_count <= 1000, "too many arrivals for planet");
+
+            // Initialise the row for this planet, then fill it with ARRIVAL events.
+            let first_ev: PlanetEventMetadata =
+                self.storage.planet_events.at(planet_id).at(first_index).read();
+            let first_arr: ArrivalData =
+                self.storage.planet_arrivals.at(first_ev.id).read();
+            let mut row: [ArrivalData; 1000] = [first_arr; 1000];
+
+            let mut out_idx: u128 = 0;
+            let mut k: u128 = 0;
+            while k < events_count {
+                let event: PlanetEventMetadata =
+                    self.storage.planet_events.at(planet_id).at(k).read();
+                if event.event_type == 0 {
+                    let arrival: ArrivalData =
+                        self.storage.planet_arrivals.at(event.id).read();
+                    row[out_idx as u32] = arrival;
+                    out_idx += 1;
+                }
+                k += 1;
+            }
+
+            ret[offset as u32] = row;
+            offset += 1;
+        }
+
+        ret
     }
 
     // ========== LibGameUtils ==========
@@ -2253,4 +2968,6 @@ pub contract Main {
 
         (location, branch)
     }
+
+
 }
