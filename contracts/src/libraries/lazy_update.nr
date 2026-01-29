@@ -92,7 +92,7 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Applies an arrival event to a planet.
 /// Assumes that the planet last updated time is equal to the arrival time trigger.
 /// Returns (carried_artifact_id, updated_planet).
-pub fn apply_arrival(mut planet: Planet, arrival: ArrivalData) -> (u128, Planet) {
+pub fn apply_arrival(mut planet: Planet, arrival: ArrivalData) -> (Field, Planet) {
     // ArrivalType enum values: Unknown=0, Normal=1, Photoid=2, Wormhole=3
     let wormhole_type: u8 = 3; // ArrivalType::Wormhole
 
@@ -163,10 +163,10 @@ pub fn apply_pending_events(
     events: [PlanetEventMetadata; 24],
     events_length: u128,
     arrivals: [ArrivalData; 24],
-) -> (Planet, [u128; 24]) {
+) -> (Planet, [Field; 24]) {
     // first 12 are event ids to remove
     // last 12 are artifact ids that are new on the planet
-    let mut event_ids_and_artifacts: [u128; 24] = [0; 24];
+    let mut event_ids_and_artifacts: [Field; 24] = [0 as Field; 24];
 
     let mut num_events_to_remove: u128 = 0;
     let mut num_new_artifacts_on_planet: u128 = 0;
@@ -196,7 +196,7 @@ pub fn apply_pending_events(
 
                             // checks if this event has already been applied.
                             for already_removed_idx in 0..num_events_to_remove {
-                                if event_ids_and_artifacts[already_removed_idx as u32] == events[i as u32].id {
+                                if event_ids_and_artifacts[already_removed_idx as u32] == (events[i as u32].id as Field) {
                                     should_apply = false;
                                 }
                             }
@@ -218,7 +218,7 @@ pub fn apply_pending_events(
 
                         // PlanetEventType::Arrival = 0
                         if events[earliest_event_index as u32].event_type == 0 {
-                            event_ids_and_artifacts[num_events_to_remove as u32] = events[earliest_event_index as u32].id;
+                            event_ids_and_artifacts[num_events_to_remove as u32] = events[earliest_event_index as u32].id as Field;
                             num_events_to_remove = num_events_to_remove + 1;
 
                             let arrival_data = arrivals[earliest_event_index as u32];

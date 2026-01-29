@@ -165,14 +165,14 @@ pub struct ArrivalData {
     pub departure_time: u64,
     pub arrival_time: u64,
     pub arrival_type: u8, // ArrivalType enum (stored as u8, use helper functions to convert)
-    pub carried_artifact_id: u128,
+    pub carried_artifact_id: Field,
     pub distance: u128,
 }
 
 #[derive(Serialize, Deserialize, Packable)]
 pub struct Artifact {
     pub is_initialized: bool,
-    pub id: u128,
+    pub id: Field,
     pub planet_discovered_on: Field,
     pub rarity: u8, // ArtifactRarity enum (stored as u8, use helper functions to convert)
     pub planet_biome: u8, // Biome enum (stored as u8, use helper functions to convert)
@@ -233,4 +233,30 @@ pub struct AdminCreatePlanetArgs {
     pub level: u8,
     pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
     pub require_valid_location_id: bool,
+}
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct DFPMoveArgs {
+    pub old_loc: Field,
+    pub new_loc: Field,
+    pub max_dist: u128,
+    pub pop_moved: u128,
+    pub silver_moved: u128,
+    pub moved_artifact_id: Field,
+    pub abandoning: u128,
+    pub sender: AztecAddress,
+}
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct DFPCreateArrivalArgs {
+    pub player: AztecAddress,
+    pub old_loc: Field,
+    pub new_loc: Field,
+    pub actual_dist: u128,
+    pub effective_dist_times_hundred: u128,
+    pub pop_moved: u128,
+    pub silver_moved: u128,
+    pub travel_time: u64,
+    pub moved_artifact_id: Field,
+    pub arrival_type: u8, // ArrivalType enum (stored as u8)
 }
