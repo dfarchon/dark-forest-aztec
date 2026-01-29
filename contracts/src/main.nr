@@ -21,7 +21,7 @@ pub contract Main {
     use crate::types::{
         PlanetDefaultStats, Upgrade, Planet, RevealedCoords, PlanetData, Player,
         ArrivalData, Artifact, PlanetEventMetadata, DFPInitPlanetArgs,
-        AdminCreatePlanetArgs,
+        AdminCreatePlanetArgs, DFPMoveArgs, DFPCreateArrivalArgs,
     };
 
     use crate::libraries::game_utils::{
@@ -37,6 +37,7 @@ pub contract Main {
     use crate::libraries::planet::apply_spaceship_arrive;
     use crate::circuits::init::init_proof;
     use crate::circuits::reveal::reveal_proof;
+    use crate::circuits::move::move_proof;
 
     // ========== Storage Structure ==========
     // Full storage structure
@@ -1998,12 +1999,12 @@ pub contract Main {
     /// A tuple containing:
     /// - `planet`: The refreshed planet
     /// - `events_to_remove`: Array of 12 event IDs to remove
-    /// - `artifacts_to_add`: Array of 12 artifact IDs that are new on the planet
+    /// - `artifacts_to_add`: Array of 12 artifact IDs (Field) that are new on the planet
     #[internal("public")]
     fn get_refreshed_planet(
         location: Field,
         timestamp: u64,
-    ) -> (Planet, [u128; 12], [u128; 12]) {
+    ) -> (Planet, [u128; 12], [Field; 12]) {
         let mut planet: Planet = self.storage.planets.at(location).read();
 
         // Read events from storage
@@ -2049,18 +2050,18 @@ pub contract Main {
         );
         planet = updated_planet;
 
-        // Split the result: first 12 are event ids to remove, last 12 are artifact ids
+        // Split the result: first 12 are event ids to remove, last 12 are artifact ids (Field)
         let mut events_to_remove: [u128; 12] = [0; 12];
-        let mut artifacts_to_add: [u128; 12] = [0; 12];
+        let mut artifacts_to_add: [Field; 12] = [0 as Field; 12];
         for i in 0..12 {
-            events_to_remove[i] = event_ids_and_artifacts[i];
+            events_to_remove[i] = event_ids_and_artifacts[i] as u128;
             artifacts_to_add[i] = event_ids_and_artifacts[i + 12];
         }
 
         // Apply spaceship artifacts
         for i in 0..12 {
             if artifacts_to_add[i] != 0 {
-                let artifact: Artifact = self.storage.artifacts.at(artifacts_to_add[i] as Field).read();
+                let artifact: Artifact = self.storage.artifacts.at(artifacts_to_add[i]).read();
                 planet = apply_spaceship_arrive(artifact, planet);
             }
         }
@@ -2134,12 +2135,12 @@ pub contract Main {
 
         // Add artifacts that have arrived to the planet
         for i in 0..12 {
-            let artifact_id = artifact_ids_to_add_to_planet[i];
+            let artifact_id: Field = artifact_ids_to_add_to_planet[i];
             if artifact_id != 0 {
                 // Set voyage_id to 0 (artifact has arrived)
-                self.storage.artifact_id_to_voyage_id.at(artifact_id as Field).write(0);
+                self.storage.artifact_id_to_voyage_id.at(artifact_id).write(0);
                 // Add artifact to planet
-                self.internal.put_artifact_on_planet(artifact_id as Field, location);
+                self.internal.put_artifact_on_planet(artifact_id, location);
             }
         }
     }
@@ -2329,7 +2330,10 @@ pub contract Main {
     /// The caller must provide valid coordinates that satisfy the init circuit constraints.
     /// Private function that validates ZK proof and enqueues public state change
     #[external("private")]
-    fn safe_set_owner(
+    fn safe_set_owner( 
+        x: Field, // private 
+        y: Field, // private 
+        r: u128,
         location_id: Field,
         perlin: u8,
         new_owner: AztecAddress,
@@ -2340,15 +2344,13 @@ pub contract Main {
         scale: u128, 
         x_mirror: bool, 
         y_mirror: bool, 
-        r: Field, 
-        x: Field, 
-        y: Field,
+      
     ) {
         if !disable_zk_checks {
             // init_proof takes: r, planet_hash_key, space_type_key, scale, x_mirror, y_mirror, x, y
             // Returns (planet_hash: Field, perlin: u8)
             let (planet_hash, computed_perlin) = init_proof(
-                r,
+                r as Field,
                 planet_hash_key as Field,
                 space_type_key as Field,
                 scale,
@@ -2367,6 +2369,7 @@ pub contract Main {
             location_id, 
             perlin,
             new_owner,
+            disable_zk_checks,
             planet_hash_key,
             space_type_key, 
             biomebase_key,
@@ -2383,6 +2386,7 @@ pub contract Main {
         planet_id: Field,
         perlin: u8,
         new_owner: AztecAddress,
+        disable_zk_checks: bool,
         planethash_key: u128, 
         spacetype_key: u128, 
         biomebase_key: u128,
@@ -2391,7 +2395,8 @@ pub contract Main {
         perlin_mirror_y: bool
     ) {
         assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-
+        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+        
         let planet = self.storage.planets.at(planet_id).read();
         if !planet.is_initialized {
             // revert_if_bad_snark_perlin_flags expects: planethash_key, spacetype_key, biomebase_key, mirror_x, mirror_y, scale, checking_biome
@@ -2599,37 +2604,40 @@ pub contract Main {
     /// - `y_mirror`: Y mirror flag
     #[external("private")]
     fn initialize_player(
+        x: Field, // private 
+        y: Field, // private
+        radius: u128,
         location_id: Field,
         perlin: u8,
-        radius: u128,
-        x: Field,
-        y: Field,
+        disable_zk_checks : bool,
         planet_hash_key: u128,
         space_type_key: u128,
         scale: u128,
         x_mirror: bool,
         y_mirror: bool,
+      
     ) {
-        // Verify ZK proof: coordinates hash to location_id
-        let (computed_hash, computed_perlin) = init_proof(
-            radius as Field,
-            planet_hash_key as Field,
-            space_type_key as Field,
-            scale,
-            x_mirror,
-            y_mirror,
-            x,
-            y,
-        );
-        
-        assert(computed_hash == location_id, "Planet hash mismatch");
-        assert(computed_perlin == perlin, "Perlin value mismatch");
+        if !disable_zk_checks {
+            let (computed_hash, computed_perlin) = init_proof(
+                radius as Field,
+                planet_hash_key as Field,
+                space_type_key as Field,
+                scale,
+                x_mirror,
+                y_mirror,
+                x,
+                y,
+            );
+            assert(computed_hash == location_id, "Planet hash mismatch");
+            assert(computed_perlin == perlin, "Perlin value mismatch");
+        }
 
         // Enqueue public function
         self.enqueue_self.pub_initialize_player(
             location_id,
             perlin,
             radius,
+            disable_zk_checks,
             planet_hash_key,
             space_type_key,
             scale,
@@ -2645,12 +2653,15 @@ pub contract Main {
         location_id: Field,
         perlin: u8,
         radius: u128,
+        disable_zk_checks: bool,
         planethash_key: u128,
         spacetype_key: u128,
         perlin_length_scale: u128,
         perlin_mirror_x: bool,
         perlin_mirror_y: bool,
     ) {
+        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+
         // Validate SNARK perlin flags
         let snark_constants = self.storage.snark_constants.read();
         let _ = self.internal.revert_if_bad_snark_perlin_flags(
@@ -2967,7 +2978,760 @@ pub contract Main {
         self.internal.upgrade_planet_internal(location, branch);
 
         (location, branch)
+    } 
+    
+    
+    // ========== DFMoveFacet ==========
+
+    #[event]
+    struct ArrivalQueued {
+        player: AztecAddress,
+        arrival_id: u128,
+        from: Field,
+        to: Field,
+        artifact_id: Field,
+        abandoning: u128,
     }
 
+    /// Noir port of Solidity `DFMoveFacet._getDecayedPop`.
+    /// Calculates linearly-decayed population based purely on distance and range,
+    /// without applying the original "big planet debuff".
+    #[internal("public")]
+    fn get_decayed_pop(
+        pop_moved: u128,
+        dist_times_hundred: u128,
+        range: u128,
+        population_cap: u128,
+    ) -> u128 {
+        // Linear decay:
+        // - effective_dist = min(dist_times_hundred, range * 100)
+        // - decay factor = 1 - effective_dist / (range * 100)
+        // - pop_arriving = pop_moved * decay factor
+
+        let range_times_hundred: u128 = range * 100;
+
+        // Clamp distance to [0, range * 100]
+        let mut effective_dist: u128 = dist_times_hundred;
+        if effective_dist > range_times_hundred {
+            effective_dist = range_times_hundred;
+        }
+
+        // Linear decay fraction: (range*100 - effective_dist) / (range*100)
+        let remaining_num: u128 = range_times_hundred - effective_dist;
+        let pop_arriving: u128 = (pop_moved * remaining_num) / range_times_hundred;
+
+        pop_arriving
+    }
+
+    /// Noir port of Solidity `DFMoveFacet._isSpaceshipMove`.
+    /// Checks if the move is a spaceship move.
+    #[internal("public")]
+    fn is_spaceship_move(args: DFPMoveArgs) -> bool {
+        self.internal.is_spaceship_artifact(args.moved_artifact_id)
+    }
+
+    /// Helper: checks if an artifact (by id) is a spaceship type.
+    #[internal("public")]
+    fn is_spaceship_artifact(moved_artifact_id: Field) -> bool {
+        if moved_artifact_id == 0 {
+            false
+        } else {
+            let artifact = self.storage.artifacts.at(moved_artifact_id).read();
+            // ArtifactType::Spaceship = 12, ShipMothership = 9, ShipCrescent = 10, ShipWhale = 11, ShipGear = 12, ShipTitan = 13
+            let mut inner = false;
+            if artifact.artifact_type >= 9 {
+                if artifact.artifact_type <= 13 {
+                    inner = true;
+                }
+            }
+            inner
+        }
+    }
+
+         /// Helper to remove artifact from a planet.
+    /// Inverse of put_artifact_on_planet.
+    #[internal("public")]
+    fn take_artifact_off_planet(artifact_id: Field, location_id: Field) {
+        let artifacts_count = self.storage.planet_artifacts_count.at(location_id).read();
+        
+        // Find and remove artifact
+        let mut found_index: u128 = artifacts_count;
+        for i in 0..artifacts_count {
+            let stored_id = self.storage.planet_artifacts.at(location_id).at(i).read();
+            if stored_id == artifact_id {
+                found_index = i;
+            }
+        }
+        
+        if found_index < artifacts_count {
+            // Swap with last element
+            let last_index = artifacts_count - 1;
+            if found_index < last_index {
+                let last_id = self.storage.planet_artifacts.at(location_id).at(last_index).read();
+                self.storage.planet_artifacts.at(location_id).at(found_index).write(last_id);
+            }
+            // Decrement count
+            self.storage.planet_artifacts_count.at(location_id).write(artifacts_count - 1);
+        }
+        
+        // Clear artifact_id -> planet_id mapping
+        self.storage.artifact_id_to_planet_id.at(artifact_id).write(0 as Field);
+    }
+   
+    /// Noir port of Solidity `DFMoveFacet._createArrival`.
+    /// Creates arrival data and handles artifact movement.
+    #[internal("public")]
+    fn create_arrival_internal(args: DFPCreateArrivalArgs, timestamp: u64) {
+        let origin_planet = self.storage.planets.at(args.old_loc).read();
+
+        // Calculate decayed population
+        let pop_arriving = self.internal.get_decayed_pop(
+            args.pop_moved,
+            args.effective_dist_times_hundred,
+            origin_planet.range,
+            origin_planet.population_cap,
+        );
+
+        // Check if spaceship move
+        let is_spaceship = self.internal.is_spaceship_artifact(args.moved_artifact_id);
+
+        // Not enough forces: need pop_arriving > 0 OR is_spaceship (Noir has no ||)
+        let has_forces = if pop_arriving > 0 {
+            true
+        } else {
+            if is_spaceship {
+                true
+            } else {
+                false
+            }
+        };
+        assert(has_forces, "Not enough forces to make move");
+
+        // Spaceship moves must move 0 energy (Noir has no ternary ?:)
+        if is_spaceship {
+            assert(args.pop_moved == 0, "spaceship moves must be 0 energy moves");
+        }
+
+        let arrival_id = self.storage.planet_events_count.read();
+
+        // Create arrival data
+        let arrival_data = ArrivalData {
+            id: arrival_id,
+            player: args.player,
+            from_planet: args.old_loc,
+            to_planet: args.new_loc,
+            pop_arriving,
+            silver_moved: args.silver_moved,
+            departure_time: timestamp,
+            arrival_time: timestamp + args.travel_time,
+            arrival_type: args.arrival_type,
+            carried_artifact_id: args.moved_artifact_id,
+            distance: args.actual_dist,
+        };
+        self.storage.planet_arrivals.at(arrival_id).write(arrival_data);
+
+        // Handle artifact movement
+        if args.moved_artifact_id != 0 {
+            self.internal.take_artifact_off_planet(args.moved_artifact_id, args.old_loc);
+            self.storage.artifact_id_to_voyage_id.at(args.moved_artifact_id).write(arrival_id);
+        }
+    }
+
+    /// Noir port of Solidity `DFMoveFacet._transferPlanetSpaceJunkToPlayer`.
+    /// Transfers space junk from destination planet to player.
+    #[internal("public")]
+    fn transfer_planet_space_junk_to_player(args: DFPMoveArgs) {
+        let dest_planet = self.storage.planets.at(args.new_loc).read();
+        let mut player = self.storage.players.at(args.sender).read();
+        
+        assert(
+            player.space_junk + dest_planet.space_junk <= player.space_junk_limit,
+            "Tried to take on more space junk than your limit"
+        );
+        
+        if dest_planet.space_junk != 0 {
+            player.space_junk += dest_planet.space_junk;
+            self.storage.players.at(args.sender).write(player);
+            
+            let mut updated_dest_planet = dest_planet;
+            updated_dest_planet.space_junk = 0;
+            self.storage.planets.at(args.new_loc).write(updated_dest_planet);
+        }
+    }
+
+    /// Noir port of Solidity `DFMoveFacet._abandonPlanet`.
+    /// Handles abandoning a planet logic.
+    #[internal("public")]
+    fn abandon_planet(args: DFPMoveArgs, timestamp: u64) -> (u128, u128, u128, Upgrade) {
+        // Check no incoming voyages
+        let events_count = self.storage.planet_events_count_by_location.at(args.old_loc).read();
+        assert(events_count == 0, "Cannot abandon a planet that has incoming voyages.");
+        
+        let origin_planet = self.storage.planets.at(args.old_loc).read();
+        assert(!origin_planet.is_home_planet, "Cannot abandon home planet");
+        
+        // Always send full energy and silver
+        let pop_moved = origin_planet.population;
+        let silver_moved = origin_planet.silver;
+        
+        // Get default planet to compute remaining population (double pirates)
+        let default_planet = self.internal.default_planet(
+            args.old_loc,
+            origin_planet.planet_level as u128,
+            origin_planet.planet_type,
+            origin_planet.space_type,
+        );
+        let remaining_origin_planet_population = default_planet.population * 2;
+        
+        // Abandoning upgrade (range/speed boost)
+        let temporary_upgrade = Upgrade {
+            pop_cap_multiplier: 100,
+            pop_gro_multiplier: 100,
+            range_multiplier: 150,
+            speed_multiplier: 150,
+            def_multiplier: 100,
+        };
+        
+        // Transfer space junk
+        let planet_space_junk = self.internal.get_planet_default_space_junk(origin_planet);
+        let mut final_space_junk = planet_space_junk;
+        if is_half_space_junk(args.old_loc) {
+            final_space_junk = final_space_junk / 2;
+        }
+        
+        let mut player = self.storage.players.at(args.sender).read();
+        if final_space_junk >= player.space_junk {
+            player.space_junk = 0;
+        } else {
+            player.space_junk -= final_space_junk;
+        }
+        self.storage.players.at(args.sender).write(player);
+        
+        // Update planet
+        let mut updated_planet = origin_planet;
+        updated_planet.space_junk = final_space_junk;
+        updated_planet.owner = AztecAddress::zero();
+        self.storage.planets.at(args.old_loc).write(updated_planet);
+        
+        (pop_moved, silver_moved, remaining_origin_planet_population, temporary_upgrade)
+    }
+
+
+      /// Noir port of Solidity `DFMoveFacet._checkPhotoid`.
+    /// Checks if a photoid cannon is active and returns temporary upgrade.
+    #[internal("public")]
+    fn check_photoid(args: DFPMoveArgs, timestamp: u64) -> (bool, Upgrade) {
+        let default_upgrade = Upgrade {
+            pop_cap_multiplier: 100,
+            pop_gro_multiplier: 100,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+
+        let mut found: bool = false;
+        let mut result_upgrade: Upgrade = default_upgrade;
+
+        // Get active artifact from origin planet
+        let artifacts_count = self.storage.planet_artifacts_count.at(args.old_loc).read();
+        let mut i: u128 = 0;
+        while i < artifacts_count {
+            if !found {
+                let artifact_id = self.storage.planet_artifacts.at(args.old_loc).at(i).read();
+                let artifact = self.storage.artifacts.at(artifact_id).read();
+                // ArtifactType::PhotoidCannon = 16 (Noir has no &&, use nested if)
+                if artifact.is_initialized {
+                    if artifact.artifact_type == 16 {
+                        let artifacts_config = self.storage.artifacts_config.read();
+                        let activation_delay: u128 = artifacts_config.photoid_activation_delay_s;
+                        // timestamp and last_activated are u64; activation_delay is u128 - cast for comparison
+                        let lhs: u128 = timestamp as u128;
+                        let rhs: u128 = (artifact.last_activated as u128) + activation_delay;
+                        if lhs >= rhs {
+                            // Deactivate artifact (simplified - set last_deactivated)
+                            let mut updated_artifact = artifact;
+                            updated_artifact.last_deactivated = timestamp;
+                            self.storage.artifacts.at(artifact_id).write(updated_artifact);
+
+                            // PhotoidCannon upgrades: range = [100, 200, 200, 200, 200, 200], speed = [100, 500, 1000, 1500, 2000, 2500]
+                            let range_boosts: [u128; 6] = [100, 200, 200, 200, 200, 200];
+                            let speed_boosts: [u128; 6] = [100, 500, 1000, 1500, 2000, 2500];
+                            let rarity_idx: u32 = artifact.rarity as u32;
+                            let range_mult: u128 = if rarity_idx < 6 { range_boosts[rarity_idx] } else { 100 };
+                            let speed_mult: u128 = if rarity_idx < 6 { speed_boosts[rarity_idx] } else { 100 };
+
+                            result_upgrade = Upgrade {
+                                pop_cap_multiplier: 100,
+                                pop_gro_multiplier: 100,
+                                range_multiplier: range_mult,
+                                speed_multiplier: speed_mult,
+                                def_multiplier: 100,
+                            };
+                            found = true;
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        (found, result_upgrade)
+    }
+
+    /// Noir port of Solidity `DFMoveFacet._checkWormhole`.
+    /// Checks if a wormhole is present and returns distance modifier.
+    #[internal("public")]
+    fn check_wormhole(args: DFPMoveArgs) -> (bool, u128) {
+        let mut relevant_wormhole: Artifact = Artifact {
+            is_initialized: false,
+            id: 0,
+            planet_discovered_on: 0 as Field,
+            rarity: 0,
+            planet_biome: 0,
+            minted_at_timestamp: 0,
+            discoverer: AztecAddress::zero(),
+            artifact_type: 0,
+            activations: 0,
+            last_activated: 0,
+            last_deactivated: 0,
+            wormhole_to: 0 as Field,
+            controller: AztecAddress::zero(),
+        };
+
+        let artifacts_count_old = self.storage.planet_artifacts_count.at(args.old_loc).read();
+        let artifacts_count_new = self.storage.planet_artifacts_count.at(args.new_loc).read();
+
+        // Check origin planet artifacts for wormhole (Noir has no &&, use nested if)
+        let mut i: u128 = 0;
+        while i < artifacts_count_old {
+            let artifact_id = self.storage.planet_artifacts.at(args.old_loc).at(i).read();
+            let artifact = self.storage.artifacts.at(artifact_id).read();
+            if artifact.is_initialized {
+                if artifact.artifact_type == 14 {
+                    if artifact.wormhole_to == args.new_loc {
+                        relevant_wormhole = artifact;
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        // Check destination planet artifacts for wormhole if none found on origin
+        let found_on_origin: bool = relevant_wormhole.is_initialized;
+        if !found_on_origin {
+            let mut j: u128 = 0;
+            while j < artifacts_count_new {
+                let artifact_id = self.storage.planet_artifacts.at(args.new_loc).at(j).read();
+                let artifact = self.storage.artifacts.at(artifact_id).read();
+                if artifact.is_initialized {
+                    if artifact.artifact_type == 14 {
+                        if artifact.wormhole_to == args.old_loc {
+                            relevant_wormhole = artifact;
+                        }
+                    }
+                }
+                j += 1;
+            }
+        }
+
+        // Compute result (Noir has no return, use expression at end)
+        let mut found: bool = false;
+        let mut dist_modifier: u128 = 1;
+        if relevant_wormhole.is_initialized {
+            let speed_boosts: [u128; 6] = [1, 2, 4, 8, 16, 32];
+            let rarity_idx: u32 = relevant_wormhole.rarity as u32;
+            if rarity_idx < 6 {
+                found = true;
+                dist_modifier = speed_boosts[rarity_idx];
+            }
+        }
+
+        (found, dist_modifier)
+    }
+
+    /// Noir port of Solidity `DFMoveFacet._removeSpaceshipEffectsFromOriginPlanet`.
+    /// Removes spaceship effects from the origin planet.
+    #[internal("public")]
+    fn remove_spaceship_effects_from_origin_planet(args: DFPMoveArgs, timestamp: u64) {
+        if args.moved_artifact_id != 0 {
+            let moved_artifact = self.storage.artifacts.at(args.moved_artifact_id).read();
+            let origin_planet = self.storage.planets.at(args.old_loc).read();
+            let updated_planet = self.internal.apply_spaceship_depart(moved_artifact, origin_planet, timestamp);
+            self.storage.planets.at(args.old_loc).write(updated_planet);
+        }
+    }
+
+    /// Noir port of Solidity `DFMoveFacet.applySpaceshipDepart`.
+    /// Removes spaceship effects from a planet when the ship departs.
+    #[internal("public")]
+    fn apply_spaceship_depart(artifact: Artifact, planet: Planet, timestamp: u64) -> Planet {
+        let mut planet = planet;
+        // Noir has no early return - use nested if to skip logic when is_home_planet
+        if !planet.is_home_planet {
+            // ArtifactType::ShipMothership = 9
+            if artifact.artifact_type == 9 {
+                if planet.energy_gro_doublers == 1 {
+                    planet.energy_gro_doublers -= 1;
+                    planet.population_growth = planet.population_growth / 2;
+                } else if planet.energy_gro_doublers > 1 {
+                    planet.energy_gro_doublers -= 1;
+                }
+            } else if artifact.artifact_type == 11 {
+                // ArtifactType::ShipWhale = 11
+                if planet.silver_gro_doublers == 1 {
+                    planet.silver_gro_doublers -= 1;
+                    planet.silver_growth = planet.silver_growth / 2;
+                } else if planet.silver_gro_doublers > 1 {
+                    planet.silver_gro_doublers -= 1;
+                }
+            } else if artifact.artifact_type == 13 {
+                // ArtifactType::ShipTitan = 13
+                planet.last_updated = timestamp;
+                planet.pausers -= 1;
+            }
+        }
+
+        planet
+    }
+
+
+        /// Noir port of Solidity `DFMoveFacet._checkMoveValidity`.
+    /// Validates that a move is legal.
+    #[internal("public")]
+    fn check_move_validity(args: DFPMoveArgs) {
+        if self.internal.is_spaceship_move(args) {
+            assert(args.pop_moved == 0, "ship moves must move 0 energy");
+            assert(args.silver_moved == 0, "ship moves must move 0 silver");
+            let artifact = self.storage.artifacts.at(args.moved_artifact_id).read();
+            assert(artifact.controller == args.sender, "you can only move your own ships");
+        } else {
+            let origin_planet = self.storage.planets.at(args.old_loc).read();
+            assert(
+                origin_planet.population > args.pop_moved,
+                "Tried to move more population that what exists"
+            );
+            let dest_planet = self.storage.planets.at(args.new_loc).read();
+            // Noir has no && - use separate asserts
+            assert(!dest_planet.destroyed, "planet is destroyed");
+            assert(!origin_planet.destroyed, "planet is destroyed");
+            assert(
+                origin_planet.owner == args.sender,
+                "Only owner account can perform that operation on planet."
+            );
+        }
+
+        let origin_planet = self.storage.planets.at(args.old_loc).read();
+        assert(
+            origin_planet.silver >= args.silver_moved,
+            "Tried to move more silver than what exists"
+        );
+
+        if args.moved_artifact_id != 0 {
+            let artifacts_count = self.storage.planet_artifacts_count.at(args.new_loc).read();
+            assert(artifacts_count < 5, "too many artifacts on this planet");
+        }
+    }
+
+
+
+    /// Noir port of Solidity `DFMoveFacet._executeMove`.
+    /// Executes the move logic including validation, artifact handling, and arrival creation.
+    #[internal("public")]
+    fn execute_move_internal(args: DFPMoveArgs, new_perlin: u8, timestamp: u64) {
+        // Check move validity
+        self.internal.check_move_validity(args);
+        
+        let mut effective_dist_times_hundred: u128 = args.max_dist * 100;
+        let mut arrival_type: u8 = 1; // ArrivalType::Normal = 1
+        let mut temporary_upgrade = Upgrade {
+            pop_cap_multiplier: 100,
+            pop_gro_multiplier: 100,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+        
+        // Check for wormhole
+        let (wormhole_present, dist_modifier) = self.internal.check_wormhole(args);
+        if wormhole_present {
+            effective_dist_times_hundred = effective_dist_times_hundred / dist_modifier;
+            arrival_type = 3; // ArrivalType::Wormhole = 3
+        }
+        
+        // Check for photoid (only for non-spaceship moves)
+        if !self.internal.is_spaceship_move(args) {
+            let (photoid_present, new_temp_upgrade) = self.internal.check_photoid(args, timestamp);
+            if photoid_present {
+                temporary_upgrade = new_temp_upgrade;
+                arrival_type = 2; // ArrivalType::Photoid = 2
+            }
+        }
+        
+        // Remove spaceship effects from origin planet
+        self.internal.remove_spaceship_effects_from_origin_planet(args, timestamp);
+        
+        let mut pop_moved: u128 = args.pop_moved;
+        let mut silver_moved: u128 = args.silver_moved;
+
+        let origin_planet = self.storage.planets.at(args.old_loc).read();
+        let mut remaining_origin_planet_population: u128 = origin_planet.population - pop_moved;
+        
+        // Handle space junk and abandoning (Noir has no &&, use nested if)
+        let space_junk_config = self.storage.space_junk_config.read();
+        if space_junk_config.space_junk_enabled {
+            if !self.internal.is_spaceship_move(args) {
+                if args.abandoning != 0 {
+                    let (new_pop_moved, new_silver_moved, new_remaining, abandon_upgrade) =
+                        self.internal.abandon_planet(args, timestamp);
+                    pop_moved = new_pop_moved;
+                    silver_moved = new_silver_moved;
+                    remaining_origin_planet_population = new_remaining;
+                    temporary_upgrade = abandon_upgrade;
+                }
+
+                self.internal.transfer_planet_space_junk_to_player(args);
+            }
+        }
+        
+        // Apply temporary upgrade buff
+        self.internal.buff_planet(args.old_loc, temporary_upgrade);
+        
+        // Calculate travel time
+        let planet_after_buff = self.storage.planets.at(args.old_loc).read();
+        let mut travel_time: u64 = (effective_dist_times_hundred / planet_after_buff.speed) as u64;
+        
+        // Don't allow 0 second voyages
+        if travel_time == 0 {
+            travel_time = 1;
+        }
+        
+        // Get events count for this arrival
+        let arrival_id = self.storage.planet_events_count.read();
+        
+        // Add arrival event to destination planet
+        let events_count = self.storage.planet_events_count_by_location.at(args.new_loc).read();
+        let event_metadata = PlanetEventMetadata {
+            id: arrival_id,
+            event_type: 0, // PlanetEventType::Arrival = 0
+            time_trigger: timestamp + travel_time,
+            time_created: timestamp,
+        };
+        self.storage.planet_events.at(args.new_loc).at(events_count).write(event_metadata);
+        self.storage.planet_events_count_by_location.at(args.new_loc).write(events_count + 1);
+        
+        // Create arrival data
+        let create_args = DFPCreateArrivalArgs {
+            player: args.sender,
+            old_loc: args.old_loc,
+            new_loc: args.new_loc,
+            actual_dist: args.max_dist,
+            effective_dist_times_hundred,
+            pop_moved,
+            silver_moved,
+            travel_time,
+            moved_artifact_id: args.moved_artifact_id,
+            arrival_type,
+        };
+        self.internal.create_arrival_internal(create_args, timestamp);
+        
+        // Remove temporary upgrade debuff
+        self.internal.debuff_planet(args.old_loc, temporary_upgrade);
+        
+        // Update origin planet silver and population
+        let mut origin_planet = self.storage.planets.at(args.old_loc).read();
+        origin_planet.silver -= silver_moved;
+        origin_planet.population = remaining_origin_planet_population;
+        self.storage.planets.at(args.old_loc).write(origin_planet);
+    }
+
+
+    /// Noir port of Solidity `DFMoveFacet.move`.
+    /// Private function that verifies ZK proof for a move.
+    /// 
+    /// This function:
+    /// 1. Verifies the move ZK proof using move_proof circuit
+    /// 2. Validates SNARK perlin flags
+    /// 3. Enqueues the public move function
+    /// 
+    /// # Arguments
+    /// - `old_loc`: Expected source planet location ID
+    /// - `new_loc`: Expected destination planet location ID  
+    /// - `new_perlin`: Expected perlin value at destination
+    /// - `new_radius`: Radius of destination from origin
+    /// - `max_dist`: Maximum distance allowed
+    /// - `x1`, `y1`: Source planet coordinates (private)
+    /// - `x2`, `y2`: Destination planet coordinates (private)
+    /// - `pop_moved`: Population to move
+    /// - `silver_moved`: Silver to move
+    /// - `moved_artifact_id`: Artifact ID being moved (0 if none)
+    /// - `is_abandoning`: Whether abandoning the planet (0 or 1)
+    /// - `planet_hash_key`: Planet hash key for proof
+    /// - `space_type_key`: Space type key for proof
+    /// - `scale`: Perlin scale
+    /// - `x_mirror`: X mirror flag
+    /// - `y_mirror`: Y mirror flag
+    #[external("private")]
+    fn move(
+        old_loc: Field,
+        new_loc: Field,
+        new_perlin: u8,
+        new_radius: u128,
+        max_dist: u128,
+        x1: Field,
+        y1: Field,
+        x2: Field,
+        y2: Field,
+        pop_moved: u128,
+        silver_moved: u128,
+        moved_artifact_id: Field,
+        is_abandoning: u128,
+        disable_zk_checks: bool,
+        planet_hash_key: u128,
+        space_type_key: u128,
+        biomebase_key: u128,
+        scale: u128,
+        x_mirror: bool,
+        y_mirror: bool,
+    ) {
+        
+        if !disable_zk_checks {
+            // Private context cannot read PublicMutable (snark_constants) or call internal("public") functions.
+            // Always verify ZK proof here; snark perlin flag validation is done in pub_move.
+            let r = new_radius as Field;
+            let dist_max = max_dist as Field;
+            let (computed_old_loc, computed_new_loc, computed_perlin) = move_proof(
+                r,
+                dist_max,
+                planet_hash_key as Field,
+                space_type_key as Field,
+                scale,
+                x_mirror,
+                y_mirror,
+                x1,
+                y1,
+                x2,
+                y2,
+            );
+        
+            assert(computed_old_loc == old_loc, "Source planet hash mismatch");
+            assert(computed_new_loc == new_loc, "Destination planet hash mismatch");
+            assert(computed_perlin == new_perlin, "Perlin value mismatch");
+        }
+
+        // Enqueue public function
+        self.enqueue_self.pub_move(
+            old_loc,
+            new_loc,
+            new_perlin,
+            new_radius,
+            max_dist,
+            pop_moved,
+            silver_moved,
+            moved_artifact_id,
+            is_abandoning,
+            disable_zk_checks,
+        );
+    }
+
+    /// Public function that executes the move and updates state.
+    /// 
+    /// This function:
+    /// 1. Checks game is not paused
+    /// 2. Validates radius bounds
+    /// 3. Refreshes origin planet
+    /// 4. Initializes or refreshes destination planet
+    /// 5. Executes the move logic
+    /// 6. Updates world radius
+    /// 7. Emits ArrivalQueued event
+    /// 
+    /// # Arguments
+    /// - `old_loc`: Source planet location ID
+    /// - `new_loc`: Destination planet location ID
+    /// - `new_perlin`: Perlin value at destination
+    /// - `new_radius`: Radius of destination from origin
+    /// - `max_dist`: Maximum distance allowed
+    /// - `pop_moved`: Population to move
+    /// - `silver_moved`: Silver to move
+    /// - `moved_artifact_id`: Artifact ID being moved (0 if none)
+    /// - `is_abandoning`: Whether abandoning the planet (0 or 1)
+    /// 
+    /// # Returns
+    /// The arrival event ID
+    #[external("public")]
+    #[only_self]
+    fn pub_move(
+        old_loc: Field,
+        new_loc: Field,
+        new_perlin: u8,
+        new_radius: u128,
+        max_dist: u128,
+        pop_moved: u128,
+        silver_moved: u128,
+        moved_artifact_id: Field,
+        is_abandoning: u128,
+        disable_zk_checks: bool,
+    ) -> u128 {
+        // Check game is not paused
+        assert(!self.storage.paused.read(), "Game is paused");
+
+        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+        
+        // Check radius bounds
+        let world_radius = self.storage.world_radius.read();
+        assert(new_radius <= world_radius, "Attempting to move out of bounds");
+        
+        // Get sender
+        let sender = self.msg_sender().unwrap();
+        
+        // Build move args (DFPMoveArgs.moved_artifact_id is Field)
+        let args = DFPMoveArgs {
+            old_loc,
+            new_loc,
+            max_dist,
+            pop_moved,
+            silver_moved,
+            moved_artifact_id: moved_artifact_id,
+            abandoning: is_abandoning,
+            sender,
+        };
+
+        // Refresh origin planet first
+        let timestamp = self.context.timestamp();
+        self.internal.refresh_planet_internal(old_loc, timestamp);
+        
+        // Increment planet events count
+        let events_count = self.storage.planet_events_count.read();
+        self.storage.planet_events_count.write(events_count + 1);
+        
+        // Initialize or refresh destination planet
+        let dest_planet = self.storage.planets.at(new_loc).read();
+        if !dest_planet.is_initialized {
+            self.internal.initialize_planet_with_defaults(new_loc, new_perlin, false, timestamp);
+        } else {
+            self.internal.refresh_planet_internal(new_loc, timestamp);
+            self.internal.check_planet_dos(new_loc, sender);
+        }
+        
+        // Execute move
+        self.internal.execute_move_internal(args, new_perlin, timestamp);
+        
+        // Update world radius
+        self.internal.update_world_radius();
+        
+        // Get final events count for event emission
+        let arrival_id = self.storage.planet_events_count.read();
+        
+        // Emit event (ArrivalQueued.artifact_id is Field)
+        self.emit(ArrivalQueued {
+            player: sender,
+            arrival_id,
+            from: old_loc,
+            to: new_loc,
+            artifact_id: moved_artifact_id,
+            abandoning: is_abandoning,
+        });
+        
+        arrival_id
+    }
 
 }
