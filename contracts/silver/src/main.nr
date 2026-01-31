@@ -1,7 +1,7 @@
 use dep::aztec::macros::aztec;
 
 #[aztec]
-pub contract Main {
+pub contract Silver {
     use dep::aztec::{macros::functions::external, protocol_types::address::AztecAddress};
     use dep::config::Config;
 

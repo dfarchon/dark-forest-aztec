@@ -18,7 +18,8 @@ import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
-import { MainContract } from './artifacts/Main.ts';
+import { SilverContract } from './artifacts/Silver.ts';
+import { ConfigContract } from './artifacts/Config.ts';
 
 // Load environment variables
 dotenv.config();
@@ -138,13 +139,13 @@ async function createAccount(wallet: TestWallet) {
     return accountManager.address;
 }
 
-async function deployContract(wallet: Wallet, deployer: AztecAddress) {
+async function deployConfigContract(wallet: Wallet, deployer: AztecAddress) {
     const salt = Fr.random();
     const contract = await getContractInstanceFromInstantiationParams(
-        MainContract.artifact,
+        ConfigContract.artifact,
         {
             publicKeys: PublicKeys.default(),
-            constructorArtifact: getDefaultInitializer(MainContract.artifact),
+            constructorArtifact: getDefaultInitializer(ConfigContract.artifact),
             constructorArgs: [deployer.toField()],
             deployer: deployer,
             salt,
@@ -154,10 +155,10 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
     const deployMethod = new DeployMethod(
         contract.publicKeys,
         wallet,
-        MainContract.artifact,
-        (instance, wallet) => MainContract.at(instance.address, wallet),
+        ConfigContract.artifact,
+        (instance, wallet) => ConfigContract.at(instance.address, wallet),
         [deployer.toField()],
-        getDefaultInitializer(MainContract.artifact)?.name
+        getDefaultInitializer(ConfigContract.artifact)?.name
     );
 
     const sponsoredPFCContract = await getSponsoredPFCContract();
@@ -173,7 +174,7 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
             },
         })
         .wait({ timeout: 120 });
-    await wallet.registerContract(contract, MainContract.artifact);
+    await wallet.registerContract(contract, ConfigContract.artifact);
 
     return {
         contractAddress: contract.address.toString(),
@@ -182,12 +183,57 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
     };
 }
 
-async function writeEnvFile(deploymentInfo) {
+async function deploySilverContract(wallet: Wallet, deployer: AztecAddress) {
+    const salt = Fr.random();
+    const contract = await getContractInstanceFromInstantiationParams(
+        SilverContract.artifact,
+        {
+            publicKeys: PublicKeys.default(),
+            constructorArtifact: getDefaultInitializer(SilverContract.artifact),
+            constructorArgs: [],
+            deployer: deployer,
+            salt,
+        }
+    );
+
+    const deployMethod = new DeployMethod(
+        contract.publicKeys,
+        wallet,
+        SilverContract.artifact,
+        (instance, wallet) => SilverContract.at(instance.address, wallet),
+        [],
+        getDefaultInitializer(SilverContract.artifact)?.name
+    );
+
+    const sponsoredPFCContract = await getSponsoredPFCContract();
+
+    await deployMethod
+        .send({
+            from: deployer,
+            contractAddressSalt: salt,
+            fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(
+                    sponsoredPFCContract.address
+                ),
+            },
+        })
+        .wait({ timeout: 120 });
+    await wallet.registerContract(contract, SilverContract.artifact);
+
+    return {
+        contractAddress: contract.address.toString(),
+        deployerAddress: deployer.toString(),
+        deploymentSalt: salt.toString(),
+    };
+}
+
+
+async function writeConfigEnvFile(deploymentInfo) {
     const envFilePath = path.join(import.meta.dirname, '../.env');
     const envConfig = Object.entries({
-        CONTRACT_ADDRESS: deploymentInfo.contractAddress,
-        DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
-        DEPLOYMENT_SALT: deploymentInfo.deploymentSalt,
+        CONFIG_CONTRACT_ADDRESS: deploymentInfo.contractAddress,
+        CONFIG_DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
+        CONFIG_DEPLOYMENT_SALT: deploymentInfo.deploymentSalt,
         AZTEC_NODE_URL,
     })
         .map(([key, value]) => `${key}=${value}`)
@@ -202,6 +248,28 @@ async function writeEnvFile(deploymentInfo) {
       \n\n\n
     `);
 }
+
+async function writeSilverEnvFile(deploymentInfo) {
+    const envFilePath = path.join(import.meta.dirname, '../.env');
+    const envConfig = Object.entries({
+        SILVER_CONTRACT_ADDRESS: deploymentInfo.contractAddress,
+        SILVER_DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
+        SILVER_DEPLOYMENT_SALT: deploymentInfo.deploymentSalt,
+        AZTEC_NODE_URL,
+    })
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+    fs.appendFileSync(envFilePath, '\n\n\n' + envConfig);
+
+    console.log(`
+      \n\n\n
+      Contract deployed successfully. Config saved to ${envFilePath}
+      IMPORTANT: Do not lose this file as you will not be able to recover the contract address if you lose it.
+      \n\n\n
+    `);
+}
+
 
 async function createAccountAndDeployContract() {
     const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
@@ -228,27 +296,46 @@ async function createAccountAndDeployContract() {
     }
 
     // Deploy the contract
-    const deploymentInfo = await deployContract(wallet, accountAddress);
+    const configDeploymentInfo = await deployConfigContract(wallet, accountAddress);
 
     // Save the deployment info to app/public
     if (WRITE_ENV_FILE) {
-        await writeEnvFile(deploymentInfo);
+        await writeConfigEnvFile(configDeploymentInfo);
+    }
+
+    // Deploy the silver contract
+    const silverDeploymentInfo = await deploySilverContract(wallet, accountAddress);
+    if (WRITE_ENV_FILE) {
+        await writeSilverEnvFile(silverDeploymentInfo);
     }
 
     // Call get_admin
     try {
         console.log('Simulating contract (calling get_admin)...\n');
-        const main = MainContract.at(
-            AztecAddress.fromString(deploymentInfo.contractAddress),
+        const silver = SilverContract.at(
+            AztecAddress.fromString(silverDeploymentInfo.contractAddress),
             wallet
         );
 
-        const admin = await main.methods
-            .get_admin()
+        const admin = await silver.methods
+            .get_admin_from_config(AztecAddress.fromString(configDeploymentInfo.contractAddress))
             .simulate({ from: accountAddress });
 
+        console.log('\n\n\n\n');
         console.log('admin in contract:', admin.toString());
         console.log('accountAddress:', accountAddress);
+        console.log('\n\n\n\n');
+
+
+        const msgSender = await silver.methods
+            .get_msg_sender_from_config(AztecAddress.fromString(configDeploymentInfo.contractAddress))
+            .simulate({ from: accountAddress });
+
+        console.log('\n\n\n\n');
+        console.log('msgSender in config contract:', msgSender.toString());
+        console.log('silver contract:', silverDeploymentInfo.contractAddress);
+        console.log('config contract:', configDeploymentInfo.contractAddress);
+        console.log('\n\n\n\n');
     } catch (err) {
         console.error('Failed to call contract get_admin():', err);
     }
