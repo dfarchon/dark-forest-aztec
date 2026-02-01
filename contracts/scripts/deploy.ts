@@ -3,6 +3,7 @@ import {
     DeployMethod,
     getContractInstanceFromInstantiationParams,
 } from '@aztec/aztec.js/contracts';
+import { getDecodedPublicEvents } from './utils/events.ts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import { PublicKeys } from '@aztec/aztec.js/keys';
@@ -336,8 +337,76 @@ async function createAccountAndDeployContract() {
         console.log('silver contract:', silverDeploymentInfo.contractAddress);
         console.log('config contract:', configDeploymentInfo.contractAddress);
         console.log('\n\n\n\n');
+
+        // ========== Hash + Event PoC Test ==========
+        // Test store_large_data: struct as input -> hash stored (1 write) + event emitted
+        // LargeData has 100 fields (values array) - scales without code changes
+        console.log('=== Testing store_large_data (hash + event pattern) ===\n');
+        const testKey = Fr.fromString('1');
+        const values = Array.from({ length: 100 }, (_, i) => BigInt((i + 1) * 100));
+        const largeData = { values };
+
+        const sponsoredPFCContract = await getSponsoredPFCContract();
+        const storeTx = silver.methods
+            .store_large_data(testKey, largeData)
+            .send({
+                from: accountAddress,
+                fee: {
+                    paymentMethod: new SponsoredFeePaymentMethod(
+                        sponsoredPFCContract.address
+                    ),
+                },
+            });
+        const storeReceipt = await storeTx.wait({ timeout: 120 });
+        console.log('store_large_data tx hash:', storeReceipt.txHash.toString());
+
+        // Read event content from public logs
+        const blockNumber = Number(storeReceipt.blockNumber ?? 0);
+        const events = await getDecodedPublicEvents<{
+            key: Fr;
+            data: { values: bigint[] };
+        }>(aztecNode, SilverContract.events.LargeDataStored, blockNumber, 1);
+        if (events.length > 0) {
+            console.log('\n--- Event LargeDataStored content ---');
+            console.log('key:', events[0].key.toString());
+            console.log('data.values:', events[0].data.values);
+            console.log('data.values length:', events[0].data.values.length);
+            console.log('-------------------------------------\n');
+        } else {
+            const { logs } = await aztecNode.getPublicLogs({
+                txHash: storeReceipt.txHash,
+            });
+            console.log('\n--- No LargeDataStored events found, raw logs:', logs.length, '---\n');
+        }
+
+        // Verify stored hash
+        const storedHash = await silver.methods
+            .get_data_hash(testKey)
+            .simulate({ from: accountAddress });
+        console.log('Stored hash:', storedHash.toString());
+
+        // Verify data matches hash
+        const verifyResult = await silver.methods
+            .verify_large_data(testKey, largeData)
+            .simulate({ from: accountAddress });
+        console.log('verify_large_data (correct data):', verifyResult);
+
+        // Verify wrong data fails
+        const wrongValues = [...values];
+        wrongValues[0] = 999n;
+        const wrongData = { values: wrongValues };
+        const verifyWrongResult = await silver.methods
+            .verify_large_data(testKey, wrongData)
+            .simulate({ from: accountAddress });
+        console.log('verify_large_data (wrong data):', verifyWrongResult);
+
+        console.log('\n=== Hash + Event PoC test complete ===');
+        console.log('- store_large_data: 1 write (hash) instead of 100+ writes (struct)');
+        console.log('- Chunked poseidon2 hash scales to 100+ fields');
+        console.log('- Full struct emitted via LargeDataStored event for off-chain indexing');
+        console.log('- verify_large_data: pass struct as param, hash checked against storage\n');
     } catch (err) {
-        console.error('Failed to call contract get_admin():', err);
+        console.error('Failed to call contract:', err);
     }
 
     // Clean up the PXE store
