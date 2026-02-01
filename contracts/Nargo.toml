@@ -1,7 +1,8 @@
-[package]
-name = "main"
-type = "contract"
-authors = [""]
+[workspace]
+members = [
+    "config",
+    "main"
+]
 
-[dependencies]
-aztec = { git="https://github.com/AztecProtocol/aztec-nr", tag="v3.0.0-devnet.6-patch.1", directory="aztec" }
+#[dependencies]
+#aztec = { git="https://github.com/AztecProtocol/aztec-nr", tag="v3.0.0-devnet.6-patch.1", directory="aztec" }

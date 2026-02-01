@@ -1,6 +1,5 @@
 use dep::aztec::macros::aztec;
 
-mod config;
 mod types;
 mod libraries;
 mod circuits;
@@ -11,21 +10,26 @@ pub contract Main {
         macros::{events::event, functions::{external, initializer, internal, only_self}, storage::storage},
         protocol_types::address::AztecAddress,
     };
-    use dep::aztec::state_vars::{Map, PublicMutable};
 
-    use crate::config::{
-        ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetLevelThresholds,
-        PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig, WorldConfig,
+    use dep::config::{
+        Config,
+        ArtifactsConfig, GameConfigCore, PlanetDefaultStats, PlanetTypeWeightsTier,
+        SnarkConstants, SpaceJunkConfig, Upgrade, WorldConfig,
     };
 
+    use dep::aztec::state_vars::{Map, PublicMutable};
+
     use crate::types::{
-        PlanetDefaultStats, Upgrade, Planet, RevealedCoords, PlanetData, Player,
+        Planet, RevealedCoords, Player,
         ArrivalData, Artifact, PlanetEventMetadata, DFPInitPlanetArgs,
         AdminCreatePlanetArgs, DFPMoveArgs, DFPCreateArrivalArgs,
     };
 
     use crate::libraries::game_utils::{
         calculate_byte_uint_from_location_id,
+        revert_if_bad_snark_perlin_flags,
+        space_type_from_perlin,
+        location_id_valid,
         is_pop_cap_boost,
         is_pop_gro_boost,
         is_range_boost,
@@ -43,35 +47,19 @@ pub contract Main {
     // Full storage structure
     #[storage]
     struct Storage<Context> {
-
-        // ========== Game Configuration ==========
+        
+        // ========== Config Storage ==========
         admin: PublicMutable<AztecAddress, Context>,
-        world_config: PublicMutable<WorldConfig, Context>,
-        snark_constants: PublicMutable<SnarkConstants, Context>,
-        // Game config is split to stay under the public SSTORE write limit (63 writes per call).
-        game_config_core: PublicMutable<GameConfigCore, Context>,
-        planet_level_thresholds: PublicMutable<PlanetLevelThresholds, Context>,
-        planet_type_weights_tier_0: PublicMutable<PlanetTypeWeightsTier, Context>,
-        planet_type_weights_tier_1: PublicMutable<PlanetTypeWeightsTier, Context>,
-        planet_type_weights_tier_2: PublicMutable<PlanetTypeWeightsTier, Context>,
-        planet_type_weights_tier_3: PublicMutable<PlanetTypeWeightsTier, Context>,
-        artifacts_config: PublicMutable<ArtifactsConfig, Context>,
-        spaceships_config: PublicMutable<SpaceshipsConfig, Context>,
-        space_junk_config: PublicMutable<SpaceJunkConfig, Context>,
-        capture_zones_config: PublicMutable<CaptureZonesConfig, Context>,
-
-        // ========== Default Stats & Upgrades ==========
-        planet_default_stats: Map<u8, PublicMutable<PlanetDefaultStats, Context>, Context>, // level 0-9
-        upgrades: Map<u128, PublicMutable<Upgrade, Context>, Context>, // key = branch * 10 + level
+        config_address: PublicMutable<AztecAddress, Context>,
 
         // ========== Game Storage (from LibStorage.GameStorage) ==========
         // Contract housekeeping
         paused: PublicMutable<bool, Context>,
         token_mint_end_timestamp: PublicMutable<u64, Context>,
-        planet_levels_count: PublicMutable<u128, Context>,
+       
         // Arrays stored as Maps with index keys (or use counters + Maps for dynamic arrays)
-        cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
         initialized_planet_count_by_level: Map<u128, PublicMutable<u128, Context>, Context>, // level -> count
+        
         // Dynamic arrays: use counters + Maps
         planet_ids_count: PublicMutable<u128, Context>, // length of planet_ids array
         planet_ids: Map<u128, PublicMutable<Field, Context>, Context>, // index -> planet_id (location_id)
@@ -111,1203 +99,52 @@ pub contract Main {
     // instead of relying on msg_sender during contract deployment.
     #[external("public")]
     #[initializer]
-    fn constructor(admin: AztecAddress) {
+    fn constructor(admin: AztecAddress,config_address: AztecAddress) {
         self.storage.admin.write(admin);
+        self.storage.config_address.write(config_address);
     }
 
     #[external("public")]
-    fn set_default_world_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.world_config.write(WorldConfig::default_dark_forest());
+    fn get_admin() -> AztecAddress {
+        self.storage.admin.read()
     }
 
-    #[external("public")]
-    fn set_world_config(config: WorldConfig) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.world_config.write(config);
+    #[external("utility")]
+    unconstrained fn get_admin_utility() -> AztecAddress {
+        self.storage.admin.read()
     }
 
-    #[external("public")]
-    fn set_default_snark_constants() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.snark_constants.write(SnarkConstants::default_dark_forest());
+    #[internal("public")]
+    fn is_admin() -> bool {
+        self.msg_sender().unwrap() == self.storage.admin.read()
     }
 
-    #[external("public")]
-    fn set_snark_constants(constants: SnarkConstants) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.snark_constants.write(constants);
+    #[internal("public")]
+    fn assert_admin() {
+        assert(self.internal.is_admin(), "Only admin");
     }
 
-    #[external("public")]
-    fn set_default_game_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        // Only sets the small parts of game config that fit under the SSTORE limit.
-        self.storage.game_config_core.write(GameConfig::default_dark_forest_core());
-        self.storage.planet_level_thresholds.write(GameConfig::default_dark_forest_planet_level_thresholds());
+    #[internal("public")]
+    fn get_config_address() -> AztecAddress {
+        self.storage.config_address.read()
     }
 
-    #[external("public")]
-    fn set_default_game_config_planet_type_weights_tier(tier: u8) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let weights = GameConfig::default_dark_forest_planet_type_weights_tier(tier);
-        if tier == 0 {
-            self.storage.planet_type_weights_tier_0.write(weights);
-        } else if tier == 1 {
-            self.storage.planet_type_weights_tier_1.write(weights);
-        } else if tier == 2 {
-            self.storage.planet_type_weights_tier_2.write(weights);
-        } else if tier == 3 {
-            self.storage.planet_type_weights_tier_3.write(weights);
-        } else {
-            assert(false, "tier must be 0..=3");
-        }
-    }
-
-    #[external("public")]
-    fn set_game_config_core(config: GameConfigCore) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.game_config_core.write(config);
-    }
-
-    #[external("public")]
-    fn set_planet_level_thresholds(config: PlanetLevelThresholds) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.planet_level_thresholds.write(config);
-    }
-
-    /// Initialize game state arrays: initializedPlanetCountByLevel and cumulativeRarities.
-    /// Noir port of DFInitialize.sol lines 204-209.
-    ///
-    /// - Sets initializedPlanetCountByLevel[0..9] = 0
-    /// - Computes cumulativeRarities[i] = (2^24 / thresholds[i]) * planet_rarity for i in 0..9
     #[external("public")]
     fn initialize_game_state_arrays() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-
-        let thresholds = self.storage.planet_level_thresholds.read().thresholds;
-        let planet_rarity: u128 = self.storage.game_config_core.read().planet_rarity;
-        let base: u128 = 1 << 24; // 2^24
-
+        self.internal.assert_admin();
         // Initialize initializedPlanetCountByLevel[0..9] = 0
         for level in 0..10 {
             self.storage.initialized_planet_count_by_level.at(level as u128).write(0);
         }
-
-        // Compute cumulativeRarities[i] = (2^24 / thresholds[i]) * planet_rarity
-        for i in 0..10 {
-            let threshold: u128 = thresholds[i];
-            assert(threshold != 0, "threshold must be nonzero");
-            let cumulative_rarity: u128 = (base / threshold) * planet_rarity;
-            self.storage.cumulative_rarities.at(i as u128).write(cumulative_rarity);
-        }
-    }
-
-    #[external("public")]
-    fn set_planet_type_weights_tier(tier: u8, config: PlanetTypeWeightsTier) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        if tier == 0 {
-            self.storage.planet_type_weights_tier_0.write(config);
-        } else if tier == 1 {
-            self.storage.planet_type_weights_tier_1.write(config);
-        } else if tier == 2 {
-            self.storage.planet_type_weights_tier_2.write(config);
-        } else if tier == 3 {
-            self.storage.planet_type_weights_tier_3.write(config);
-        } else {
-            assert(false, "tier must be 0..=3");
-        }
-    }
-
-    #[external("public")]
-    fn set_default_artifacts_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.artifacts_config.write(ArtifactsConfig::default_dark_forest());
-    }
-
-    #[external("public")]
-    fn set_artifacts_config(config: ArtifactsConfig) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.artifacts_config.write(config);
-    }
-
-    #[external("public")]
-    fn set_default_spaceships_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.spaceships_config.write(SpaceshipsConfig::default_dark_forest());
-    }
-
-    #[external("public")]
-    fn set_spaceships_config(config: SpaceshipsConfig) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.spaceships_config.write(config);
-    }
-
-    #[external("public")]
-    fn set_default_space_junk_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.space_junk_config.write(SpaceJunkConfig::default_dark_forest());
-    }
-
-    #[external("public")]
-    fn set_space_junk_config(config: SpaceJunkConfig) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.space_junk_config.write(config);
-    }
-
-    #[external("public")]
-    fn set_default_capture_zones_config() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.capture_zones_config.write(CaptureZonesConfig::default_dark_forest());
-    }
-
-    #[external("public")]
-    fn set_capture_zones_config(config: CaptureZonesConfig) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.capture_zones_config.write(config);
-    }
-    
-    #[external("public")]
-    fn initializeUpgrades() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-            // Initialize upgrade structures (3 branches x 4 levels)
-        // Defense branch (branch = 0)
-        self.storage.upgrades.at(0).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(1).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(2).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(3).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        // Range branch (branch = 1)
-        self.storage.upgrades.at(10).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(11).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(12).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(13).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        // Speed branch (branch = 2)
-        self.storage.upgrades.at(20).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(21).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(22).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(23).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-    }
-
-    // ---- defaults & upgrades setters (public) ----
-    #[external("public")]
-    fn set_planet_default_stats(level: u8, stats: PlanetDefaultStats) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.planet_default_stats.at(level).write(stats);
-    }
-
-    /// Key is `branch * 10 + level`, matching storage comment.
-    #[external("public")]
-    fn set_upgrade(key: u128, upgrade: Upgrade) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        self.storage.upgrades.at(key).write(upgrade);
-    }
-
-    #[external("public")]
-    fn set_upgrade_by_branch_level(branch: u128, level: u128, upgrade: Upgrade) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let key = branch * 10 + level;
-        self.storage.upgrades.at(key).write(upgrade);
     }
 
     #[external("public")]
     fn initialize_world_radius() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         self.internal.update_world_radius();
     }
 
-
-    // ========== Storage Access Functions ==========
-    // Essential getter functions for accessing contract storage
-
-    #[external("utility")]
-    unconstrained fn get_admin() -> AztecAddress {
-        self.storage.admin.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.adminAddress`.
-    /// Returns the admin/owner address of the contract.
-    #[external("utility")]
-    unconstrained fn admin_address() -> AztecAddress {
-        self.storage.admin.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.paused`.
-    /// Returns whether the game is currently paused.
-    #[external("utility")]
-    unconstrained fn paused() -> bool {
-        self.storage.paused.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.TOKEN_MINT_END_TIMESTAMP`.
-    /// Returns the token mint end timestamp.
-    #[external("utility")]
-    unconstrained fn token_mint_end_timestamp() -> u64 {
-        self.storage.token_mint_end_timestamp.read()
-    }
-
-    // ---- config getters (utility) ----
-    #[external("utility")]
-    unconstrained fn get_world_config() -> WorldConfig {
-        self.storage.world_config.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_snark_constants() -> SnarkConstants {
-        self.storage.snark_constants.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_game_config_core() -> GameConfigCore {
-        self.storage.game_config_core.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_planet_level_thresholds() -> PlanetLevelThresholds {
-        self.storage.planet_level_thresholds.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_planet_type_weights_tier(tier: u8) -> PlanetTypeWeightsTier {
-        if tier == 0 {
-            self.storage.planet_type_weights_tier_0.read()
-        } else if tier == 1 {
-            self.storage.planet_type_weights_tier_1.read()
-        } else if tier == 2 {
-            self.storage.planet_type_weights_tier_2.read()
-        } else if tier == 3 {
-            self.storage.planet_type_weights_tier_3.read()
-        } else {
-            assert(false, "tier must be 0..=3");
-            self.storage.planet_type_weights_tier_0.read()
-        }
-    }
-
-    #[external("utility")]
-    unconstrained fn get_artifacts_config() -> ArtifactsConfig {
-        self.storage.artifacts_config.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_spaceships_config() -> SpaceshipsConfig {
-        self.storage.spaceships_config.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_space_junk_config() -> SpaceJunkConfig {
-        self.storage.space_junk_config.read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_capture_zones_config() -> CaptureZonesConfig {
-        self.storage.capture_zones_config.read()
-    }
-
-    // ---- defaults & upgrades getters (utility) ----
-    /// Noir port of Solidity `DFGetterFacet.planetDefaultStats`.
-    /// Returns the default stats for a given planet level.
-    #[external("utility")]
-    unconstrained fn get_planet_default_stats(level: u8) -> PlanetDefaultStats {
-        self.storage.planet_default_stats.at(level).read()
-    }
-
-    /// Key is `branch * 10 + level`, matching storage comment.
-    #[external("utility")]
-    unconstrained fn get_upgrade(key: u128) -> Upgrade {
-        self.storage.upgrades.at(key).read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_upgrade_by_branch_level(branch: u128, level: u128) -> Upgrade {
-        let key = branch * 10 + level;
-        self.storage.upgrades.at(key).read()
-    }
-
-    // ---- game state arrays getters (utility) ----
-    #[external("utility")]
-    unconstrained fn get_initialized_planet_count_by_level(level: u128) -> u128 {
-        self.storage.initialized_planet_count_by_level.at(level).read()
-    }
-
-    #[external("utility")]
-    unconstrained fn get_cumulative_rarity(index: u128) -> u128 {
-        self.storage.cumulative_rarities.at(index).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.planetLevelsCount`.
-    /// Returns the total number of planet levels configured.
-    #[external("utility")]
-    unconstrained fn get_planet_levels_count() -> u128 {
-        self.storage.planet_levels_count.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.worldRadius`.
-    /// Returns the current world radius.
-    #[external("utility")]
-    unconstrained fn world_radius() -> u128 {
-        self.storage.world_radius.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.planetEventsCount`.
-    /// Returns the total number of planet events.
-    #[external("utility")]
-    unconstrained fn planet_events_count() -> u128 {
-        self.storage.planet_events_count.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.planetIds`.
-    /// Returns planet ID at a given index.
-    #[external("utility")]
-    unconstrained fn get_planet_id(index: u128) -> Field {
-        self.storage.planet_ids.at(index).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.revealedPlanetIds`.
-    /// Returns revealed planet ID at a given index.
-    #[external("utility")]
-    unconstrained fn get_revealed_planet_id(index: u128) -> Field {
-        self.storage.revealed_planet_ids.at(index).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.playerIds`.
-    /// Returns player address at a given index in the player IDs list.
-    #[external("utility")]
-    unconstrained fn get_player_id(index: u128) -> AztecAddress {
-        self.storage.player_ids.at(index).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.planets`.
-    /// Returns full planet struct for a given location ID.
-    #[external("utility")]
-    unconstrained fn get_planet(location: Field) -> Planet {
-        self.storage.planets.at(location).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.revealedCoords`.
-    /// Noir port of Solidity `DFGetterFacet.getRevealedCoords`.
-    /// Returns revealed coordinates for a given location ID.
-    #[external("utility")]
-    unconstrained fn get_revealed_coords(location: Field) -> RevealedCoords {
-        self.storage.revealed_coords.at(location).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.artifactIdToPlanetId`.
-    /// Returns the planet ID (location) for a given artifact ID.
-    #[external("utility")]
-    unconstrained fn get_artifact_planet_id(artifact_id: Field) -> Field {
-        self.storage.artifact_id_to_planet_id.at(artifact_id).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.planetEvents`.
-    /// Returns the voyage ID for a given artifact ID.
-    #[external("utility")]
-    unconstrained fn get_artifact_voyage_id(artifact_id: Field) -> u128 {
-        self.storage.artifact_id_to_voyage_id.at(artifact_id).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.players`.
-    /// Returns player struct for a given address.
-    #[external("utility")]
-    unconstrained fn get_player(address: AztecAddress) -> Player {
-        self.storage.players.at(address).read()
-    }
-    
-    /// Noir port of Solidity `DFGetterFacet.planetArrivals`.
-    /// Noir port of Solidity `DFGetterFacet.getPlanetArrival`.
-    /// Returns arrival data for a given arrival/event ID.
-    #[external("utility")]
-    unconstrained fn get_planet_arrival(arrival_id: u128) -> ArrivalData {
-        self.storage.planet_arrivals.at(arrival_id).read()
-    }
-
-
-    /// Noir port of Solidity `DFGetterFacet.planetArtifacts`.
-    /// Returns a single artifact ID at a given index for a planet.
-    #[external("utility")]
-    unconstrained fn get_planet_artifact(planet_id: Field, index: u128) -> Field {
-        self.storage.planet_artifacts.at(planet_id).at(index).read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getNPlanets`.
-    /// Returns the number of initialized planet IDs tracked.
-    #[external("utility")]
-    unconstrained fn get_n_planets() -> u128 {
-        self.storage.planet_ids_count.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getNRevealedPlanets`.
-    /// Returns the number of revealed planet IDs.
-    #[external("utility")]
-    unconstrained fn get_n_revealed_planets() -> u128 {
-        self.storage.revealed_planet_ids_count.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getNPlayers`.
-    /// Returns the number of initialized players.
-    #[external("utility")]
-    unconstrained fn get_n_players() -> u128 {
-        self.storage.player_ids_count.read()
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getPlanetEventsCount`.
-    /// Returns the number of events for a given planet/location.
-    #[external("utility")]
-    unconstrained fn get_planet_events_count(location: Field) -> u128 {
-        self.storage.planet_events_count_by_location.at(location).read()
-    }
-    
-    /// Noir port of Solidity `DFGetterFacet.getPlanetEvent`.
-    /// Returns a single planet event metadata entry for a location and index.
-    #[external("utility")]
-    unconstrained fn get_planet_event(location: Field, index: u128) -> PlanetEventMetadata {
-        self.storage.planet_events.at(location).at(index).read()
-    }
-
-  
-
-
-    /// Noir port of Solidity `DFGetterFacet.getUpgrades`.
-    /// Returns the full [3][4] upgrades table: [branch][level].
-    #[external("utility")]
-    unconstrained fn get_upgrades() -> [[Upgrade; 4]; 3] {
-        // Branch 0 (Defense): keys 0..3
-        let branch0: [Upgrade; 4] = [
-            self.storage.upgrades.at(0).read(),
-            self.storage.upgrades.at(1).read(),
-            self.storage.upgrades.at(2).read(),
-            self.storage.upgrades.at(3).read(),
-        ];
-
-        // Branch 1 (Range): keys 10..13
-        let branch1: [Upgrade; 4] = [
-            self.storage.upgrades.at(10).read(),
-            self.storage.upgrades.at(11).read(),
-            self.storage.upgrades.at(12).read(),
-            self.storage.upgrades.at(13).read(),
-        ];
-
-        // Branch 2 (Speed): keys 20..23
-        let branch2: [Upgrade; 4] = [
-            self.storage.upgrades.at(20).read(),
-            self.storage.upgrades.at(21).read(),
-            self.storage.upgrades.at(22).read(),
-            self.storage.upgrades.at(23).read(),
-        ];
-
-        [branch0, branch1, branch2]
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getTypeWeights`.
-    /// Returns the full [4][10][5] planet type weights table.
-    #[external("utility")]
-    unconstrained fn get_type_weights() -> [[[u128; 5]; 10]; 4] {
-        let tier0: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_0.read();
-        let tier1: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_1.read();
-        let tier2: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_2.read();
-        let tier3: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_3.read();
-
-        [tier0.weights, tier1.weights, tier2.weights, tier3.weights]
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getPlayerSpaceJunkLimit`.
-    /// Returns the space junk limit for a given player.
-    #[external("utility")]
-    unconstrained fn get_player_space_junk_limit(player_id: AztecAddress) -> u128 {
-        let player: Player = self.storage.players.at(player_id).read();
-        player.space_junk_limit
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getArtifactPointValues`.
-    /// Returns the artifact point values array [6].
-    #[external("utility")]
-    unconstrained fn get_artifact_point_values() -> [u128; 6] {
-        let artifacts_config = self.storage.artifacts_config.read();
-        artifacts_config.artifact_point_values
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getRevealCooldown`.
-    /// Returns the location reveal cooldown in seconds.
-    #[external("utility")]
-    unconstrained fn get_reveal_cooldown() -> u64 {
-        let world_config = self.storage.world_config.read();
-        world_config.location_reveal_cooldown_s
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getDefaultStats`.
-    /// Returns the full array of default planet stats for levels 0..9.
-    #[external("utility")]
-    unconstrained fn get_default_stats() -> [PlanetDefaultStats; 10] {
-        [
-            self.storage.planet_default_stats.at(0).read(),
-            self.storage.planet_default_stats.at(1).read(),
-            self.storage.planet_default_stats.at(2).read(),
-            self.storage.planet_default_stats.at(3).read(),
-            self.storage.planet_default_stats.at(4).read(),
-            self.storage.planet_default_stats.at(5).read(),
-            self.storage.planet_default_stats.at(6).read(),
-            self.storage.planet_default_stats.at(7).read(),
-            self.storage.planet_default_stats.at(8).read(),
-            self.storage.planet_default_stats.at(9).read(),
-        ]
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.getCumulativeRarities`.
-    /// Returns the full cumulative rarities array for levels 0..9.
-    #[external("utility")]
-    unconstrained fn get_cumulative_rarities() -> [u128; 10] {
-        [
-            self.storage.cumulative_rarities.at(0).read(),
-            self.storage.cumulative_rarities.at(1).read(),
-            self.storage.cumulative_rarities.at(2).read(),
-            self.storage.cumulative_rarities.at(3).read(),
-            self.storage.cumulative_rarities.at(4).read(),
-            self.storage.cumulative_rarities.at(5).read(),
-            self.storage.cumulative_rarities.at(6).read(),
-            self.storage.cumulative_rarities.at(7).read(),
-            self.storage.cumulative_rarities.at(8).read(),
-            self.storage.cumulative_rarities.at(9).read(),
-        ]
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetIds`.
-    /// Returns up to `MAX_BULK_PLANETS` planet IDs starting from `start_idx`.
-    /// If `end_idx - start_idx < MAX_BULK_PLANETS`, the remaining entries are left as 0.
-    #[external("utility")]
-    unconstrained fn bulk_get_planet_ids(start_idx: u128, end_idx: u128) -> [Field; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total: u128 = self.storage.planet_ids_count.read();
-        assert(end_idx <= total, "end_idx out of bounds");
-
-        let max_len: u128 = 1000;
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len <= max_len, "requested range too large");
-
-        let mut ret: [Field; 1000] = [0 as Field; 1000];
-        let mut i: u128 = 0;
-        while i < requested_len {
-            let idx = start_idx + i;
-            let planet_id = self.storage.planet_ids.at(idx).read();
-            ret[i as u32] = planet_id;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetRevealedPlanetIds`.
-    /// Returns up to `MAX_BULK_PLANETS` revealed planet IDs starting from `start_idx`.
-    /// If `end_idx - start_idx < MAX_BULK_PLANETS`, the remaining entries are left as 0.
-    #[external("utility")]
-    unconstrained fn bulk_get_revealed_planet_ids(start_idx: u128, end_idx: u128) -> [Field; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total: u128 = self.storage.revealed_planet_ids_count.read();
-        assert(end_idx <= total, "end_idx out of bounds");
-
-        let max_len: u128 = 1000;
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len <= max_len, "requested range too large");
-
-        let mut ret: [Field; 1000] = [0 as Field; 1000];
-        let mut i: u128 = 0;
-        while i < requested_len {
-            let idx = start_idx + i;
-            let planet_id = self.storage.revealed_planet_ids.at(idx).read();
-            ret[i as u32] = planet_id;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetsByIds`.
-    /// Takes up to 1000 planet location IDs and returns up to 1000 Planet structs.
-    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
-    #[external("utility")]
-    unconstrained fn bulk_get_planets_by_ids(ids: [Field; 1000], count: u32) -> [Planet; 1000] {
-        assert(count > 0, "count must be > 0");
-        assert((count as u128) <= 1000, "count too large");
-
-        // Initialize array with the first planet, then overwrite up to `count`.
-        let first_id: Field = ids[0];
-        let first_planet: Planet = self.storage.planets.at(first_id).read();
-        let mut ret: [Planet; 1000] = [first_planet; 1000];
-
-        let mut i: u32 = 0;
-        while i < count {
-            let planet_id = ids[i];
-            let planet = self.storage.planets.at(planet_id).read();
-            ret[i] = planet;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetRevealedCoordsByIds`.
-    /// Takes up to 1000 planet location IDs and returns up to 1000 RevealedCoords structs.
-    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
-    #[external("utility")]
-    unconstrained fn bulk_get_revealed_coords_by_ids(ids: [Field; 1000], count: u32) -> [RevealedCoords; 1000] {
-        assert(count > 0, "count must be > 0");
-        assert((count as u128) <= 1000, "count too large");
-
-        let first_id: Field = ids[0];
-        let first_coords: RevealedCoords = self.storage.revealed_coords.at(first_id).read();
-        let mut ret: [RevealedCoords; 1000] = [first_coords; 1000];
-
-        let mut i: u32 = 0;
-        while i < count {
-            let planet_id = ids[i];
-            let coords = self.storage.revealed_coords.at(planet_id).read();
-            ret[i] = coords;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetArrivalsByIds`.
-    /// NOTE: This Noir version takes an array of arrival IDs (not planet IDs)
-    /// and returns the corresponding ArrivalData entries.
-    /// - `ids`: up to 1000 arrival IDs
-    /// - `count`: number of valid entries in `ids` (must be <= 1000)
-    #[external("utility")]
-    unconstrained fn bulk_get_planet_arrivals_by_ids(ids: [u128; 1000], count: u32) -> [ArrivalData; 1000] {
-        assert(count > 0, "count must be > 0");
-        assert((count as u128) <= 1000, "count too large");
-
-        let first_id: u128 = ids[0];
-        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_id).read();
-        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
-
-        let mut i: u32 = 0;
-        while i < count {
-            let arrival_id = ids[i];
-            let arrival = self.storage.planet_arrivals.at(arrival_id).read();
-            ret[i] = arrival;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanetsDataByIds`.
-    /// Takes up to 1000 planet location IDs and returns up to 1000 PlanetData structs.
-    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
-    #[external("utility")]
-    unconstrained fn bulk_get_planets_data_by_ids(ids: [Field; 1000], count: u32) -> [PlanetData; 1000] {
-        assert(count > 0, "count must be > 0");
-        assert((count as u128) <= 1000, "count too large");
-
-        let first_id: Field = ids[0];
-        let first_planet: Planet = self.storage.planets.at(first_id).read();
-        let first_coords: RevealedCoords = self.storage.revealed_coords.at(first_id).read();
-        let first_data: PlanetData = PlanetData {
-            planet: first_planet,
-            revealed_coords: first_coords,
-        };
-        let mut ret: [PlanetData; 1000] = [first_data; 1000];
-
-        let mut i: u32 = 0;
-        while i < count {
-            let planet_id = ids[i];
-            let planet: Planet = self.storage.planets.at(planet_id).read();
-            let coords: RevealedCoords = self.storage.revealed_coords.at(planet_id).read();
-            let data: PlanetData = PlanetData {
-                planet,
-                revealed_coords: coords,
-            };
-            ret[i] = data;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetVoyagesByIds`.
-    /// Takes up to 1000 voyage/arrival IDs and returns up to 1000 ArrivalData structs.
-    /// `count` specifies how many entries in `ids` are valid; remaining entries are ignored.
-    #[external("utility")]
-    unconstrained fn bulk_get_voyages_by_ids(ids: [u128; 1000], count: u32) -> [ArrivalData; 1000] {
-        assert(count > 0, "count must be > 0");
-        assert((count as u128) <= 1000, "count too large");
-
-        let first_id: u128 = ids[0];
-        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_id).read();
-        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
-
-        let mut i: u32 = 0;
-        while i < count {
-            let arrival_id = ids[i];
-            let arrival = self.storage.planet_arrivals.at(arrival_id).read();
-            ret[i] = arrival;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlanets`.
-    /// Returns up to 1000 Planet structs corresponding to planetIds[start_idx..end_idx).
-    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first planet.
-    #[external("utility")]
-    unconstrained fn bulk_get_planets(start_idx: u128, end_idx: u128) -> [Planet; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total: u128 = self.storage.planet_ids_count.read();
-        assert(end_idx <= total, "end_idx out of bounds");
-
-        let max_len: u128 = 1000;
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len <= max_len, "requested range too large");
-
-        // Initialize with the first planet in the range
-        let first_idx: u128 = start_idx;
-        let first_planet_id: Field = self.storage.planet_ids.at(first_idx).read();
-        let first_planet: Planet = self.storage.planets.at(first_planet_id).read();
-        let mut ret: [Planet; 1000] = [first_planet; 1000];
-
-        let mut i: u128 = 0;
-        while i < requested_len {
-            let idx = start_idx + i;
-            let planet_id = self.storage.planet_ids.at(idx).read();
-            let planet: Planet = self.storage.planets.at(planet_id).read();
-            ret[i as u32] = planet;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlayerIds`.
-    /// Returns up to 1000 player addresses corresponding to playerIds[start_idx..end_idx).
-    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first player.
-    #[external("utility")]
-    unconstrained fn bulk_get_player_ids(start_idx: u128, end_idx: u128) -> [AztecAddress; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total: u128 = self.storage.player_ids_count.read();
-        assert(end_idx <= total, "end_idx out of bounds");
-
-        let max_len: u128 = 1000;
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len <= max_len, "requested range too large");
-
-        // Initialize with the first player in the range
-        let first_idx: u128 = start_idx;
-        let first_player: AztecAddress = self.storage.player_ids.at(first_idx).read();
-        let mut ret: [AztecAddress; 1000] = [first_player; 1000];
-
-        let mut i: u128 = 0;
-        while i < requested_len {
-            let idx = start_idx + i;
-            let player_addr: AztecAddress = self.storage.player_ids.at(idx).read();
-            ret[i as u32] = player_addr;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.bulkGetPlayers`.
-    /// Returns up to 1000 Player structs corresponding to players[playerIds[start_idx..end_idx)].
-    /// If `end_idx - start_idx < 1000`, remaining entries are left as copies of the first player struct.
-    #[external("utility")]
-    unconstrained fn bulk_get_players(start_idx: u128, end_idx: u128) -> [Player; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total: u128 = self.storage.player_ids_count.read();
-        assert(end_idx <= total, "end_idx out of bounds");
-
-        let max_len: u128 = 1000;
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len <= max_len, "requested range too large");
-
-        // Initialize with the first player struct in the range
-        let first_idx: u128 = start_idx;
-        let first_player_addr: AztecAddress = self.storage.player_ids.at(first_idx).read();
-        let first_player_struct: Player = self.storage.players.at(first_player_addr).read();
-        let mut ret: [Player; 1000] = [first_player_struct; 1000];
-
-        let mut i: u128 = 0;
-        while i < requested_len {
-            let idx = start_idx + i;
-            let player_addr: AztecAddress = self.storage.player_ids.at(idx).read();
-            let player_struct: Player = self.storage.players.at(player_addr).read();
-            ret[i as u32] = player_struct;
-            i += 1;
-        }
-
-        ret
-    }
-
-    /// Approximate Noir port of Solidity `DFGetterFacet.getPlanetArrivals`.
-    /// For a given location, returns up to 1000 ArrivalData entries whose type is ARRIVAL.
-    /// Reverts if the location has no ARRIVAL events.
-    #[external("utility")]
-    unconstrained fn get_planet_arrivals(location: Field) -> [ArrivalData; 1000] {
-        let events_count: u128 = self.storage.planet_events_count_by_location.at(location).read();
-
-        // First pass: count ARRIVAL events (PlanetEventType::Arrival = 0).
-        let mut arrival_count: u128 = 0;
-        let mut i: u128 = 0;
-        while i < events_count {
-            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(i).read();
-            if event.event_type == 0 {
-                arrival_count += 1;
-            }
-            i += 1;
-        }
-
-        // Require at least one arrival to avoid undefined dummy initialization.
-        assert(arrival_count > 0, "no arrivals for this planet");
-
-        let max_len: u128 = 1000;
-        assert(arrival_count <= max_len, "too many arrivals for this planet");
-
-        // Find the first ARRIVAL event to seed the fixed-size array.
-        let mut first_index: u128 = 0;
-        let mut found_first: bool = false;
-        let mut j: u128 = 0;
-        while j < events_count {
-            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(j).read();
-            if event.event_type == 0 {
-                if !found_first {
-                    first_index = j;
-                    found_first = true;
-                }
-            }
-            j += 1;
-        }
-
-        // Initialize array with the first arrival, then overwrite up to arrival_count entries.
-        let first_event: PlanetEventMetadata = self.storage.planet_events.at(location).at(first_index).read();
-        let first_arrival: ArrivalData = self.storage.planet_arrivals.at(first_event.id).read();
-        let mut ret: [ArrivalData; 1000] = [first_arrival; 1000];
-
-        let mut out_idx: u128 = 0;
-        let mut k: u128 = 0;
-        while k < events_count {
-            let event: PlanetEventMetadata = self.storage.planet_events.at(location).at(k).read();
-            if event.event_type == 0 {
-                let arrival: ArrivalData = self.storage.planet_arrivals.at(event.id).read();
-                ret[out_idx as u32] = arrival;
-                out_idx += 1;
-            }
-            k += 1;
-        }
-
-        ret
-    }
-
-    /// Noir port of Solidity `DFGetterFacet.bulkGetPlanetArrivals`.
-    /// Solidity logic is equivalent to:
-    /// - for i in [startIdx, endIdx):
-    ///   - let planetId = planetIds[i];
-    ///   - set ret[i - startIdx] = getPlanetArrivals(planetId);
-    ///
-    /// Noir cannot return a dynamic 2D array `ArrivalData[][]`, so we instead
-    /// return a fixed-size `[[ArrivalData; 1000]; 1000]`:
-    /// - outer index row = i - start_idx, 0 <= row < (end_idx - start_idx) <= 1000
-    /// - inner array contains all ARRIVAL events for that planet (up to 1000),
-    ///   in the same order as `get_planet_arrivals`
-    /// - unused rows keep their seeded default value
-    #[external("utility")]
-    unconstrained fn bulk_get_planet_arrivals(
-        start_idx: u128,
-        end_idx: u128,
-    ) -> [[ArrivalData; 1000]; 1000] {
-        assert(end_idx >= start_idx, "end_idx must be >= start_idx");
-
-        let total_planets: u128 = self.storage.planet_ids_count.read();
-        assert(end_idx <= total_planets, "end_idx out of bounds");
-
-        let requested_len: u128 = end_idx - start_idx;
-        assert(requested_len > 0, "empty planet range");
-        assert(requested_len <= 1000, "requested range too large");
-
-        // To avoid calling `self.get_planet_arrivals` (Aztec has restrictions on
-        // nested unconstrained external calls), we inline the per-planet logic here.
-        //
-        // First, choose a seed row for the whole 2D array: use the first ARRIVAL
-        // event of the planet at `start_idx`.
-        let first_planet_id: Field = self.storage.planet_ids.at(start_idx).read();
-        let first_events_count: u128 =
-            self.storage.planet_events_count_by_location.at(first_planet_id).read();
-
-        // Count ARRIVAL events for this planet and find the index of the first ARRIVAL.
-        let mut first_arrival_count: u128 = 0;
-        let mut first_found_index: u128 = 0;
-        let mut first_found: bool = false;
-
-        let mut i: u128 = 0;
-        while i < first_events_count {
-            let ev: PlanetEventMetadata =
-                self.storage.planet_events.at(first_planet_id).at(i).read();
-            if ev.event_type == 0 {
-                first_arrival_count += 1;
-                if !first_found {
-                    first_found_index = i;
-                    first_found = true;
-                }
-            }
-            i += 1;
-        }
-
-        assert(first_arrival_count > 0, "no arrivals for first planet in range");
-        assert(first_arrival_count <= 1000, "too many arrivals for first planet");
-
-        let first_event: PlanetEventMetadata =
-            self.storage.planet_events.at(first_planet_id).at(first_found_index).read();
-        let first_arrival: ArrivalData =
-            self.storage.planet_arrivals.at(first_event.id).read();
-        let seed_row: [ArrivalData; 1000] = [first_arrival; 1000];
-        let mut ret: [[ArrivalData; 1000]; 1000] = [seed_row; 1000];
-
-        // Then, for each planet in the range, inline its own `getPlanetArrivals` logic.
-        let mut offset: u128 = 0;
-        while offset < requested_len {
-            let idx: u128 = start_idx + offset;
-            let planet_id: Field = self.storage.planet_ids.at(idx).read();
-
-            let events_count: u128 =
-                self.storage.planet_events_count_by_location.at(planet_id).read();
-
-            // Count ARRIVAL events for this planet and find the index of the first ARRIVAL.
-            let mut arrival_count: u128 = 0;
-            let mut first_index: u128 = 0;
-            let mut found_first: bool = false;
-
-            let mut j: u128 = 0;
-            while j < events_count {
-                let event: PlanetEventMetadata =
-                    self.storage.planet_events.at(planet_id).at(j).read();
-                if event.event_type == 0 {
-                    arrival_count += 1;
-                    if !found_first {
-                        first_index = j;
-                        found_first = true;
-                    }
-                }
-                j += 1;
-            }
-
-            // If this planet has no ARRIVAL events, keep the seeded row
-            // (this differs from Solidity, which would return an empty array).
-            if arrival_count == 0 {
-                offset += 1;
-                continue;
-            }
-
-            assert(arrival_count <= 1000, "too many arrivals for planet");
-
-            // Initialise the row for this planet, then fill it with ARRIVAL events.
-            let first_ev: PlanetEventMetadata =
-                self.storage.planet_events.at(planet_id).at(first_index).read();
-            let first_arr: ArrivalData =
-                self.storage.planet_arrivals.at(first_ev.id).read();
-            let mut row: [ArrivalData; 1000] = [first_arr; 1000];
-
-            let mut out_idx: u128 = 0;
-            let mut k: u128 = 0;
-            while k < events_count {
-                let event: PlanetEventMetadata =
-                    self.storage.planet_events.at(planet_id).at(k).read();
-                if event.event_type == 0 {
-                    let arrival: ArrivalData =
-                        self.storage.planet_arrivals.at(event.id).read();
-                    row[out_idx as u32] = arrival;
-                    out_idx += 1;
-                }
-                k += 1;
-            }
-
-            ret[offset as u32] = row;
-            offset += 1;
-        }
-
-        ret
-    }
-
     // ========== LibGameUtils ==========
-
-    /// Noir port of Solidity `LibGameUtils._locationIdValid`.
-    /// Returns true iff `loc < ((BN254_PRIME - 1) / planet_rarity)`.
-    ///
-    /// This bounds `loc` so that `loc * planet_rarity` cannot overflow the BN254 field modulus.
-    /// 
-    /// Note: We use PRIME_MINUS_ONE (the maximum Field value) instead of PRIME since PRIME
-    /// itself cannot be represented as a Field value. This gives a slightly more conservative bound.
-    #[internal("public")]
-    fn location_id_valid(loc: Field) -> bool {
-        let rarity: u128 = self.storage.game_config_core.read().planet_rarity;
-        assert(rarity != 0, "planet_rarity must be nonzero");
-
-        // BN254 field modulus - 1 (maximum Field value):
-        // 21888242871839275222246405745257275088548364400416034343698204186575808495616
-        let PRIME_MINUS_ONE: Field = 21888242871839275222246405745257275088548364400416034343698204186575808495616;
-        
-        // Compute (PRIME - 1) / rarity, which approximates PRIME / rarity
-        // Since (PRIME - 1) / rarity < PRIME - 1, Field division gives the correct integer result
-        let max_valid_loc: Field = PRIME_MINUS_ONE / (rarity as Field);
-        
-        // Use lt method to compare Field values
-        loc.lt(max_valid_loc)
-    }
-
-    /// Noir port of Solidity `LibGameUtils.revertIfBadSnarkPerlinFlags`.
-    /// Validates that the SNARK perlin flags match the configured constants.
-    /// 
-    /// This function ensures that SNARK proofs use the correct keys and parameters
-    /// for this universe. Without this check, a player could create a valid SNARK
-    /// proof with wrong keys, creating an invalid planet.
-    /// 
-    /// # Arguments
-    /// - `perlin_flags`: Array of 5 flags [planethash_key, spacetype/biomebase_key, perlin_length_scale, mirror_x, mirror_y]
-    /// - `checking_biome`: If true, checks biomebase_key instead of spacetype_key
-    /// 
-    /// # Returns
-    /// `true` if all flags match the configured constants
-    #[internal("public")]
-    fn revert_if_bad_snark_perlin_flags(
-        planethash_key: u128, 
-        spacetype_key: u128,
-        biomebase_key: u128,
-        perlin_mirror_x: bool,
-        perlin_mirror_y: bool,
-        perlin_length_scale: u128,
-        checking_biome: bool
-    ) -> bool {
-
-        let snark_constants = self.storage.snark_constants.read();
-        assert(planethash_key == snark_constants.planethash_key, "bad planethash mimc key");
-        if( checking_biome ) {
-            assert(spacetype_key == snark_constants.spacetype_key, "bad spacetype mimc key");
-        } else {
-            assert(biomebase_key == snark_constants.biomebase_key, "bad biomebase mimc key");
-        }
-        assert(perlin_length_scale == snark_constants.perlin_length_scale, "bad perlin length scale");
-        assert(perlin_mirror_x == snark_constants.perlin_mirror_x, "bad perlin mirror x");
-        assert(perlin_mirror_y == snark_constants.perlin_mirror_y, "bad perlin mirror y");
-        
-        true
-    }
-
-    /// Noir port of Solidity `LibGameUtils.spaceTypeFromPerlin`.
-    /// Returns SpaceType as u8 (0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace).
-    /// `perlin` here is a u8 value in [0, 255].
-    #[internal("public")]
-    fn space_type_from_perlin(perlin: u8) -> u8 {
-        let cfg = self.storage.game_config_core.read();
-        let perlin_u128: u128 = perlin as u128;
-        if perlin_u128 >= cfg.perlin_threshold_3 {
-            3 // SpaceType::DeadSpace
-        } else if perlin_u128 >= cfg.perlin_threshold_2 {
-            2 // SpaceType::DeepSpace
-        } else if perlin_u128 >= cfg.perlin_threshold_1 {
-            1 // SpaceType::Space
-        } else {
-            0 // SpaceType::Nebula
-        }
-    }
-
     /// Noir port of Solidity `LibGameUtils._getPlanetLevelTypeAndSpaceType`.
     /// Returns `(level, planet_type, space_type)` where both planet_type and space_type are u8.
     /// planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
@@ -1317,14 +154,15 @@ pub contract Main {
         location_id: Field,
         perlin: u8,
     ) -> (u8, u8, u8) {
-        let space_type: u8 = self.internal.space_type_from_perlin(perlin);
+        let game_config_core: GameConfigCore = self.view(Config::at(self.internal.get_config_address()).get_game_config_core_public());
+        let space_type: u8 = space_type_from_perlin(perlin, game_config_core);
 
         // Solidity: bytes b = abi.encodePacked(uint256(location_id));
         // and then planetLevelUInt = byte[4..=6] interpreted as big-endian.
         let planet_level_uint: u128 = calculate_byte_uint_from_location_id(location_id, 4, 6);
 
         // Reverse-iterate thresholds (9..0) and pick first where planet_level_uint < threshold[i].
-        let thresholds = self.storage.planet_level_thresholds.read().thresholds;
+        let thresholds = self.view(Config::at(self.internal.get_config_address()).get_planet_level_thresholds_public()).thresholds;
         let mut level: u8 = 0;
         let mut found_level: bool = false;
         for j in 0..10 {
@@ -1352,21 +190,22 @@ pub contract Main {
         }
 
         // Clip to <= MAX_NATURAL_PLANET_LEVEL.
-        let max_level: u8 = self.storage.game_config_core.read().max_natural_planet_level as u8;
+        let max_level: u8 = self.view(Config::at(self.internal.get_config_address()).get_game_config_core_public()).max_natural_planet_level as u8;
         if level > max_level {
             level = max_level;
         }
 
         // Get weights row for this (space_type, level).
         // space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
+        let config_addr = self.internal.get_config_address();
         let tier: PlanetTypeWeightsTier = if space_type == 0 { // Nebula
-            self.storage.planet_type_weights_tier_0.read()
+            self.view(Config::at(config_addr).get_planet_type_weights_tier_public(0))
         } else if space_type == 1 { // Space
-            self.storage.planet_type_weights_tier_1.read()
+            self.view(Config::at(config_addr).get_planet_type_weights_tier_public(1))
         } else if space_type == 2 { // DeepSpace
-            self.storage.planet_type_weights_tier_2.read()
+            self.view(Config::at(config_addr).get_planet_type_weights_tier_public(2))
         } else { // DeadSpace
-            self.storage.planet_type_weights_tier_3.read()
+            self.view(Config::at(config_addr).get_planet_type_weights_tier_public(3))
         };
         let level_idx: u32 = level as u32;
         let weights: [u128; 5] = tier.weights[level_idx];
@@ -1413,10 +252,12 @@ pub contract Main {
     #[internal("public")]
     fn get_radius() -> u128 {
         let n_players: u128 = self.storage.player_ids_count.read();
-        let world_radius_min: u128 = self.storage.world_config.read().world_radius_min;
+        let world_radius_min: u128 = self.view(Config::at(self.internal.get_config_address()).get_world_config_public()).world_radius_min;
         let initialized_count_level_4: u128 = self.storage.initialized_planet_count_by_level.at(4).read();
         let target4: u128 = initialized_count_level_4 + 20 * n_players;
-        let cumulative_rarity_4: u128 = self.storage.cumulative_rarities.at(4).read();
+
+        let config_addr = self.internal.get_config_address();
+        let cumulative_rarity_4 = self.view(Config::at(config_addr).get_cumulative_rarity_public(4));
         let target_radius_squared_4: u128 = (target4 * cumulative_rarity_4 * 100) / 314;
         
         // Simple approximation: use a fixed scaling factor to approximate sqrt
@@ -1466,7 +307,7 @@ pub contract Main {
         if planet.is_home_planet {
             0
         } else {
-            let space_junk_config = self.storage.space_junk_config.read();
+            let space_junk_config: SpaceJunkConfig = self.view(Config::at(self.internal.get_config_address()).get_space_junk_config_public());
             space_junk_config.planet_level_junk[planet.planet_level as u32]
         }
     }
@@ -1545,7 +386,7 @@ pub contract Main {
     /// Updates the world radius if it's not locked.
     #[internal("public")]
     fn update_world_radius() {
-        let world_config = self.storage.world_config.read();
+        let world_config: WorldConfig = self.view(Config::at(self.internal.get_config_address()).get_world_config_public());
         if !world_config.world_radius_locked {
             let new_radius = self.internal.get_radius();
             self.storage.world_radius.write(new_radius);
@@ -1564,8 +405,9 @@ pub contract Main {
         planet_type: u8,
         space_type: u8,
     ) -> Planet {
-        let planet_default_stats: PlanetDefaultStats = self.storage.planet_default_stats.at(level as u8).read();
-        let world_config = self.storage.world_config.read();
+        let config_addr = self.internal.get_config_address();
+        let planet_default_stats: PlanetDefaultStats = self.view(Config::at(config_addr).get_planet_default_stats_public(level as u8));
+        let world_config: WorldConfig = self.view(Config::at(config_addr).get_world_config_public());
         let time_factor_hundredths: u128 = world_config.time_factor_hundredths;
 
         // space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
@@ -1743,7 +585,7 @@ pub contract Main {
         // Check cooldown if requested
         if check_timestamp {
             let player: Player = self.storage.players.at(sender).read();
-            let world_config = self.storage.world_config.read();
+            let world_config: WorldConfig = self.view(Config::at(self.internal.get_config_address()).get_world_config_public());
             let cooldown = world_config.location_reveal_cooldown_s;
             assert(
                 timestamp > player.last_reveal_timestamp + cooldown,
@@ -1794,7 +636,7 @@ pub contract Main {
             assert(planet_type == 0, "Can only initialize on regular planets"); // PlanetType::Planet = 0
         }
 
-        let time_factor_hundredths: u128 = self.storage.world_config.read().time_factor_hundredths;
+        let time_factor_hundredths: u128 = self.view(Config::at(self.internal.get_config_address()).get_world_config_public()).time_factor_hundredths;
 
         DFPInitPlanetArgs {
             location,
@@ -1832,7 +674,8 @@ pub contract Main {
         timestamp: u64,
     ) {
         // Validate location
-        assert(self.internal.location_id_valid(location), "Not a valid planet location");
+        let max_location_id: Field = self.view(Config::at(self.internal.get_config_address()).get_game_config_core_public()).max_location_id;
+        assert(location_id_valid(location, max_location_id), "Not a valid planet location");
 
         // Get default initialization arguments
         let init_args = self.internal.get_default_init_planet_args(location, perlin, is_home_planet);
@@ -1958,8 +801,9 @@ pub contract Main {
         let world_radius: u128 = self.storage.world_radius.read();
         assert(radius <= world_radius, "Init radius is bigger than the current world radius");
 
-        let game_config: GameConfigCore = self.storage.game_config_core.read();
-        let world_config: WorldConfig = self.storage.world_config.read();
+        let config_addr = self.internal.get_config_address();
+        let game_config: GameConfigCore = self.view(Config::at(config_addr).get_game_config_core_public());
+        let world_config: WorldConfig = self.view(Config::at(config_addr).get_world_config_public());
 
         if world_config.spawn_rim_area != 0 {
             let radius_squared_times_pi: u128 = (radius * radius * 314) / 100;
@@ -2168,7 +1012,7 @@ pub contract Main {
     /// Pauses the game. Only admin can call this.
     #[external("public")]
     fn pause() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         assert(!self.storage.paused.read(), "Game is already paused");
         self.storage.paused.write(true);
         self.emit(PauseStateChanged { paused: true });
@@ -2178,7 +1022,7 @@ pub contract Main {
     /// Unpauses the game. Only admin can call this.
     #[external("public")]
     fn unpause() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         assert(self.storage.paused.read(), "Game is already unpaused");
         self.storage.paused.write(false);
         self.emit(PauseStateChanged { paused: false });
@@ -2189,7 +1033,7 @@ pub contract Main {
     /// Only works for initialized planets.
     #[external("public")]
     fn set_owner(planet_id: Field, new_owner: AztecAddress) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         let mut planet: Planet = self.storage.planets.at(planet_id).read();
         assert(planet.is_initialized, "Planet is not initialized");
         planet.owner = new_owner;
@@ -2201,7 +1045,7 @@ pub contract Main {
     /// Deducts score from a player. Only admin can call this.
     #[external("public")]
     fn deduct_score(player_address: AztecAddress, amount: u128) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         let mut player: Player = self.storage.players.at(player_address).read();
         assert(player.is_initialized, "player does not exist");
         assert(amount <= player.score, "tried to deduct much score");
@@ -2213,7 +1057,7 @@ pub contract Main {
     /// Adds score to a player. Only admin can call this.
     #[external("public")]
     fn add_score(player_address: AztecAddress, amount: u128) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         let mut player: Player = self.storage.players.at(player_address).read();
         assert(player.is_initialized, "player does not exist");
         player.score += amount;
@@ -2224,10 +1068,11 @@ pub contract Main {
     /// Changes the minimum world radius constant and updates the world radius.
     #[external("public")]
     fn change_world_radius_min(new_constant: u128) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let mut world_config = self.storage.world_config.read();
+        self.internal.assert_admin();
+        let config_addr = self.internal.get_config_address();
+        let mut world_config: WorldConfig = self.view(Config::at(config_addr).get_world_config_public());
         world_config.world_radius_min = new_constant;
-        self.storage.world_config.write(world_config);
+        self.call(Config::at(config_addr).set_world_config(world_config));
         self.internal.update_world_radius();
     }
 
@@ -2235,7 +1080,7 @@ pub contract Main {
     /// Sets the world radius directly. Only admin can call this.
     #[external("public")]
     fn admin_set_world_radius(new_radius: u128) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         self.storage.world_radius.write(new_radius);
     }
 
@@ -2243,17 +1088,18 @@ pub contract Main {
     /// Changes the location reveal cooldown. Only admin can call this.
     #[external("public")]
     fn change_location_reveal_cooldown(new_cooldown: u64) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let mut world_config = self.storage.world_config.read();
+        self.internal.assert_admin();
+        let config_addr = self.internal.get_config_address();
+        let mut world_config: WorldConfig = self.view(Config::at(config_addr).get_world_config_public());
         world_config.location_reveal_cooldown_s = new_cooldown;
-        self.storage.world_config.write(world_config);
+        self.call(Config::at(config_addr).set_world_config(world_config));
     }
 
     /// Noir port of Solidity `DFAdminFacet.setTokenMintEndTime`.
     /// Sets the token mint end timestamp. Only admin can call this.
     #[external("public")]
     fn set_token_mint_end_time(new_token_mint_end_time: u64) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         self.storage.token_mint_end_timestamp.write(new_token_mint_end_time);
     }
 
@@ -2261,15 +1107,18 @@ pub contract Main {
     /// Creates a planet with the given arguments. Only admin can call this.
     #[external("public")]
     fn create_planet(args: AdminCreatePlanetArgs) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let world_config = self.storage.world_config.read();
+        self.internal.assert_admin();
+        let world_config: WorldConfig = self.view(Config::at(self.internal.get_config_address()).get_world_config_public());
         assert(world_config.admin_can_add_planets, "admin can no longer add planets");
         
         if args.require_valid_location_id {
-            assert(self.internal.location_id_valid(args.location), "Not a valid planet location");
+            let max_location_id: Field = self.view(Config::at(self.internal.get_config_address()).get_game_config_core_public()).max_location_id;
+            assert(location_id_valid(args.location, max_location_id), "Not a valid planet location");
         }
-        
-        let space_type = self.internal.space_type_from_perlin(args.perlin);
+
+
+        let game_config_core: GameConfigCore = self.view(Config::at(self.internal.get_config_address()).get_game_config_core_public());
+        let space_type = space_type_from_perlin(args.perlin, game_config_core);
         let time_factor_hundredths = world_config.time_factor_hundredths;
         
         let init_args = DFPInitPlanetArgs {
@@ -2302,7 +1151,7 @@ pub contract Main {
     /// Initializes a planet with defaults. Only admin can call this.
     #[external("public")]
     fn admin_initialize_planet(location_id: Field, perlin: u8) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        self.internal.assert_admin();
         let planet: Planet = self.storage.planets.at(location_id).read();
         assert(!planet.is_initialized, "planet is already initialized");
         
@@ -2315,10 +1164,11 @@ pub contract Main {
     /// Sets whether planet transfer is enabled. Only admin can call this.
     #[external("public")]
     fn set_planet_transfer_enabled(enabled: bool) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        let mut world_config = self.storage.world_config.read();
+        self.internal.assert_admin();
+        let config_addr = self.internal.get_config_address();
+        let mut world_config: WorldConfig = self.view(Config::at(config_addr).get_world_config_public());
         world_config.planet_transfer_enabled = enabled;
-        self.storage.world_config.write(world_config);
+        self.call(Config::at(config_addr).set_world_config(world_config));
     }
 
     /// Noir port of Solidity `DFAdminFacet.safeSetOwner`.
@@ -2394,20 +1244,21 @@ pub contract Main {
         perlin_mirror_x: bool, 
         perlin_mirror_y: bool
     ) {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
-        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+        self.internal.assert_admin();
+        assert(disable_zk_checks == self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public()).disable_zk_checks, "disable_zk_checks mismatch");
         
         let planet = self.storage.planets.at(planet_id).read();
         if !planet.is_initialized {
-            // revert_if_bad_snark_perlin_flags expects: planethash_key, spacetype_key, biomebase_key, mirror_x, mirror_y, scale, checking_biome
-            let _ = self.internal.revert_if_bad_snark_perlin_flags(
+            let snark_constants: SnarkConstants = self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public());
+            let _ = revert_if_bad_snark_perlin_flags(
                 planethash_key,
                 spacetype_key,
                 biomebase_key,
                 perlin_mirror_x,
                 perlin_mirror_y,
                 perlin_length_scale,
-                false
+                false,
+                snark_constants
             );      
     
             self.internal.initialize_planet_with_defaults(
@@ -2466,7 +1317,7 @@ pub contract Main {
         player: AztecAddress,
         loc: Field,
         branch: u128,
-        new_level: u128,
+        new_level: u8,
     }
 
     /// Noir port of Solidity `DFCoreFacet.refreshPlanet`.
@@ -2515,7 +1366,7 @@ pub contract Main {
         assert(!self.storage.paused.read(), "Game is paused");
 
         // Verify proof: coordinates hash to location_id and perlin is correct
-        let snark_constants = self.storage.snark_constants.read();
+        let snark_constants: SnarkConstants = self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public());
         if !snark_constants.disable_zk_checks {
             let (computed_hash, computed_perlin) = reveal_proof(
                 x,
@@ -2532,14 +1383,16 @@ pub contract Main {
         }
 
         // Validate SNARK perlin flags
-        let _ = self.internal.revert_if_bad_snark_perlin_flags(
+        let snark_constants: SnarkConstants = self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public());
+        let _ = revert_if_bad_snark_perlin_flags(
             snark_constants.planethash_key,
             snark_constants.spacetype_key,
             snark_constants.biomebase_key,
             snark_constants.perlin_mirror_x,
             snark_constants.perlin_mirror_y,
             snark_constants.perlin_length_scale,
-            false, // checking_biome = false
+            false, // checking_biome = false,
+            snark_constants
         );
 
         // Initialize planet if not already initialized
@@ -2660,11 +1513,11 @@ pub contract Main {
         perlin_mirror_x: bool,
         perlin_mirror_y: bool,
     ) {
-        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+        assert(disable_zk_checks == self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public()).disable_zk_checks, "disable_zk_checks mismatch");
 
         // Validate SNARK perlin flags
-        let snark_constants = self.storage.snark_constants.read();
-        let _ = self.internal.revert_if_bad_snark_perlin_flags(
+        let snark_constants: SnarkConstants = self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public());
+        let _ = revert_if_bad_snark_perlin_flags(
             planethash_key,
             spacetype_key,
             snark_constants.biomebase_key,
@@ -2672,6 +1525,7 @@ pub contract Main {
             perlin_mirror_y,
             perlin_length_scale,
             false, // checking_biome = false
+            snark_constants
         );
 
         // Initialize the home planet
@@ -2697,7 +1551,7 @@ pub contract Main {
         self.storage.player_ids_count.write(player_ids_count + 1);
 
         // Create player struct
-        let space_junk_config = self.storage.space_junk_config.read();
+        let space_junk_config: SpaceJunkConfig = self.view(Config::at(self.internal.get_config_address()).get_space_junk_config_public());
         let player = Player {
             is_initialized: true,
             player: sender,
@@ -2742,7 +1596,7 @@ pub contract Main {
         assert(!self.storage.paused.read(), "Game is paused");
 
         // Check that planet transfer is enabled
-        let world_config = self.storage.world_config.read();
+        let world_config: WorldConfig = self.view(Config::at(self.internal.get_config_address()).get_world_config_public());
         assert(world_config.planet_transfer_enabled, "planet transferring is disabled");
 
         // Ensure planet is initialized
@@ -2840,7 +1694,7 @@ pub contract Main {
         // Convert silver to score
         // CONTRACT_PRECISION = 1000 (as in Solidity comment)
         let mut score_gained: u128 = amount / 1000;
-        let world_config = self.storage.world_config.read();
+        let world_config: WorldConfig = self.view(Config::at(self.internal.get_config_address()).get_world_config_public());
         score_gained = (score_gained * world_config.silver_score_value) / 100;
 
         // Add score to player
@@ -2876,7 +1730,7 @@ pub contract Main {
         assert(!planet.destroyed, "planet is destroyed");
 
         // Total upgrade level limits by space type
-        let total_level: u128 =
+        let total_level: u8 =
             planet.upgrade_state_0 + planet.upgrade_state_1 + planet.upgrade_state_2;
         // SpaceType: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
         let nebula: bool = planet.space_type == 0;
@@ -2908,7 +1762,7 @@ pub contract Main {
         assert(can_upgrade, "Planet at max total level");
 
         // Current level for the selected branch
-        let mut branch_level: u128 = 0;
+        let mut branch_level: u8 = 0;
         if branch == 0 {
             branch_level = planet.upgrade_state_0;
         } else if branch == 1 {
@@ -2920,11 +1774,11 @@ pub contract Main {
         assert(branch_level < 4, "Upgrade branch already maxed");
 
         // Lookup upgrade parameters
-        let key: u128 = branch * 10 + branch_level;
-        let upgrade: Upgrade = self.storage.upgrades.at(key).read();
+        let key: u128 = branch * 10 + branch_level as u128;
+        let upgrade: Upgrade = self.view(Config::at(self.internal.get_config_address()).get_upgrade_public(key));
 
         // Compute and check upgrade cost
-        let upgrade_cost: u128 = (planet.silver_cap * 20 * (total_level + 1)) / 100;
+        let upgrade_cost: u128 = (planet.silver_cap * 20 * (total_level as u128 + 1)) / 100;
         assert(planet.silver >= upgrade_cost, "Insufficient silver to upgrade");
 
         // Apply upgrade buffs
@@ -3242,7 +2096,7 @@ pub contract Main {
                 // ArtifactType::PhotoidCannon = 16 (Noir has no &&, use nested if)
                 if artifact.is_initialized {
                     if artifact.artifact_type == 16 {
-                        let artifacts_config = self.storage.artifacts_config.read();
+                        let artifacts_config: ArtifactsConfig = self.view(Config::at(self.internal.get_config_address()).get_artifacts_config_public());
                         let activation_delay: u128 = artifacts_config.photoid_activation_delay_s;
                         // timestamp and last_activated are u64; activation_delay is u128 - cast for comparison
                         let lhs: u128 = timestamp as u128;
@@ -3477,7 +2331,7 @@ pub contract Main {
         let mut remaining_origin_planet_population: u128 = origin_planet.population - pop_moved;
         
         // Handle space junk and abandoning (Noir has no &&, use nested if)
-        let space_junk_config = self.storage.space_junk_config.read();
+        let space_junk_config: SpaceJunkConfig = self.view(Config::at(self.internal.get_config_address()).get_space_junk_config_public());
         if space_junk_config.space_junk_enabled {
             if !self.internal.is_spaceship_move(args) {
                 if args.abandoning != 0 {
@@ -3674,7 +2528,7 @@ pub contract Main {
         // Check game is not paused
         assert(!self.storage.paused.read(), "Game is paused");
 
-        assert(disable_zk_checks == self.storage.snark_constants.read().disable_zk_checks, "disable_zk_checks mismatch");
+        assert(disable_zk_checks == self.view(Config::at(self.internal.get_config_address()).get_snark_constants_public()).disable_zk_checks, "disable_zk_checks mismatch");
         
         // Check radius bounds
         let world_radius = self.storage.world_radius.read();

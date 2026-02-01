@@ -18,6 +18,8 @@ import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
+
+import { ConfigContract } from './artifacts/Config.ts';
 import { MainContract } from './artifacts/Main.ts';
 
 // Load environment variables
@@ -138,14 +140,58 @@ async function createAccount(wallet: TestWallet) {
     return accountManager.address;
 }
 
-async function deployContract(wallet: Wallet, deployer: AztecAddress) {
+async function deployConfigContract(wallet: Wallet, deployer: AztecAddress) {
+    const salt = Fr.random();
+    const contract = await getContractInstanceFromInstantiationParams(
+        ConfigContract.artifact,
+        {
+            publicKeys: PublicKeys.default(),
+            constructorArtifact: getDefaultInitializer(ConfigContract.artifact),
+            constructorArgs: [deployer.toField()],
+            deployer: deployer,
+            salt,
+        }
+    );
+
+    const deployMethod = new DeployMethod(
+        contract.publicKeys,
+        wallet,
+        ConfigContract.artifact,
+        (instance, wallet) => ConfigContract.at(instance.address, wallet),
+        [deployer.toField()],
+        getDefaultInitializer(ConfigContract.artifact)?.name
+    );
+
+    const sponsoredPFCContract = await getSponsoredPFCContract();
+
+    await deployMethod
+        .send({
+            from: deployer,
+            contractAddressSalt: salt,
+            fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(
+                    sponsoredPFCContract.address
+                ),
+            },
+        })
+        .wait({ timeout: 120 });
+    await wallet.registerContract(contract, ConfigContract.artifact);
+
+    return {
+        contractAddress: contract.address.toString(),
+        deployerAddress: deployer.toString(),
+        deploymentSalt: salt.toString(),
+    };
+}
+
+async function deployMainContract(wallet: Wallet, deployer: AztecAddress, config_address: AztecAddress) {
     const salt = Fr.random();
     const contract = await getContractInstanceFromInstantiationParams(
         MainContract.artifact,
         {
             publicKeys: PublicKeys.default(),
             constructorArtifact: getDefaultInitializer(MainContract.artifact),
-            constructorArgs: [deployer.toField()],
+            constructorArgs: [deployer.toField(), config_address.toField()],
             deployer: deployer,
             salt,
         }
@@ -156,7 +202,7 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
         wallet,
         MainContract.artifact,
         (instance, wallet) => MainContract.at(instance.address, wallet),
-        [deployer.toField()],
+        [deployer.toField(), config_address.toField()],
         getDefaultInitializer(MainContract.artifact)?.name
     );
 
@@ -182,12 +228,33 @@ async function deployContract(wallet: Wallet, deployer: AztecAddress) {
     };
 }
 
-async function writeEnvFile(deploymentInfo) {
+async function writeConfigEnvFile(configDeploymentInfo) {
     const envFilePath = path.join(import.meta.dirname, '../.env');
     const envConfig = Object.entries({
-        CONTRACT_ADDRESS: deploymentInfo.contractAddress,
-        DEPLOYER_ADDRESS: deploymentInfo.deployerAddress,
-        DEPLOYMENT_SALT: deploymentInfo.deploymentSalt,
+        CONFIG_CONTRACT_ADDRESS: configDeploymentInfo.contractAddress,
+        CONFIG_DEPLOYER_ADDRESS: configDeploymentInfo.deployerAddress,
+        CONFIG_DEPLOYMENT_SALT: configDeploymentInfo.deploymentSalt,
+        AZTEC_NODE_URL,
+    })
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+    fs.appendFileSync(envFilePath, '\n\n\n' + envConfig);
+
+    console.log(`
+      \n\n\n
+      Contract deployed successfully. Config saved to ${envFilePath}
+      IMPORTANT: Do not lose this file as you will not be able to recover the contract address if you lose it.
+      \n\n\n
+    `);
+}
+
+async function writeMainEnvFile(mainDeploymentInfo) {
+    const envFilePath = path.join(import.meta.dirname, '../.env');
+    const envConfig = Object.entries({
+        MAIN_CONTRACT_ADDRESS: mainDeploymentInfo.contractAddress,
+        MAIN_DEPLOYER_ADDRESS: mainDeploymentInfo.deployerAddress,
+        MAIN_DEPLOYMENT_SALT: mainDeploymentInfo.deploymentSalt,
         AZTEC_NODE_URL,
     })
         .map(([key, value]) => `${key}=${value}`)
@@ -228,23 +295,29 @@ async function createAccountAndDeployContract() {
     }
 
     // Deploy the contract
-    const deploymentInfo = await deployContract(wallet, accountAddress);
+    const configDeploymentInfo = await deployConfigContract(wallet, accountAddress);
 
     // Save the deployment info to app/public
     if (WRITE_ENV_FILE) {
-        await writeEnvFile(deploymentInfo);
+        await writeConfigEnvFile(configDeploymentInfo);
+    }
+
+    const mainDeploymentInfo = await deployMainContract(wallet, accountAddress, AztecAddress.fromString(configDeploymentInfo.contractAddress));
+
+    if (WRITE_ENV_FILE) {
+        await writeMainEnvFile(mainDeploymentInfo);
     }
 
     // Call get_admin
     try {
-        console.log('Simulating contract (calling get_admin)...\n');
+        console.log('Simulating contract (calling get_admin_utility)...\n');
         const main = MainContract.at(
-            AztecAddress.fromString(deploymentInfo.contractAddress),
+            AztecAddress.fromString(mainDeploymentInfo.contractAddress),
             wallet
         );
 
         const admin = await main.methods
-            .get_admin()
+            .get_admin_utility()
             .simulate({ from: accountAddress });
 
         console.log('admin in contract:', admin.toString());

@@ -14,6 +14,7 @@ pub struct GameConfig {
 
     pub planet_level_thresholds: [u128; 10],
     pub planet_rarity: u128,
+    pub max_location_id: Field,
 
     /// Dimensions: [4][10][5]
     pub planet_type_weights: [[[u128; 5]; 10]; 4],
@@ -33,6 +34,7 @@ pub struct GameConfigCore {
     pub biome_threshold_1: u128,
     pub biome_threshold_2: u128,
     pub planet_rarity: u128,
+    pub max_location_id: Field,
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
@@ -71,6 +73,7 @@ impl GameConfig {
                 48,
             ],
             planet_rarity: 16_384,
+            max_location_id: 0xc19139cb84c680a6e14116da06056174a0cfa121e6e5c2450f87d64fc000,
             planet_type_weights: [
                 [
                     [1, 0, 0, 0, 0],
@@ -136,6 +139,7 @@ impl GameConfig {
             biome_threshold_1: 15,
             biome_threshold_2: 17,
             planet_rarity: 16_384,
+            max_location_id: 0xc19139cb84c680a6e14116da06056174a0cfa121e6e5c2450f87d64fc000,
         }
     }
 

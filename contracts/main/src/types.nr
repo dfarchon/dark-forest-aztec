@@ -123,9 +123,9 @@ pub struct Planet {
     pub last_updated: u64,       // Block number
     pub perlin: u8,
     pub space_type: u8, // SpaceType enum (stored as u8, use helper functions to convert)
-    pub upgrade_state_0: u128,
-    pub upgrade_state_1: u128,
-    pub upgrade_state_2: u128,
+    pub upgrade_state_0: u8,
+    pub upgrade_state_1: u8,
+    pub upgrade_state_2: u8,
     pub hat_level: u128,
     pub has_tried_finding_artifact: bool,
     pub prospected_block_number: u32,
@@ -184,27 +184,6 @@ pub struct Artifact {
     pub last_deactivated: u64,
     pub wormhole_to: Field,
     pub controller: AztecAddress,
-}
-
-#[derive(Serialize, Deserialize, Packable)]
-pub struct Upgrade {
-    pub pop_cap_multiplier: u128,
-    pub pop_gro_multiplier: u128,
-    pub range_multiplier: u128,
-    pub speed_multiplier: u128,
-    pub def_multiplier: u128,
-}
-
-#[derive(Serialize, Deserialize, Packable)]
-pub struct PlanetDefaultStats {
-    pub population_cap: u128,
-    pub population_growth: u128,
-    pub range: u128,
-    pub speed: u128,
-    pub defense: u128,
-    pub silver_growth: u128,
-    pub silver_cap: u128,
-    pub barbarian_percentage: u128,
 }
 
 #[derive(Serialize, Deserialize, Packable)]

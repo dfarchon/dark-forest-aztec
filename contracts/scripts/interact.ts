@@ -10,7 +10,9 @@ import { TestWallet } from '@aztec/test-wallet/server';
 import * as dotenv from 'dotenv';
 import path from 'path';
 
+
 import { MainContract } from './artifacts/Main.ts';
+import { ConfigContract } from './artifacts/Config.ts';
 
 // Load environment variables
 dotenv.config();
@@ -19,6 +21,11 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'false' ? false : true;
 
 const PXE_STORE_DIR = path.join(import.meta.dirname, '.store');
+
+// "simulate" = dry-run (no fee). "send" = broadcast tx (needs fee payment).
+// const INTERACT_MODE: 'send' | 'simulate' =
+//     process.env.INTERACT_MODE === 'send' ? 'send' : 'simulate';
+const INTERACT_MODE: 'send' | 'simulate' = 'send';
 
 async function setupWallet(aztecNode: AztecNode) {
     // Don't remove store for interaction script, we want to keep the state
@@ -74,12 +81,22 @@ async function loadAccount(wallet: TestWallet): Promise<AztecAddress> {
 
 async function interactWithContract() {
     if (
-        !process.env.CONTRACT_ADDRESS ||
-        !process.env.DEPLOYER_ADDRESS ||
-        !process.env.DEPLOYMENT_SALT
+        !process.env.CONFIG_CONTRACT_ADDRESS ||
+        !process.env.CONFIG_DEPLOYER_ADDRESS ||
+        !process.env.CONFIG_DEPLOYMENT_SALT
     ) {
         throw new Error(
-            'Contract information not found in .env file. Please create a contract first.'
+            'Config Contract information not found in .env file. Please create a contract first.'
+        );
+    }
+
+    if (
+        !process.env.MAIN_CONTRACT_ADDRESS ||
+        !process.env.MAIN_DEPLOYER_ADDRESS ||
+        !process.env.MAIN_DEPLOYMENT_SALT
+    ) {
+        throw new Error(
+            'Main Contract information not found in .env file. Please create a contract first.'
         );
     }
 
@@ -94,7 +111,8 @@ async function interactWithContract() {
     }
 
     console.log('✅ All required environment variables are present');
-    console.log(`📋 Contract Address: ${process.env.CONTRACT_ADDRESS}`);
+    console.log(`📋 Config Contract Address: ${process.env.CONFIG_CONTRACT_ADDRESS}`);
+    console.log(`📋 Main Contract Address: ${process.env.MAIN_CONTRACT_ADDRESS}`);
     console.log(`📋 Account Address: ${process.env.ACCOUNT_ADDRESS}`);
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}\n`);
 
@@ -106,8 +124,9 @@ async function interactWithContract() {
 
         // Register the SponsoredFPC contract (for sponsored fee payments)
         console.log('📝 Registering SponsoredFPC contract...');
+        const sponsoredPFC = await getSponsoredPFCContract();
         await wallet.registerContract(
-            await getSponsoredPFCContract(),
+            sponsoredPFC,
             SponsoredFPCContractArtifact
         );
 
@@ -117,32 +136,75 @@ async function interactWithContract() {
         console.log(`✅ Account loaded: ${accountAddress.toString()}\n`);
 
         // Connect to the contract
-        const contractAddress = AztecAddress.fromString(
-            process.env.CONTRACT_ADDRESS
+        const configContractAddress = AztecAddress.fromString(
+            process.env.CONFIG_CONTRACT_ADDRESS
+        );
+
+        console.log(
+            `📄 Connecting to config contract at ${configContractAddress.toString()}...`
+        );
+
+        const mainContractAddress = AztecAddress.fromString(
+            process.env.MAIN_CONTRACT_ADDRESS
         );
         console.log(
-            `📄 Connecting to contract at ${contractAddress.toString()}...`
+            `📄 Connecting to contract at ${mainContractAddress.toString()}...`
         );
+
+
 
         // Register the contract with the wallet
         try {
-            const contractInstance =
+            try {
+                const configContractInstance =
+                    await getContractInstanceFromInstantiationParams(
+                        ConfigContract.artifact,
+                        {
+                            constructorArgs: [
+                                AztecAddress.fromString(
+                                    process.env.CONFIG_DEPLOYER_ADDRESS
+                                ),
+                            ],
+                            salt: Fr.fromString(process.env.CONFIG_DEPLOYMENT_SALT),
+                            deployer: AztecAddress.fromString(
+                                process.env.CONFIG_DEPLOYER_ADDRESS
+                            ),
+                        }
+                    );
+                await wallet.registerContract(
+                    configContractInstance,
+                    ConfigContract.artifact
+                );
+                console.log('✅ Contract registered with wallet');
+            } catch (err) {
+                // Contract might already be registered, continue
+                console.log(
+                    '⚠️  Contract registration skipped (may already be registered)'
+                );
+                console.log(err);
+            }
+
+
+            const configContractInstance =
                 await getContractInstanceFromInstantiationParams(
                     MainContract.artifact,
                     {
                         constructorArgs: [
                             AztecAddress.fromString(
-                                process.env.DEPLOYER_ADDRESS
+                                process.env.MAIN_DEPLOYER_ADDRESS
                             ),
+                            AztecAddress.fromString(
+                                process.env.CONFIG_CONTRACT_ADDRESS
+                            )
                         ],
-                        salt: Fr.fromString(process.env.DEPLOYMENT_SALT),
+                        salt: Fr.fromString(process.env.MAIN_DEPLOYMENT_SALT),
                         deployer: AztecAddress.fromString(
-                            process.env.DEPLOYER_ADDRESS
+                            process.env.MAIN_DEPLOYER_ADDRESS
                         ),
                     }
                 );
             await wallet.registerContract(
-                contractInstance,
+                configContractInstance,
                 MainContract.artifact
             );
             console.log('✅ Contract registered with wallet');
@@ -154,34 +216,37 @@ async function interactWithContract() {
             console.log(err);
         }
 
-        const main = MainContract.at(contractAddress, wallet);
+        const config = ConfigContract.at(configContractAddress, wallet);
+        const main = MainContract.at(mainContractAddress, wallet);
 
         // Interact with the contract
         console.log('\n🔍 Interacting with contract...\n');
 
-        // Call get_admin
-        try {
-            console.log('📞 Calling get_admin()...');
-            const admin = await main.methods
-                .get_admin()
-                .simulate({ from: accountAddress });
 
-            console.log(`✅ Admin address: ${admin.toString()}`);
-            console.log(`✅ Account address: ${accountAddress.toString()}`);
-            console.log(
-                `✅ Match: ${admin.toString() === accountAddress.toString() ? 'Yes' : 'No'}`
-            );
-        } catch (err) {
-            console.error('❌ Failed to call get_admin():', err);
-            throw err;
-        }
 
-        console.log('\n✅ Contract interaction completed successfully!');
+        console.log('📞 Calling config get_admin()...');
+        const config_admin = await config.methods
+            .get_admin_utility()
+            .simulate({ from: accountAddress });
+
+        console.log('📞 Calling main get_admin()...');
+        const main_admin = await main.methods
+            .get_admin_utility()
+            .simulate({ from: accountAddress });
+
+        console.log('\n\n\n--------------------------------');
+        console.log(`✅ Config admin address: ${config_admin.toString()}`);
+        console.log(`✅ Main admin address: ${main_admin.toString()}`);
+        console.log(`✅ Account address: ${accountAddress.toString()}`);
+        console.log('--------------------------------\n\n\n');
+
+
     } catch (error) {
         console.error('\n❌ Error interacting with contract:', error);
         process.exit(1);
     }
 }
+
 
 // Run the interaction
 interactWithContract()

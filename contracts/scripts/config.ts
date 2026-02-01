@@ -12,6 +12,7 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 
 import { MainContract } from './artifacts/Main.ts';
+import { ConfigContract } from './artifacts/Config.ts';
 
 // Load environment variables
 dotenv.config();
@@ -78,14 +79,24 @@ async function loadAccount(wallet: TestWallet): Promise<AztecAddress> {
     return accountManager.address;
 }
 
-async function interactWithContract() {
+async function runConfigInteraction() {
     if (
-        !process.env.CONTRACT_ADDRESS ||
-        !process.env.DEPLOYER_ADDRESS ||
-        !process.env.DEPLOYMENT_SALT
+        !process.env.CONFIG_CONTRACT_ADDRESS ||
+        !process.env.CONFIG_DEPLOYER_ADDRESS ||
+        !process.env.CONFIG_DEPLOYMENT_SALT
     ) {
         throw new Error(
-            'Contract information not found in .env file. Please create a contract first.'
+            'Config Contract information not found in .env file. Please create a contract first.'
+        );
+    }
+
+    if (
+        !process.env.MAIN_CONTRACT_ADDRESS ||
+        !process.env.MAIN_DEPLOYER_ADDRESS ||
+        !process.env.MAIN_DEPLOYMENT_SALT
+    ) {
+        throw new Error(
+            'Main Contract information not found in .env file. Please create a contract first.'
         );
     }
 
@@ -100,7 +111,8 @@ async function interactWithContract() {
     }
 
     console.log('✅ All required environment variables are present');
-    console.log(`📋 Contract Address: ${process.env.CONTRACT_ADDRESS}`);
+    console.log(`📋 Config Contract Address: ${process.env.CONFIG_CONTRACT_ADDRESS}`);
+    console.log(`📋 Main Contract Address: ${process.env.MAIN_CONTRACT_ADDRESS}`);
     console.log(`📋 Account Address: ${process.env.ACCOUNT_ADDRESS}`);
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}\n`);
 
@@ -124,32 +136,75 @@ async function interactWithContract() {
         console.log(`✅ Account loaded: ${accountAddress.toString()}\n`);
 
         // Connect to the contract
-        const contractAddress = AztecAddress.fromString(
-            process.env.CONTRACT_ADDRESS
+        const configContractAddress = AztecAddress.fromString(
+            process.env.CONFIG_CONTRACT_ADDRESS
+        );
+
+        console.log(
+            `📄 Connecting to config contract at ${configContractAddress.toString()}...`
+        );
+
+        const mainContractAddress = AztecAddress.fromString(
+            process.env.MAIN_CONTRACT_ADDRESS
         );
         console.log(
-            `📄 Connecting to contract at ${contractAddress.toString()}...`
+            `📄 Connecting to contract at ${mainContractAddress.toString()}...`
         );
+
+
 
         // Register the contract with the wallet
         try {
-            const contractInstance =
+            try {
+                const configContractInstance =
+                    await getContractInstanceFromInstantiationParams(
+                        ConfigContract.artifact,
+                        {
+                            constructorArgs: [
+                                AztecAddress.fromString(
+                                    process.env.CONFIG_DEPLOYER_ADDRESS
+                                ),
+                            ],
+                            salt: Fr.fromString(process.env.CONFIG_DEPLOYMENT_SALT),
+                            deployer: AztecAddress.fromString(
+                                process.env.CONFIG_DEPLOYER_ADDRESS
+                            ),
+                        }
+                    );
+                await wallet.registerContract(
+                    configContractInstance,
+                    ConfigContract.artifact
+                );
+                console.log('✅ Contract registered with wallet');
+            } catch (err) {
+                // Contract might already be registered, continue
+                console.log(
+                    '⚠️  Contract registration skipped (may already be registered)'
+                );
+                console.log(err);
+            }
+
+
+            const configContractInstance =
                 await getContractInstanceFromInstantiationParams(
                     MainContract.artifact,
                     {
                         constructorArgs: [
                             AztecAddress.fromString(
-                                process.env.DEPLOYER_ADDRESS
+                                process.env.MAIN_DEPLOYER_ADDRESS
                             ),
+                            AztecAddress.fromString(
+                                process.env.CONFIG_CONTRACT_ADDRESS
+                            )
                         ],
-                        salt: Fr.fromString(process.env.DEPLOYMENT_SALT),
+                        salt: Fr.fromString(process.env.MAIN_DEPLOYMENT_SALT),
                         deployer: AztecAddress.fromString(
-                            process.env.DEPLOYER_ADDRESS
+                            process.env.MAIN_DEPLOYER_ADDRESS
                         ),
                     }
                 );
             await wallet.registerContract(
-                contractInstance,
+                configContractInstance,
                 MainContract.artifact
             );
             console.log('✅ Contract registered with wallet');
@@ -161,16 +216,17 @@ async function interactWithContract() {
             console.log(err);
         }
 
-        const main = MainContract.at(contractAddress, wallet);
+        const config = ConfigContract.at(configContractAddress, wallet);
+        const main = MainContract.at(mainContractAddress, wallet);
 
         // Interact with the contract
         console.log('\n🔍 Interacting with contract...\n');
 
-        // Call get_admin
+        // Call get_admin_utility
         try {
-            console.log('📞 Calling get_admin()...');
-            const admin = await main.methods
-                .get_admin()
+            console.log('📞 Calling get_admin_utility()...');
+            const admin = await config.methods
+                .get_admin_utility()
                 .simulate({ from: accountAddress });
 
             console.log(`✅ Admin address: ${admin.toString()}`);
@@ -201,12 +257,12 @@ async function interactWithContract() {
             // ---- set defaults (split to avoid SSTORE write limit) ----
             await run('set_default_world_config()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_world_config()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_world_config()
                         .simulate({ from: accountAddress });
                 }
@@ -214,12 +270,12 @@ async function interactWithContract() {
 
             await run('set_default_snark_constants()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_snark_constants()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_snark_constants()
                         .simulate({ from: accountAddress });
                 }
@@ -227,12 +283,12 @@ async function interactWithContract() {
 
             await run('set_default_artifacts_config()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_artifacts_config()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_artifacts_config()
                         .simulate({ from: accountAddress });
                 }
@@ -240,12 +296,12 @@ async function interactWithContract() {
 
             await run('set_default_spaceships_config()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_spaceships_config()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_spaceships_config()
                         .simulate({ from: accountAddress });
                 }
@@ -253,12 +309,12 @@ async function interactWithContract() {
 
             await run('set_default_space_junk_config()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_space_junk_config()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_space_junk_config()
                         .simulate({ from: accountAddress });
                 }
@@ -266,12 +322,12 @@ async function interactWithContract() {
 
             await run('set_default_capture_zones_config()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .set_default_capture_zones_config()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .set_default_capture_zones_config()
                         .simulate({ from: accountAddress });
                 }
@@ -282,12 +338,12 @@ async function interactWithContract() {
                 'set_default_game_config() (core + thresholds)',
                 async () => {
                     if (INTERACT_MODE === 'send') {
-                        const tx = await main.methods
+                        const tx = await config.methods
                             .set_default_game_config()
                             .send(sendOpts);
                         await tx.wait();
                     } else {
-                        await main.methods
+                        await config.methods
                             .set_default_game_config()
                             .simulate({ from: accountAddress });
                     }
@@ -299,14 +355,14 @@ async function interactWithContract() {
                     `set_default_game_config_planet_type_weights_tier(${tier})`,
                     async () => {
                         if (INTERACT_MODE === 'send') {
-                            const tx = await main.methods
+                            const tx = await config.methods
                                 .set_default_game_config_planet_type_weights_tier(
                                     tier
                                 )
                                 .send(sendOpts);
                             await tx.wait();
                         } else {
-                            await main.methods
+                            await config.methods
                                 .set_default_game_config_planet_type_weights_tier(
                                     tier
                                 )
@@ -466,12 +522,12 @@ async function interactWithContract() {
             for (const { level, stats } of planetDefaultStats) {
                 await run(`set_planet_default_stats(${level})`, async () => {
                     if (INTERACT_MODE === 'send') {
-                        const tx = await main.methods
+                        const tx = await config.methods
                             .set_planet_default_stats(level, stats)
                             .send(sendOpts);
                         await tx.wait();
                     } else {
-                        await main.methods
+                        await config.methods
                             .set_planet_default_stats(level, stats)
                             .simulate({ from: accountAddress });
                     }
@@ -481,13 +537,26 @@ async function interactWithContract() {
             // Upgrades: 12 entries * 5 fields = 60 writes, safe to do in one call.
             await run('initializeUpgrades()', async () => {
                 if (INTERACT_MODE === 'send') {
-                    const tx = await main.methods
+                    const tx = await config.methods
                         .initializeUpgrades()
                         .send(sendOpts);
                     await tx.wait();
                 } else {
-                    await main.methods
+                    await config.methods
                         .initializeUpgrades()
+                        .simulate({ from: accountAddress });
+                }
+            });
+
+            await run('initialize_cumulative_rarities()', async () => {
+                if (INTERACT_MODE === 'send') {
+                    const tx = await config.methods
+                        .initialize_cumulative_rarities()
+                        .send(sendOpts);
+                    await tx.wait();
+                } else {
+                    await config.methods
+                        .initialize_cumulative_rarities()
                         .simulate({ from: accountAddress });
                 }
             });
@@ -619,37 +688,37 @@ async function interactWithContract() {
 
             console.log('\n\n=== Readback: contract configs ===\n');
 
-            const world: WorldConfig = await main.methods
+            const world: WorldConfig = await config.methods
                 .get_world_config()
                 .simulate({ from: accountAddress });
-            const snark: SnarkConstants = await main.methods
+            const snark: SnarkConstants = await config.methods
                 .get_snark_constants()
                 .simulate({ from: accountAddress });
-            const gameCore: GameConfigCore = await main.methods
+            const gameCore: GameConfigCore = await config.methods
                 .get_game_config_core()
                 .simulate({ from: accountAddress });
-            const thresholds: PlanetLevelThresholds = await main.methods
+            const thresholds: PlanetLevelThresholds = await config.methods
                 .get_planet_level_thresholds()
                 .simulate({ from: accountAddress });
 
             const tiers: PlanetTypeWeightsTier[] = await Promise.all(
                 ([0, 1, 2, 3] as const).map((t) =>
-                    main.methods
+                    config.methods
                         .get_planet_type_weights_tier(t)
                         .simulate({ from: accountAddress })
                 )
             );
 
-            const artifacts: ArtifactsConfig = await main.methods
+            const artifacts: ArtifactsConfig = await config.methods
                 .get_artifacts_config()
                 .simulate({ from: accountAddress });
-            const ships: SpaceshipsConfig = await main.methods
+            const ships: SpaceshipsConfig = await config.methods
                 .get_spaceships_config()
                 .simulate({ from: accountAddress });
-            const junk: SpaceJunkConfig = await main.methods
+            const junk: SpaceJunkConfig = await config.methods
                 .get_space_junk_config()
                 .simulate({ from: accountAddress });
-            const cz: CaptureZonesConfig = await main.methods
+            const cz: CaptureZonesConfig = await config.methods
                 .get_capture_zones_config()
                 .simulate({ from: accountAddress });
 
@@ -787,7 +856,7 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
             );
             const defaultPlanetsStates = await Promise.all(
                 defaultPlanetLevels.map(async (level) => {
-                    const stats = (await main.methods
+                    const stats = (await config.methods
                         .get_planet_default_stats(level)
                         .simulate({ from: accountAddress })) as UnknownRecord;
                     return { level, stats };
@@ -814,7 +883,7 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
                     level++
                 ) {
                     const key = BigInt(branch * 10 + level);
-                    const upgrade = (await main.methods
+                    const upgrade = (await config.methods
                         .get_upgrade(key)
                         .simulate({ from: accountAddress })) as UnknownRecord;
 
@@ -825,7 +894,7 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
 
             // Read game state arrays: initializedPlanetCountByLevel and cumulativeRarities
             console.log('\n# Game State Arrays');
-            
+
             console.log('\n## Initialized Planet Count By Level');
             const initializedCounts = await Promise.all(
                 Array.from({ length: 10 }, (_, i) =>
@@ -844,8 +913,8 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
             console.log('\n## Cumulative Rarities');
             const cumulativeRarities = await Promise.all(
                 Array.from({ length: 10 }, (_, i) =>
-                    main.methods
-                        .get_cumulative_rarity(BigInt(i))
+                    config.methods
+                        .get_cumulative_rarity_utility(BigInt(i))
                         .simulate({ from: accountAddress })
                 )
             );
@@ -859,11 +928,11 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
             // Read world radius
             console.log('\n## World Radius');
             const worldRadius = await main.methods
-                .get_world_radius()
+                .world_radius()
                 .simulate({ from: accountAddress });
             console.log(`WORLD_RADIUS = ${fmtUWithUnderscores(worldRadius)}`);
         } catch (err) {
-            console.error('❌ Failed to call get_admin():', err);
+            console.error('❌ Failed to read config from contract:', err);
             throw err;
         }
 
@@ -875,11 +944,11 @@ CAPTURE_ZONES_PER_5000_WORLD_RADIUS = ${fmtU(cz.capture_zones_per_5000_world_rad
 }
 
 // Run the interaction
-interactWithContract()
+runConfigInteraction()
     .then(() => process.exit(0))
     .catch((error) => {
         console.error(error);
         process.exit(1);
     });
 
-export { interactWithContract };
+export { runConfigInteraction };
