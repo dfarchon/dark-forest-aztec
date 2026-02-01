@@ -5,8 +5,38 @@ import {
 } from '@aztec/stdlib/abi';
 import type { AztecNode } from '@aztec/aztec.js/node';
 
+function decodeLogs<T>(
+    logs: { log: { getEmittedFields: () => unknown[]; fields: unknown[] } }[],
+    eventMetadataDef: EventMetadataDefinition
+): T[] {
+    const decoded: T[] = [];
+    for (const log of logs) {
+        const logFields = log.log.getEmittedFields();
+        const lastField = logFields[logFields.length - 1];
+        if (!EventSelector.fromField(lastField).equals(eventMetadataDef.eventSelector)) {
+            continue;
+        }
+        const result = decodeFromAbi([eventMetadataDef.abiType], log.log.fields);
+        decoded.push((Array.isArray(result) ? result[0] : result) as T);
+    }
+    return decoded;
+}
+
 /**
- * Returns decoded public events given search parameters.
+ * Returns decoded public events by tx hash (recommended when you know the tx).
+ * Supports events with nested/large structs.
+ */
+export async function getDecodedPublicEventsByTxHash<T>(
+    node: AztecNode,
+    eventMetadataDef: EventMetadataDefinition,
+    txHash: { toString: () => string }
+): Promise<T[]> {
+    const { logs } = await node.getPublicLogs({ txHash });
+    return decodeLogs<T>(logs, eventMetadataDef);
+}
+
+/**
+ * Returns decoded public events given block range.
  * Supports events with nested/large structs (unlike @aztec/aztec.js getDecodedPublicEvents
  * which fails when field count !== fieldNames.length + 1).
  *
@@ -26,16 +56,6 @@ export async function getDecodedPublicEvents<T>(
         fromBlock: from,
         toBlock: from + limit,
     });
-
-    const decoded: T[] = [];
-    for (const log of logs) {
-        const logFields = log.log.getEmittedFields();
-        const lastField = logFields[logFields.length - 1];
-        if (!EventSelector.fromField(lastField).equals(eventMetadataDef.eventSelector)) {
-            continue;
-        }
-        const result = decodeFromAbi([eventMetadataDef.abiType], log.log.fields);
-        decoded.push((Array.isArray(result) ? result[0] : result) as T);
-    }
-    return decoded;
+    return decodeLogs<T>(logs, eventMetadataDef);
 }
+

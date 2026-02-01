@@ -368,9 +368,11 @@ async function createAccountAndDeployContract() {
         }>(aztecNode, SilverContract.events.LargeDataStored, blockNumber, 1);
         if (events.length > 0) {
             console.log('\n--- Event LargeDataStored content ---');
-            console.log('key:', events[0].key.toString());
-            console.log('data.values:', events[0].data.values);
-            console.log('data.values length:', events[0].data.values.length);
+            events.forEach((evt, i) => {
+                console.log(`[${i}] key:`, evt.key.toString());
+                console.log(`[${i}] data.values:`, evt.data.values);
+                console.log(`[${i}] data.values length:`, evt.data.values.length);
+            });
             console.log('-------------------------------------\n');
         } else {
             const { logs } = await aztecNode.getPublicLogs({

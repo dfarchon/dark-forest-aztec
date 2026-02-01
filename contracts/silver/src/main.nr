@@ -42,7 +42,10 @@ pub contract Silver {
         }
         let computed_hash = crate::hash_utils::hash_large_fields(fields);
         self.storage.data_hash_by_key.at(key).write(computed_hash);
-        self.emit(LargeDataStored { key, data });
+
+        for i in 0..10 {
+            self.emit(LargeDataStored { key, data });
+        }
     }
 
     /// Verify that passed data matches stored hash.
