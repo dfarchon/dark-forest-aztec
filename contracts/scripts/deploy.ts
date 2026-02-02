@@ -340,10 +340,10 @@ async function createAccountAndDeployContract() {
 
         // ========== Hash + Event PoC Test ==========
         // Test store_large_data: struct as input -> hash stored (1 write) + event emitted
-        // LargeData has 100 fields (values array) - scales without code changes
+        // LargeData has 500 fields (values array) - scales without code changes
         console.log('=== Testing store_large_data (hash + event pattern) ===\n');
         const testKey = Fr.fromString('1');
-        const values = Array.from({ length: 100 }, (_, i) => BigInt((i + 1) * 100));
+        const values = Array.from({ length: 500 }, (_, i) => BigInt((i + 1) * 100));
         const largeData = { values };
 
         const sponsoredPFCContract = await getSponsoredPFCContract();
@@ -403,8 +403,8 @@ async function createAccountAndDeployContract() {
         console.log('verify_large_data (wrong data):', verifyWrongResult);
 
         console.log('\n=== Hash + Event PoC test complete ===');
-        console.log('- store_large_data: 1 write (hash) instead of 100+ writes (struct)');
-        console.log('- Chunked poseidon2 hash scales to 100+ fields');
+        console.log('- store_large_data: 1 write (hash) instead of 500+ writes (struct)');
+        console.log('- Chunked poseidon2 hash scales to 500+ fields');
         console.log('- Full struct emitted via LargeDataStored event for off-chain indexing');
         console.log('- verify_large_data: pass struct as param, hash checked against storage\n');
     } catch (err) {

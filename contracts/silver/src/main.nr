@@ -16,7 +16,7 @@ pub contract Silver {
 
     #[storage]
     struct Storage<Context> {
-        /// Store only hash (1 write) instead of full struct (100+ writes)
+        /// Store only hash (1 write) instead of full struct (500+ writes)
         data_hash_by_key: Map<Field, PublicMutable<Field, Context>, Context>,
     }
 
@@ -28,7 +28,7 @@ pub contract Silver {
 
     /// Store large data using hash + event pattern.
     /// - Computes poseidon2 hash of input struct (no input length limit)
-    /// - Writes only 1 slot (hash) instead of 100+ slots
+    /// - Writes only 1 slot (hash) instead of 500+ slots
     /// - Emits full struct via event for off-chain indexing
     ///
     /// # Arguments
@@ -36,14 +36,13 @@ pub contract Silver {
     /// - `data`: The full struct to store (hash) and emit
     #[external("public")]
     fn store_large_data(key: Field, data: LargeData) {
-        let mut fields: [Field; 100] = [0; 100];
-        for i in 0..100 {
+        let mut fields: [Field; 500] = [0; 500];
+        for i in 0..500 {
             fields[i] = data.values[i] as Field;
         }
         let computed_hash = crate::hash_utils::hash_large_fields(fields);
         self.storage.data_hash_by_key.at(key).write(computed_hash);
-
-        for i in 0..10 {
+        for i in 0..2 {
             self.emit(LargeDataStored { key, data });
         }
     }
@@ -52,8 +51,8 @@ pub contract Silver {
     #[external("public")]
     fn verify_large_data(key: Field, data: LargeData) -> pub bool {
         let stored_hash = self.storage.data_hash_by_key.at(key).read();
-        let mut fields: [Field; 100] = [0; 100];
-        for i in 0..100 {
+        let mut fields: [Field; 500] = [0; 500];
+        for i in 0..500 {
             fields[i] = data.values[i] as Field;
         }
         let computed_hash = crate::hash_utils::hash_large_fields(fields);
