@@ -1,15 +1,5 @@
 use dep::aztec::macros::aztec;
 
-mod config;
-mod types;
-
-// Re-export config types for consumers (e.g. Main contract)
-pub use config::{
-    ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetLevelThresholds,
-    PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig, WorldConfig,
-};
-pub use types::{PlanetDefaultStats, Upgrade};
-
 #[aztec]
 pub contract Config {
     use dep::aztec::{
@@ -18,12 +8,11 @@ pub contract Config {
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
 
-    use crate::config::{
-        ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetLevelThresholds,
-        PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig, WorldConfig,
+    use dep::types::{
+        ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
+        PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig,
+        SpaceshipsConfig, Upgrade, WorldConfig,
     };
-
-    use crate::types::{PlanetDefaultStats, Upgrade};
 
     // ========== Storage Structure ==========
     // Full storage structure
@@ -49,7 +38,7 @@ pub contract Config {
         // ========== Default Stats & Upgrades ==========
         planet_default_stats: Map<u8, PublicMutable<PlanetDefaultStats, Context>, Context>, // level 0-9
         upgrades: Map<u128, PublicMutable<Upgrade, Context>, Context>, // key = branch * 10 + level
-    
+
         cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
     }
 
@@ -102,7 +91,9 @@ pub contract Config {
         self.internal.assert_admin();
         // Only sets the small parts of game config that fit under the SSTORE limit.
         self.storage.game_config_core.write(GameConfig::default_dark_forest_core());
-        self.storage.planet_level_thresholds.write(GameConfig::default_dark_forest_planet_level_thresholds());
+        self.storage.planet_level_thresholds.write(
+            GameConfig::default_dark_forest_planet_level_thresholds(),
+        );
     }
 
     #[external("public")]
@@ -197,11 +188,11 @@ pub contract Config {
         self.internal.assert_admin();
         self.storage.capture_zones_config.write(config);
     }
-    
+
     #[external("public")]
     fn initializeUpgrades() {
         self.internal.assert_admin();
-        
+
         // Initialize upgrade structures (3 branches x 4 levels)
         // Defense branch (branch = 0)
         self.storage.upgrades.at(0).write(
@@ -331,27 +322,6 @@ pub contract Config {
             let cumulative_rarity: u128 = (base / threshold) * planet_rarity;
             self.storage.cumulative_rarities.at(i as u128).write(cumulative_rarity);
         }
-    }
-
-    // ---- defaults & upgrades setters (public) ----
-    #[external("public")]
-    fn set_planet_default_stats(level: u8, stats: PlanetDefaultStats) {
-        self.internal.assert_admin();
-        self.storage.planet_default_stats.at(level).write(stats);
-    }
-
-    /// Key is `branch * 10 + level`, matching storage comment.
-    #[external("public")]
-    fn set_upgrade(key: u128, upgrade: Upgrade) {
-        self.internal.assert_admin();
-        self.storage.upgrades.at(key).write(upgrade);
-    }
-
-    #[external("public")]
-    fn set_upgrade_by_branch_level(branch: u128, level: u128, upgrade: Upgrade) {
-        self.internal.assert_admin();
-        let key = branch * 10 + level;
-        self.storage.upgrades.at(key).write(upgrade);
     }
 
     // ========== Config Getters (public, for cross-contract calls) ==========
@@ -492,7 +462,7 @@ pub contract Config {
         self.storage.snark_constants.read()
     }
 
-      #[external("utility")]
+    #[external("utility")]
     unconstrained fn get_game_config_core() -> GameConfigCore {
         self.storage.game_config_core.read()
     }
@@ -596,7 +566,7 @@ pub contract Config {
         ];
 
         [branch0, branch1, branch2]
-    }   
+    }
 
     /// Noir port of Solidity `DFGetterFacet.getDefaultStats`.
     /// Returns the full array of default planet stats for levels 0..9.

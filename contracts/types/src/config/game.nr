@@ -4,13 +4,13 @@ use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct GameConfig {
     pub max_natural_planet_level: u128,
-    pub perlin_threshold_1: u128,
-    pub perlin_threshold_2: u128,
-    pub perlin_threshold_3: u128,
-    pub init_perlin_min: u128,
-    pub init_perlin_max: u128,
-    pub biome_threshold_1: u128,
-    pub biome_threshold_2: u128,
+    pub perlin_threshold_1: u8,
+    pub perlin_threshold_2: u8,
+    pub perlin_threshold_3: u8,
+    pub init_perlin_min: u8,
+    pub init_perlin_max: u8,
+    pub biome_threshold_1: u8,
+    pub biome_threshold_2: u8,
 
     pub planet_level_thresholds: [u128; 10],
     pub planet_rarity: u128,
@@ -26,13 +26,13 @@ pub struct GameConfig {
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct GameConfigCore {
     pub max_natural_planet_level: u128,
-    pub perlin_threshold_1: u128,
-    pub perlin_threshold_2: u128,
-    pub perlin_threshold_3: u128,
-    pub init_perlin_min: u128,
-    pub init_perlin_max: u128,
-    pub biome_threshold_1: u128,
-    pub biome_threshold_2: u128,
+    pub perlin_threshold_1: u8,
+    pub perlin_threshold_2: u8,
+    pub perlin_threshold_3: u8,
+    pub init_perlin_min: u8,
+    pub init_perlin_max: u8,
+    pub biome_threshold_1: u8,
+    pub biome_threshold_2: u8,
     pub planet_rarity: u128,
     pub max_location_id: Field,
 }
@@ -234,25 +234,25 @@ impl GameConfig {
     pub fn get_max_natural_planet_level(&self) -> u128 {
         self.max_natural_planet_level
     }
-    pub fn get_perlin_threshold_1(&self) -> u128 {
+    pub fn get_perlin_threshold_1(&self) -> u8 {
         self.perlin_threshold_1
     }
-    pub fn get_perlin_threshold_2(&self) -> u128 {
+    pub fn get_perlin_threshold_2(&self) -> u8 {
         self.perlin_threshold_2
     }
-    pub fn get_perlin_threshold_3(&self) -> u128 {
+    pub fn get_perlin_threshold_3(&self) -> u8 {
         self.perlin_threshold_3
     }
-    pub fn get_init_perlin_min(&self) -> u128 {
+    pub fn get_init_perlin_min(&self) -> u8 {
         self.init_perlin_min
     }
-    pub fn get_init_perlin_max(&self) -> u128 {
+    pub fn get_init_perlin_max(&self) -> u8 {
         self.init_perlin_max
     }
-    pub fn get_biome_threshold_1(&self) -> u128 {
+    pub fn get_biome_threshold_1(&self) -> u8 {
         self.biome_threshold_1
     }
-    pub fn get_biome_threshold_2(&self) -> u128 {
+    pub fn get_biome_threshold_2(&self) -> u8 {
         self.biome_threshold_2
     }
     pub fn get_planet_level_thresholds(&self) -> [u128; 10] {
@@ -269,25 +269,25 @@ impl GameConfig {
     pub fn set_max_natural_planet_level(&mut self, value: u128) {
         self.max_natural_planet_level = value;
     }
-    pub fn set_perlin_threshold_1(&mut self, value: u128) {
+    pub fn set_perlin_threshold_1(&mut self, value: u8) {
         self.perlin_threshold_1 = value;
     }
-    pub fn set_perlin_threshold_2(&mut self, value: u128) {
+    pub fn set_perlin_threshold_2(&mut self, value: u8) {
         self.perlin_threshold_2 = value;
     }
-    pub fn set_perlin_threshold_3(&mut self, value: u128) {
+    pub fn set_perlin_threshold_3(&mut self, value: u8) {
         self.perlin_threshold_3 = value;
     }
-    pub fn set_init_perlin_min(&mut self, value: u128) {
+    pub fn set_init_perlin_min(&mut self, value: u8) {
         self.init_perlin_min = value;
     }
-    pub fn set_init_perlin_max(&mut self, value: u128) {
+    pub fn set_init_perlin_max(&mut self, value: u8) {
         self.init_perlin_max = value;
     }
-    pub fn set_biome_threshold_1(&mut self, value: u128) {
+    pub fn set_biome_threshold_1(&mut self, value: u8) {
         self.biome_threshold_1 = value;
     }
-    pub fn set_biome_threshold_2(&mut self, value: u128) {
+    pub fn set_biome_threshold_2(&mut self, value: u8) {
         self.biome_threshold_2 = value;
     }
     pub fn set_planet_level_thresholds(&mut self, value: [u128; 10]) {
