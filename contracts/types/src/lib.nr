@@ -21,7 +21,7 @@ pub use storage::{
     Player,
     // Planet types and sub-tables
     Planet, PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods, RevealedCoords,
-    PlanetData, PlanetEventMetadata, PlanetFullState,
+    PlanetData, PlanetEventMetadata, PlanetEvents, PlanetArtifacts, PlanetFullState,
     // Arrival data
     Arrival,
 };

@@ -349,6 +349,42 @@ impl PlanetEventMetadata {
     }
 }
 
+// ========== PlanetEvents ==========
+// Fixed-size ring buffer of planet events + count
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct PlanetEvents {
+    pub events: [PlanetEventMetadata; 20],
+    pub events_count: u128,
+}
+
+impl PlanetEvents {
+    pub fn zero() -> Self {
+        PlanetEvents {
+            events: [PlanetEventMetadata::zero(); 20],
+            events_count: 0,
+        }
+    }
+}
+
+// ========== PlanetArtifacts ==========
+// Fixed-size ring buffer of planet artifacts + count
+
+#[derive(Serialize, Deserialize, Packable)]
+pub struct PlanetArtifacts {
+    pub artifacts: [Field; 20],
+    pub artifacts_count: u128,
+}
+
+impl PlanetArtifacts {
+    pub fn zero() -> Self {
+        PlanetArtifacts {
+            artifacts: [0; 20],
+            artifacts_count: 0,
+        }
+    }
+}
+
 // ========== PlanetFullState ==========
 // Complete planet state for hash verification
 
@@ -360,10 +396,8 @@ pub struct PlanetFullState {
     pub resources: PlanetResources,
     pub mods: PlanetMods,
     pub revealed_coords: RevealedCoords,
-    pub events: [PlanetEventMetadata; 20],
-    pub events_count: u128,
-    pub artifacts: [Field; 20],
-    pub artifacts_count: u128,
+    pub events: PlanetEvents,
+    pub artifacts: PlanetArtifacts,
 }
 
 impl PlanetFullState {

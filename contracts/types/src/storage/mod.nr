@@ -22,8 +22,18 @@ pub use player::Player;
 // ========== Planet State ==========
 pub mod planet;
 pub use planet::{
-    Planet, PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods,
-    RevealedCoords, PlanetData, PlanetEventMetadata, PlanetFullState,
+    Planet,
+    PlanetMeta,
+    PlanetOwner,
+    PlanetCaps,
+    PlanetResources,
+    PlanetMods,
+    RevealedCoords,
+    PlanetData,
+    PlanetEventMetadata,
+    PlanetEvents,
+    PlanetArtifacts,
+    PlanetFullState,
 };
 
 // ========== Arrival Data ==========
