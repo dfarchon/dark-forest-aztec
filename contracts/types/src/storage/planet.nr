@@ -196,6 +196,45 @@ pub struct Planet {
 }
 
 impl Planet {
+
+    pub fn zero() -> Self {
+        Planet {
+            owner: AztecAddress::zero(),
+            range: 0,
+            speed: 0,
+            defense: 0,
+            population: 0,
+            population_cap: 0,
+            population_growth: 0,
+            silver_cap: 0,
+            silver_growth: 0,
+            silver: 0,
+            planet_level: 0,
+            planet_type: 0,
+            is_home_planet: false,
+            is_initialized: false,
+            created_at: 0,
+            last_updated: 0,
+            perlin: 0,
+            space_type: 0,
+            upgrade_state_0: 0,
+            upgrade_state_1: 0,
+            upgrade_state_2: 0,
+            hat_level: 0,
+            has_tried_finding_artifact: false,
+            prospected_block_number: 0,
+            destroyed: false,
+            space_junk: 0,
+            pausers: 0,
+            energy_gro_doublers: 0,
+            silver_gro_doublers: 0,
+            invader: AztecAddress::zero(),
+            invade_start_block: 0,
+            capturer: AztecAddress::zero(),
+            location_id: 0 as Field,
+        }
+    }
+
     pub fn to_meta(self) -> PlanetMeta {
         PlanetMeta {
             location_id: self.location_id,
@@ -297,6 +336,54 @@ impl Planet {
             prospected_block_number: mods.prospected_block_number,
         }
     }
+
+    pub fn to_meta_caps_resources_mods(&self) -> (PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods) {
+        (
+            PlanetMeta {
+                location_id: self.location_id,
+                perlin: self.perlin,
+                created_at: self.created_at,
+            },
+            PlanetOwner {
+                owner: self.owner,
+                planet_level: self.planet_level,
+                planet_type: self.planet_type,
+                space_type: self.space_type,
+                is_home_planet: self.is_home_planet,
+                is_initialized: self.is_initialized,
+                destroyed: self.destroyed,
+                invader: self.invader,
+                capturer: self.capturer,
+                invade_start_block: self.invade_start_block,
+            },
+            PlanetCaps {
+                population_cap: self.population_cap,
+                population_growth: self.population_growth,
+                range: self.range,
+                speed: self.speed,
+                defense: self.defense,
+                silver_cap: self.silver_cap,
+                silver_growth: self.silver_growth,
+            },
+            PlanetResources {
+                population: self.population,
+                silver: self.silver,
+                upgrade_state_0: self.upgrade_state_0,
+                upgrade_state_1: self.upgrade_state_1,
+                upgrade_state_2: self.upgrade_state_2,
+                last_updated: self.last_updated,
+            },
+            PlanetMods {
+                pausers: self.pausers,
+                energy_gro_doublers: self.energy_gro_doublers,
+                silver_gro_doublers: self.silver_gro_doublers,
+                hat_level: self.hat_level,
+                space_junk: self.space_junk,
+                has_tried_finding_artifact: self.has_tried_finding_artifact,
+                prospected_block_number: self.prospected_block_number,
+            }
+        )
+    }
 }
 
 // ========== RevealedCoords ==========
@@ -355,7 +442,7 @@ impl PlanetEventMetadata {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct PlanetEvents {
     pub events: [PlanetEventMetadata; 20],
-    pub events_count: u128,
+    pub events_count: u32,
 }
 
 impl PlanetEvents {
@@ -373,7 +460,7 @@ impl PlanetEvents {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct PlanetArtifacts {
     pub artifacts: [Field; 20],
-    pub artifacts_count: u128,
+    pub artifacts_count: u32,
 }
 
 impl PlanetArtifacts {
@@ -405,3 +492,29 @@ impl PlanetFullState {
         Planet::from_parts(self.meta, self.owner, self.caps, self.resources, self.mods)
     }
 }
+
+pub mod PlanetType {
+    pub fn Planet() -> u8 { 0 }
+    pub fn SilverMine() -> u8 { 1 }
+    pub fn Ruins() -> u8 { 2 }
+    pub fn TradingPost() -> u8 { 3 }
+    pub fn SilverBank() -> u8 { 4 }
+}
+
+pub mod PlanetEventType {
+    pub fn Arrival() -> u8 { 0 }
+}
+
+pub mod SpaceType {
+    pub fn Nebula() -> u8 { 0 }
+    pub fn Space() -> u8 { 1 }
+    pub fn DeepSpace() -> u8 { 2 }
+    pub fn DeadSpace() -> u8 { 3 }
+}
+
+pub mod UpgradeBranch {
+    pub fn Defense() -> u8 { 0 }
+    pub fn Range() -> u8 { 1 }
+    pub fn Speed() -> u8 { 2 }
+}
+

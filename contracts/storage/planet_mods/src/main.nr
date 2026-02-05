@@ -138,6 +138,13 @@ pub contract PlanetModsStorage {
         is_admin | is_in_list
     }
 
+    #[external("public")]
+    #[view]
+    fn is_initialized(id: Field) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
+    }
+
     #[external("utility")]
     unconstrained fn get_state_root_unconstrained(id: Field) -> StateRoot {
         self.storage.state_roots.at(id).read()
@@ -175,5 +182,11 @@ pub contract PlanetModsStorage {
         let is_admin = addr == self.storage.admin.read();
         let is_in_list = self.storage.authorized_map.at(addr).read();
         is_admin | is_in_list
+    }
+
+    #[external("utility")]
+    unconstrained fn is_initialized_unconstrained(id: Field) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
     }
 }

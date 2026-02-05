@@ -166,6 +166,12 @@ pub contract GlobalStateStorage {
         computed_hash == stored_root.hash
     }
 
+    #[external("public")]
+    #[view]
+    fn get_admin() -> AztecAddress {
+        self.storage.admin.read()
+    }
+
     // =====================================================================
     // UTILITY - UNCONSTRAINED (off-chain read only)
     // =====================================================================

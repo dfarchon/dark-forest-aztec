@@ -35,3 +35,11 @@ impl Arrival {
         }
     }
 }
+
+
+pub mod ArrivalType {
+    pub fn Unknown() -> u8 { 0 }
+    pub fn Normal() -> u8 { 1 }
+    pub fn Photoid() -> u8 { 2 }
+    pub fn Wormhole() -> u8 { 3 }
+}

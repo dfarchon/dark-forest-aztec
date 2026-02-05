@@ -13,7 +13,7 @@ pub use global_state::GlobalState;
 
 // ========== Artifact State ==========
 pub mod artifact_state;
-pub use artifact_state::{Artifact, ArtifactState};
+pub use artifact_state::{Artifact, ArtifactState, ArtifactType, ArtifactRarity};
 
 // ========== Player State ==========
 pub mod player;
@@ -34,8 +34,12 @@ pub use planet::{
     PlanetEvents,
     PlanetArtifacts,
     PlanetFullState,
+    PlanetType,
+    PlanetEventType,
+    SpaceType,
+    UpgradeBranch,
 };
 
 // ========== Arrival Data ==========
 pub mod arrival;
-pub use arrival::Arrival;
+pub use arrival::{Arrival, ArrivalType};

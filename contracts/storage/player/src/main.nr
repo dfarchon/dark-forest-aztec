@@ -165,6 +165,14 @@ pub contract PlayerStorage {
         is_admin | is_in_list
     }
 
+    /// Returns true if the player at `addr` has been initialized (a state row has been set).
+    #[external("public")]
+    #[view]
+    fn is_initialized(addr: AztecAddress) -> bool {
+        let state_root = self.storage.state_roots.at(addr).read();
+        state_root.hash != 0
+    }
+
     // =====================================================================
     // UTILITY - UNCONSTRAINED
     // =====================================================================
@@ -206,5 +214,16 @@ pub contract PlayerStorage {
         let is_admin = addr == self.storage.admin.read();
         let is_in_list = self.storage.authorized_map.at(addr).read();
         is_admin | is_in_list
+    }
+
+    #[external("utility")]
+    unconstrained fn is_initialized_unconstrained(addr: AztecAddress) -> bool {
+        let state_root = self.storage.state_roots.at(addr).read();
+        state_root.hash != 0
+    }
+
+    #[external("utility")]
+    unconstrained fn get_default_player_unconstrained() -> Player {
+        Player::zero()
     }
 }

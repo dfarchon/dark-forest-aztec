@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "config",
+    "libs",
     "storage/global_state",
     "storage/arrival",
     "storage/artifact_state",
@@ -8,12 +9,14 @@ members = [
     "storage/planet_meta",
     "storage/planet_owner",
     "storage/planet_caps",
+    "storage/planet_coords",
     "storage/planet_resources",
     "storage/planet_mods",
-    "storage/revealed_coords",
     "storage/planet_events",
     "storage/planet_artifacts",
-    "types"
+    "systems/admin",
+    "types",
+
 ]
 
 # [dependencies]

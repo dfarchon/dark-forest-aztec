@@ -149,6 +149,13 @@ pub contract ArrivalStorage {
         self.storage.next_id.read()
     }
 
+    #[external("public")]
+    #[view]
+    fn is_initialized(id: u128) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
+    }
+
     // =====================================================================
     // UTILITY - UNCONSTRAINED
     // =====================================================================
@@ -183,5 +190,11 @@ pub contract ArrivalStorage {
         let is_admin = addr == self.storage.admin.read();
         let is_in_list = self.storage.authorized_map.at(addr).read();
         is_admin | is_in_list
+    }
+
+    #[external("utility")]
+    unconstrained fn is_initialized_unconstrained(id: u128) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
     }
 }

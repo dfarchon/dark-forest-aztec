@@ -16,12 +16,15 @@ pub use storage::{
     // Global state
     GlobalState,
     // Artifact types
-    Artifact, ArtifactState,
+    Artifact, ArtifactState, ArtifactType, ArtifactRarity,
     // Player types
     Player,
     // Planet types and sub-tables
     Planet, PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods, RevealedCoords,
-    PlanetData, PlanetEventMetadata, PlanetEvents, PlanetArtifacts, PlanetFullState,
+    PlanetData, PlanetEventMetadata, PlanetEvents, PlanetArtifacts, PlanetFullState, PlanetType,
+    PlanetEventType, SpaceType, UpgradeBranch,
     // Arrival data
     Arrival,
 };
+
+pub mod args;

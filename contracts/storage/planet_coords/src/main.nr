@@ -1,8 +1,8 @@
 use dep::aztec::macros::aztec;
 
-/// RevealedCoordsStorage - table for RevealedCoords per planet (mutable: add, update, read).
+/// PlanetCoordsStorage - table for PlanetCoordsStorage per planet (mutable: add, update, read).
 #[aztec]
-pub contract RevealedCoordsStorage {
+pub contract PlanetCoordsStorage {
     use dep::aztec::{
         macros::{
             events::event,
@@ -25,7 +25,7 @@ pub contract RevealedCoordsStorage {
     }
 
     #[event]
-    struct RevealedCoordsUpdated {
+    struct PlanetCoordsUpdated {
         id: Field,
         block_number: u32,
         state: RevealedCoords,
@@ -95,7 +95,7 @@ pub contract RevealedCoordsStorage {
         let block_number = self.context.block_number();
         let state_root = StateRoot::new(poseidon2_hash(state.pack()), block_number);
         self.storage.state_roots.at(id).write(state_root);
-        self.emit(RevealedCoordsUpdated { id: id, block_number: block_number, state: state });
+        self.emit(PlanetCoordsUpdated { id: id, block_number: block_number, state: state });
     }
 
     #[external("public")]
@@ -138,6 +138,13 @@ pub contract RevealedCoordsStorage {
         is_admin | is_in_list
     }
 
+    #[external("public")]
+    #[view]
+    fn is_initialized(id: Field) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
+    }
+
     #[external("utility")]
     unconstrained fn get_state_root_unconstrained(id: Field) -> StateRoot {
         self.storage.state_roots.at(id).read()
@@ -175,5 +182,11 @@ pub contract RevealedCoordsStorage {
         let is_admin = addr == self.storage.admin.read();
         let is_in_list = self.storage.authorized_map.at(addr).read();
         is_admin | is_in_list
+    }
+
+    #[external("utility")]
+    unconstrained fn is_initialized_unconstrained(id: Field) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        state_root.hash != 0
     }
 }

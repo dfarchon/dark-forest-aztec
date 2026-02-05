@@ -1,8 +1,11 @@
 [package]
-name = "revealed_coords_storage"
+name = "admin"
 type = "contract"
 authors = [""]
 
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v3.0.0-devnet.6-patch.1", directory = "aztec" }
 types = { path = "../../types" }
+global_state_storage = { path = "../../storage/global_state" }
+player_storage = { path = "../../storage/player" }
+planet_owner_storage = { path = "../../storage/planet_owner" }
