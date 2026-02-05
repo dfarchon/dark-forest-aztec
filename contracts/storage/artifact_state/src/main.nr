@@ -20,7 +20,7 @@ pub contract ArtifactStateStorage {
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::{ArtifactState, StateRoot};
+    use dep::types::storage::{ArtifactState, StateRoot};
 
     #[storage]
     struct Storage<Context> {

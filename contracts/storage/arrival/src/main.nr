@@ -20,7 +20,7 @@ pub contract ArrivalStorage {
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::{Arrival, StateRoot};
+    use dep::types::storage::{Arrival, StateRoot};
 
     #[storage]
     struct Storage<Context> {

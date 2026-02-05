@@ -1,6 +1,16 @@
-use dep::types::{ 
-    SnarkConstants, GameConfigCore, Artifact, ArtifactType, ArtifactRarity,
-    Upgrade, WorldConfig, PlanetTypeWeightsTier, PlanetLevelThresholds, GameConfigCore,
+use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
+
+use dep::types::config::{
+    ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
+    PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig,
+    Upgrade, WorldConfig,
+};
+
+use dep::types::storage::{
+    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
+    Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
+    PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
+    PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
 };
 
 // Game utility functions that don't require storage access
@@ -13,7 +23,11 @@ use dep::types::{
 /// - 32-byte big-endian, left-padded with zeros.
 ///
 /// Note: Returns `u128`, so `end_byte - start_byte` must be < 16.
-pub fn calculate_byte_uint_from_location_id(location_id: Field, start_byte: u32, end_byte: u32) -> u128 {
+pub fn calculate_byte_uint_from_location_id(
+    location_id: Field,
+    start_byte: u32,
+    end_byte: u32,
+) -> u128 {
     assert(start_byte <= end_byte, "start_byte must be <= end_byte");
     assert(end_byte < 32, "end_byte out of bounds (expected < 32)");
     assert(end_byte - start_byte < 16, "byte range must fit in u128");
@@ -28,7 +42,7 @@ pub fn calculate_byte_uint_from_location_id(location_id: Field, start_byte: u32,
     // Parse the requested byte slice as big-endian:
     // acc = (((b[start] * 256) + b[start+1]) * 256 + ...) + b[end]
     let mut acc: u128 = 0;
-    
+
     // Only iterate over the required byte range (start_byte to end_byte)
     for i in start_byte..=end_byte {
         // Compute the i-th byte in the 32-byte big-endian encoding.
@@ -61,15 +75,15 @@ pub fn location_id_valid(loc: Field, max_location_id: Field) -> bool {
 
 /// Noir port of Solidity `LibGameUtils.revertIfBadSnarkPerlinFlags`.
 /// Validates that the SNARK perlin flags match the configured constants.
-/// 
+///
 /// This function ensures that SNARK proofs use the correct keys and parameters
 /// for this universe. Without this check, a player could create a valid SNARK
 /// proof with wrong keys, creating an invalid planet.
-/// 
+///
 /// # Arguments
 /// - `perlin_flags`: Array of 5 flags [planethash_key, spacetype/biomebase_key, perlin_length_scale, mirror_x, mirror_y]
 /// - `checking_biome`: If true, checks biomebase_key instead of spacetype_key
-/// 
+///
 /// # Returns
 /// `true` if all flags match the configured constants
 pub fn revert_if_bad_snark_perlin_flags(
@@ -77,16 +91,36 @@ pub fn revert_if_bad_snark_perlin_flags(
     checking_biome: bool,
     expected_snark_constants: SnarkConstants,
 ) -> bool {
-    assert(provided_snark_constants.planethash_key == snark_conexpected_snark_constantsstants.planethash_key, "bad planethash mimc key");
-    if( checking_biome ) {
-        assert(provided_snark_constants.spacetype_key == expected_snark_constants.spacetype_key, "bad spacetype mimc key");
+    assert(
+        provided_snark_constants.planethash_key
+            == snark_conexpected_snark_constantsstants.planethash_key,
+        "bad planethash mimc key",
+    );
+    if (checking_biome) {
+        assert(
+            provided_snark_constants.spacetype_key == expected_snark_constants.spacetype_key,
+            "bad spacetype mimc key",
+        );
     } else {
-        assert(provided_snark_constants.biomebase_key == expected_snark_constants.biomebase_key, "bad biomebase mimc key");
+        assert(
+            provided_snark_constants.biomebase_key == expected_snark_constants.biomebase_key,
+            "bad biomebase mimc key",
+        );
     }
-    assert(provided_snark_constants.perlin_length_scale == expected_snark_constants.perlin_length_scale, "bad perlin length scale");
-    assert(provided_snark_constants.perlin_mirror_x == expected_snark_constants.perlin_mirror_x, "bad perlin mirror x");
-    assert(provided_snark_constants.perlin_mirror_y == expected_snark_constants.perlin_mirror_y, "bad perlin mirror y");   
-    true   
+    assert(
+        provided_snark_constants.perlin_length_scale
+            == expected_snark_constants.perlin_length_scale,
+        "bad perlin length scale",
+    );
+    assert(
+        provided_snark_constants.perlin_mirror_x == expected_snark_constants.perlin_mirror_x,
+        "bad perlin mirror x",
+    );
+    assert(
+        provided_snark_constants.perlin_mirror_y == expected_snark_constants.perlin_mirror_y,
+        "bad perlin mirror y",
+    );
+    true
 }
 
 /// Noir port of Solidity `LibGameUtils.spaceTypeFromPerlin`.
@@ -110,7 +144,7 @@ pub fn space_type_from_perlin(perlin: u8, game_config_core: GameConfigCore) -> u
 /// planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
 /// space_type: 0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace
 pub fn get_planet_level_type_and_space_type(
-    location_id: Field, 
+    location_id: Field,
     perlin: u8,
     game_config_core: GameConfigCore,
     planet_level_thresholds: PlanetLevelThresholds,
@@ -134,12 +168,14 @@ pub fn get_planet_level_type_and_space_type(
     }
     assert(found_level, "level not found");
 
-    if space_type == 0 { // Nebula
+    if space_type == 0 {
+        // Nebula
         if level > 4 {
             level = 4;
         }
     }
-    if space_type == 1 { // Space
+    if space_type == 1 {
+        // Space
         if level > 5 {
             level = 5;
         }
@@ -150,15 +186,19 @@ pub fn get_planet_level_type_and_space_type(
         level = max_level;
     }
 
-    let tier: PlanetTypeWeightsTier = if space_type == 0 { // Nebula
+    let tier: PlanetTypeWeightsTier = if space_type == 0 {
+        // Nebula
         planet_type_weights_tier_0
-    } else if space_type == 1 { // Space
+    } else if space_type == 1 {
+        // Space
         planet_type_weights_tier_1
-    } else if space_type == 2 { // DeepSpace
+    } else if space_type == 2 {
+        // DeepSpace
         planet_type_weights_tier_2
-    } else { // DeadSpace
+    } else {
+        // DeadSpace
         planet_type_weights_tier_3
-    }
+    };
 
     let level_idx: u32 = level as u32;
     let weights: [u128; 5] = tier.weights[level_idx];
@@ -196,7 +236,7 @@ pub fn get_planet_level_type_and_space_type(
 /// Calculates the world radius based on player count and initialized planets.
 /// todo: implement this
 pub fn _get_radius(world_config: WorldConfig) -> u128 {
-    return world_config.world_radius_min;
+    world_config.world_radius_min
 }
 
 /// Noir port of Solidity `LibGameUtils._randomArtifactTypeAndLevelBonus`.
@@ -216,17 +256,18 @@ pub fn _random_artifact_type_and_level_bonus(
 /// biome: 0=Corrupted, 1=Forest, 2=Swamp, 3=Desert, 4=Tundra, 5=Volcanic, 6=Glacier, 7=Ocean, 8=Void
 pub fn _get_biome(space_type: u8, biomebase: u8, game_config_core: GameConfigCore) -> u8 {
     if space_type == 3 {
-        return 0;
+        0
+    } else {
+        let mut biome: u8 = 3 * space_type;
+        if biomebase < game_config_core.biome_threshold_1 {
+            biome += 1;
+        } else if biomebase < game_config_core.biome_threshold_2 {
+            biome += 2;
+        } else {
+            biome += 3;
+        }
+        biome
     }
-    let mut biome: u8 = 3 * space_type;
-    if biomebase < game_config_core.biome_threshold_1 {
-        biome += 1;
-    }else if biomebase < game_config_core.biome_threshold_2 {
-        biome += 2;
-    }else {
-        biome += 3;
-    }
-    biome
 }
 
 /// Noir port of Solidity `LibGameUtils.defaultUpgrade`.
@@ -309,7 +350,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
         } else if artifact.artifact_type == ArtifactType::Pyramid() {
             upgrade.def_multiplier += 5;
         }
-        
+
         if artifact.planet_biome == Biome::Ocean() {
             upgrade.speed_multiplier += 5;
             upgrade.def_multiplier += 5;
@@ -347,7 +388,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
         upgrade.speed_multiplier = scale * upgrade.speed_multiplier - (scale - 1) * 100;
         upgrade.range_multiplier = scale * upgrade.range_multiplier - (scale - 1) * 100;
         upgrade.def_multiplier = scale * upgrade.def_multiplier - (scale - 1) * 100;
-        upgrade 
+        upgrade
     }
 }
 
@@ -376,8 +417,7 @@ pub fn _put_artifact_on_planet(
     mut artifact_state: ArtifactState,
     location_id: Field,
     mut planet_artifacts: PlanetArtifacts,
-) -> (Field,ArtifactState, Field,PlanetArtifacts) {
-  
+) -> (Field, ArtifactState, Field, PlanetArtifacts) {
     artifact_state.planet_id = location_id;
 
     let cnt: u128 = planet_artifacts.artifacts_count;
@@ -422,7 +462,7 @@ pub fn _take_artifact_off_planet(
     planet_artifacts.artifacts_count -= 1;
     planet_artifacts.artifacts[found_index] = planet_artifacts.artifacts[last_index];
     planet_artifacts.artifacts[last_index] = 0;
-    (artifact_id, artifact_state, location_id, planet_artifacts)   
+    (artifact_id, artifact_state, location_id, planet_artifacts)
 }
 
 /// Noir port of Solidity `LibGameUtils._takeArtifactOffPlanet`.
@@ -436,7 +476,11 @@ pub fn is_activated(artifact: Artifact) -> bool {
 }
 
 /// Noir port of Solidity `LibGameUtils.isArtifactOnPlanet`.
-pub fn is_artifact_on_planet(location_id: Field, planet_artifacts: PlanetArtifacts, artifact_id: Field) -> bool {
+pub fn is_artifact_on_planet(
+    location_id: Field,
+    planet_artifacts: PlanetArtifacts,
+    artifact_id: Field,
+) -> bool {
     let mut found: bool = false;
     for i in 0..planet_artifacts.artifacts_count {
         if !found {
@@ -452,7 +496,12 @@ pub fn is_artifact_on_planet(location_id: Field, planet_artifacts: PlanetArtifac
 ///
 /// if the given artifact is on the given planet, then return the artifact
 /// otherwise, return a 'null' artifact
-pub fn get_planet_artifact(location_id: Field, planet_artifacts: PlanetArtifacts, artifact_id: Field, artifact: Artifact) -> Artifact {
+pub fn get_planet_artifact(
+    location_id: Field,
+    planet_artifacts: PlanetArtifacts,
+    artifact_id: Field,
+    artifact: Artifact,
+) -> Artifact {
     let mut found: bool = false;
     for i in 0..planet_artifacts.artifacts_count {
         if !found {
@@ -463,7 +512,7 @@ pub fn get_planet_artifact(location_id: Field, planet_artifacts: PlanetArtifacts
     }
     if found {
         artifact
-    }else {
+    } else {
         Artifact::zero()
     }
 }
@@ -477,15 +526,21 @@ pub fn get_active_artifact(location_id: Field, planet_artifacts: PlanetArtifacts
 /// Noir port of Solidity `LibGameUtils.getPlanetDefaultSpaceJunk`.
 pub fn get_planet_default_space_junk(planet: Planet, space_junk_config: SpaceJunkConfig) -> u128 {
     if planet.is_home_planet {
-        return 0;
+        0
+    } else {
+        space_junk_config.planet_level_junk[planet.planet_level]
     }
-    space_junk_config.planet_level_junk[planet.planet_level]
 }
 
 /// Noir port of Solidity `LibGameUtils._buffPlanet`.
-pub fn _buff_planet(location_id: Field, mut planet_caps: PlanetCaps, upgrade: Upgrade) -> (Field,PlanetCaps) {
+pub fn _buff_planet(
+    location_id: Field,
+    mut planet_caps: PlanetCaps,
+    upgrade: Upgrade,
+) -> (Field, PlanetCaps) {
     planet_caps.population_cap = (planet_caps.population_cap * upgrade.pop_cap_multiplier) / 100;
-    planet_caps.population_growth = (planet_caps.population_growth * upgrade.pop_gro_multiplier) / 100;
+    planet_caps.population_growth =
+        (planet_caps.population_growth * upgrade.pop_gro_multiplier) / 100;
     planet_caps.range = (planet_caps.range * upgrade.range_multiplier) / 100;
     planet_caps.speed = (planet_caps.speed * upgrade.speed_multiplier) / 100;
     planet_caps.defense = (planet_caps.defense * upgrade.def_multiplier) / 100;
@@ -494,9 +549,14 @@ pub fn _buff_planet(location_id: Field, mut planet_caps: PlanetCaps, upgrade: Up
 }
 
 /// Noir port of Solidity `LibGameUtils._debuffPlanet`.
-pub fn _debuff_planet(location_id: Field, mut planet_caps: PlanetCaps, upgrade: Upgrade) -> (Field,PlanetCaps) {
+pub fn _debuff_planet(
+    location_id: Field,
+    mut planet_caps: PlanetCaps,
+    upgrade: Upgrade,
+) -> (Field, PlanetCaps) {
     planet_caps.population_cap = (planet_caps.population_cap * 100) / upgrade.pop_cap_multiplier;
-    planet_caps.population_growth = (planet_caps.population_growth * 100) / upgrade.pop_gro_multiplier;
+    planet_caps.population_growth =
+        (planet_caps.population_growth * 100) / upgrade.pop_gro_multiplier;
     planet_caps.range = (planet_caps.range * 100) / upgrade.range_multiplier;
     planet_caps.speed = (planet_caps.speed * 100) / upgrade.speed_multiplier;
     planet_caps.defense = (planet_caps.defense * 100) / upgrade.def_multiplier;
@@ -512,17 +572,17 @@ pub fn _debuff_planet(location_id: Field, mut planet_caps: PlanetCaps, upgrade: 
 
 /// todo: implement this
 
-
-
-
 /// Noir port of Solidity `LibGameUtils.updateWorldRadius`.
- pub fn update_world_radius(mut global_state:GlobalState, world_config: WorldConfig) -> GlobalState {
+pub fn update_world_radius(
+    mut global_state: GlobalState,
+    world_config: WorldConfig,
+) -> GlobalState {
     if !world_config.world_radius_locked {
         let new_radius = _get_radius();
         global_state.world_radius = new_radius;
     }
     global_state
- }
+}
 
 /// Noir port of Solidity `LiGameUtils.isPopCapBoost`.
 pub fn is_pop_cap_boost(location: Field) -> bool {
@@ -560,12 +620,11 @@ pub fn is_half_space_junk(location: Field) -> bool {
     byte < 16
 }
 
-
 /// Noir port of Solidity `LibGameUtils._defaultPlanet`.
 pub fn _default_planet(
-    location: Field, 
-    level: u8, 
-    planet_type: u8, 
+    location: Field,
+    level: u8,
+    planet_type: u8,
     space_type: u8,
     planet_default_stats: PlanetDefaultStats,
     world_config: WorldConfig,
@@ -588,7 +647,6 @@ pub fn _default_planet(
     planet.defense = planet_default_stats.defense;
     planet.silver_cap = planet_default_stats.silver_cap;
     planet.silver_growth = planet_default_stats.silver_growth;
-
 
     if planet_type == PlanetTyoe::SilverMine() {
         planet.silver_growth = planet_default_stats.silver_growth;
@@ -620,11 +678,10 @@ pub fn _default_planet(
         planet.silver_cap = planet.silver_cap * 2;
         planet.silver_growth = planet.silver_growth * 2;
 
-
         // Dead space debuff
         planet.defense = (planet.defense * 3) / 20;
-    }else if deep_space {
-       // Deep space buff
+    } else if deep_space {
+        // Deep space buff
         planet.range = (planet.range * 3) / 2;
         planet.speed = (planet.speed * 3) / 2;
         planet.population_cap = (planet.population_cap * 3) / 2;
@@ -634,7 +691,7 @@ pub fn _default_planet(
 
         // Deep space debuff
         planet.defense = planet.defense / 4;
-    }else if medium_space {
+    } else if medium_space {
         // Buff
         planet.range = (planet.range * 5) / 4;
         planet.speed = (planet.speed * 5) / 4;
@@ -642,22 +699,25 @@ pub fn _default_planet(
         planet.population_growth = (planet.population_growth * 5) / 4;
         planet.silver_cap = (planet.silver_cap * 5) / 4;
         planet.silver_growth = (planet.silver_growth * 5) / 4;
-        
+
         // Debuff
         planet.defense = planet.defense / 2;
     }
 
     // Apply buffs/debuffs for nonstandard planets
     // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
-    if planet_type == PlanetType::SilverMine() { // PlanetType::SilverMine
+    if planet_type == PlanetType::SilverMine() {
+        // PlanetType::SilverMine
         planet.silver_cap *= 2;
         planet.defense /= 2;
-    } else if planet_type == PlanetType::SilverBank() { // PlanetType::SilverBank
+    } else if planet_type == PlanetType::SilverBank() {
+        // PlanetType::SilverBank
         planet.speed /= 2;
         planet.silver_cap *= 10;
         planet.population_growth = 0;
         planet.population_cap *= 5;
-    } else if planet_type == PlanetType::TradingPost() { // PlanetType::TradingPost
+    } else if planet_type == PlanetType::TradingPost() {
+        // PlanetType::TradingPost
         planet.defense /= 2;
         planet.silver_cap *= 2;
     }
@@ -673,14 +733,16 @@ pub fn _default_planet(
     } else if medium_space {
         planet.population *= 4;
     }
-    
+
     // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
-    if planet_type == PlanetType::SilverBank() { // PlanetType::SilverBank
+    if planet_type == PlanetType::SilverBank() {
+        // PlanetType::SilverBank
         planet.population /= 2;
     }
 
     // Adjust silver cap for mine
-    if planet_type == PlanetType::SilverMine() { // PlanetType::SilverMine
+    if planet_type == PlanetType::SilverMine() {
+        // PlanetType::SilverMine
         planet.silver = planet.silver_cap / 2;
     }
 
@@ -691,13 +753,3 @@ pub fn _default_planet(
 
     planet
 }
-
-
-
-
-
-
-
-
-
-

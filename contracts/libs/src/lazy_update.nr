@@ -1,9 +1,19 @@
 // Lazy update functions for planets
 // Pure computation functions that update planet state based on time elapsed
+use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
 
-use dep::aztec::protocol_types::address::AztecAddress;
-use dep::types::{Arrival, ArrivalType, Planet, PlanetType, sPlanetEventMetadata};
+use dep::types::config::{
+    ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
+    PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig,
+    Upgrade, WorldConfig,
+};
 
+use dep::types::storage::{
+    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
+    Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
+    PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
+    PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
+};
 
 /// Noir port of Solidity `LibLazyUpdate._updateSilver`.
 /// Updates silver for silver-producing planets using linear growth formula.
@@ -103,7 +113,7 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Returns (carried_artifact_id, updated_planet).
 pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
     // ArrivalType enum values: Unknown=0, Normal=1, Photoid=2, Wormhole=3
-    let wormhole_type: u8 = ArrivalType::Wormhole(); 
+    let wormhole_type: u8 = ArrivalType::Wormhole();
 
     // checks whether the planet is owned by the player sending ships
     if arrival.player == planet.owner {
@@ -180,8 +190,6 @@ pub fn apply_pending_events(
     planet_events_state: PlanetEvents,
     arrivals: [Arrival; 20],
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
-
-
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
     let mut artifacts_to_add: PlanetArtifacts = PlanetArtifacts::zero();
 
@@ -195,9 +203,9 @@ pub fn apply_pending_events(
     for _ in 0..max_cnt {
         if !should_continue {
             // Equivalent to break - do nothing
-        }else if planet_events_state.events_count == 0 | planet.destroyed {
+        } else if planet_events_state.events_count == 0 | planet.destroyed {
             should_continue = false;
-        }else {
+        } else {
             // set to the upperbound of u64
             earliest_event_time = 18446744073709551615u64;
 
@@ -206,7 +214,8 @@ pub fn apply_pending_events(
                 if planet_events_state.events[i].time_trigger < earliest_event_time {
                     let mut should_apply: bool = true;
                     for already_removed_idx in 0..events_to_remove.events_count {
-                        if events_to_remove.events[already_removed_idx].id == planet_events_state.events[i].id {
+                        if events_to_remove.events[already_removed_idx].id
+                            == planet_events_state.events[i].id {
                             should_apply = false;
                         }
                     }
@@ -220,19 +229,20 @@ pub fn apply_pending_events(
             // only process the event if it occurs before the current time and the timeTrigger is not 0
             // which comes from uninitialized PlanetEventMetadata
 
-
             let max_u64: u64 = 18446744073709551615u64;
             if planet_events_state.events[earliest_event_index].time_trigger <= current_timestamp {
                 if earliest_event_time != max_u64 {
-                    planet = update_planet(planet_events_state.events[earliest_event_index].time_trigger, planet);
+                    planet = update_planet(
+                        planet_events_state.events[earliest_event_index].time_trigger,
+                        planet,
+                    );
 
                     // PlanetEventType::Arrival = 0
-                    if planet_events_state.events[earliest_event_index].event_type == PlanetEventType::Arrival() {
-                        
+                    if planet_events_state.events[earliest_event_index].event_type
+                        == PlanetEventType::Arrival() {
                         let arrival_id = planet_events_state.events[earliest_event_index].id;
                         events_to_remove.events[events_to_remove.events_count] = arrival_id;
                         events_to_remove.events_count = events_to_remove.events_count + 1;
-
 
                         let mut arrival_data: Arrival = Arrival::zero();
 
@@ -246,8 +256,10 @@ pub fn apply_pending_events(
                         let new_artifact_id = result.0;
                         planet = result.1;
 
-                        if new_artifact_id != 0 {   // if the arrival is carrying an artifact
-                            artifacts_to_add.artifacts[artifacts_to_add.artifacts_count] = new_artifact_id;
+                        if new_artifact_id != 0 {
+                            // if the arrival is carrying an artifact
+                            artifacts_to_add.artifacts[artifacts_to_add.artifacts_count] =
+                                new_artifact_id;
                             artifacts_to_add.artifacts_count = artifacts_to_add.artifacts_count + 1;
                         }
                     }
@@ -257,10 +269,3 @@ pub fn apply_pending_events(
     }
     (planet, events_to_remove, artifacts_to_add)
 }
-
-
-
-
-
-
-

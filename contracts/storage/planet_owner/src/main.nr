@@ -20,7 +20,7 @@ pub contract PlanetOwnerStorage {
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::{PlanetOwner, StateRoot};
+    use dep::types::storage::{PlanetOwner, StateRoot};
 
     #[storage]
     struct Storage<Context> {

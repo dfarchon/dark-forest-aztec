@@ -20,7 +20,7 @@ pub contract PlayerStorage {
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::{Player, StateRoot};
+    use dep::types::storage::{Player, StateRoot};
 
     #[storage]
     struct Storage<Context> {

@@ -12,7 +12,7 @@ pub contract PlanetCoordsStorage {
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::{RevealedCoords, StateRoot};
+    use dep::types::storage::{RevealedCoords, StateRoot};
 
     #[storage]
     struct Storage<Context> {

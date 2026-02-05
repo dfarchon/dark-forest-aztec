@@ -12,7 +12,22 @@ contract Admin {
     };
     use dep::aztec::state_vars::{Map, PublicMutable};
 
-    use dep::types::{GlobalState, PlanetOwner, Player};
+    use dep::types::args::{
+        AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
+    };
+
+    use dep::types::config::{
+        ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
+        PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig,
+        SpaceshipsConfig, Upgrade, WorldConfig,
+    };
+
+    use dep::types::storage::{
+        Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
+        Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
+        PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
+        PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
+    };
 
     use dep::global_state_storage::GlobalStateStorage;
     use dep::planet_owner_storage::PlanetOwnerStorage;
