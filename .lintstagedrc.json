@@ -1,7 +1,7 @@
 {
-  "client/**/*.{ts,tsx,js,jsx,json,css,scss,md}": ["cd client && pnpm format"],
+  "client/**/*.{ts,tsx,js,jsx,json,css,scss}": ["pnpm --filter client format"],
   "packages/**/*.{ts,tsx,js,jsx,json}": ["prettier --write"],
-  "contracts/scripts/**/*.{ts,js,json}": ["cd contracts && pnpm format"],
-  "contracts/**/*.nr": ["cd contracts && pnpm aztec:fmt"],
+  "contracts/scripts/**/*.{ts,js,json}": ["pnpm --filter contracts format"],
+  "contracts/**/*.nr": [""],
   "package.json": ["pnpm fix:package-json"]
 }

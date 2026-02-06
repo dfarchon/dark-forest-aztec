@@ -5,7 +5,15 @@ authors = [""]
 
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v3.0.0-devnet.6-patch.1", directory = "aztec" }
+
 types = { path = "../../types" }
+config = { path = "../../config" }
+libs={ path = "../../libs" }
+
 global_state_storage = { path = "../../storage/global_state" }
 player_storage = { path = "../../storage/player" }
+planet_meta_storage = { path = "../../storage/planet_meta" }
 planet_owner_storage = { path = "../../storage/planet_owner" }
+planet_caps_storage = { path = "../../storage/planet_caps" }
+planet_resources_storage = { path = "../../storage/planet_resources" }
+planet_mods_storage = { path = "../../storage/planet_mods" }

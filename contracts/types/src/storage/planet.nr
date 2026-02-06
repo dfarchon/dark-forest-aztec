@@ -337,7 +337,7 @@ impl Planet {
         }
     }
 
-    pub fn to_meta_caps_resources_mods(&self) -> (PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods) {
+    pub fn to_meta_owner_caps_resources_mods(&self) -> (PlanetMeta, PlanetOwner, PlanetCaps, PlanetResources, PlanetMods) {
         (
             PlanetMeta {
                 location_id: self.location_id,
@@ -516,5 +516,19 @@ pub mod UpgradeBranch {
     pub fn Defense() -> u8 { 0 }
     pub fn Range() -> u8 { 1 }
     pub fn Speed() -> u8 { 2 }
+}
+
+pub mod Biome {
+    pub fn Unknown() -> u8 { 0 }
+    pub fn Ocean() -> u8 { 1 }
+    pub fn Forest() -> u8 { 2 }
+    pub fn Grassland() -> u8 { 3 }
+    pub fn Tundra() -> u8 { 4 }
+    pub fn Swamp() -> u8 { 5 }
+    pub fn Desert() -> u8 { 6 }
+    pub fn Ice() -> u8 { 7 }
+    pub fn Wasteland() -> u8 { 8 }
+    pub fn Lava() -> u8 { 9 }
+    pub fn Corrupted() -> u8 { 10 }
 }
 

@@ -7,11 +7,13 @@ use dep::types::config::{
 };
 
 use dep::types::storage::{
-    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
+    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, Biome, GlobalState,
     Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
     PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
     PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
 };
+
+use dep::aztec::protocol_types::address::AztecAddress;
 
 // Game utility functions that don't require storage access
 // Pure computation functions extracted from LibGameUtils
@@ -92,8 +94,7 @@ pub fn revert_if_bad_snark_perlin_flags(
     expected_snark_constants: SnarkConstants,
 ) -> bool {
     assert(
-        provided_snark_constants.planethash_key
-            == snark_conexpected_snark_constantsstants.planethash_key,
+        provided_snark_constants.planethash_key == expected_snark_constants.planethash_key,
         "bad planethash mimc key",
     );
     if (checking_biome) {
@@ -127,12 +128,11 @@ pub fn revert_if_bad_snark_perlin_flags(
 /// Returns SpaceType as u8 (0=Nebula, 1=Space, 2=DeepSpace, 3=DeadSpace).
 /// `perlin` here is a u8 value in [0, 255].
 pub fn space_type_from_perlin(perlin: u8, game_config_core: GameConfigCore) -> u8 {
-    let perlin_u128: u128 = perlin as u128;
-    if perlin_u128 >= game_config_core.perlin_threshold_3 {
+    if perlin >= game_config_core.perlin_threshold_3 {
         3 // SpaceType::DeadSpace
-    } else if perlin_u128 >= game_config_core.perlin_threshold_2 {
+    } else if perlin >= game_config_core.perlin_threshold_2 {
         2 // SpaceType::DeepSpace
-    } else if perlin_u128 >= game_config_core.perlin_threshold_1 {
+    } else if perlin >= game_config_core.perlin_threshold_1 {
         1 // SpaceType::Space
     } else {
         0 // SpaceType::Nebula
@@ -290,8 +290,8 @@ pub fn time_delay_upgrade(artifact: Artifact) -> Upgrade {
         Upgrade {
             pop_cap_multiplier: 100,
             pop_gro_multiplier: 100,
-            range_multiplier: range[artifact.rarity as usize],
-            speed_multiplier: speed_boosts[artifact.rarity as usize],
+            range_multiplier: range[artifact.rarity as u32],
+            speed_multiplier: speed_boosts[artifact.rarity as u32],
             def_multiplier: 100,
         }
     } else {
@@ -300,12 +300,12 @@ pub fn time_delay_upgrade(artifact: Artifact) -> Upgrade {
 }
 
 /// Noir port of Solidity `LibGameUtils.abandoningUpgrade`.
-pub fn abandoning_upgrade(game_config_core: GameConfigCore) -> Upgrade {
+pub fn abandoning_upgrade(space_junk_config: SpaceJunkConfig) -> Upgrade {
     Upgrade {
         pop_cap_multiplier: 100,
         pop_gro_multiplier: 100,
-        range_multiplier: game_config_core.abandon_range_change_percent,
-        speed_multiplier: game_config_core.abandon_speed_change_percent,
+        range_multiplier: space_junk_config.abandon_range_change_percent,
+        speed_multiplier: space_junk_config.abandon_speed_change_percent,
         def_multiplier: 100,
     }
 }
@@ -319,7 +319,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
             pop_gro_multiplier: 100,
             range_multiplier: 20,
             speed_multiplier: 20,
-            def_multiplier: defense_multipliers_per_rarity[artifact.rarity as usize],
+            def_multiplier: defense_multipliers_per_rarity[artifact.rarity as u32],
         }
     } else if artifact.artifact_type == ArtifactType::PhotoidCannon() {
         let defense_multipliers_per_rarity: [u128; 6] = [100, 50, 40, 30, 20, 10];
@@ -328,7 +328,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
             pop_gro_multiplier: 100,
             range_multiplier: 100,
             speed_multiplier: 100,
-            def_multiplier: defense_multipliers_per_rarity[artifact.rarity as usize],
+            def_multiplier: defense_multipliers_per_rarity[artifact.rarity as u32],
         }
     } else if artifact.artifact_type >= ArtifactType::Wormhole() {
         Upgrade {
@@ -420,8 +420,8 @@ pub fn _put_artifact_on_planet(
 ) -> (Field, ArtifactState, Field, PlanetArtifacts) {
     artifact_state.planet_id = location_id;
 
-    let cnt: u128 = planet_artifacts.artifacts_count;
-    planet_artifacts.artifacts[cnt as usize] = artifact_id;
+    let cnt: u32 = planet_artifacts.artifacts_count;
+    planet_artifacts.artifacts[cnt as u32] = artifact_id;
     planet_artifacts.artifacts_count = cnt + 1;
 
     (artifact_id, artifact_state, location_id, planet_artifacts)
@@ -528,7 +528,7 @@ pub fn get_planet_default_space_junk(planet: Planet, space_junk_config: SpaceJun
     if planet.is_home_planet {
         0
     } else {
-        space_junk_config.planet_level_junk[planet.planet_level]
+        space_junk_config.planet_level_junk[planet.planet_level as u32]
     }
 }
 
@@ -578,7 +578,7 @@ pub fn update_world_radius(
     world_config: WorldConfig,
 ) -> GlobalState {
     if !world_config.world_radius_locked {
-        let new_radius = _get_radius();
+        let new_radius = _get_radius(world_config);
         global_state.world_radius = new_radius;
     }
     global_state
@@ -626,10 +626,10 @@ pub fn _default_planet(
     level: u8,
     planet_type: u8,
     space_type: u8,
+    time_factor_hundredths: u128,
     planet_default_stats: PlanetDefaultStats,
-    world_config: WorldConfig,
 ) -> Planet {
-    let time_factor_hundredths: u128 = world_config.time_factor_hundredths;
+    let time_factor_hundredths: u128 = time_factor_hundredths;
 
     let dead_space: bool = space_type == SpaceType::DeadSpace();
     let deep_space: bool = space_type == SpaceType::DeepSpace();
@@ -637,6 +637,7 @@ pub fn _default_planet(
 
     let mut planet = Planet::zero();
 
+    planet.owner = AztecAddress::zero();
     planet.planet_level = level;
     planet.planet_type = planet_type;
     planet.space_type = space_type;
@@ -648,7 +649,7 @@ pub fn _default_planet(
     planet.silver_cap = planet_default_stats.silver_cap;
     planet.silver_growth = planet_default_stats.silver_growth;
 
-    if planet_type == PlanetTyoe::SilverMine() {
+    if planet_type == PlanetType::SilverMine() {
         planet.silver_growth = planet_default_stats.silver_growth;
     }
 

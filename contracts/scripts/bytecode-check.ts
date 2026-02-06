@@ -23,9 +23,13 @@ function discoverArtifacts(): { name: string; artifact: string }[] {
         .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function getBytecodeStats(artifactPath: string): { bytes: number; fields: number } | null {
+function getBytecodeStats(
+    artifactPath: string
+): { bytes: number; fields: number } | null {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
-    const dispatch = (artifact.functions || []).find((fn: { name: string }) => fn.name === 'public_dispatch');
+    const dispatch = (artifact.functions || []).find(
+        (fn: { name: string }) => fn.name === 'public_dispatch'
+    );
     if (!dispatch?.bytecode) return null;
 
     const bytecode = Buffer.from(dispatch.bytecode, 'base64');
@@ -70,7 +74,9 @@ function checkBytecode() {
 
         console.log(`${name}:`);
         console.log(`  Bytes:  ${stats.bytes.toLocaleString()}`);
-        console.log(`  Fields: ${stats.fields} (1 + ceil(${stats.bytes}/${BYTES_PER_FIELD}))`);
+        console.log(
+            `  Fields: ${stats.fields} (1 + ceil(${stats.bytes}/${BYTES_PER_FIELD}))`
+        );
         console.log(`  Status: ${ok ? '✓ OK' : '⚠️ EXCEEDS LIMIT'}\n`);
     }
 
@@ -79,10 +85,17 @@ function checkBytecode() {
         console.log('Comparison (by size):');
         const sorted = [...results].sort((a, b) => b.bytes - a.bytes);
         sorted.forEach((r, i) => {
-            const diff = i === 0 ? '' : ` (-${(sorted[0].bytes - r.bytes).toLocaleString()} vs ${sorted[0].name})`;
-            console.log(`  ${i + 1}. ${r.name}: ${r.bytes.toLocaleString()} bytes${diff}`);
+            const diff =
+                i === 0
+                    ? ''
+                    : ` (-${(sorted[0].bytes - r.bytes).toLocaleString()} vs ${sorted[0].name})`;
+            console.log(
+                `  ${i + 1}. ${r.name}: ${r.bytes.toLocaleString()} bytes${diff}`
+            );
         });
-        console.log(`  Total: ${totalBytes.toLocaleString()} bytes, ${totalFields} fields\n`);
+        console.log(
+            `  Total: ${totalBytes.toLocaleString()} bytes, ${totalFields} fields\n`
+        );
     }
 
     console.log('Limits (from @aztec/constants):');
@@ -91,9 +104,14 @@ function checkBytecode() {
 
     const anyExceeded = results.some(
         (r) =>
-            r.fields > MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS || r.bytes > MAX_PUBLIC_BYTECODE_SIZE_IN_BYTES
+            r.fields > MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS ||
+            r.bytes > MAX_PUBLIC_BYTECODE_SIZE_IN_BYTES
     );
-    console.log(anyExceeded ? '\n⚠️  Some contract(s) exceed limit - deployment will fail' : '\n✓ All within limit');
+    console.log(
+        anyExceeded
+            ? '\n⚠️  Some contract(s) exceed limit - deployment will fail'
+            : '\n✓ All within limit'
+    );
 }
 
 checkBytecode();

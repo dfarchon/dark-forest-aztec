@@ -38,6 +38,7 @@ pub use planet::{
     PlanetEventType,
     SpaceType,
     UpgradeBranch,
+    Biome,
 };
 
 // ========== Arrival Data ==========

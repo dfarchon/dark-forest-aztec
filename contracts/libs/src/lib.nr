@@ -1,3 +1,3 @@
-mod game_utils;
-mod lazy_update;
-mod planet;
+pub mod game_utils;
+pub mod lazy_update;
+pub mod planet;

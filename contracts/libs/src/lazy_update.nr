@@ -15,6 +15,8 @@ use dep::types::storage::{
     PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
 };
 
+use dep::aztec::protocol_types::address::AztecAddress;
+
 /// Noir port of Solidity `LibLazyUpdate._updateSilver`.
 /// Updates silver for silver-producing planets using linear growth formula.
 /// Only called for PlanetType::SilverMine (planet_type == 1).
@@ -203,7 +205,7 @@ pub fn apply_pending_events(
     for _ in 0..max_cnt {
         if !should_continue {
             // Equivalent to break - do nothing
-        } else if planet_events_state.events_count == 0 | planet.destroyed {
+        } else if (planet_events_state.events_count == 0) | planet.destroyed {
             should_continue = false;
         } else {
             // set to the upperbound of u64
@@ -241,7 +243,7 @@ pub fn apply_pending_events(
                     if planet_events_state.events[earliest_event_index].event_type
                         == PlanetEventType::Arrival() {
                         let arrival_id = planet_events_state.events[earliest_event_index].id;
-                        events_to_remove.events[events_to_remove.events_count] = arrival_id;
+                        events_to_remove.events[events_to_remove.events_count].id = arrival_id;
                         events_to_remove.events_count = events_to_remove.events_count + 1;
 
                         let mut arrival_data: Arrival = Arrival::zero();

@@ -14,6 +14,13 @@ use dep::types::storage::{
     PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
 };
 
+use crate::game_utils::{
+    _default_planet, _put_artifact_on_planet, get_planet_default_space_junk,
+    get_planet_level_type_and_space_type, is_half_space_junk, location_id_valid,
+};
+
+use crate::lazy_update::{apply_pending_events, update_planet};
+
 /// Noir port of Solidity `LibPlanet.revealLocation`.
 pub fn reveal_location(
     location: Field,
@@ -49,8 +56,23 @@ pub fn get_default_init_planet_args(
     perlin: u8,
     is_home_planet: bool,
     time_factor_hundredths: u128,
+    game_config_core: GameConfigCore,
+    planet_level_thresholds: PlanetLevelThresholds,
+    planet_type_weights_tier_0: PlanetTypeWeightsTier,
+    planet_type_weights_tier_1: PlanetTypeWeightsTier,
+    planet_type_weights_tier_2: PlanetTypeWeightsTier,
+    planet_type_weights_tier_3: PlanetTypeWeightsTier,
 ) -> DFPInitPlanetArgs {
-    let (level, planet_type, space_type) = get_planet_level_type_and_space_type(location, perlin);
+    let (level, planet_type, space_type) = get_planet_level_type_and_space_type(
+        location,
+        perlin,
+        game_config_core,
+        planet_level_thresholds,
+        planet_type_weights_tier_0,
+        planet_type_weights_tier_1,
+        planet_type_weights_tier_2,
+        planet_type_weights_tier_3,
+    );
 
     if is_home_planet {
         assert(level == 0, "Can only initialize on planet level 0");
@@ -77,24 +99,67 @@ pub fn initialize_planet_with_defaults(
     perlin: u8,
     is_home_planet: bool,
     timestamp: u64,
-    max_location_id: Field,
-    time_factor_hundredths: u128,
     sender: AztecAddress,
+    level: u8,
+    planet_default_stats: PlanetDefaultStats,
+    world_config: WorldConfig,
+    planet_level_thresholds: PlanetLevelThresholds,
+    game_config_core: GameConfigCore,
+    space_junk_config: SpaceJunkConfig,
+    planet_type_weights_tier_0: PlanetTypeWeightsTier,
+    planet_type_weights_tier_1: PlanetTypeWeightsTier,
+    planet_type_weights_tier_2: PlanetTypeWeightsTier,
+    planet_type_weights_tier_3: PlanetTypeWeightsTier,
 ) -> Planet {
-    assert(location_id_valid(location, max_location_id), "Not a valid planet location");
-    let init_args =
-        get_default_init_planet_args(location, perlin, is_home_planet, time_factor_hundredths);
+    assert(
+        location_id_valid(location, game_config_core.max_location_id),
+        "Not a valid planet location",
+    );
+    let init_args = get_default_init_planet_args(
+        location,
+        perlin,
+        is_home_planet,
+        world_config.time_factor_hundredths,
+        game_config_core,
+        planet_level_thresholds,
+        planet_type_weights_tier_0,
+        planet_type_weights_tier_1,
+        planet_type_weights_tier_2,
+        planet_type_weights_tier_3,
+    );
 
-    _initialize_planet(init_args, timestamp, sender)
+    assert(level == init_args.level, "Level is not valid");
+
+    _initialize_planet(
+        init_args,
+        timestamp,
+        sender,
+        planet_default_stats,
+        world_config,
+        space_junk_config,
+    )
 }
 
 /// Noir port of Solidity `LibPlanet._initializePlanet`.
-pub fn _initialize_planet(args: DFPInitPlanetArgs, timestamp: u64, sender: AztecAddress) -> Planet {
-    let default_planet =
-        default_planet(args.location, args.level, args.planet_type, args.space_type);
+pub fn _initialize_planet(
+    args: DFPInitPlanetArgs,
+    timestamp: u64,
+    sender: AztecAddress,
+    planet_default_stats: PlanetDefaultStats,
+    world_config: WorldConfig,
+    space_junk_config: SpaceJunkConfig,
+) -> Planet {
+    let default_planet = _default_planet(
+        args.location,
+        args.level,
+        args.planet_type,
+        args.space_type,
+        args.time_factor_hundredths,
+        planet_default_stats,
+    );
 
     let mut _planet = Planet::zero();
-    _planet.location_id = location_id;
+    _planet.location_id = args.location;
     _planet.owner = default_planet.owner;
     _planet.is_home_planet = default_planet.is_home_planet;
     _planet.range = default_planet.range;
@@ -126,7 +191,7 @@ pub fn _initialize_planet(args: DFPInitPlanetArgs, timestamp: u64, sender: Aztec
         _planet.owner = sender;
         _planet.population = 50000;
     } else {
-        _planet.space_junk = get_planet_default_space_junk(args.location);
+        _planet.space_junk = get_planet_default_space_junk(_planet, space_junk_config);
         if is_half_space_junk(args.location) {
             _planet.space_junk = _planet.space_junk / 2;
         }
@@ -143,16 +208,17 @@ pub fn check_player_init(
     player_state: Player,
     global_state: GlobalState,
     game_config: GameConfig,
+    world_config: WorldConfig,
 ) -> bool {
-    assert(!player.is_initialized, "Player is already initialized");
+    assert(!player_state.is_initialized, "Player is already initialized");
     let world_radius = global_state.world_radius;
     assert(radius <= world_radius, "Init radius is bigger than the current world radius");
 
-    if game_config.spawn_rim_area != 0 {
+    if world_config.spawn_rim_area != 0 {
         let radius_squared_times_pi: u128 = (radius * radius * 314) / 100;
         let world_radius_squared_times_pi: u128 = (world_radius * world_radius * 314) / 100;
         assert(
-            radius_squared_times_pi + game_config.spawn_rim_area >= world_radius_squared_times_pi,
+            radius_squared_times_pi + world_config.spawn_rim_area >= world_radius_squared_times_pi,
             "Player can only spawn at the universe rim",
         );
     }
@@ -174,25 +240,23 @@ pub fn check_player_init(
 pub fn get_refreshed_planet(
     location_id: Field,
     timestamp: u64,
-    planet: Planet,
+    mut planet: Planet,
     planet_events_state: PlanetEvents,
     planet_artifacts_state: PlanetArtifacts,
     arrivals: [Arrival; 20],
     artifact_states: [ArtifactState; 20],
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
-    let (planet, events_to_remove, artifacts_to_add) = apply_pending_events(
-        timestamp,
-        planet,
-        planet_events_state,
-        planet_artifacts_state,
-        arrivals,
-    );
+    let res = apply_pending_events(timestamp, planet, planet_events_state, arrivals);
+
+    planet = res.0;
+    let events_to_remove = res.1;
+    let artifacts_to_add = res.2;
 
     for i in 0..artifacts_to_add.artifacts_count {
         let artifact_id = artifacts_to_add.artifacts[i];
         let mut artifact: Artifact = Artifact::zero();
 
-        for j in 0..artifact_states.length {
+        for j in 0..planet_artifacts_state.artifacts_count {
             if artifact_states[j].artifact.id == artifact_id {
                 artifact = artifact_states[j].artifact;
             }
@@ -205,19 +269,19 @@ pub fn get_refreshed_planet(
 }
 
 /// Noir port of Solidity `LibPlanet.applySpaceshipArrive`.
-pub fn apply_spaceship_arrive(artifact: Artifact, planet: Planet) -> Planet {
+pub fn apply_spaceship_arrive(artifact: Artifact, mut planet: Planet) -> Planet {
     if !planet.is_home_planet {
-        if artifact.artifact_type == ArtifactType::ShipMothership {
+        if artifact.artifact_type == ArtifactType::ShipMothership() {
             if planet.energy_gro_doublers == 0 {
                 planet.population_growth = planet.population_growth * 2;
             }
             planet.energy_gro_doublers += 1;
-        } else if artifact.artifact_type == ArtifactType::ShipWhale {
+        } else if artifact.artifact_type == ArtifactType::ShipWhale() {
             if planet.silver_gro_doublers == 0 {
                 planet.silver_growth = planet.silver_growth * 2;
             }
             planet.silver_gro_doublers += 1;
-        } else if artifact.artifact_type == ArtifactType::ShipTitan {
+        } else if artifact.artifact_type == ArtifactType::ShipTitan() {
             planet.pausers += 1;
         }
     }
@@ -229,10 +293,10 @@ pub fn refresh_planet(
     timestamp: u64,
     location_id: Field,
     mut planet: Planet,
-    planet_events_state: PlanetEvents,
-    planet_artifacts_state: PlanetArtifacts,
+    mut planet_events_state: PlanetEvents,
+    mut planet_artifacts_state: PlanetArtifacts,
     arrivals: [Arrival; 20],
-    artifact_states: [ArtifactState; 20],
+    mut artifact_states: [ArtifactState; 20],
 ) -> (Planet, PlanetEvents, PlanetArtifacts, [Arrival; 20], [ArtifactState; 20]) {
     assert(planet.is_initialized, "Planet is not initialized");
 
@@ -247,11 +311,11 @@ pub fn refresh_planet(
     );
 
     planet = result.0;
-    events_to_remove = result.1;
-    artifacts_to_add = result.2;
+    let events_to_remove = result.1;
+    let artifacts_to_add = result.2;
 
     for i in 0..events_to_remove.events_count {
-        let event_id = events_to_remove.events[i];
+        let event_id = events_to_remove.events[i].id;
 
         for j in 0..planet_events_state.events_count {
             if planet_events_state.events[j].id == event_id {
@@ -267,8 +331,8 @@ pub fn refresh_planet(
     for i in 0..artifacts_to_add.artifacts_count {
         let artifact_id = artifacts_to_add.artifacts[i];
 
-        let artifact_state_idx: u32 = 0;
-        for j in 0..artifact_states.artifacts_count {
+        let mut artifact_state_idx: u32 = 0;
+        for j in 0..planet_artifacts_state.artifacts_count {
             if artifact_states[j].artifact.id == artifact_id {
                 artifact_state_idx = j;
             }
