@@ -5,7 +5,7 @@ contract Core {
     use dep::aztec::{
         macros::{
             events::event,
-            functions::{external, initializer, internal, view, only_self},
+            functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
@@ -29,19 +29,30 @@ contract Core {
         PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
     };
 
-    use dep::libs::game_utils::{
-        update_world_radius,
-        check_player_init,
-        revert_if_bad_snark_perlin_flags
-    };
+    use dep::libs::game_utils::{revert_if_bad_snark_perlin_flags, update_world_radius};
 
-    use dep::libs::planet::{
-        initialize_planet_with_defaults,
-    };
+    use dep::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
+
+    use dep::arrival_storage::ArrivalStorage;
+    use dep::artifact_state_storage::ArtifactStateStorage;
+    use dep::config::Config;
+    use dep::global_state_storage::GlobalStateStorage;
+    use dep::planet_artifacts_storage::PlanetArtifactsStorage;
+    use dep::planet_caps_storage::PlanetCapsStorage;
+    use dep::planet_coords_storage::PlanetCoordsStorage;
+    use dep::planet_events_storage::PlanetEventsStorage;
+    use dep::planet_meta_storage::PlanetMetaStorage;
+    use dep::planet_mods_storage::PlanetModsStorage;
+    use dep::planet_owner_storage::PlanetOwnerStorage;
+    use dep::planet_resources_storage::PlanetResourcesStorage;
+    use dep::player_storage::PlayerStorage;
 
     #[storage]
     struct Storage<Context> {
         admin: PublicMutable<AztecAddress, Context>,
+        config_storage_address: PublicMutable<AztecAddress, Context>,
+        global_state_storage_address: PublicMutable<AztecAddress, Context>,
+        player_storage_address: PublicMutable<AztecAddress, Context>,
         planet_meta_storage_address: PublicMutable<AztecAddress, Context>,
         planet_owner_storage_address: PublicMutable<AztecAddress, Context>,
         planet_caps_storage_address: PublicMutable<AztecAddress, Context>,
@@ -60,6 +71,21 @@ contract Core {
     }
 
     #[internal("public")]
+    fn get_config_storage_address() -> AztecAddress {
+        self.storage.config_storage_address.read()
+    }
+
+    #[internal("public")]
+    fn get_player_storage_address() -> AztecAddress {
+        self.storage.player_storage_address.read()
+    }
+
+    #[internal("public")]
+    fn get_global_state_storage_address() -> AztecAddress {
+        self.storage.global_state_storage_address.read()
+    }
+
+    #[internal("public")]
     fn get_planet_meta_storage_address() -> AztecAddress {
         self.storage.planet_meta_storage_address.read()
     }
@@ -68,7 +94,7 @@ contract Core {
     fn get_planet_owner_storage_address() -> AztecAddress {
         self.storage.planet_owner_storage_address.read()
     }
-    
+
     #[internal("public")]
     fn get_planet_caps_storage_address() -> AztecAddress {
         self.storage.planet_caps_storage_address.read()
@@ -122,6 +148,24 @@ contract Core {
     }
 
     #[external("public")]
+    fn set_config_storage_address(config_storage_address: AztecAddress) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_storage_address);
+    }
+
+    #[external("public")]
+    fn set_global_state_storage_address(global_state_storage_address: AztecAddress) {
+        self.internal.assert_admin();
+        self.storage.global_state_storage_address.write(global_state_storage_address);
+    }
+
+    #[external("public")]
+    fn set_player_storage_address(player_storage_address: AztecAddress) {
+        self.internal.assert_admin();
+        self.storage.player_storage_address.write(player_storage_address);
+    }
+
+    #[external("public")]
     fn set_planet_meta_storage_address(planet_meta_storage_address: AztecAddress) {
         self.internal.assert_admin();
         self.storage.planet_meta_storage_address.write(planet_meta_storage_address);
@@ -156,19 +200,19 @@ contract Core {
         self.internal.assert_admin();
         self.storage.planet_coords_storage_address.write(planet_coords_storage_address);
     }
-    
+
     #[external("public")]
     fn set_planet_events_storage_address(planet_events_storage_address: AztecAddress) {
         self.internal.assert_admin();
         self.storage.planet_events_storage_address.write(planet_events_storage_address);
     }
-    
+
     #[external("public")]
     fn set_planet_artifacts_storage_address(planet_artifacts_storage_address: AztecAddress) {
         self.internal.assert_admin();
         self.storage.planet_artifacts_storage_address.write(planet_artifacts_storage_address);
     }
-    
+
     #[external("public")]
     fn set_arrivals_storage_address(arrivals_storage_address: AztecAddress) {
         self.internal.assert_admin();
@@ -201,7 +245,7 @@ contract Core {
         let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
         let planet_events_storage_address = self.internal.get_planet_events_storage_address();
         let planet_artifacts_storage_address = self.internal.get_planet_artifacts_storage_address();
-       
+
         let planet_meta_storage = PlanetMetaStorage::at(planet_meta_storage_address);
         let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
         let planet_caps_storage = PlanetCapsStorage::at(planet_caps_storage_address);
@@ -209,15 +253,22 @@ contract Core {
         let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
         let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
         let planet_artifacts_storage = PlanetArtifactsStorage::at(planet_artifacts_storage_address);
-       
-        let planet_meta_is_valid: bool = self.view(planet_meta_storage.verify(location, planet_meta_state));
-        let planet_owner_is_valid: bool = self.view(planet_owner_storage.verify(location, planet_owner_state));
-        let planet_caps_is_valid: bool = self.view(planet_caps_storage.verify(location, planet_caps_state));
-        let planet_resources_is_valid: bool = self.view(planet_resources_storage.verify(location, planet_resources_state));
-        let planet_mods_is_valid: bool = self.view(planet_mods_storage.verify(location, planet_mods_state));
-        let planet_events_is_valid: bool = self.view(planet_events_storage.verify(location, planet_events_state));
-        let planet_artifacts_is_valid: bool = self.view(planet_artifacts_storage.verify(location, planet_artifacts_state));
-        
+
+        let planet_meta_is_valid: bool =
+            self.view(planet_meta_storage.verify(location, planet_meta_state));
+        let planet_owner_is_valid: bool =
+            self.view(planet_owner_storage.verify(location, planet_owner_state));
+        let planet_caps_is_valid: bool =
+            self.view(planet_caps_storage.verify(location, planet_caps_state));
+        let planet_resources_is_valid: bool =
+            self.view(planet_resources_storage.verify(location, planet_resources_state));
+        let planet_mods_is_valid: bool =
+            self.view(planet_mods_storage.verify(location, planet_mods_state));
+        let planet_events_is_valid: bool =
+            self.view(planet_events_storage.verify(location, planet_events_state));
+        let planet_artifacts_is_valid: bool =
+            self.view(planet_artifacts_storage.verify(location, planet_artifacts_state));
+
         assert(planet_meta_is_valid, "Planet meta is not valid");
         assert(planet_owner_is_valid, "Planet owner is not valid");
         assert(planet_caps_is_valid, "Planet caps is not valid");
@@ -229,26 +280,35 @@ contract Core {
         let arrivals_storage_address = self.internal.get_arrivals_storage_address();
         let artifacts_storage_address = self.internal.get_artifacts_storage_address();
 
-        let arrivals_storage = ArrivalsStorage::at(arrivals_storage_address);
-        let artifacts_storage = ArtifactsStorage::at(artifacts_storage_address);
+        let arrival_storage = ArrivalStorage::at(arrivals_storage_address);
+        let artifacts_storage = ArtifactStateStorage::at(artifacts_storage_address);
 
         let cnt = planet_events_state.events_count;
 
         for i in 0..cnt {
-
             let event = planet_events_state.events[i];
             let arrival = arrivals[i];
-            let artifact = artifacts_state[i];
+            let artifact = artifacts_state[i].artifact;
             assert(event.id == arrival.id, "Event id does not match arrival id");
-            assert(artifact.id == arrival.carried_artifact_id, "Artifact id does not match arrival carried artifact id");
+            assert(
+                artifact.id == arrival.carried_artifact_id,
+                "Artifact id does not match arrival carried artifact id",
+            );
 
-            let arrival_is_valid: bool = self.view(arrivals_storage.verify(arrival.id, arrival));
+            let arrival_is_valid: bool = self.view(arrival_storage.verify(arrival.id, arrival));
             assert(arrival_is_valid, "Arrival is not valid");
-            let artifact_is_valid: bool = self.view(artifacts_storage.verify(artifact.id, artifact));
+            let artifact_is_valid: bool =
+                self.view(artifacts_storage.verify(artifact.id, artifacts_state[i]));
             assert(artifact_is_valid, "Artifact is not valid");
         }
 
-        let planet: Planet = Planet::from_parts(planet_meta_state, planet_owner_state, planet_caps_state, planet_resources_state, planet_mods_state);
+        let planet: Planet = Planet::from_parts(
+            planet_meta_state,
+            planet_owner_state,
+            planet_caps_state,
+            planet_resources_state,
+            planet_mods_state,
+        );
 
         let res = refresh_planet(
             self.context.timestamp(),
@@ -260,8 +320,8 @@ contract Core {
             planet_artifacts_state,
         );
 
-        let new_planet = res.0;
-        let (meta,owner,caps,resources,mods) = new_planet.to_meta_owner_caps_resources_mods();
+        let mut new_planet = res.0;
+        let (meta, owner, caps, resources, mods) = new_planet.to_meta_owner_caps_resources_mods();
         self.call(planet_meta_storage.set(location, meta));
         self.call(planet_owner_storage.set(location, owner));
         self.call(planet_caps_storage.set(location, caps));
@@ -277,48 +337,49 @@ contract Core {
         let new_artifacts_state = res.3;
 
         for i in 0..cnt {
-            let artifact = artifacts_state[i];
-            let new_artifact = new_artifacts_state[i];
-
-            if artifact.id != new_artifact.id {
-                self.call(artifacts_storage.set(artifact.id, new_artifact));
-            }   
+            if artifacts_state[i] != new_artifacts_state[i] {
+                self.call(artifacts_storage.set(
+                    artifacts_state[i].artifact.id,
+                    new_artifacts_state[i],
+                ));
+            }
         }
-    } 
+    }
 
     #[external("public")]
-    fn refresh_planet(
-        location: Field, 
-        planet_meta_state: PlanetMeta, 
-        planet_owner_state: PlanetOwner, 
-        planet_caps_state: PlanetCaps, 
-        planet_resources_state: PlanetResources, 
-        planet_mods_state: PlanetMods, 
-        planet_events_state: PlanetEvents, 
-        arrivals: [Arrival; 20], 
-        artifacts_state: [ArtifactState; 20], 
-        planet_artifacts_state: PlanetArtifacts
+    fn refresh_planet_public(
+        location: Field,
+        planet_meta_state: PlanetMeta,
+        planet_owner_state: PlanetOwner,
+        planet_caps_state: PlanetCaps,
+        planet_resources_state: PlanetResources,
+        planet_mods_state: PlanetMods,
+        planet_events_state: PlanetEvents,
+        arrivals: [Arrival; 20],
+        artifacts_state: [ArtifactState; 20],
+        planet_artifacts_state: PlanetArtifacts,
     ) {
         self.internal.refresh_planet_internal(
-            location, 
-            planet_meta_state, 
-            planet_owner_state, 
-            planet_caps_state, 
-            planet_resources_state, 
-            planet_mods_state, 
-            planet_events_state, 
-            arrivals, 
-            artifacts_state, 
-            planet_artifacts_state
+            location,
+            planet_meta_state,
+            planet_owner_state,
+            planet_caps_state,
+            planet_resources_state,
+            planet_mods_state,
+            planet_events_state,
+            arrivals,
+            artifacts_state,
+            planet_artifacts_state,
         );
     }
 
     /// Noir port of Solidity `DFCoreFacet.revealLocation`.
     #[external("public")]
     fn reveal_location(
-        location: Field, 
-        perlin: u8, 
-        x: Field, 
+        location: Field,
+        perlin: u8,
+        level: u8,
+        x: Field,
         y: Field,
         planet_owner_state: PlanetOwner,
         player_state: Player,
@@ -327,9 +388,10 @@ contract Core {
         let config = Config::at(config_storage_address);
         let snark_constants = self.view(config.get_snark_constants_public());
         if !snark_constants.disable_zk_checks {
-           //todo: implement zk checks
+            //todo: implement zk checks
         }
 
+        let planet_default_stats = self.view(config.get_planet_default_stats_public(level));
         let world_config = self.view(config.get_world_config_public());
         let game_config_core = self.view(config.get_game_config_core_public());
         let planet_level_thresholds = self.view(config.get_planet_level_thresholds_public());
@@ -338,21 +400,22 @@ contract Core {
         let planet_type_weights_tier_1 = self.view(config.get_planet_type_weights_tier_public(1));
         let planet_type_weights_tier_2 = self.view(config.get_planet_type_weights_tier_public(2));
         let planet_type_weights_tier_3 = self.view(config.get_planet_type_weights_tier_public(3));
-        
+
         let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
         let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
-        let planet_owner_state = self.view(planet_owner_storage.get(location));
-        assert(planet_owner_state.is_initialized, "Planet owner is not initialized");
+        let planet_owner_is_valid: bool =
+            self.view(planet_owner_storage.verify(location, planet_owner_state));
+        assert(planet_owner_is_valid, "Planet owner is not valid");
         assert(planet_owner_state.is_home_planet, "Planet is not home planet");
 
         if !planet_owner_state.is_initialized {
-            let planet = initialize_planet_with_defaults(
+            let mut planet = initialize_planet_with_defaults(
                 location,
                 perlin,
                 false, // is_home_planet
                 self.context.timestamp(),
                 self.msg_sender().unwrap(),
-                planet_owner_state.level,
+                level,
                 planet_default_stats,
                 world_config,
                 planet_level_thresholds,
@@ -365,9 +428,9 @@ contract Core {
             );
 
             let (meta, owner, caps, resources, mods) = planet.to_meta_owner_caps_resources_mods();
-            
+
             let planet_meta_storage_address = self.internal.get_planet_meta_storage_address();
-            let planet_meta_storage = PlanetMetaStorage::at(planet_meta_storage_address);   
+            let planet_meta_storage = PlanetMetaStorage::at(planet_meta_storage_address);
             self.call(planet_meta_storage.set(location, meta));
             let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
             let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
@@ -375,8 +438,10 @@ contract Core {
             let planet_caps_storage_address = self.internal.get_planet_caps_storage_address();
             let planet_caps_storage = PlanetCapsStorage::at(planet_caps_storage_address);
             self.call(planet_caps_storage.set(location, caps));
-            let planet_resources_storage_address = self.internal.get_planet_resources_storage_address();
-            let planet_resources_storage = PlanetResourcesStorage::at(planet_resources_storage_address);
+            let planet_resources_storage_address =
+                self.internal.get_planet_resources_storage_address();
+            let planet_resources_storage =
+                PlanetResourcesStorage::at(planet_resources_storage_address);
             self.call(planet_resources_storage.set(location, resources));
             let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
             let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
@@ -386,24 +451,31 @@ contract Core {
         let check_timestamp = true;
 
         if check_timestamp {
-
             let player_storage_address = self.internal.get_player_storage_address();
             let player_storage = PlayerStorage::at(player_storage_address);
-            let mut player_state: Player = self.view(player_storage.get(self.msg_sender().unwrap()));
-            assert(player_state.is_initialized, "Player is not initialized");
+            let player_state_is_valid =
+                self.view(player_storage.is_initialized(self.msg_sender().unwrap()));
+            assert(player_state_is_valid, "Player is not initialized");
 
             let timestamp = self.context.timestamp();
-            assert(player_state.last_reveal_timestamp + world_config.location_reveal_cooldown_s < timestamp, "Wait for cooldown before revealing again");
-            player_state.last_reveal_timestamp = time;
+            assert(
+                player_state.last_reveal_timestamp + world_config.location_reveal_cooldown_s
+                    < timestamp,
+                "Wait for cooldown before revealing again",
+            );
 
-            self.call(player_storage.set(self.msg_sender().unwrap(), player_state));
+            let mut new_player_state = player_state;
+            new_player_state.last_reveal_timestamp = timestamp;
+
+            self.call(player_storage.set(self.msg_sender().unwrap(), new_player_state));
 
             let planet_coords_storage_address = self.internal.get_planet_coords_storage_address();
             let planet_coords_storage = PlanetCoordsStorage::at(planet_coords_storage_address);
 
-            let planet_coords_is_initialized: bool = self.view(planet_coords_storage.is_initialized(location));
+            let planet_coords_is_initialized: bool =
+                self.view(planet_coords_storage.is_initialized(location));
             assert(!planet_coords_is_initialized, "Location already revealed");
-            
+
             let new_planet_coords = RevealedCoords {
                 location_id: location,
                 x: x,
@@ -414,7 +486,6 @@ contract Core {
         }
     }
 
-
     /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
     #[external("private")]
     fn initialize_player(
@@ -423,51 +494,50 @@ contract Core {
         radius: u128,
         location_id: Field,
         perlin: u8,
+        level: u8,
         provided_snark_constants: SnarkConstants,
         planet_owner_state: PlanetOwner,
         player_state: Player,
-       global_state: GlobalState,
+        global_state: GlobalState,
     ) {
         if !provided_snark_constants.disable_zk_checks {
             //todo: implement zk checks
         }
 
         self.enqueue_self.initialize_player_public(
-            x,
-            y,
-            radius,
             location_id,
             perlin,
-            disable_zk_checks,
-            planet_hash_key,
-            space_type_key,
-            scale,
-            x_mirror,
-            y_mirror,
+            level,
+            radius,
+            provided_snark_constants,
             planet_owner_state,
             player_state,
             global_state,
         );
-    }     
+    }
 
-    #[external("public")] 
+    #[external("public")]
     fn initialize_player_public(
-       location_id: Field,
-       perlin: u8,
-       radius: u128,
-       provided_snark_constants: SnarkConstants,
-       planet_owner_state: PlanetOwner,
-       player_state: Player,
-       global_state: GlobalState,
+        location_id: Field,
+        perlin: u8,
+        level: u8,
+        radius: u128,
+        provided_snark_constants: SnarkConstants,
+        planet_owner_state: PlanetOwner,
+        player_state: Player,
+        global_state: GlobalState,
     ) {
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
         let snark_constants = self.view(config.get_snark_constants_public());
-        assert(provided_snark_constants.disable_zk_checks == snark_constants.disable_zk_checks, "Disable zk checks is not valid");
-  
-        let _ = revert_if_bad_snark_perlin_flags(provided_snark, false, snark_constants);
+        assert(
+            provided_snark_constants.disable_zk_checks == snark_constants.disable_zk_checks,
+            "Disable zk checks is not valid",
+        );
 
-        let planet_default_stats = self.view(config.get_planet_default_stats_public(planet_owner_state.level));
+        let _ = revert_if_bad_snark_perlin_flags(provided_snark_constants, false, snark_constants);
+
+        let planet_default_stats = self.view(config.get_planet_default_stats_public(level));
 
         let world_config = self.view(config.get_world_config_public());
         let game_config_core = self.view(config.get_game_config_core_public());
@@ -480,53 +550,54 @@ contract Core {
 
         let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
         let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
-        let planet_owner_is_valid = self.view(planet_owner_storage.verify(location_id, planet_owner_state));        
+        let planet_owner_is_valid =
+            self.view(planet_owner_storage.verify(location_id, planet_owner_state));
+
         assert(planet_owner_is_valid, "Planet owner is not valid");
 
-        assert(!planet_owner_state.is_initialized, "Planet owner is initialized");
+        if !planet_owner_state.is_initialized {
+            let mut planet = initialize_planet_with_defaults(
+                location_id,
+                perlin,
+                true, // is_home_planet
+                self.context.timestamp(),
+                self.msg_sender().unwrap(),
+                level,
+                planet_default_stats,
+                world_config,
+                planet_level_thresholds,
+                game_config_core,
+                space_junk_config,
+                planet_type_weights_tier_0,
+                planet_type_weights_tier_1,
+                planet_type_weights_tier_2,
+                planet_type_weights_tier_3,
+            );
 
-        let planet = initialize_planet_with_defaults(
-            location_id,
-            perlin,
-            true, // is_home_planet
-            self.context.timestamp(),
-            self.msg_sender().unwrap(),
-            planet_owner_state.level,
-            planet_default_stats,
-            world_config,
-            planet_level_thresholds,
-            game_config_core,
-            space_junk_config,
-            planet_type_weights_tier_0,
-            planet_type_weights_tier_1,
-            planet_type_weights_tier_2,
-            planet_type_weights_tier_3,
-        );
+            let (meta, owner, caps, resources, mods) = planet.to_meta_owner_caps_resources_mods();
 
-        let (meta, owner, caps, resources, mods) = planet.to_meta_owner_caps_resources_mods();
+            let planet_meta_storage_address = self.internal.get_planet_meta_storage_address();
+            let planet_meta_storage = PlanetMetaStorage::at(planet_meta_storage_address);
+            self.call(planet_meta_storage.set(location_id, meta));
 
-        let planet_meta_storage_address = self.internal.get_planet_meta_storage_address();
-        let planet_meta_storage = PlanetMetaStorage::at(planet_meta_storage_address);
-        self.call(planet_meta_storage.set(location_id, meta));
+            let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
+            let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
+            self.call(planet_owner_storage.set(location_id, owner));
 
-        let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
-        let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
-        self.call(planet_owner_storage.set(location_id, owner));
+            let planet_caps_storage_address = self.internal.get_planet_caps_storage_address();
+            let planet_caps_storage = PlanetCapsStorage::at(planet_caps_storage_address);
+            self.call(planet_caps_storage.set(location_id, caps));
 
-        let planet_caps_storage_address = self.internal.get_planet_caps_storage_address();
-        let planet_caps_storage = PlanetCapsStorage::at(planet_caps_storage_address);
-        self.call(planet_caps_storage.set(location_id, caps));
+            let planet_resources_storage_address =
+                self.internal.get_planet_resources_storage_address();
+            let planet_resources_storage =
+                PlanetResourcesStorage::at(planet_resources_storage_address);
+            self.call(planet_resources_storage.set(location_id, resources));
 
-        let planet_resources_storage_address =
-            self.internal.get_planet_resources_storage_address();
-        let planet_resources_storage =
-            PlanetResourcesStorage::at(planet_resources_storage_address);
-        self.call(planet_resources_storage.set(location_id, resources));
-
-        let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
-        let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
-        self.call(planet_mods_storage.set(location_id, mods));
-
+            let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
+            let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
+            self.call(planet_mods_storage.set(location_id, mods));
+        }
 
         let global_state_storage_address = self.internal.get_global_state_storage_address();
         let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
@@ -535,9 +606,10 @@ contract Core {
 
         let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
-        let player_state_is_valid = self.view(player_storage.verify(self.msg_sender().unwrap(), player_state));
+        let player_state_is_valid =
+            self.view(player_storage.is_initialized(self.msg_sender().unwrap()));
         assert(player_state_is_valid, "Player state is not valid");
-        
+
         // check player state
 
         let check_player_init_result = check_player_init(
@@ -568,8 +640,7 @@ contract Core {
         self.call(player_storage.set(self.msg_sender().unwrap(), player));
 
         let new_global_state = update_world_radius(global_state, world_config);
-        self.call(global_state_storage.set(new_global_state));
+        self.call(global_state_storage.update(new_global_state));
     }
-
 
 }

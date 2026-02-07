@@ -16,6 +16,7 @@ members = [
     "storage/planet_events",
     "storage/planet_artifacts",
     "systems/admin",
+    "systems/core",
     "types",
 
 ]

@@ -2,16 +2,14 @@
  * Deploy Config and Admin contracts to the Aztec sandbox.
  * Requires a running sandbox at PXE_URL (default http://localhost:8080).
  */
+import { createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
 import {
-    createAztecNodeClient,
-    waitForNode,
-} from '@aztec/aztec.js/node';
-import {
-    TestWallet,
     registerInitialLocalNetworkAccountsInWallet,
+    TestWallet,
 } from '@aztec/test-wallet/server';
-import { ConfigContract } from './artifacts/Config.ts';
+
 import { AdminContract } from './artifacts/Admin.ts';
+import { ConfigContract } from './artifacts/Config.ts';
 
 const PXE_URL = process.env.PXE_URL ?? 'http://localhost:8080';
 
@@ -21,7 +19,8 @@ async function main() {
     await waitForNode(node);
 
     const wallet = await TestWallet.create(node);
-    const [adminAddress] = await registerInitialLocalNetworkAccountsInWallet(wallet);
+    const [adminAddress] =
+        await registerInitialLocalNetworkAccountsInWallet(wallet);
     if (!adminAddress) {
         throw new Error('No initial accounts registered');
     }
