@@ -2,7 +2,7 @@
 
 use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct GlobalState {
     pub paused: bool,
     pub planet_events_count: u128,

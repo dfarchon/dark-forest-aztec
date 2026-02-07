@@ -100,6 +100,12 @@ pub contract PlanetEventsStorage {
 
     #[external("public")]
     #[view]
+    fn get_default_planet_events() -> PlanetEvents {
+        PlanetEvents::zero()
+    }
+
+    #[external("public")]
+    #[view]
     fn get_state_root(id: Field) -> StateRoot {
         self.storage.state_roots.at(id).read()
     }
@@ -108,8 +114,12 @@ pub contract PlanetEventsStorage {
     #[view]
     fn verify(id: Field, state: PlanetEvents) -> bool {
         let state_root = self.storage.state_roots.at(id).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == PlanetEvents::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("public")]
@@ -146,6 +156,10 @@ pub contract PlanetEventsStorage {
     }
 
     #[external("utility")]
+    unconstrained fn get_default_planet_events_unconstrained() -> PlanetEvents {
+        PlanetEvents::zero()
+    }
+    #[external("utility")]
     unconstrained fn get_state_root_unconstrained(id: Field) -> StateRoot {
         self.storage.state_roots.at(id).read()
     }
@@ -158,8 +172,12 @@ pub contract PlanetEventsStorage {
     #[external("utility")]
     unconstrained fn verify_unconstrained(id: Field, state: PlanetEvents) -> bool {
         let state_root = self.storage.state_roots.at(id).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == PlanetEvents::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("utility")]

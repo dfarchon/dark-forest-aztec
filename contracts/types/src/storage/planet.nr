@@ -23,7 +23,7 @@ use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 // Static display data, rarely accessed at runtime
 // Only written during initialization
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetMeta {
     pub location_id: Field,
     pub perlin: u8,
@@ -43,7 +43,7 @@ impl PlanetMeta {
 // ========== PlanetOwner ==========
 // Ownership + validation data (most permission checks happen here)
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetOwner {
     pub owner: AztecAddress,
     pub planet_level: u8,
@@ -77,7 +77,7 @@ impl PlanetOwner {
 // ========== PlanetCaps ==========
 // Capacity/stats modified together during buff/debuff
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetCaps {
     pub population_cap: u128,
     pub population_growth: u128,
@@ -105,7 +105,7 @@ impl PlanetCaps {
 // ========== PlanetResources ==========
 // Dynamic state that changes frequently (renamed from PlanetState to avoid confusion)
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetResources {
     pub population: u128,
     pub silver: u128,
@@ -131,7 +131,7 @@ impl PlanetResources {
 // ========== PlanetMods ==========
 // Modifiers and special effects
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetMods {
     pub pausers: u128,
     pub energy_gro_doublers: u128,
@@ -158,7 +158,7 @@ impl PlanetMods {
 
 // ========== Planet (full struct) ==========
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct Planet {
     pub owner: AztecAddress,
     pub range: u128,
@@ -388,7 +388,7 @@ impl Planet {
 
 // ========== RevealedCoords ==========
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct RevealedCoords {
     pub location_id: Field,
     pub x: Field,
@@ -409,7 +409,7 @@ impl RevealedCoords {
 
 // ========== PlanetData ==========
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetData {
     pub planet: Planet,
     pub revealed_coords: RevealedCoords,
@@ -417,7 +417,7 @@ pub struct PlanetData {
 
 // ========== PlanetEventMetadata ==========
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetEventMetadata {
     pub id: u128,
     pub event_type: u8,
@@ -439,7 +439,7 @@ impl PlanetEventMetadata {
 // ========== PlanetEvents ==========
 // Fixed-size ring buffer of planet events + count
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetEvents {
     pub events: [PlanetEventMetadata; 20],
     pub events_count: u32,
@@ -457,7 +457,7 @@ impl PlanetEvents {
 // ========== PlanetArtifacts ==========
 // Fixed-size ring buffer of planet artifacts + count
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetArtifacts {
     pub artifacts: [Field; 20],
     pub artifacts_count: u32,
@@ -475,7 +475,7 @@ impl PlanetArtifacts {
 // ========== PlanetFullState ==========
 // Complete planet state for hash verification
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetFullState {
     pub meta: PlanetMeta,
     pub owner: PlanetOwner,

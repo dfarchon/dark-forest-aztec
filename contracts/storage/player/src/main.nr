@@ -127,6 +127,12 @@ pub contract PlayerStorage {
 
     #[external("public")]
     #[view]
+    fn get_default_player() -> Player {
+        Player::zero()
+    }
+
+    #[external("public")]
+    #[view]
     fn get_state_root(addr: AztecAddress) -> StateRoot {
         self.storage.state_roots.at(addr).read()
     }
@@ -135,8 +141,12 @@ pub contract PlayerStorage {
     #[view]
     fn verify(addr: AztecAddress, state: Player) -> bool {
         let state_root = self.storage.state_roots.at(addr).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == Player::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("public")]
@@ -176,6 +186,10 @@ pub contract PlayerStorage {
     // =====================================================================
     // UTILITY - UNCONSTRAINED
     // =====================================================================
+    #[external("utility")]
+    unconstrained fn get_default_player_unconstrained() -> Player {
+        Player::zero()
+    }
 
     #[external("utility")]
     unconstrained fn get_state_root_unconstrained(addr: AztecAddress) -> StateRoot {
@@ -190,8 +204,12 @@ pub contract PlayerStorage {
     #[external("utility")]
     unconstrained fn verify_unconstrained(addr: AztecAddress, state: Player) -> bool {
         let state_root = self.storage.state_roots.at(addr).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == Player::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("utility")]
@@ -220,10 +238,5 @@ pub contract PlayerStorage {
     unconstrained fn is_initialized_unconstrained(addr: AztecAddress) -> bool {
         let state_root = self.storage.state_roots.at(addr).read();
         state_root.hash != 0
-    }
-
-    #[external("utility")]
-    unconstrained fn get_default_player_unconstrained() -> Player {
-        Player::zero()
     }
 }

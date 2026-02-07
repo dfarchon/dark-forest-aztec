@@ -5,7 +5,7 @@ contract Admin {
     use dep::aztec::{
         macros::{
             events::event,
-            functions::{external, initializer, internal, view},
+            functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
         protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
@@ -29,7 +29,9 @@ contract Admin {
         PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
     };
 
-    use dep::libs::game_utils::{location_id_valid, space_type_from_perlin};
+    use dep::libs::game_utils::{
+        location_id_valid, revert_if_bad_snark_perlin_flags, space_type_from_perlin,
+    };
     use dep::libs::planet::{_initialize_planet, initialize_planet_with_defaults};
 
     use dep::config::Config;
@@ -213,8 +215,6 @@ contract Admin {
 
         let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
-        let is_initialized = self.view(player_storage.is_initialized(player_address));
-        assert(is_initialized, "Player is not initialized");
 
         let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
@@ -232,8 +232,6 @@ contract Admin {
 
         let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
-        let is_initialized = self.view(player_storage.is_initialized(player_address));
-        assert(is_initialized, "Player is not initialized");
 
         let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
@@ -252,12 +250,12 @@ contract Admin {
         perlin: u8,
         level: u8,
         new_owner: AztecAddress,
-        disable_zk_checks: bool,
+        provided_snark_constants: SnarkConstants,
         planet_owner_state: PlanetOwner,
         planet_caps_state: PlanetCaps,
         planet_resources_state: PlanetResources,
     ) {
-        if !disable_zk_checks {
+        if !provided_snark_constants.disable_zk_checks {
             //todo: implement zk checks
         }
 
@@ -266,7 +264,7 @@ contract Admin {
             perlin,
             level,
             new_owner,
-            disable_zk_checks,
+            provided_snark_constants,
             planet_owner_state,
             planet_caps_state,
             planet_resources_state,
@@ -274,12 +272,13 @@ contract Admin {
     }
 
     #[external("public")]
+    #[only_self]
     fn safe_set_owner_public(
         location_id: Field,
         perlin: u8,
         level: u8,
         new_owner: AztecAddress,
-        disable_zk_checks: bool,
+        provided_snark_constants: SnarkConstants,
         planet_owner_state: PlanetOwner,
         planet_caps_state: PlanetCaps,
         planet_resources_state: PlanetResources,
@@ -289,10 +288,13 @@ contract Admin {
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
         let snark_constants = self.view(config.get_snark_constants_public());
+
         assert(
-            disable_zk_checks == snark_constants.disable_zk_checks,
+            provided_snark_constants.disable_zk_checks == snark_constants.disable_zk_checks,
             "Disable zk checks is not valid",
         );
+
+        let _ = revert_if_bad_snark_perlin_flags(provided_snark_constants, false, snark_constants);
 
         let planet_default_stats = self.view(config.get_planet_default_stats_public(level));
 
@@ -307,15 +309,14 @@ contract Admin {
 
         let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
         let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
-        let planet_owner_is_initialized: bool =
-            self.view(planet_owner_storage.is_initialized(location_id));
+
         let planet_owner_valid: bool =
             self.view(planet_owner_storage.verify(location_id, planet_owner_state));
-        assert(planet_owner_is_initialized | planet_owner_valid, "Planet owner is not valid");
+        assert(planet_owner_valid, "Planet owner is not valid");
 
         let mut planet = Planet::zero();
 
-        if (!planet_owner_is_initialized) {
+        if (!planet_owner_state.is_initialized) {
             planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,

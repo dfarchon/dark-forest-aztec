@@ -124,6 +124,11 @@ pub contract ArtifactStateStorage {
     // =====================================================================
     // VIEWS - EXTERNAL (read is public)
     // =====================================================================
+    #[external("public")]
+    #[view]
+    fn get_default_artifact_state() -> ArtifactState {
+        ArtifactState::zero()
+    }
 
     #[external("public")]
     #[view]
@@ -135,8 +140,12 @@ pub contract ArtifactStateStorage {
     #[view]
     fn verify(id: Field, state: ArtifactState) -> bool {
         let state_root = self.storage.state_roots.at(id).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == ArtifactState::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("public")]
@@ -174,7 +183,10 @@ pub contract ArtifactStateStorage {
     // =====================================================================
     // UTILITY - UNCONSTRAINED
     // =====================================================================
-
+    #[external("utility")]
+    unconstrained fn get_default_artifact_state_unconstrained() -> ArtifactState {
+        ArtifactState::zero()
+    }
     #[external("utility")]
     unconstrained fn get_state_root_unconstrained(id: Field) -> StateRoot {
         self.storage.state_roots.at(id).read()
@@ -188,8 +200,12 @@ pub contract ArtifactStateStorage {
     #[external("utility")]
     unconstrained fn verify_unconstrained(id: Field, state: ArtifactState) -> bool {
         let state_root = self.storage.state_roots.at(id).read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            state == ArtifactState::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("utility")]
