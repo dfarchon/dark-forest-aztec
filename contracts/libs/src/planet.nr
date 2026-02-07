@@ -207,7 +207,7 @@ pub fn check_player_init(
     sender: AztecAddress,
     player_state: Player,
     global_state: GlobalState,
-    game_config: GameConfig,
+    game_config_core: GameConfigCore,
     world_config: WorldConfig,
 ) -> bool {
     assert(!player_state.is_initialized, "Player is already initialized");
@@ -224,12 +224,12 @@ pub fn check_player_init(
     }
 
     assert(
-        perlin >= game_config.init_perlin_min,
+        perlin >= game_config_core.init_perlin_min,
         "Init not allowed in perlin value less than INIT_PERLIN_MIN",
     );
 
     assert(
-        perlin < game_config.init_perlin_max,
+        perlin < game_config_core.init_perlin_max,
         "Init not allowed in perlin value greater than or equal to the INIT_PERLIN_MAX",
     );
 
@@ -242,9 +242,9 @@ pub fn get_refreshed_planet(
     timestamp: u64,
     mut planet: Planet,
     planet_events_state: PlanetEvents,
-    planet_artifacts_state: PlanetArtifacts,
     arrivals: [Arrival; 20],
     artifact_states: [ArtifactState; 20],
+    planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let res = apply_pending_events(timestamp, planet, planet_events_state, arrivals);
 
@@ -294,10 +294,10 @@ pub fn refresh_planet(
     location_id: Field,
     mut planet: Planet,
     mut planet_events_state: PlanetEvents,
-    mut planet_artifacts_state: PlanetArtifacts,
     arrivals: [Arrival; 20],
     mut artifact_states: [ArtifactState; 20],
-) -> (Planet, PlanetEvents, PlanetArtifacts, [Arrival; 20], [ArtifactState; 20]) {
+    mut planet_artifacts_state: PlanetArtifacts,
+) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactState; 20]) {
     assert(planet.is_initialized, "Planet is not initialized");
 
     let result = get_refreshed_planet(
@@ -305,9 +305,9 @@ pub fn refresh_planet(
         timestamp,
         planet,
         planet_events_state,
-        planet_artifacts_state,
         arrivals,
         artifact_states,
+        planet_artifacts_state,
     );
 
     planet = result.0;
@@ -348,5 +348,5 @@ pub fn refresh_planet(
         artifact_states[artifact_state_idx] = res.1;
     }
 
-    (planet, planet_events_state, planet_artifacts_state, arrivals, artifact_states)
+    (planet, planet_events_state, planet_artifacts_state, artifact_states)
 }

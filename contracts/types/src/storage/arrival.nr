@@ -3,7 +3,7 @@
 use dep::aztec::protocol_types::address::AztecAddress;
 use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 
-#[derive(Serialize, Deserialize, Packable)]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct Arrival {
     pub id: u128,
     pub player: AztecAddress,

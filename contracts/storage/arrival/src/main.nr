@@ -128,6 +128,11 @@ pub contract ArrivalStorage {
     // =====================================================================
     // VIEWS - EXTERNAL
     // =====================================================================
+    #[external("public")]
+    #[view]
+    fn get_default_arrival() -> Arrival {
+        Arrival::zero()
+    }
 
     #[external("public")]
     #[view]
@@ -139,8 +144,12 @@ pub contract ArrivalStorage {
     #[view]
     fn verify(id: u128, arrival: Arrival) -> bool {
         let state_root = self.storage.state_roots.at(id).read();
-        let computed_hash = poseidon2_hash(arrival.pack());
-        computed_hash == state_root.hash
+        if state_root.hash == 0 {
+            arrival == Arrival::zero()
+        } else {
+            let computed_hash = poseidon2_hash(arrival.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("public")]
@@ -159,6 +168,10 @@ pub contract ArrivalStorage {
     // =====================================================================
     // UTILITY - UNCONSTRAINED
     // =====================================================================
+    #[external("utility")]
+    unconstrained fn get_default_arrival_unconstrained() -> Arrival {
+        Arrival::zero()
+    }
 
     #[external("utility")]
     unconstrained fn get_state_root_unconstrained(id: u128) -> StateRoot {
@@ -168,6 +181,17 @@ pub contract ArrivalStorage {
     #[external("utility")]
     unconstrained fn compute_state_hash(arrival: Arrival) -> Field {
         poseidon2_hash(arrival.pack())
+    }
+
+    #[external("utility")]
+    unconstrained fn verify_unconstrained(id: u128, arrival: Arrival) -> bool {
+        let state_root = self.storage.state_roots.at(id).read();
+        if state_root.hash == 0 {
+            arrival == Arrival::zero()
+        } else {
+            let computed_hash = poseidon2_hash(arrival.pack());
+            computed_hash == state_root.hash
+        }
     }
 
     #[external("utility")]

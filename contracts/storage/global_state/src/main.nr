@@ -152,6 +152,12 @@ pub contract GlobalStateStorage {
 
     #[external("public")]
     #[view]
+    fn get_default_global_state() -> GlobalState {
+        GlobalState::zero()
+    }
+
+    #[external("public")]
+    #[view]
     /// Returns current on-chain state_root (hash + block_number).
     fn get_state_root() -> StateRoot {
         self.storage.state_root.read()
@@ -162,8 +168,12 @@ pub contract GlobalStateStorage {
     /// Returns true iff the given state hash matches current state_root.hash (for off-chain vs on-chain check).
     fn verify(state: GlobalState) -> bool {
         let stored_root = self.storage.state_root.read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == stored_root.hash
+        if stored_root.hash == 0 {
+            state == GlobalState::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == stored_root.hash
+        }
     }
 
     #[external("public")]
@@ -175,6 +185,11 @@ pub contract GlobalStateStorage {
     // =====================================================================
     // UTILITY - UNCONSTRAINED (off-chain read only)
     // =====================================================================
+
+    #[external("utility")]
+    unconstrained fn get_default_global_state_unconstrained() -> GlobalState {
+        GlobalState::zero()
+    }
 
     #[external("utility")]
     /// Off-chain read of current state_root; unconstrained.
@@ -192,8 +207,12 @@ pub contract GlobalStateStorage {
     /// Off-chain read of current state; unconstrained.
     unconstrained fn verify_unconstrained(state: GlobalState) -> bool {
         let stored_root = self.storage.state_root.read();
-        let computed_hash = poseidon2_hash(state.pack());
-        computed_hash == stored_root.hash
+        if stored_root.hash == 0 {
+            state == GlobalState::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.pack());
+            computed_hash == stored_root.hash
+        }
     }
 
     #[external("utility")]
