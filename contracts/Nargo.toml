@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "circuits",
     "config",
     "libs",
     "storage/global_state",
