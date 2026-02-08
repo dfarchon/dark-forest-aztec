@@ -2,6 +2,7 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import {
     DeployMethod,
     getContractInstanceFromInstantiationParams,
+    getGasLimits,
 } from '@aztec/aztec.js/contracts';
 import { getDecodedPublicEvents } from './utils/events.ts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
@@ -387,7 +388,25 @@ async function createAccountAndDeployContract() {
             .simulate({ from: accountAddress });
         console.log('Stored hash:', storedHash.toString());
 
-        // Verify data matches hash
+        // Verify data matches hash. Get tx cost: use wallet.simulateTx to get TxSimulationResult (gasUsed), then getGasLimits + fee info.
+        const verifyPayload = await silver.methods
+            .verify_large_data(testKey, largeData)
+            .request();
+        const txSimResult = await wallet.simulateTx(verifyPayload, {
+            from: accountAddress,
+        });
+        const gasUsed = txSimResult.gasUsed;
+        const suggestedLimits = getGasLimits(txSimResult, 0.1);
+        console.log('verify_large_data (as tx) gas used:', {
+            totalGas: { daGas: gasUsed.totalGas.daGas, l2Gas: gasUsed.totalGas.l2Gas },
+            billedGas: { daGas: gasUsed.billedGas.daGas, l2Gas: gasUsed.billedGas.l2Gas },
+        });
+        console.log('verify_large_data suggested gas limits (10% pad):', {
+            gasLimits: { daGas: suggestedLimits.gasLimits.daGas, l2Gas: suggestedLimits.gasLimits.l2Gas },
+            teardownGasLimits: { daGas: suggestedLimits.teardownGasLimits.daGas, l2Gas: suggestedLimits.teardownGasLimits.l2Gas },
+        });
+        // Fee (in Aztec token) = billedGas × feePerGas. feePerGas comes from network/oracle (see https://docs.aztec.network/aztec/concepts/fees).
+        // So cost (Aztec token) = gasUsed.billedGas.daGas * feePerDaGas + gasUsed.billedGas.l2Gas * feePerL2Gas (from current block).
         const verifyResult = await silver.methods
             .verify_large_data(testKey, largeData)
             .simulate({ from: accountAddress });
