@@ -254,6 +254,7 @@ contract Admin {
         planet_owner_state: PlanetOwner,
         planet_caps_state: PlanetCaps,
         planet_resources_state: PlanetResources,
+        global_state: GlobalState,
     ) {
         if !provided_snark_constants.disable_zk_checks {
             //todo: implement zk checks
@@ -268,6 +269,7 @@ contract Admin {
             planet_owner_state,
             planet_caps_state,
             planet_resources_state,
+            global_state,
         );
     }
 
@@ -282,6 +284,7 @@ contract Admin {
         planet_owner_state: PlanetOwner,
         planet_caps_state: PlanetCaps,
         planet_resources_state: PlanetResources,
+        global_state: GlobalState,
     ) {
         self.internal.assert_admin();
 
@@ -362,6 +365,15 @@ contract Admin {
             let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
             let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
             self.call(planet_mods_storage.set(location_id, mods));
+
+            let global_state_storage_address = self.internal.get_global_state_storage_address();
+            let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
+            let global_state_valid: bool = self.view(global_state_storage.verify(global_state));
+            assert(global_state_valid, "Global state is not valid");
+            let mut new_global_state = global_state;
+            new_global_state.planet_events_count += 1;
+            self.call(global_state_storage.update(new_global_state));
+            
         } else {
             let mut planet_owner_state = planet_owner_state;
             planet_owner_state.owner = new_owner;
@@ -475,7 +487,12 @@ contract Admin {
     }
 
     #[external("public")]
-    fn admin_initialize_planet(location_id: Field, perlin: u8, level: u8) {
+    fn admin_initialize_planet(
+        location_id: Field, 
+        perlin: u8, 
+        level: u8,
+        global_state:GlobalState
+    ) {
         self.internal.assert_admin();
 
         let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
@@ -535,6 +552,14 @@ contract Admin {
         let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
         let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
         self.call(planet_mods_storage.set(location_id, mods));
+
+        let global_state_storage_address = self.internal.get_global_state_storage_address();
+        let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
+        let global_state_valid: bool = self.view(global_state_storage.verify(global_state));
+        assert(global_state_valid, "Global state is not valid");
+        let mut new_global_state = global_state;
+        new_global_state.revealed_planet_ids_count += 1;
+        self.call(global_state_storage.update(new_global_state));
     }
 
 }

@@ -335,6 +335,25 @@ pub contract Config {
         }
     }
 
+    #[external("public")]
+    fn set_planet_default_stats(level: u8, stats: PlanetDefaultStats) {
+        self.internal.assert_admin();
+        self.storage.planet_default_stats.at(level).write(stats);
+    }
+
+    #[external("public")]
+    fn set_upgrade(key: u128, upgrade: Upgrade) {
+        self.internal.assert_admin();
+        self.storage.upgrades.at(key).write(upgrade);
+    }
+
+    #[external("public")]
+    fn set_upgrade_by_branch_level(branch: u128, level: u128, upgrade: Upgrade) {
+        self.internal.assert_admin();
+        let key = branch * 10 + level;
+        self.storage.upgrades.at(key).write(upgrade);
+    }
+
     // ========== Config Getters (public, for cross-contract calls) ==========
     // These functions allow Main and other contracts to read config during transaction execution via .view().
     // Unlike #[external("utility")] getters, these are onchain-callable public functions.

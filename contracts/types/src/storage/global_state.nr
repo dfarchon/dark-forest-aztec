@@ -19,7 +19,7 @@ impl GlobalState {
         GlobalState {
             paused: false,
             planet_events_count: 0,
-            world_radius: 0,
+            world_radius: 53_000,
             misc_nonce: 0,
             planet_ids_count: 0,
             revealed_planet_ids_count: 0,

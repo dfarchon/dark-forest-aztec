@@ -383,6 +383,7 @@ contract Core {
         y: Field,
         planet_owner_state: PlanetOwner,
         player_state: Player,
+        global_state: GlobalState,
     ) {
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
@@ -446,6 +447,14 @@ contract Core {
             let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
             let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
             self.call(planet_mods_storage.set(location, mods));
+
+            let global_state_storage_address = self.internal.get_global_state_storage_address();
+            let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
+            let global_state_valid: bool = self.view(global_state_storage.verify(global_state));
+            assert(global_state_valid, "Global state is not valid");
+            let mut new_global_state = global_state;
+            new_global_state.planet_events_count += 1;
+            self.call(global_state_storage.update(new_global_state));
         }
 
         let check_timestamp = true;
@@ -454,8 +463,8 @@ contract Core {
             let player_storage_address = self.internal.get_player_storage_address();
             let player_storage = PlayerStorage::at(player_storage_address);
             let player_state_is_valid =
-                self.view(player_storage.is_initialized(self.msg_sender().unwrap()));
-            assert(player_state_is_valid, "Player is not initialized");
+                self.view(player_storage.verify(self.msg_sender().unwrap(), player_state));
+            assert(player_state_is_valid, "Player is not valid");
 
             let timestamp = self.context.timestamp();
             assert(
@@ -517,6 +526,7 @@ contract Core {
     }
 
     #[external("public")]
+    #[only_self]
     fn initialize_player_public(
         location_id: Field,
         perlin: u8,
@@ -554,6 +564,13 @@ contract Core {
             self.view(planet_owner_storage.verify(location_id, planet_owner_state));
 
         assert(planet_owner_is_valid, "Planet owner is not valid");
+
+
+        let global_state_storage_address = self.internal.get_global_state_storage_address();
+        let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
+        let global_state_is_valid = self.view(global_state_storage.verify(global_state));
+        assert(global_state_is_valid, "Global state is not valid");
+        let mut new_global_state = global_state;
 
         if !planet_owner_state.is_initialized {
             let mut planet = initialize_planet_with_defaults(
@@ -597,18 +614,17 @@ contract Core {
             let planet_mods_storage_address = self.internal.get_planet_mods_storage_address();
             let planet_mods_storage = PlanetModsStorage::at(planet_mods_storage_address);
             self.call(planet_mods_storage.set(location_id, mods));
+
+            new_global_state.planet_ids_count += 1;
         }
 
-        let global_state_storage_address = self.internal.get_global_state_storage_address();
-        let global_state_storage = GlobalStateStorage::at(global_state_storage_address);
-        let global_state_is_valid = self.view(global_state_storage.verify(global_state));
-        assert(global_state_is_valid, "Global state is not valid");
 
-        let player_storage_address = self.internal.get_player_storage_address();
+       let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
         let player_state_is_valid =
-            self.view(player_storage.is_initialized(self.msg_sender().unwrap()));
-        assert(player_state_is_valid, "Player state is not valid");
+            self.view(player_storage.verify(self.msg_sender().unwrap(), player_state));
+        assert(player_state_is_valid, "Player is not valid");
+
 
         // check player state
 
@@ -639,7 +655,8 @@ contract Core {
 
         self.call(player_storage.set(self.msg_sender().unwrap(), player));
 
-        let new_global_state = update_world_radius(global_state, world_config);
+        new_global_state.player_ids_count += 1;
+        new_global_state = update_world_radius(new_global_state, world_config);
         self.call(global_state_storage.update(new_global_state));
     }
 

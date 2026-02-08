@@ -15,7 +15,7 @@
         "clean": "rm -rf dist target codegenCache.json",
         "codegen-contracts": "aztec codegen ./target -o ./target",
         "compile-contracts": "aztec compile",
-        "configure": "node --experimental-transform-types scripts/config.ts",
+        "configure": "node --experimental-transform-types scripts/configure.ts",
         "copy-artifacts": "mkdir -p scripts/artifacts && cp target/*.json target/*.ts scripts/artifacts",
         "deploy-contracts": "pnpm build-contracts && node --experimental-transform-types scripts/deploy.ts",
         "format": "pnpm run lint:fix && pnpm run prettier && pnpm aztec:fmt",

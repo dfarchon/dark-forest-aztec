@@ -80,6 +80,9 @@ packages/*/build/
 .env.*
 !.env.example
 
+# Test account credentials (do not commit)
+contracts/scripts/.test-accounts.json
+
 ############################################
 # Editor / IDE
 ############################################

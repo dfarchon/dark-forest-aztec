@@ -16,7 +16,7 @@ impl SpaceJunkConfig {
     pub fn default_dark_forest() -> Self {
         Self {
             space_junk_enabled: false,
-            space_junk_limit: 1000,
+            space_junk_limit: 10000,
             planet_level_junk: [20, 25, 30, 35, 40, 45, 50, 55, 60, 65],
             abandon_speed_change_percent: 150,
             abandon_range_change_percent: 150,
