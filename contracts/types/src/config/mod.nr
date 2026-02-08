@@ -17,5 +17,5 @@ pub use spaceships::SpaceshipsConfig;
 pub use space_junk::SpaceJunkConfig;
 pub use capture_zones::CaptureZonesConfig;
 pub use default_stats::PlanetDefaultStats;
-pub use upgrade::Upgrade;
+pub use upgrade::{Upgrade, UpgradeConfig};
 

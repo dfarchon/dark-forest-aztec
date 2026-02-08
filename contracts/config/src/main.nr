@@ -15,7 +15,7 @@ pub contract Config {
     use dep::types::config::{
         ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
         PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig,
-        SpaceshipsConfig, Upgrade, WorldConfig,
+        SpaceshipsConfig, Upgrade, UpgradeConfig, WorldConfig,
     };
 
     use dep::types::storage::{
@@ -49,6 +49,7 @@ pub contract Config {
         // ========== Default Stats & Upgrades ==========
         planet_default_stats: Map<u8, PublicMutable<PlanetDefaultStats, Context>, Context>, // level 0-9
         upgrades: Map<u128, PublicMutable<Upgrade, Context>, Context>, // key = branch * 10 + level
+        upgrade_config: PublicMutable<UpgradeConfig, Context>,
 
         cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
     }
@@ -198,6 +199,18 @@ pub contract Config {
     fn set_capture_zones_config(config: CaptureZonesConfig) {
         self.internal.assert_admin();
         self.storage.capture_zones_config.write(config);
+    }
+
+    #[external("public")]
+    fn set_default_upgrade_config() {
+        self.internal.assert_admin();
+        self.storage.upgrade_config.write(UpgradeConfig::default_dark_forest());
+    }
+
+    #[external("public")]
+    fn set_upgrade_config(config: UpgradeConfig) {
+        self.internal.assert_admin();
+        self.storage.upgrade_config.write(config);
     }
 
     #[external("public")]
@@ -463,6 +476,39 @@ pub contract Config {
 
     #[external("public")]
     #[view]
+    fn get_upgrade_config_public() -> UpgradeConfig {
+        self.storage.upgrade_config.read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_all_upgrades_public() -> [[Upgrade; 4]; 3] {
+        let branch0: [Upgrade; 4] = [
+            self.storage.upgrades.at(0).read(),
+            self.storage.upgrades.at(1).read(),
+            self.storage.upgrades.at(2).read(),
+            self.storage.upgrades.at(3).read(),
+        ];
+
+        let branch1: [Upgrade; 4] = [
+            self.storage.upgrades.at(10).read(),
+            self.storage.upgrades.at(11).read(),
+            self.storage.upgrades.at(12).read(),
+            self.storage.upgrades.at(13).read(),
+        ];
+
+        let branch2: [Upgrade; 4] = [
+            self.storage.upgrades.at(20).read(),
+            self.storage.upgrades.at(21).read(),
+            self.storage.upgrades.at(22).read(),
+            self.storage.upgrades.at(23).read(),
+        ];
+
+        [branch0, branch1, branch2]
+    }
+
+    #[external("public")]
+    #[view]
     fn get_cumulative_rarity_public(index: u128) -> u128 {
         self.storage.cumulative_rarities.at(index).read()
     }
@@ -553,6 +599,11 @@ pub contract Config {
     unconstrained fn get_upgrade_by_branch_level(branch: u128, level: u128) -> Upgrade {
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_upgrade_config() -> UpgradeConfig {
+        self.storage.upgrade_config.read()
     }
 
     /// Noir port of Solidity `DFGetterFacet.getTypeWeights`.

@@ -4,7 +4,7 @@ use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlane
 use dep::types::config::{
     ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
     PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig,
-    Upgrade, WorldConfig,
+    Upgrade, UpgradeConfig, WorldConfig,
 };
 
 use dep::types::storage::{
@@ -234,6 +234,134 @@ pub fn check_player_init(
     );
 
     true
+}
+
+fn apply_upgrade_multiplier(mut planet_caps: PlanetCaps, upgrade: Upgrade) -> PlanetCaps {
+    planet_caps.population_cap =
+        (planet_caps.population_cap * upgrade.pop_cap_multiplier) / 100;
+    planet_caps.population_growth =
+        (planet_caps.population_growth * upgrade.pop_gro_multiplier) / 100;
+    planet_caps.range = (planet_caps.range * upgrade.range_multiplier) / 100;
+    planet_caps.speed = (planet_caps.speed * upgrade.speed_multiplier) / 100;
+    planet_caps.defense = (planet_caps.defense * upgrade.def_multiplier) / 100;
+
+    planet_caps
+}
+
+/// Noir port of Solidity `LibPlanet.upgradePlanet` validation checks.
+pub fn validate_upgrade(
+    planet_owner: PlanetOwner,
+    planet_resources: PlanetResources,
+    sender: AztecAddress,
+    defense_upgrades: u8,
+    range_upgrades: u8,
+    speed_upgrades: u8,
+    upgrade_config: UpgradeConfig,
+) {
+    assert(planet_owner.owner == sender, "Only owner can upgrade planet");
+    assert(planet_owner.planet_type == PlanetType::Planet(), "Can only upgrade regular planets");
+    assert(planet_owner.planet_level > 0, "Planet level must be greater than 0");
+
+    assert(
+        defense_upgrades <= upgrade_config.max_single_level,
+        "Defense upgrades exceed max single level",
+    );
+    assert(
+        range_upgrades <= upgrade_config.max_single_level,
+        "Range upgrades exceed max single level",
+    );
+    assert(
+        speed_upgrades <= upgrade_config.max_single_level,
+        "Speed upgrades exceed max single level",
+    );
+
+    let new_defense_level = planet_resources.upgrade_state_0 + defense_upgrades;
+    let new_range_level = planet_resources.upgrade_state_1 + range_upgrades;
+    let new_speed_level = planet_resources.upgrade_state_2 + speed_upgrades;
+
+    assert(
+        new_defense_level <= upgrade_config.max_single_level,
+        "Defense branch exceeds max level",
+    );
+    assert(
+        new_range_level <= upgrade_config.max_single_level,
+        "Range branch exceeds max level",
+    );
+    assert(
+        new_speed_level <= upgrade_config.max_single_level,
+        "Speed branch exceeds max level",
+    );
+
+    let space_type_idx: u32 = planet_owner.space_type as u32;
+    assert(space_type_idx < 4, "Invalid space type");
+
+    let new_total_level = new_defense_level + new_range_level + new_speed_level;
+    let max_total_level = upgrade_config.max_total_level[space_type_idx];
+    assert(new_total_level <= max_total_level, "Total upgrade level exceeds space limit");
+}
+
+/// Noir port of Solidity `LibPlanet.upgradePlanet` silver cost calculation.
+pub fn calculate_upgrade_cost(
+    planet_resources: PlanetResources,
+    planet_caps: PlanetCaps,
+    defense_upgrades: u8,
+    range_upgrades: u8,
+    speed_upgrades: u8,
+    upgrade_config: UpgradeConfig,
+) -> u128 {
+    let current_total_level =
+        planet_resources.upgrade_state_0 + planet_resources.upgrade_state_1
+            + planet_resources.upgrade_state_2;
+    let new_total_level =
+        current_total_level + defense_upgrades + range_upgrades + speed_upgrades;
+
+    let mut silver_cost_percent_sum: u128 = 0;
+    for level in (current_total_level as u32)..(new_total_level as u32) {
+        silver_cost_percent_sum += upgrade_config.silver_cost_percent[level] as u128;
+    }
+
+    (silver_cost_percent_sum * planet_caps.silver_cap) / 100
+}
+
+/// Noir port of Solidity `LibPlanet.upgradePlanet` state updates.
+pub fn apply_upgrade(
+    mut planet_caps: PlanetCaps,
+    mut planet_resources: PlanetResources,
+    defense_upgrades: u8,
+    range_upgrades: u8,
+    speed_upgrades: u8,
+    upgrades: [[Upgrade; 4]; 3],
+    silver_cost: u128,
+) -> (PlanetCaps, PlanetResources) {
+    assert(planet_resources.silver >= silver_cost, "Insufficient silver for upgrade");
+    planet_resources.silver -= silver_cost;
+
+    let defense_start = planet_resources.upgrade_state_0;
+    for i in 0..(defense_upgrades as u32) {
+        let level = defense_start + i as u8;
+        let upgrade = upgrades[UpgradeBranch::Defense() as u32][level as u32];
+        planet_caps = apply_upgrade_multiplier(planet_caps, upgrade);
+    }
+
+    let range_start = planet_resources.upgrade_state_1;
+    for i in 0..(range_upgrades as u32) {
+        let level = range_start + i as u8;
+        let upgrade = upgrades[UpgradeBranch::Range() as u32][level as u32];
+        planet_caps = apply_upgrade_multiplier(planet_caps, upgrade);
+    }
+
+    let speed_start = planet_resources.upgrade_state_2;
+    for i in 0..(speed_upgrades as u32) {
+        let level = speed_start + i as u8;
+        let upgrade = upgrades[UpgradeBranch::Speed() as u32][level as u32];
+        planet_caps = apply_upgrade_multiplier(planet_caps, upgrade);
+    }
+
+    planet_resources.upgrade_state_0 = defense_start + defense_upgrades;
+    planet_resources.upgrade_state_1 = range_start + range_upgrades;
+    planet_resources.upgrade_state_2 = speed_start + speed_upgrades;
+
+    (planet_caps, planet_resources)
 }
 
 /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.

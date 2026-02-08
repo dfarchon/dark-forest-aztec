@@ -60,6 +60,8 @@ const CONFIG_FUNCTIONS = [
     'set_space_junk_config',
     'set_default_capture_zones_config',
     'set_capture_zones_config',
+    'set_default_upgrade_config',
+    'set_upgrade_config',
     'initialize_cumulative_rarities',
     'set_planet_default_stats',
     'set_upgrade',
@@ -77,6 +79,8 @@ const CONFIG_FUNCTIONS = [
     'get_planet_default_stats_public',
     'get_upgrade_public',
     'get_upgrade_by_branch_level_public',
+    'get_upgrade_config_public',
+    'get_all_upgrades_public',
     'get_cumulative_rarity_public',
 ] as const;
 
@@ -121,16 +125,28 @@ const CORE_FUNCTIONS = [
     'initialize_player_public',
 ] as const;
 
+const PLANET_UPGRADE_FUNCTIONS = [
+    'transfer_admin',
+    'set_config_storage_address',
+    'set_planet_owner_storage_address',
+    'set_planet_caps_storage_address',
+    'set_planet_resources_storage_address',
+    'upgrade_planet',
+] as const;
+
 /** All contracts and their public method names (for iteration or assertions). */
 const CONTRACT_FUNCTIONS = {
     Config: CONFIG_FUNCTIONS,
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
+    PlanetUpgrade: PLANET_UPGRADE_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
 export type AdminFunctionName = (typeof ADMIN_FUNCTIONS)[number];
 export type CoreFunctionName = (typeof CORE_FUNCTIONS)[number];
+export type PlanetUpgradeFunctionName =
+    (typeof PLANET_UPGRADE_FUNCTIONS)[number];
 
 // ---------------------------------------------------------------------------
 
@@ -138,16 +154,41 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
 
 const CONTRACT_SPECS = [
-    { name: 'Config', modulePath: './artifacts/Config.ts', exportName: 'ConfigContract' },
+    {
+        name: 'Config',
+        modulePath: './artifacts/Config.ts',
+        exportName: 'ConfigContract',
+    },
     {
         name: 'GlobalStateStorage',
         modulePath: './artifacts/GlobalStateStorage.ts',
         exportName: 'GlobalStateStorageContract',
     },
-    { name: 'PlayerStorage', modulePath: './artifacts/PlayerStorage.ts', exportName: 'PlayerStorageContract' },
-    { name: 'PlanetOwnerStorage', modulePath: './artifacts/PlanetOwnerStorage.ts', exportName: 'PlanetOwnerStorageContract' },
-    { name: 'Admin', modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
-    { name: 'Core', modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
+    {
+        name: 'PlayerStorage',
+        modulePath: './artifacts/PlayerStorage.ts',
+        exportName: 'PlayerStorageContract',
+    },
+    {
+        name: 'PlanetOwnerStorage',
+        modulePath: './artifacts/PlanetOwnerStorage.ts',
+        exportName: 'PlanetOwnerStorageContract',
+    },
+    {
+        name: 'Admin',
+        modulePath: './artifacts/Admin.ts',
+        exportName: 'AdminContract',
+    },
+    {
+        name: 'Core',
+        modulePath: './artifacts/Core.ts',
+        exportName: 'CoreContract',
+    },
+    {
+        name: 'PlanetUpgrade',
+        modulePath: './artifacts/PlanetUpgrade.ts',
+        exportName: 'PlanetUpgradeContract',
+    },
 ];
 
 const ENV_KEYS: Array<[string, string]> = [
@@ -157,6 +198,7 @@ const ENV_KEYS: Array<[string, string]> = [
     ['PlanetOwnerStorage', 'PLANET_OWNER_STORAGE_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
+    ['PlanetUpgrade', 'PLANET_UPGRADE_CONTRACT_ADDRESS'],
 ];
 
 function addressesFromEnv(): Record<string, string> {
@@ -191,7 +233,7 @@ export type TestContext = {
 };
 
 /**
- * Prepares 3 accounts (admin from .env, 2 created fresh) and loads Config / Admin / Core instances.
+ * Prepares 3 accounts (admin from .env, 2 created fresh) and loads Config / Admin / Core / PlanetUpgrade instances.
  * Requires deploy and configure to have been run and .env to contain ACCOUNT_* and contract addresses.
  */
 export async function getTestContext(): Promise<TestContext> {
@@ -211,7 +253,9 @@ export async function getTestContext(): Promise<TestContext> {
     let user1: AztecAddress;
     let user2: AztecAddress;
     if (fs.existsSync(TEST_ACCOUNTS_PATH)) {
-        const saved = JSON.parse(fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')) as TestAccountsFile;
+        const saved = JSON.parse(
+            fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')
+        ) as TestAccountsFile;
         user1 = await loadAccountFromCredentials(wallet, saved.user1);
         user2 = await loadAccountFromCredentials(wallet, saved.user2);
     } else {
@@ -232,7 +276,11 @@ export async function getTestContext(): Promise<TestContext> {
         );
     }
 
-    const contracts = await getContractInstances(wallet, addresses, CONTRACT_SPECS);
+    const contracts = await getContractInstances(
+        wallet,
+        addresses,
+        CONTRACT_SPECS
+    );
 
     // Register contracts with PXE so simulate() can run code at their addresses (e.g. PlanetOwnerStorage.get_default_planet_owner_unconstrained).
     await registerContractsWithWallet(wallet, admin, CONTRACT_SPECS, ENV_KEYS);
@@ -270,7 +318,9 @@ function printContractFunctions() {
 
 async function main() {
     console.log('🌐 Aztec Node URL:', AZTEC_NODE_URL);
-    console.log('🔗 Setting up test context (3 accounts: 1 admin + 2 users)...\n');
+    console.log(
+        '🔗 Setting up test context (3 accounts: 1 admin + 2 users)...\n'
+    );
 
     const ctx = await getTestContext();
 
@@ -278,18 +328,21 @@ async function main() {
     console.log('   admin:', ctx.accounts.admin.toString());
     console.log('   user1:', ctx.accounts.users[0].toString());
     console.log('   user2:', ctx.accounts.users[1].toString());
-    console.log('\n✅ Contracts loaded: Config, Admin, Core');
+    console.log('\n✅ Contracts loaded: Config, Admin, Core, PlanetUpgrade');
 
     printContractFunctions();
 
-    console.log('💡 Use getTestContext() in your test file to get { accounts, contracts, sendOpts }.');
+    console.log(
+        '💡 Use getTestContext() in your test file to get { accounts, contracts, sendOpts }.'
+    );
 }
 
 // Only run main when this file is the entry script (not when imported by test-admin etc.)
 const isEntryScript =
     typeof process !== 'undefined' &&
     process.argv[1] != null &&
-    (process.argv[1].endsWith('test-setup.ts') || process.argv[1].includes('test-setup'));
+    (process.argv[1].endsWith('test-setup.ts') ||
+        process.argv[1].includes('test-setup'));
 if (isEntryScript) {
     main().catch((err) => {
         console.error(err);
