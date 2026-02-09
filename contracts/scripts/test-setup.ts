@@ -175,6 +175,16 @@ const CONTRACT_SPECS = [
         exportName: 'PlanetOwnerStorageContract',
     },
     {
+        name: 'PlanetCapsStorage',
+        modulePath: './artifacts/PlanetCapsStorage.ts',
+        exportName: 'PlanetCapsStorageContract',
+    },
+    {
+        name: 'PlanetResourcesStorage',
+        modulePath: './artifacts/PlanetResourcesStorage.ts',
+        exportName: 'PlanetResourcesStorageContract',
+    },
+    {
         name: 'Admin',
         modulePath: './artifacts/Admin.ts',
         exportName: 'AdminContract',
@@ -196,6 +206,8 @@ const ENV_KEYS: Array<[string, string]> = [
     ['GlobalStateStorage', 'GLOBAL_STATE_STORAGE_CONTRACT_ADDRESS'],
     ['PlayerStorage', 'PLAYER_STORAGE_CONTRACT_ADDRESS'],
     ['PlanetOwnerStorage', 'PLANET_OWNER_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetCapsStorage', 'PLANET_CAPS_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetResourcesStorage', 'PLANET_RESOURCES_STORAGE_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['PlanetUpgrade', 'PLANET_UPGRADE_CONTRACT_ADDRESS'],
@@ -328,7 +340,9 @@ async function main() {
     console.log('   admin:', ctx.accounts.admin.toString());
     console.log('   user1:', ctx.accounts.users[0].toString());
     console.log('   user2:', ctx.accounts.users[1].toString());
-    console.log('\n✅ Contracts loaded: Config, Admin, Core, PlanetUpgrade');
+    console.log(
+        '\n✅ Contracts loaded: Config, GlobalStateStorage, PlayerStorage, PlanetOwnerStorage, PlanetCapsStorage, PlanetResourcesStorage, Admin, Core, PlanetUpgrade'
+    );
 
     printContractFunctions();
 
