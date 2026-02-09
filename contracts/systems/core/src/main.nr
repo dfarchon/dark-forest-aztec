@@ -409,13 +409,15 @@ contract Core {
         assert(planet_owner_is_valid, "Planet owner is not valid");
         assert(planet_owner_state.is_home_planet, "Planet is not home planet");
 
+        let sender = self.msg_sender().unwrap();
+
         if !planet_owner_state.is_initialized {
             let mut planet = initialize_planet_with_defaults(
                 location,
                 perlin,
                 false, // is_home_planet
                 self.context.timestamp(),
-                self.msg_sender().unwrap(),
+                sender,
                 level,
                 planet_default_stats,
                 world_config,
@@ -463,7 +465,7 @@ contract Core {
             let player_storage_address = self.internal.get_player_storage_address();
             let player_storage = PlayerStorage::at(player_storage_address);
             let player_state_is_valid =
-                self.view(player_storage.verify(self.msg_sender().unwrap(), player_state));
+                self.view(player_storage.verify(sender, player_state));
             assert(player_state_is_valid, "Player is not valid");
 
             let timestamp = self.context.timestamp();
@@ -476,7 +478,7 @@ contract Core {
             let mut new_player_state = player_state;
             new_player_state.last_reveal_timestamp = timestamp;
 
-            self.call(player_storage.set(self.msg_sender().unwrap(), new_player_state));
+            self.call(player_storage.set(sender, new_player_state));
 
             let planet_coords_storage_address = self.internal.get_planet_coords_storage_address();
             let planet_coords_storage = PlanetCoordsStorage::at(planet_coords_storage_address);
@@ -489,7 +491,7 @@ contract Core {
                 location_id: location,
                 x: x,
                 y: y,
-                revealer: self.msg_sender().unwrap(),
+                revealer: sender,
             };
             self.call(planet_coords_storage.set(location, new_planet_coords));
         }
@@ -513,7 +515,10 @@ contract Core {
             //todo: implement zk checks
         }
 
+        let sender = self.msg_sender().unwrap();
+
         self.enqueue_self.initialize_player_public(
+            sender,
             location_id,
             perlin,
             level,
@@ -528,6 +533,7 @@ contract Core {
     #[external("public")]
     #[only_self]
     fn initialize_player_public(
+        sender: AztecAddress,
         location_id: Field,
         perlin: u8,
         level: u8,
@@ -578,7 +584,7 @@ contract Core {
                 perlin,
                 true, // is_home_planet
                 self.context.timestamp(),
-                self.msg_sender().unwrap(),
+                sender,
                 level,
                 planet_default_stats,
                 world_config,
@@ -622,7 +628,7 @@ contract Core {
        let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
         let player_state_is_valid =
-            self.view(player_storage.verify(self.msg_sender().unwrap(), player_state));
+            self.view(player_storage.verify(sender, player_state));
         assert(player_state_is_valid, "Player is not valid");
 
 
@@ -632,7 +638,7 @@ contract Core {
             location_id,
             perlin,
             radius,
-            self.msg_sender().unwrap(),
+            sender,
             player_state,
             global_state,
             game_config_core,
@@ -643,7 +649,7 @@ contract Core {
 
         let player: Player = Player {
             is_initialized: true,
-            player: self.msg_sender().unwrap(),
+            player: sender,
             init_timestamp: self.context.timestamp(),
             home_planet_id: location_id,
             last_reveal_timestamp: 0,
@@ -653,7 +659,7 @@ contract Core {
             claimed_ships: false,
         };
 
-        self.call(player_storage.set(self.msg_sender().unwrap(), player));
+        self.call(player_storage.set(sender, player));
 
         new_global_state.player_ids_count += 1;
         new_global_state = update_world_radius(new_global_state, world_config);

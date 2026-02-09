@@ -259,8 +259,10 @@ contract Admin {
         if !provided_snark_constants.disable_zk_checks {
             //todo: implement zk checks
         }
+        let sender = self.msg_sender().unwrap();
 
         self.enqueue_self.safe_set_owner_public(
+            sender,
             location_id,
             perlin,
             level,
@@ -276,6 +278,7 @@ contract Admin {
     #[external("public")]
     #[only_self]
     fn safe_set_owner_public(
+        sender: AztecAddress,
         location_id: Field,
         perlin: u8,
         level: u8,
@@ -286,7 +289,7 @@ contract Admin {
         planet_resources_state: PlanetResources,
         global_state: GlobalState,
     ) {
-        self.internal.assert_admin();
+        assert(sender == self.storage.admin.read(), "Only admin");
 
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
@@ -325,7 +328,7 @@ contract Admin {
                 perlin,
                 planet_owner_state.is_home_planet,
                 self.context.timestamp(),
-                self.msg_sender().unwrap(),
+                sender,
                 level,
                 planet_default_stats,
                 world_config,
@@ -424,6 +427,8 @@ contract Admin {
     fn create_planet(args: AdminCreatePlanetArgs) {
         self.internal.assert_admin();
 
+        let sender = self.msg_sender().unwrap();
+
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
         let world_config = self.view(config.get_world_config_public());
@@ -456,7 +461,7 @@ contract Admin {
         let mut planet: Planet = _initialize_planet(
             init_args,
             self.context.timestamp(),
-            self.msg_sender().unwrap(),
+            sender,
             planet_default_stats,
             world_config,
             space_junk_config,
@@ -494,6 +499,7 @@ contract Admin {
         global_state:GlobalState
     ) {
         self.internal.assert_admin();
+        let sender = self.msg_sender().unwrap();
 
         let planet_owner_storage_address = self.internal.get_planet_owner_storage_address();
         let planet_owner_storage = PlanetOwnerStorage::at(planet_owner_storage_address);
@@ -518,7 +524,7 @@ contract Admin {
             perlin,
             false,
             self.context.timestamp(),
-            self.msg_sender().unwrap(),
+            sender,
             level,
             planet_default_stats,
             world_config,

@@ -312,7 +312,7 @@ async function main() {
 
     const { admin, users } = ctx.accounts;
     const sendOpts = ctx.sendOpts;
-    const user = users[1];
+    const user = users[0];
 
     console.log('✅ Core at:', Core.address.toString());
     console.log('✅ Config at:', Config.address.toString());
@@ -328,25 +328,25 @@ async function main() {
     //   (7_000_000n << 216n) | (255n << 64n)
     //   (12_000_000n << 216n) | (255n << 64n)
     //   (16_777_215n << 216n) | (255n << 64n)
-    // const locationId = (10_000_000n << 216n) | (255n << 64n); // user[0]
-    const locationId = (4_194_292n << 216n) | (255n << 64n); // user[1]
+    const locationId = (10_000_000n << 216n) | (255n << 64n); // user[0]
+    // const locationId = (4_194_292n << 216n) | (255n << 64n); // user[1]
     const level = 0;
 
     console.log('\n📥 Loading global state, config, and snark constants...');
     const globalState = await loadGlobalState(ctx);
     const radius = 0;
-    const snarkConstants = await Config.methods.get_snark_constants_public().simulate({ from: admin });
-    const gameConfigCore = await Config.methods.get_game_config_core_public().simulate({ from: admin }) as { init_perlin_min?: number; init_perlin_max?: number };
+    const snarkConstants = await Config.methods.get_snark_constants_public().simulate({ from: user });
+    const gameConfigCore = await Config.methods.get_game_config_core_public().simulate({ from: user }) as { init_perlin_min?: number; init_perlin_max?: number };
     const perlin = Number(gameConfigCore.init_perlin_min ?? 13);
 
     console.log('📥 Loading default planet owner state from PlanetOwnerStorage...');
     const PlanetOwnerStorage = ctx.contracts['PlanetOwnerStorage'];
     if (!PlanetOwnerStorage) throw new Error('PlanetOwnerStorage contract not loaded');
-    const planetOwnerState = await PlanetOwnerStorage.methods.get_default_planet_owner_unconstrained().simulate({ from: admin });
+    const planetOwnerState = await PlanetOwnerStorage.methods.get_default_planet_owner_unconstrained().simulate({ from: user });
 
     const PlayerStorage = ctx.contracts['PlayerStorage'];
     if (!PlayerStorage) throw new Error('PlayerStorage contract not loaded');
-    const defaultPlayer = await PlayerStorage.methods.get_default_player_unconstrained().simulate({ from: admin });
+    const defaultPlayer = await PlayerStorage.methods.get_default_player_unconstrained().simulate({ from: user });
     const playerState = defaultPlayer;
 
     console.log('\n🔍 Validating locally (mirror of Core + check_player_init)...');
@@ -388,8 +388,22 @@ async function main() {
 
     console.log('   Simulating first...');
     try {
+        console.log('\n\n\n\n\n');
+        console.log('   ✅ Simulating initialize_player...');
+        console.log(initPlayerArgs);
+
+        const playerStateRoot = await PlayerStorage.methods.get_state_root(user).simulate({ from: user });
+        console.log('   ✅ playerStateRoot:', playerStateRoot);
+        console.log('\n\n\n\n\n');
+        const res = await PlayerStorage.methods.verify(user, playerState).simulate({ from: user });
+        console.log('   ✅ verify succeeded:', res);
+        if (!res) {
+            console.error('   ❌ verify failed:', res);
+            return;
+        }
+
         await Core.methods.initialize_player(...initPlayerArgs).simulate(sendOpts(user));
-        console.log('   ✅ Simulate succeeded.');
+        console.log('   ✅ Simulate clear.');
     } catch (simErr: unknown) {
         const msg = simErr instanceof Error ? simErr.message : String(simErr);
         console.error('   ❌ Simulate failed:', msg);
