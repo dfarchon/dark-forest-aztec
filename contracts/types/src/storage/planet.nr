@@ -441,14 +441,14 @@ impl PlanetEventMetadata {
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetEvents {
-    pub events: [PlanetEventMetadata; 20],
+    pub events: [PlanetEventMetadata; 12],
     pub events_count: u32,
 }
 
 impl PlanetEvents {
     pub fn zero() -> Self {
         PlanetEvents {
-            events: [PlanetEventMetadata::zero(); 20],
+            events: [PlanetEventMetadata::zero(); 12],
             events_count: 0,
         }
     }
@@ -459,14 +459,14 @@ impl PlanetEvents {
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetArtifacts {
-    pub artifacts: [Field; 20],
+    pub artifacts: [Field; 12],
     pub artifacts_count: u32,
 }
 
 impl PlanetArtifacts {
     pub fn zero() -> Self {
         PlanetArtifacts {
-            artifacts: [0; 20],
+            artifacts: [0; 12],
             artifacts_count: 0,
         }
     }

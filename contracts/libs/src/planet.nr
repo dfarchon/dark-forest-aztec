@@ -242,8 +242,8 @@ pub fn get_refreshed_planet(
     timestamp: u64,
     mut planet: Planet,
     planet_events_state: PlanetEvents,
-    arrivals: [Arrival; 20],
-    artifact_states: [ArtifactState; 20],
+    arrivals: [Arrival; 12],
+    artifact_states: [ArtifactState; 12],
     planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let res = apply_pending_events(timestamp, planet, planet_events_state, arrivals);
@@ -294,10 +294,10 @@ pub fn refresh_planet(
     location_id: Field,
     mut planet: Planet,
     mut planet_events_state: PlanetEvents,
-    arrivals: [Arrival; 20],
-    mut artifact_states: [ArtifactState; 20],
+    arrivals: [Arrival; 12],
+    mut artifact_states: [ArtifactState; 12],
     mut planet_artifacts_state: PlanetArtifacts,
-) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactState; 20]) {
+) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactState; 12]) {
     assert(planet.is_initialized, "Planet is not initialized");
 
     let result = get_refreshed_planet(

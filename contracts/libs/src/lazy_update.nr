@@ -190,7 +190,7 @@ pub fn apply_pending_events(
     current_timestamp: u64,
     mut planet: Planet,
     planet_events_state: PlanetEvents,
-    arrivals: [Arrival; 20],
+    arrivals: [Arrival; 12],
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
     let mut artifacts_to_add: PlanetArtifacts = PlanetArtifacts::zero();
