@@ -2,9 +2,7 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import {
     DeployMethod,
     getContractInstanceFromInstantiationParams,
-    getGasLimits,
 } from '@aztec/aztec.js/contracts';
-import { getDecodedPublicEvents } from './utils/events.ts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import { PublicKeys } from '@aztec/aztec.js/keys';
@@ -20,8 +18,8 @@ import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
-import { SilverContract } from './artifacts/Silver.ts';
 import { ConfigContract } from './artifacts/Config.ts';
+import { SilverContract } from './artifacts/Silver.ts';
 
 // Load environment variables
 dotenv.config();
@@ -311,127 +309,7 @@ async function createAccountAndDeployContract() {
         await writeSilverEnvFile(silverDeploymentInfo);
     }
 
-    // Call get_admin
-    try {
-        console.log('Simulating contract (calling get_admin)...\n');
-        const silver = SilverContract.at(
-            AztecAddress.fromString(silverDeploymentInfo.contractAddress),
-            wallet
-        );
-
-        const admin = await silver.methods
-            .get_admin_from_config(AztecAddress.fromString(configDeploymentInfo.contractAddress))
-            .simulate({ from: accountAddress });
-
-        console.log('\n\n\n\n');
-        console.log('admin in contract:', admin.toString());
-        console.log('accountAddress:', accountAddress);
-        console.log('\n\n\n\n');
-
-
-        const msgSender = await silver.methods
-            .get_msg_sender_from_config(AztecAddress.fromString(configDeploymentInfo.contractAddress))
-            .simulate({ from: accountAddress });
-
-        console.log('\n\n\n\n');
-        console.log('msgSender in config contract:', msgSender.toString());
-        console.log('silver contract:', silverDeploymentInfo.contractAddress);
-        console.log('config contract:', configDeploymentInfo.contractAddress);
-        console.log('\n\n\n\n');
-
-        // ========== Hash + Event PoC Test ==========
-        // Test store_large_data: struct as input -> hash stored (1 write) + event emitted
-        // LargeData has 500 fields (values array) - scales without code changes
-        console.log('=== Testing store_large_data (hash + event pattern) ===\n');
-        const testKey = Fr.fromString('1');
-        const values = Array.from({ length: 500 }, (_, i) => BigInt((i + 1) * 100));
-        const largeData = { values };
-
-        const sponsoredPFCContract = await getSponsoredPFCContract();
-        const storeTx = silver.methods
-            .store_large_data(testKey, largeData)
-            .send({
-                from: accountAddress,
-                fee: {
-                    paymentMethod: new SponsoredFeePaymentMethod(
-                        sponsoredPFCContract.address
-                    ),
-                },
-            });
-        const storeReceipt = await storeTx.wait({ timeout: 120 });
-        console.log('store_large_data tx hash:', storeReceipt.txHash.toString());
-
-        // Read event content from public logs
-        const blockNumber = Number(storeReceipt.blockNumber ?? 0);
-        const events = await getDecodedPublicEvents<{
-            key: Fr;
-            data: { values: bigint[] };
-        }>(aztecNode, SilverContract.events.LargeDataStored, blockNumber, 1);
-        if (events.length > 0) {
-            console.log('\n--- Event LargeDataStored content ---');
-            events.forEach((evt, i) => {
-                console.log(`[${i}] key:`, evt.key.toString());
-                console.log(`[${i}] data.values:`, evt.data.values);
-                console.log(`[${i}] data.values length:`, evt.data.values.length);
-            });
-            console.log('-------------------------------------\n');
-        } else {
-            const { logs } = await aztecNode.getPublicLogs({
-                txHash: storeReceipt.txHash,
-            });
-            console.log('\n--- No LargeDataStored events found, raw logs:', logs.length, '---\n');
-        }
-
-        // Verify stored hash
-        const storedHash = await silver.methods
-            .get_data_hash(testKey)
-            .simulate({ from: accountAddress });
-        console.log('Stored hash:', storedHash.toString());
-
-        // Verify data matches hash. Get tx cost: use wallet.simulateTx to get TxSimulationResult (gasUsed), then getGasLimits + fee info.
-        const verifyPayload = await silver.methods
-            .verify_large_data(testKey, largeData)
-            .request();
-        const txSimResult = await wallet.simulateTx(verifyPayload, {
-            from: accountAddress,
-        });
-        const gasUsed = txSimResult.gasUsed;
-        const suggestedLimits = getGasLimits(txSimResult, 0.1);
-        console.log('verify_large_data (as tx) gas used:', {
-            totalGas: { daGas: gasUsed.totalGas.daGas, l2Gas: gasUsed.totalGas.l2Gas },
-            billedGas: { daGas: gasUsed.billedGas.daGas, l2Gas: gasUsed.billedGas.l2Gas },
-        });
-        console.log('verify_large_data suggested gas limits (10% pad):', {
-            gasLimits: { daGas: suggestedLimits.gasLimits.daGas, l2Gas: suggestedLimits.gasLimits.l2Gas },
-            teardownGasLimits: { daGas: suggestedLimits.teardownGasLimits.daGas, l2Gas: suggestedLimits.teardownGasLimits.l2Gas },
-        });
-        // Fee (in Aztec token) = billedGas × feePerGas. feePerGas comes from network/oracle (see https://docs.aztec.network/aztec/concepts/fees).
-        // So cost (Aztec token) = gasUsed.billedGas.daGas * feePerDaGas + gasUsed.billedGas.l2Gas * feePerL2Gas (from current block).
-        const verifyResult = await silver.methods
-            .verify_large_data(testKey, largeData)
-            .simulate({ from: accountAddress });
-        console.log('verify_large_data (correct data):', verifyResult);
-
-        // Verify wrong data fails
-        const wrongValues = [...values];
-        wrongValues[0] = 999n;
-        const wrongData = { values: wrongValues };
-        const verifyWrongResult = await silver.methods
-            .verify_large_data(testKey, wrongData)
-            .simulate({ from: accountAddress });
-        console.log('verify_large_data (wrong data):', verifyWrongResult);
-
-        console.log('\n=== Hash + Event PoC test complete ===');
-        console.log('- store_large_data: 1 write (hash) instead of 500+ writes (struct)');
-        console.log('- Chunked poseidon2 hash scales to 500+ fields');
-        console.log('- Full struct emitted via LargeDataStored event for off-chain indexing');
-        console.log('- verify_large_data: pass struct as param, hash checked against storage\n');
-    } catch (err) {
-        console.error('Failed to call contract:', err);
-    }
-
-    // Clean up the PXE store
-    // fs.rmSync(PXE_STORE_DIR, { recursive: true, force: true });
+    console.log('\n✅ Deployment complete. Run interact script to test contracts.\n');
 }
 
 createAccountAndDeployContract()

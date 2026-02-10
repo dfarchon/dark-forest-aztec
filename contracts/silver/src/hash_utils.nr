@@ -8,3 +8,8 @@ use dep::aztec::protocol_types::hash::poseidon2_hash;
 pub fn hash_large_fields(fields: [Field; 500]) -> Field {
     poseidon2_hash(fields)
 }
+
+/// Hash a single chunk of 40 fields (20000 fields = 500 chunks -> 500 hashes).
+pub fn hash_chunk_40(fields: [Field; 40]) -> Field {
+    poseidon2_hash(fields)
+}
