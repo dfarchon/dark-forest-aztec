@@ -5,7 +5,7 @@ use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct Arrival {
-    pub id: u128,
+    pub id: Field,
     pub player: AztecAddress,
     pub from_planet: Field,
     pub to_planet: Field,
@@ -36,10 +36,17 @@ impl Arrival {
     }
 }
 
-
 pub mod ArrivalType {
-    pub fn Unknown() -> u8 { 0 }
-    pub fn Normal() -> u8 { 1 }
-    pub fn Photoid() -> u8 { 2 }
-    pub fn Wormhole() -> u8 { 3 }
+    pub fn Unknown() -> u8 {
+        0
+    }
+    pub fn Normal() -> u8 {
+        1
+    }
+    pub fn Photoid() -> u8 {
+        2
+    }
+    pub fn Wormhole() -> u8 {
+        3
+    }
 }

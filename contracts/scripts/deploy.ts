@@ -28,63 +28,52 @@ const WALLET_SETUP_OPTIONS = {
     proverEnabled: PROVER_ENABLED,
 };
 
-/** Artifact module path (relative to this script) and export name. Matches scripts/artifacts/*.ts (codegen uses ContractName.ts and export XxxContract). */
+/** Artifact module path (relative to this script) and export name. Matches scripts/artifacts/*.ts (codegen: {package}-{Contract}.ts, export XxxContract). */
 const ARTIFACT_SPECS: Array<{
     modulePath: string;
     exportName: string;
 }> = [
-        { modulePath: './artifacts/Config.ts', exportName: 'ConfigContract' },
-        {
-            modulePath: './artifacts/GlobalStateStorage.ts',
-            exportName: 'GlobalStateStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlayerStorage.ts',
-            exportName: 'PlayerStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetMetaStorage.ts',
-            exportName: 'PlanetMetaStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetOwnerStorage.ts',
-            exportName: 'PlanetOwnerStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetCapsStorage.ts',
-            exportName: 'PlanetCapsStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetCoordsStorage.ts',
-            exportName: 'PlanetCoordsStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetResourcesStorage.ts',
-            exportName: 'PlanetResourcesStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetModsStorage.ts',
-            exportName: 'PlanetModsStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetEventsStorage.ts',
-            exportName: 'PlanetEventsStorageContract',
-        },
-        {
-            modulePath: './artifacts/PlanetArtifactsStorage.ts',
-            exportName: 'PlanetArtifactsStorageContract',
-        },
-        {
-            modulePath: './artifacts/ArrivalStorage.ts',
-            exportName: 'ArrivalStorageContract',
-        },
-        {
-            modulePath: './artifacts/ArtifactStateStorage.ts',
-            exportName: 'ArtifactStateStorageContract',
-        },
-        { modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
-        { modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
-    ];
+    { modulePath: './artifacts/Config.ts', exportName: 'ConfigContract' },
+    {
+        modulePath: './artifacts/WorldStorage.ts',
+        exportName: 'WorldStorageContract',
+    },
+    {
+        modulePath: './artifacts/PlayerStorage.ts',
+        exportName: 'PlayerStorageContract',
+    },
+    {
+        modulePath: './artifacts/PlanetStorage.ts',
+        exportName: 'PlanetStorageContract',
+    },
+    {
+        modulePath: './artifacts/PlanetRevealedCoordsStorage.ts',
+        exportName: 'PlanetRevealedCoordsStorageContract',
+    },
+    {
+        modulePath: './artifacts/PlanetEventsStorage.ts',
+        exportName: 'PlanetEventsStorageContract',
+    },
+    {
+        modulePath: './artifacts/PlanetArtifactsStorage.ts',
+        exportName: 'PlanetArtifactsStorageContract',
+    },
+    {
+        modulePath: './artifacts/ArrivalStorage.ts',
+        exportName: 'ArrivalStorageContract',
+    },
+    {
+        modulePath: './artifacts/ArtifactStorage.ts',
+        exportName: 'ArtifactStorageContract',
+    },
+    {
+        modulePath: './artifacts/ArtifactLocationStorage.ts',
+        exportName: 'ArtifactLocationStorageContract',
+    },
+    { modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
+    { modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
+    { modulePath: './artifacts/Move.ts', exportName: 'MoveContract' },
+];
 
 /** Deployment order and constructor args. name must match a key used in getConstructorArgs (ctx.addresses). */
 const DEPLOY_DEFINITIONS: Array<{
@@ -95,82 +84,72 @@ const DEPLOY_DEFINITIONS: Array<{
         addresses: Record<string, { toField: () => unknown }>;
     }) => unknown[];
 }> = [
-        {
-            name: 'Config',
-            envPrefix: 'CONFIG',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'GlobalStateStorage',
-            envPrefix: 'GLOBAL_STATE_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlayerStorage',
-            envPrefix: 'PLAYER_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetMetaStorage',
-            envPrefix: 'PLANET_META_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetOwnerStorage',
-            envPrefix: 'PLANET_OWNER_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetCapsStorage',
-            envPrefix: 'PLANET_CAPS_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetCoordsStorage',
-            envPrefix: 'PLANET_COORDS_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetResourcesStorage',
-            envPrefix: 'PLANET_RESOURCES_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetModsStorage',
-            envPrefix: 'PLANET_MODS_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetEventsStorage',
-            envPrefix: 'PLANET_EVENTS_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'PlanetArtifactsStorage',
-            envPrefix: 'PLANET_ARTIFACTS_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'ArrivalStorage',
-            envPrefix: 'ARRIVAL_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'ArtifactStateStorage',
-            envPrefix: 'ARTIFACT_STATE_STORAGE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'Admin',
-            envPrefix: 'ADMIN',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-        {
-            name: 'Core',
-            envPrefix: 'CORE',
-            getConstructorArgs: (ctx) => [ctx.deployer.toField()],
-        },
-    ];
+    {
+        name: 'Config',
+        envPrefix: 'CONFIG',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'WorldStorage',
+        envPrefix: 'WORLD_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'PlayerStorage',
+        envPrefix: 'PLAYER_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'PlanetStorage',
+        envPrefix: 'PLANET_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'PlanetRevealedCoordsStorage',
+        envPrefix: 'PLANET_REVEALED_COORDS_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'PlanetEventsStorage',
+        envPrefix: 'PLANET_EVENTS_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'PlanetArtifactsStorage',
+        envPrefix: 'PLANET_ARTIFACTS_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArrivalStorage',
+        envPrefix: 'ARRIVAL_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArtifactStorage',
+        envPrefix: 'ARTIFACT_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArtifactLocationStorage',
+        envPrefix: 'ARTIFACT_LOCATION_STORAGE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'Admin',
+        envPrefix: 'ADMIN',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'Core',
+        envPrefix: 'CORE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'Move',
+        envPrefix: 'MOVE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+];
 
 async function loadDeployConfigs(): Promise<ContractDeployConfig[]> {
     const configs: ContractDeployConfig[] = [];

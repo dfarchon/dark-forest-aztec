@@ -1,0 +1,232 @@
+// Storage contract for global world state (paused, counts, radius, next_change_block, etc.).
+// Only admin or authorized contracts can write; anyone can verify state by hash.
+use dep::aztec::macros::aztec;
+
+#[aztec]
+pub contract WorldStorage {
+    use dep::aztec::{
+        macros::{
+            events::event,
+            functions::{external, initializer, internal, view},
+            storage::storage,
+        },
+        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+    };
+
+    use dep::aztec::state_vars::{Map, PublicMutable};
+    use dep::types::storage::world::World;
+
+    #[storage]
+    struct Storage<Context> {
+        // Admin and authorized callers (only they can write; read is public).
+        admin: PublicMutable<AztecAddress, Context>,
+        authorized_map: Map<AztecAddress, PublicMutable<bool, Context>, Context>,
+        authorized_index: Map<AztecAddress, PublicMutable<u32, Context>, Context>,
+        authorized_list: Map<u32, PublicMutable<AztecAddress, Context>, Context>,
+        authorized_count: PublicMutable<u32, Context>,
+        // slot id (e.g. 0 for singleton world) -> poseidon2 hash of World
+        state_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+    }
+
+    #[event]
+    struct WorldUpdate {
+        id: Field,
+        block_number: u32,
+        state: World,
+    }
+
+    #[external("public")]
+    #[initializer]
+    fn constructor(admin: AztecAddress) {
+        self.storage.admin.write(admin);
+        self.storage.authorized_count.write(0);
+        let world = World::zero();
+        let root = poseidon2_hash(world.serialize());
+        self.storage.state_roots.at(0).write(root);
+        self.emit(WorldUpdate { id: 0, block_number: self.context.block_number(), state: world });
+    }
+
+    // ================== INTERNAL AUTH ==================
+
+    #[internal("public")]
+    fn assert_admin() {
+        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+    }
+
+    #[internal("public")]
+    fn assert_authorized() {
+        let caller = self.msg_sender().unwrap();
+        let is_admin = caller == self.storage.admin.read();
+        let is_authorized = self.storage.authorized_map.at(caller).read();
+        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+    }
+
+    // ================== ADD / UPDATE ==================
+
+    #[external("public")]
+    fn set(id: Field, state: World) {
+        self.internal.assert_authorized();
+        let block_number = self.context.block_number();
+        let root = poseidon2_hash(state.serialize());
+        self.storage.state_roots.at(id).write(root);
+        self.emit(WorldUpdate { id: id, block_number: block_number, state: state });
+    }
+
+    // ================== ADMIN ==================
+
+    #[external("public")]
+    fn transfer_admin(new_admin: AztecAddress) {
+        self.internal.assert_admin();
+        self.storage.admin.write(new_admin);
+    }
+
+    #[external("public")]
+    fn add_authorized_contract(contract_address: AztecAddress) {
+        self.internal.assert_admin();
+        assert(!self.storage.authorized_map.at(contract_address).read(), "Already authorized");
+
+        let count = self.storage.authorized_count.read();
+        self.storage.authorized_map.at(contract_address).write(true);
+        self.storage.authorized_index.at(contract_address).write(count);
+        self.storage.authorized_list.at(count).write(contract_address);
+        self.storage.authorized_count.write(count + 1);
+    }
+
+    #[external("public")]
+    fn remove_authorized_contract(contract_address: AztecAddress) {
+        self.internal.assert_admin();
+        assert(self.storage.authorized_map.at(contract_address).read(), "Not authorized");
+
+        let index = self.storage.authorized_index.at(contract_address).read();
+        let last_index = self.storage.authorized_count.read() - 1;
+        self.storage.authorized_map.at(contract_address).write(false);
+
+        if index != last_index {
+            let last_contract = self.storage.authorized_list.at(last_index).read();
+            self.storage.authorized_list.at(index).write(last_contract);
+            self.storage.authorized_index.at(last_contract).write(index);
+        }
+
+        self.storage.authorized_list.at(last_index).write(AztecAddress::zero());
+        self.storage.authorized_count.write(last_index);
+    }
+
+    // ================== PUBLIC VIEWS ==================
+
+    #[external("public")]
+    #[view]
+    fn verify(id: Field, state: World) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        if stored_hash == 0 {
+            state == World::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.serialize());
+            computed_hash == stored_hash
+        }
+    }
+
+    #[external("public")]
+    #[view]
+    fn compute_state_hash(state: World) -> Field {
+        if (state == World::zero()) {
+            0
+        } else {
+            poseidon2_hash(state.serialize())
+        }
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_state_root(id: Field) -> Field {
+        self.storage.state_roots.at(id).read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn verify_hash(id: Field, hash: Field) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        stored_hash == hash
+    }
+
+    // ================== UTILITY (UNCONSTRAINED) ==================
+
+    #[external("utility")]
+    unconstrained fn verify_unconstrained(id: Field, state: World) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        if stored_hash == 0 {
+            state == World::zero()
+        } else {
+            let computed_hash = poseidon2_hash(state.serialize());
+            computed_hash == stored_hash
+        }
+    }
+
+    #[external("utility")]
+    unconstrained fn compute_state_hash_unconstrained(state: World) -> Field {
+        if (state == World::zero()) {
+            0
+        } else {
+            poseidon2_hash(state.serialize())
+        }
+    }
+
+    #[external("utility")]
+    unconstrained fn get_state_root_unconstrained(id: Field) -> Field {
+        self.storage.state_roots.at(id).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_default_state_unconstrained() -> World {
+        World::zero()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_admin_unconstrained() -> AztecAddress {
+        self.storage.admin.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_authorized_count_unconstrained() -> u32 {
+        self.storage.authorized_count.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_authorized_contract_unconstrained(index: u32) -> AztecAddress {
+        self.storage.authorized_list.at(index).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> bool {
+        let is_admin: bool = addr == self.storage.admin.read();
+        let is_authorized: bool = self.storage.authorized_map.at(addr).read();
+        is_admin | is_authorized
+    }
+
+    #[external("utility")]
+    unconstrained fn is_initialized_unconstrained(id: Field) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        stored_hash != 0
+    }
+
+    // ================== PUBLIC VIEWS (AUTH) ==================
+
+    #[external("public")]
+    #[view]
+    fn get_authorized_count() -> u32 {
+        self.storage.authorized_count.read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_authorized_contract(index: u32) -> AztecAddress {
+        self.storage.authorized_list.at(index).read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn is_authorized(addr: AztecAddress) -> bool {
+        let is_admin: bool = addr == self.storage.admin.read();
+        let is_authorized: bool = self.storage.authorized_map.at(addr).read();
+        is_admin | is_authorized
+    }
+}

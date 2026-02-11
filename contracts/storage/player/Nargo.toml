@@ -1,5 +1,5 @@
 [package]
-name = "player_storage"
+name = "player"
 type = "contract"
 authors = [""]
 

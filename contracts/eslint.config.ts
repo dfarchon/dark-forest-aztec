@@ -4,6 +4,10 @@ import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import prettierConfig from 'eslint-config-prettier';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig([
     globalIgnores(['dist', 'target']),
@@ -18,6 +22,7 @@ export default defineConfig([
             ecmaVersion: 2020,
             parserOptions: {
                 sourceType: 'module',
+                tsconfigRootDir: __dirname,
             },
             globals: globals.node,
         },

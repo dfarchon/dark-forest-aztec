@@ -39,14 +39,15 @@ type TestAccountsFile = {
 };
 
 // ---------------------------------------------------------------------------
-// Contract function lists (from Config / Admin / Core #[external("public")])
+// Contract function lists (from Config / Admin / Core / Move #[external(...)])
 // ---------------------------------------------------------------------------
 
 const CONFIG_FUNCTIONS = [
+    // Setters
     'set_default_world_config',
     'set_world_config',
-    'set_default_snark_constants',
-    'set_snark_constants',
+    'set_default_snark_config',
+    'set_snark_config',
     'set_default_game_config',
     'set_game_config_core',
     'set_planet_level_thresholds',
@@ -60,41 +61,76 @@ const CONFIG_FUNCTIONS = [
     'set_space_junk_config',
     'set_default_capture_zones_config',
     'set_capture_zones_config',
+    'initializeUpgrades',
     'initialize_cumulative_rarities',
     'set_planet_default_stats',
     'set_upgrade',
     'set_upgrade_by_branch_level',
-    'get_admin_public',
-    'get_world_config_public',
-    'get_snark_constants_public',
-    'get_game_config_core_public',
-    'get_planet_level_thresholds_public',
-    'get_planet_type_weights_tier_public',
-    'get_artifacts_config_public',
-    'get_spaceships_config_public',
-    'get_space_junk_config_public',
-    'get_capture_zones_config_public',
-    'get_planet_default_stats_public',
-    'get_upgrade_public',
-    'get_upgrade_by_branch_level_public',
-    'get_cumulative_rarity_public',
+    // Getters
+    'get_admin',
+    'get_world_config',
+    'get_snark_config',
+    'get_game_config_core',
+    'get_planet_level_thresholds',
+    'get_planet_type_weights_tier',
+    'get_artifacts_config',
+    'get_spaceships_config',
+    'get_space_junk_config',
+    'get_capture_zones_config',
+    'get_planet_default_stats',
+    'get_upgrade',
+    'get_upgrade_by_branch_level',
+    'get_cumulative_rarity',
+    // Hash getters
+    'get_world_config_hash',
+    'get_snark_config_hash',
+    'get_game_config_core_hash',
+    'get_planet_level_thresholds_hash',
+    'get_planet_type_weights_tier_hash',
+    'get_artifacts_config_hash',
+    'get_spaceships_config_hash',
+    'get_space_junk_config_hash',
+    'get_capture_zones_config_hash',
+    'get_planet_default_stats_hash',
+    'get_all_planet_default_stats_hashes',
+    // Verify (value)
+    'verify_world_config',
+    'verify_snark_config',
+    'verify_game_config_core',
+    'verify_planet_level_thresholds',
+    'verify_planet_type_weights_tier',
+    'verify_artifacts_config',
+    'verify_spaceships_config',
+    'verify_space_junk_config',
+    'verify_capture_zones_config',
+    'verify_planet_default_stats',
+    // Verify (hash)
+    'verify_world_config_hash',
+    'verify_snark_config_hash',
+    'verify_game_config_core_hash',
+    'verify_planet_level_thresholds_hash',
+    'verify_planet_type_weights_tier_hash',
+    'verify_artifacts_config_hash',
+    'verify_spaceships_config_hash',
+    'verify_space_junk_config_hash',
+    'verify_capture_zones_config_hash',
+    'verify_planet_default_stats_hash',
+    'verify_all_planet_default_stats_hashes',
+    'verify_all_config_hashes',
 ] as const;
 
 export const ADMIN_FUNCTIONS = [
     'transfer_admin',
     'set_config_storage_address',
-    'set_global_state_storage_address',
+    'set_world_storage_address',
     'set_player_storage_address',
-    'set_planet_meta_storage_address',
-    'set_planet_owner_storage_address',
-    'set_planet_caps_storage_address',
-    'set_planet_resources_storage_address',
-    'set_planet_mods_storage_address',
+    'set_planet_storage_address',
     'pause',
     'unpause',
     'set_owner',
     'deduct_score',
     'add_score',
+    'safe_set_owner', // private
     'safe_set_owner_public',
     'admin_set_world_radius',
     'create_planet',
@@ -104,21 +140,36 @@ export const ADMIN_FUNCTIONS = [
 const CORE_FUNCTIONS = [
     'transfer_admin',
     'set_config_storage_address',
-    'set_global_state_storage_address',
+    'set_world_storage_address',
     'set_player_storage_address',
-    'set_planet_meta_storage_address',
-    'set_planet_owner_storage_address',
-    'set_planet_caps_storage_address',
-    'set_planet_resources_storage_address',
-    'set_planet_mods_storage_address',
-    'set_planet_coords_storage_address',
+    'set_planet_storage_address',
+    'set_planet_revealed_coords_storage_address',
     'set_planet_events_storage_address',
     'set_planet_artifacts_storage_address',
     'set_arrivals_storage_address',
-    'set_artifacts_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'refresh_planet_private', // private
     'refresh_planet_public',
-    'reveal_location',
+    'reveal_location', // private
+    'reveal_location_public',
+    'initialize_player', // private
     'initialize_player_public',
+] as const;
+
+const MOVE_FUNCTIONS = [
+    'transfer_admin',
+    'set_config_storage_address',
+    'set_world_storage_address',
+    'set_player_storage_address',
+    'set_planet_storage_address',
+    'set_planet_events_storage_address',
+    'set_planet_artifacts_storage_address',
+    'set_arrivals_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'move', // private
+    'move_public',
 ] as const;
 
 /** All contracts and their public method names (for iteration or assertions). */
@@ -126,11 +177,13 @@ const CONTRACT_FUNCTIONS = {
     Config: CONFIG_FUNCTIONS,
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
+    Move: MOVE_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
 export type AdminFunctionName = (typeof ADMIN_FUNCTIONS)[number];
 export type CoreFunctionName = (typeof CORE_FUNCTIONS)[number];
+export type MoveFunctionName = (typeof MOVE_FUNCTIONS)[number];
 
 // ---------------------------------------------------------------------------
 
@@ -138,31 +191,100 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
 
 const CONTRACT_SPECS = [
-    { name: 'Config', modulePath: './artifacts/Config.ts', exportName: 'ConfigContract' },
     {
-        name: 'GlobalStateStorage',
-        modulePath: './artifacts/GlobalStateStorage.ts',
-        exportName: 'GlobalStateStorageContract',
+        name: 'Config',
+        modulePath: './artifacts/Config.ts',
+        exportName: 'ConfigContract',
     },
-    { name: 'PlayerStorage', modulePath: './artifacts/PlayerStorage.ts', exportName: 'PlayerStorageContract' },
-    { name: 'PlanetOwnerStorage', modulePath: './artifacts/PlanetOwnerStorage.ts', exportName: 'PlanetOwnerStorageContract' },
-    { name: 'Admin', modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
-    { name: 'Core', modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
+    {
+        name: 'WorldStorage',
+        modulePath: './artifacts/WorldStorage.ts',
+        exportName: 'WorldStorageContract',
+    },
+    {
+        name: 'PlayerStorage',
+        modulePath: './artifacts/PlayerStorage.ts',
+        exportName: 'PlayerStorageContract',
+    },
+    {
+        name: 'PlanetStorage',
+        modulePath: './artifacts/PlanetStorage.ts',
+        exportName: 'PlanetStorageContract',
+    },
+    {
+        name: 'PlanetRevealedCoordsStorage',
+        modulePath: './artifacts/PlanetRevealedCoordsStorage.ts',
+        exportName: 'PlanetRevealedCoordsStorageContract',
+    },
+    {
+        name: 'PlanetEventsStorage',
+        modulePath: './artifacts/PlanetEventsStorage.ts',
+        exportName: 'PlanetEventsStorageContract',
+    },
+    {
+        name: 'PlanetArtifactsStorage',
+        modulePath: './artifacts/PlanetArtifactsStorage.ts',
+        exportName: 'PlanetArtifactsStorageContract',
+    },
+    {
+        name: 'ArrivalStorage',
+        modulePath: './artifacts/ArrivalStorage.ts',
+        exportName: 'ArrivalStorageContract',
+    },
+    {
+        name: 'ArtifactStorage',
+        modulePath: './artifacts/ArtifactStorage.ts',
+        exportName: 'ArtifactStorageContract',
+    },
+    {
+        name: 'ArtifactLocationStorage',
+        modulePath: './artifacts/ArtifactLocationStorage.ts',
+        exportName: 'ArtifactLocationStorageContract',
+    },
+    {
+        name: 'Admin',
+        modulePath: './artifacts/Admin.ts',
+        exportName: 'AdminContract',
+    },
+    {
+        name: 'Core',
+        modulePath: './artifacts/Core.ts',
+        exportName: 'CoreContract',
+    },
+    {
+        name: 'Move',
+        modulePath: './artifacts/Move.ts',
+        exportName: 'MoveContract',
+    },
 ];
 
 const ENV_KEYS: Array<[string, string]> = [
     ['Config', 'CONFIG_CONTRACT_ADDRESS'],
-    ['GlobalStateStorage', 'GLOBAL_STATE_STORAGE_CONTRACT_ADDRESS'],
+    ['WorldStorage', 'WORLD_STORAGE_CONTRACT_ADDRESS'],
     ['PlayerStorage', 'PLAYER_STORAGE_CONTRACT_ADDRESS'],
-    ['PlanetOwnerStorage', 'PLANET_OWNER_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetStorage', 'PLANET_STORAGE_CONTRACT_ADDRESS'],
+    [
+        'PlanetRevealedCoordsStorage',
+        'PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS',
+    ],
+    ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetArtifactsStorage', 'PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS'],
+    ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
+    ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
+    ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
+    ['Move', 'MOVE_CONTRACT_ADDRESS'],
 ];
 
 function addressesFromEnv(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, key] of ENV_KEYS) {
         const v = process.env[key];
+        if (key === 'MOVE_CONTRACT_ADDRESS') {
+            if (v) out[name] = v;
+            continue;
+        }
         if (!v) throw new Error(`Missing ${key} in .env (run deploy first)`);
         out[name] = v;
     }
@@ -211,7 +333,9 @@ export async function getTestContext(): Promise<TestContext> {
     let user1: AztecAddress;
     let user2: AztecAddress;
     if (fs.existsSync(TEST_ACCOUNTS_PATH)) {
-        const saved = JSON.parse(fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')) as TestAccountsFile;
+        const saved = JSON.parse(
+            fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')
+        ) as TestAccountsFile;
         user1 = await loadAccountFromCredentials(wallet, saved.user1);
         user2 = await loadAccountFromCredentials(wallet, saved.user2);
     } else {
@@ -232,7 +356,11 @@ export async function getTestContext(): Promise<TestContext> {
         );
     }
 
-    const contracts = await getContractInstances(wallet, addresses, CONTRACT_SPECS);
+    const contracts = await getContractInstances(
+        wallet,
+        addresses,
+        CONTRACT_SPECS
+    );
 
     // Register contracts with PXE so simulate() can run code at their addresses (e.g. PlanetOwnerStorage.get_default_planet_owner_unconstrained).
     await registerContractsWithWallet(wallet, admin, CONTRACT_SPECS, ENV_KEYS);
@@ -270,7 +398,9 @@ function printContractFunctions() {
 
 async function main() {
     console.log('🌐 Aztec Node URL:', AZTEC_NODE_URL);
-    console.log('🔗 Setting up test context (3 accounts: 1 admin + 2 users)...\n');
+    console.log(
+        '🔗 Setting up test context (3 accounts: 1 admin + 2 users)...\n'
+    );
 
     const ctx = await getTestContext();
 
@@ -278,18 +408,24 @@ async function main() {
     console.log('   admin:', ctx.accounts.admin.toString());
     console.log('   user1:', ctx.accounts.users[0].toString());
     console.log('   user2:', ctx.accounts.users[1].toString());
-    console.log('\n✅ Contracts loaded: Config, Admin, Core');
+    console.log(
+        '\n✅ Contracts loaded:',
+        Object.keys(ctx.contracts).join(', ')
+    );
 
     printContractFunctions();
 
-    console.log('💡 Use getTestContext() in your test file to get { accounts, contracts, sendOpts }.');
+    console.log(
+        '💡 Use getTestContext() in your test file to get { accounts, contracts, sendOpts }.'
+    );
 }
 
 // Only run main when this file is the entry script (not when imported by test-admin etc.)
 const isEntryScript =
     typeof process !== 'undefined' &&
     process.argv[1] != null &&
-    (process.argv[1].endsWith('test-setup.ts') || process.argv[1].includes('test-setup'));
+    (process.argv[1].endsWith('test-setup.ts') ||
+        process.argv[1].includes('test-setup'));
 if (isEntryScript) {
     main().catch((err) => {
         console.error(err);
