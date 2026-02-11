@@ -11,4 +11,3 @@ pub struct PlanetDefaultStats {
     pub silver_cap: u128,
     pub barbarian_percentage: u128,
 }
-

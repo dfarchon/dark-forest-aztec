@@ -13,7 +13,7 @@ pub struct SpaceJunkConfig {
 }
 
 impl SpaceJunkConfig {
-    pub fn default_dark_forest() -> Self {
+    pub fn zero() -> Self {
         Self {
             space_junk_enabled: false,
             space_junk_limit: 10000,
@@ -22,39 +22,4 @@ impl SpaceJunkConfig {
             abandon_range_change_percent: 150,
         }
     }
-
-    // ---- getters ----
-    pub fn get_space_junk_enabled(&self) -> bool {
-        self.space_junk_enabled
-    }
-    pub fn get_space_junk_limit(&self) -> u128 {
-        self.space_junk_limit
-    }
-    pub fn get_planet_level_junk(&self) -> [u128; 10] {
-        self.planet_level_junk
-    }
-    pub fn get_abandon_speed_change_percent(&self) -> u128 {
-        self.abandon_speed_change_percent
-    }
-    pub fn get_abandon_range_change_percent(&self) -> u128 {
-        self.abandon_range_change_percent
-    }
-
-    // ---- setters ----
-    pub fn set_space_junk_enabled(&mut self, value: bool) {
-        self.space_junk_enabled = value;
-    }
-    pub fn set_space_junk_limit(&mut self, value: u128) {
-        self.space_junk_limit = value;
-    }
-    pub fn set_planet_level_junk(&mut self, value: [u128; 10]) {
-        self.planet_level_junk = value;
-    }
-    pub fn set_abandon_speed_change_percent(&mut self, value: u128) {
-        self.abandon_speed_change_percent = value;
-    }
-    pub fn set_abandon_range_change_percent(&mut self, value: u128) {
-        self.abandon_range_change_percent = value;
-    }
 }
-

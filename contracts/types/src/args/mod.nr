@@ -1,13 +1,12 @@
-use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 use dep::aztec::protocol_types::address::AztecAddress;
-
+use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Serialize, Deserialize, Packable)]
 pub struct DFPInitPlanetArgs {
     pub location: Field,
     pub perlin: u8,
     pub level: u8,
-    pub time_factor_hundredths: u128,
+    pub time_factor_hundredths: u16,
     pub space_type: u8, // SpaceType enum (stored as u8, use helper functions to convert)
     pub planet_type: u8, // PlanetType enum (stored as u8, use helper functions to convert)
     pub is_home_planet: bool,
@@ -37,7 +36,7 @@ pub struct DFPMoveArgs {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct DFPCreateArrivalArgs {
     pub player: AztecAddress,
-    pub old_loc: Field,
+    pub oldLoc: Field,
     pub new_loc: Field,
     pub actual_dist: u128,
     pub effective_dist_times_hundred: u128,
