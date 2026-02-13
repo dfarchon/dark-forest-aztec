@@ -200,8 +200,8 @@ contract Core {
         self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
     }
 
-    #[internal("public")]
-    fn refresh_planet_internal(
+    #[external("private")]
+    fn refresh_planet(
         location: Field,
         planet_state: Planet,
         planet_events_state: PlanetEvents,
@@ -209,66 +209,77 @@ contract Core {
         artifacts: [Artifact; 20],
         artifact_locations: [ArtifactLocation; 20],
         planet_artifacts_state: PlanetArtifacts,
+        timestamp: u64,
     ) {
-        let planet_storage_address = self.internal.get_planet_storage_address();
-        let planet_events_storage_address = self.internal.get_planet_events_storage_address();
-        let planet_artifacts_storage_address = self.internal.get_planet_artifacts_storage_address();
+        // Assert timestamps for main states
+        assert(
+            timestamp >= planet_state.last_updated,
+            "Timestamp must be >= planet's last_updated",
+        );
+        assert(
+            timestamp >= planet_events_state.last_updated,
+            "Timestamp must be >= planet_events' last_updated",
+        );
+        assert(
+            timestamp >= planet_artifacts_state.last_updated,
+            "Timestamp must be >= planet_artifacts' last_updated",
+        );
 
-        let planet_storage = PlanetStorage::at(planet_storage_address);
-        let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
-        let planet_artifacts_storage = PlanetArtifactsStorage::at(planet_artifacts_storage_address);
-
-        let planet_is_valid: bool = self.view(planet_storage.verify(location, planet_state));
-        let planet_events_is_valid: bool =
-            self.view(planet_events_storage.verify(location, planet_events_state));
-        let planet_artifacts_is_valid: bool =
-            self.view(planet_artifacts_storage.verify(location, planet_artifacts_state));
-
-        assert(planet_is_valid, "Planet is not valid");
-        assert(planet_events_is_valid, "Planet events is not valid");
-        assert(planet_artifacts_is_valid, "Planet artifacts is not valid");
-
-        let arrivals_storage_address = self.internal.get_arrivals_storage_address();
-        let artifact_storage_address = self.internal.get_artifact_storage_address();
-        let artifact_location_storage_address =
-            self.internal.get_artifact_location_storage_address();
-
-        let arrival_storage = ArrivalStorage::at(arrivals_storage_address);
-        let artifact_storage = ArtifactStorage::at(artifact_storage_address);
-        let artifact_location_storage =
-            ArtifactLocationStorage::at(artifact_location_storage_address);
-
+        // Assert timestamps for artifacts in arrivals
         let cnt = planet_events_state.count;
-
         for i in 0..cnt {
-            let event = planet_events_state.events[i];
             let arrival = arrivals[i];
-            let artifact = artifacts[i];
-            let artifact_location = artifact_locations[i];
-            assert(event.id == arrival.id, "Event id does not match arrival id");
 
-            let arrival_is_valid: bool =
-                self.view(arrival_storage.verify(arrival.id as Field, arrival));
-            assert(arrival_is_valid, "Arrival is not valid");
-
-            // Verify artifact if carried
+            assert(
+                timestamp >= arrival.departure_time,
+                "Timestamp must be >= arrival's departure_time",
+            );
+                
             if arrival.carried_artifact_id != 0 {
-                let artifact_is_valid: bool = self.view(artifact_storage.verify(
-                    arrival.carried_artifact_id,
-                    artifact,
-                ));
-                assert(artifact_is_valid, "Artifact is not valid");
+                let artifact = artifacts[i];
+                let artifact_location = artifact_locations[i];
 
-                let artifact_location_is_valid: bool = self.view(artifact_location_storage.verify(
-                    arrival.carried_artifact_id,
-                    artifact_location,
-                ));
-                assert(artifact_location_is_valid, "Artifact location is not valid");
+                assert(
+                    timestamp >= artifact.last_updated,
+                    "Timestamp must be >= artifact's last_updated",
+                );
+                assert(
+                    timestamp >= artifact_location.last_updated,
+                    "Timestamp must be >= artifact_location's last_updated",
+                );
+            }
+        }
+
+        let planet_is_initialized: bool = planet_state != Planet::zero();
+        assert(planet_is_initialized, "Planet is not initialized");
+
+        let planet_state_hash = poseidon2_hash(planet_state.serialize());
+        let planet_events_state_hash = poseidon2_hash(planet_events_state.serialize());
+
+        // Extract arrival_ids and artifact_ids by order: [id_0, id_1, ..., id_19]
+        let mut arrival_ids: [Field; 20] = [0; 20];
+        let mut arrivals_hash: [Field: 20] = [0; 20];
+        let mut artifact_ids: [Field; 20] = [0; 20];
+        let mut artifacts_hash: [Field: 20] = [0; 20];
+        let mut artifact_locations_hash: [Field: 20] = [0; 20];
+        for i in 0..planet_events_state.count {
+            arrival_ids[i] = arrivals[i].id;
+            artifact_ids[i] = artifacts[i].id; // or pick artifact_id if it exists, here planet_discovered_on as unique id
+    
+            let arrival_id = arrival_ids[i];
+            let artifact_id = artifact_ids[i];
+            if arrival_id != 0 {
+                arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+
+                if artifact_id != 0 {
+                    artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
+                    artifact_locations_hash[i] = poseidon2_hash(artifact_locations[i].serialize());
+                }
             }
         }
 
         let res = refresh_planet(
-            self.context.timestamp(),
+            timestamp,
             location,
             planet_state,
             planet_events_state,
@@ -283,87 +294,187 @@ contract Core {
         let new_planet_artifacts_state = res.2;
         let new_artifact_locations = res.3;
 
+        new_plnaet.last_updated = timestamp;
+        new_planet_events_state.last_updated = timestamp;
+        new_planet_artifacts_state.last_updated = timestamp;
+        for i in 0..new_artifact_locations.count {
+            new_artifact_locations[i].last_updated = timestamp;
+        }
+
+
+        self.enqueue_self.refresh_planet_public(
+            location,
+            planet_state_hash,
+            planet_events_state_hash,
+            planet_event_count,
+            arrivals_ids,
+            arrivals_hash,
+            artifacts_ids,
+            artifacts_hash,
+            artifact_locations_hash,
+            new_planet,
+            new_planet_events_state,
+            new_planet_artifacts_state,
+            new_artifact_locations,
+            timestamp,
+        );
+     }
+
+     #[external("public")]
+     fn refresh_planet_public(
+        location: Field,
+        planet_state_hash: Field,
+        planet_events_state_hash: Field,
+        planet_event_count: u8,
+        arrivals_ids: [Field; 20],
+        arrivals_hash: [Field; 20],
+        artifacts_ids: [Field; 20],
+        artifacts_hash: [Field; 20],
+        artifact_locations_hash: [Field; 20],
+        // Computed results to write
+        new_planet: Planet,
+        new_planet_events_state: PlanetEvents,
+        new_planet_artifacts_state: PlanetArtifacts,
+        new_artifact_locations: [ArtifactLocation; 20],
+        timestamp: u64,
+     ){
+
+         // Verify timestamp is within a reasonable time window
+        // Users can't know the exact on-chain timestamp in advance, so we allow a time window
+        let actual_timestamp = self.context.timestamp();
+
+        // Timestamp cannot be in the future
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+
+        // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
+        // This prevents replay attacks with outdated timestamps
+        let max_time_drift: u64 = 300; // 5 minutes tolerance
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+
+        // Verify all hashes match on-chain state
+        let planet_storage_address = self.internal.get_planet_storage_address();
+        let planet_storage = PlanetStorage::at(planet_storage_address);
+        assert(self.view(planet_storage.verify_hash(location, planet_state_hash)), "Planet state hash mismatch");
+    
+        let planet_events_storage_address = self.internal.get_planet_events_storage_address();
+        let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
+        assert(self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)), "Planet events state hash mismatch");
+        
+        let arrival_storage_address = self.internal.get_arrivals_storage_address();
+        let arrival_storage = ArrivalStorage::at(arrival_storage_address);
+        let artifact_storage_address = self.internal.get_artifact_storage_address();
+        let artifact_storage = ArtifactStorage::at(artifact_storage_address);
+        let artifact_location_storage_address = self.internal.get_artifact_location_storage_address();
+        let artifact_location_storage = ArtifactLocationStorage::at(artifact_location_storage_address);
+
+        for i in 0..planet_event_count {
+            let arrival_id = arrivals_ids[i];
+            let artifact_id = artifacts_ids[i];
+            if arrival_id != 0 {
+                assert(self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])), "Arrival hash mismatch");
+            }
+            if artifact_id != 0 {
+                assert(self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])), "Artifact hash mismatch");
+                assert(self.view(artifact_location_storage.verify_hash(artifact_id, artifact_locations_hash[i])), "Artifact location hash mismatch");
+            }
+        }
+
+        // Write verified computed states to storage
         self.call(planet_storage.set(location, new_planet));
         self.call(planet_events_storage.set(location, new_planet_events_state));
         self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
-
-        for i in 0..cnt {
-            if artifact_locations[i] != new_artifact_locations[i] {
-                let arrival = arrivals[i];
-                if arrival.carried_artifact_id != 0 {
-                    self.call(artifact_location_storage.set(
-                        arrival.carried_artifact_id,
-                        new_artifact_locations[i],
-                    ));
-                }
-            }
+        for i in 0..new_artifact_locations.count {
+            self.call(artifact_location_storage.set(new_artifact_locations[i].id, new_artifact_locations[i]));
         }
     }
 
-    #[external("public")]
-    fn refresh_planet_public(
-        location: Field,
-        planet_state: Planet,
-        planet_events_state: PlanetEvents,
-        arrivals: [Arrival; 20],
-        artifacts: [Artifact; 20],
-        artifact_locations: [ArtifactLocation; 20],
-        planet_artifacts_state: PlanetArtifacts,
-    ) {
-        self.internal.refresh_planet_internal(
-            location,
-            planet_state,
-            planet_events_state,
-            arrivals,
-            artifacts,
-            artifact_locations,
-            planet_artifacts_state,
-        );
-    }
 
     /// Noir port of Solidity `DFCoreFacet.revealLocation`.
-    #[external("public")]
+    #[external("private")]
     fn reveal_location(
         location: Field,
         perlin: u8,
         level: u8,
         x: Field,
-        y: Field,
+        y: Field, 
+        timestamp: u64, // timestamp for private time-based computations
+        // Config inputs (to be validated via hash in public)
+        provided_snark_config: SnarkConfig,
+        planet_default_stats: PlanetDefaultStats,
+        world_config: WorldConfig,
+        game_config_core: GameConfigCore,
+        planet_level_thresholds: PlanetLevelThresholds,
+        space_junk_config: SpaceJunkConfig,
+        planet_type_weights_tier_0: PlanetTypeWeightsTier,
+        planet_type_weights_tier_1: PlanetTypeWeightsTier,
+        planet_type_weights_tier_2: PlanetTypeWeightsTier,
+        planet_type_weights_tier_3: PlanetTypeWeightsTier,
+        // State inputs (to be validated via hash in public)
         planet_state: Planet,
+        planet_revealed_coords: PlanetRevealedCoords,
         player_state: Player,
         world: World,
-    ) {
-        let config_storage_address = self.internal.get_config_storage_address();
-        let config = Config::at(config_storage_address);
-        let snark_config = self.view(config.get_snark_config());
-        if !snark_config.disable_zk_checks {
-            //todo: implement zk checks
+    ){
+        if !provided_snark_config.disable_zk_checks {
+            // todo: implement zk checks
         }
-
-        let planet_default_stats = self.view(config.get_planet_default_stats(level));
-        let world_config = self.view(config.get_world_config());
-        let game_config_core = self.view(config.get_game_config_core());
-        let planet_level_thresholds = self.view(config.get_planet_level_thresholds());
-        let space_junk_config = self.view(config.get_space_junk_config());
-        let planet_type_weights_tier_0 = self.view(config.get_planet_type_weights_tier(0));
-        let planet_type_weights_tier_1 = self.view(config.get_planet_type_weights_tier(1));
-        let planet_type_weights_tier_2 = self.view(config.get_planet_type_weights_tier(2));
-        let planet_type_weights_tier_3 = self.view(config.get_planet_type_weights_tier(3));
-
-        let planet_storage_address = self.internal.get_planet_storage_address();
-        let planet_storage = PlanetStorage::at(planet_storage_address);
-        let planet_is_valid: bool = self.view(planet_storage.verify(location, planet_state));
-        assert(planet_is_valid, "Planet is not valid");
-        assert(planet_state.is_home_planet, "Planet is not home planet");
 
         let sender = self.msg_sender().unwrap();
 
-        if !planet_state.is_initialized {
-            let planet = initialize_planet_with_defaults(
+        // Compute config hashes for public verification
+        let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
+        let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+        let world_config_hash = poseidon2_hash(world_config.serialize());
+        let game_config_core_hash = poseidon2_hash(game_config_core.serialize());
+        let planet_level_thresholds_hash = poseidon2_hash(planet_level_thresholds.serialize());
+        let space_junk_config_hash = poseidon2_hash(space_junk_config.serialize());
+        let planet_type_weights_tier_0_hash = poseidon2_hash(planet_type_weights_tier_0.serialize());
+        let planet_type_weights_tier_1_hash = poseidon2_hash(planet_type_weights_tier_1.serialize());
+        let planet_type_weights_tier_2_hash = poseidon2_hash(planet_type_weights_tier_2.serialize());
+        let planet_type_weights_tier_3_hash = poseidon2_hash(planet_type_weights_tier_3.serialize());
+
+        // Compute state hashes for public verification
+         let planet_state_hash = if planet_state == Planet::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_state.serialize())
+        };
+
+        let planet_revealed_coords_hash = if planet_revealed_coords == PlanetRevealedCoords::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_revealed_coords.serialize())
+        };
+
+        let player_state_hash = if player_state == Player::zero() {
+            0
+        } else {
+            poseidon2_hash(player_state.serialize())
+        };
+
+        let world_hash = if world == World::zero() {
+            0
+        } else {
+            poseidon2_hash(world.serialize())
+        };
+
+        // Perform computation in private using the provided timestamp
+        let planet_state_is_initialized: bool = planet_state != Planet::zero();
+        let player_state_is_initialized: bool = player_state != Player::zero();
+        let planet_revealed_coords_is_initialized: bool = planet_revealed_coords != PlanetRevealedCoords::zero();
+        let world_is_initialized: bool = world != World::zero();
+
+        assert(player_state_is_initialized, "Player is not valid");
+        assert(!planet_revealed_coords_is_initialized, "Planet revealed coords");
+        assert(world_is_initialized, "World is not valid");
+
+        let (new_planet, new_world, update_world) = if !planet_state_is_initialized {
+            let mut planet: Planet = initialize_planet_with_defaults(
                 location,
                 perlin,
                 false, // is_home_planet
-                self.context.timestamp(),
+                timestamp,
                 sender,
                 level,
                 planet_default_stats,
@@ -377,51 +488,197 @@ contract Core {
                 planet_type_weights_tier_3,
             );
 
-            self.call(planet_storage.set(location, planet));
-
-            let world_storage_address = self.internal.get_world_storage_address();
-            let world_storage = WorldStorage::at(world_storage_address);
-            let world_valid: bool = self.view(world_storage.verify(0, world));
-            assert(world_valid, "World state is not valid");
             let mut new_world = world;
             new_world.planet_events_count += 1;
+
+            (planet, new_world, true)
+        } else {
+            // Planet already exists, verify timestamp is newer than planet's last_updated
+            assert(timestamp >= planet_state.last_updated, "Timestamp must be >= planet's last_updated");
+
+            let mut new_planet_state = planet_state;
+            new_planet_state.last_updated = timestamp;
+
+            (new_planet_state, world, false)
+        };
+
+        assert(player_state.last_reveal_timestamp + world_config.location_reveal_cooldown < timestamp, "Wait for cooldown before revealing again");
+
+        let mut new_player_state = player_state;
+        new_player_state.last_reveal_timestamp = timestamp;
+
+        let mut new_planet_revealed_coords = planet_revealed_coords;
+        new_planet_revealed_coords.location_id = location;
+        new_planet_revealed_coords.x = x;
+        new_planet_revealed_coords.y = y;
+        new_planet_revealed_coords.revealer = sender;
+
+        new_planet.last_updated = timestamp;
+        new_player_state.last_updated = timestamp;
+
+        // Enqueue public function call with all hashes and new states
+        self.enqueue_self.reveal_location_public(
+            location,
+            sender,
+            timestamp,
+            snark_config_hash,
+            planet_default_stats_hash,
+            world_config_hash,
+            game_config_core_hash,
+            planet_level_thresholds_hash,
+            space_junk_config_hash,
+            planet_type_weights_tier_0_hash,
+            planet_type_weights_tier_1_hash,
+            planet_type_weights_tier_2_hash,
+            planet_type_weights_tier_3_hash,
+            planet_state_hash,
+            planet_revealed_coords_hash,
+            player_state_hash,
+            world_hash,
+            new_planet,
+            new_planet_revealed_coords,
+            new_player_state,
+            new_world,
+            update_world,
+        );
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn reveal_location_public(
+        location: Field,
+        sender: AztecAddress,
+        timestamp: u64,
+        // Config hashes for verification
+        snark_config_hash: Field,
+        planet_default_stats_hash: Field,
+        world_config_hash: Field,
+        game_config_core_hash: Field,
+        planet_level_thresholds_hash: Field,
+        space_junk_config_hash: Field,
+        planet_type_weights_tier_0_hash: Field,
+        planet_type_weights_tier_1_hash: Field,
+        planet_type_weights_tier_2_hash: Field,
+        planet_type_weights_tier_3_hash: Field,
+        // State hashes for verification
+        planet_state_hash: Field,
+        planet_revealed_coords_hash: Field,
+        player_state_hash: Field,
+        world_hash: Field,
+        // Computed results to write
+        new_planet: Planet,
+        new_planet_revealed_coords: PlanetRevealedCoords,
+        new_player_state: Player,
+        new_world: World,
+        update_world: bool,
+    ) {
+        // Verify timestamp is within a reasonable time window
+        let actual_timestamp = self.context.timestamp();
+        
+        // Timestamp cannot be in the future
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        
+        // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
+        let max_time_drift: u64 = 300;
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        // Verify all config hashes match on-chain config
+        let config_storage_address = self.internal.get_config_storage_address();
+        let config = Config::at(config_storage_address);
+        
+        assert(
+            self.view(config.verify_snark_config_hash(snark_config_hash)),
+            "Snark config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_default_stats_hash(planet_default_stats_hash)),
+            "Planet default stats hash mismatch"
+        );
+        assert(
+            self.view(config.verify_world_config_hash(world_config_hash)),
+            "World config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_game_config_core_hash(game_config_core_hash)),
+            "Game config core hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_level_thresholds_hash(planet_level_thresholds_hash)),
+            "Planet level thresholds hash mismatch"
+        );
+        assert(
+            self.view(config.verify_space_junk_config_hash(space_junk_config_hash)),
+            "Space junk config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(0, planet_type_weights_tier_0_hash)),
+            "Planet type weights tier 0 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(1, planet_type_weights_tier_1_hash)),
+            "Planet type weights tier 1 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(2, planet_type_weights_tier_2_hash)),
+            "Planet type weights tier 2 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(3, planet_type_weights_tier_3_hash)),
+            "Planet type weights tier 3 hash mismatch"
+        );
+
+        // Verify state hashes match on-chain state
+        // Planet state (may be zero if not initialized)
+        if planet_state_hash != 0 {
+            let planet_storage_address = self.internal.get_planet_storage_address();
+            let planet_storage = PlanetStorage::at(planet_storage_address);
+            assert(
+                self.view(planet_storage.verify_hash(location, planet_state_hash)),
+                "Planet state hash mismatch"
+            );
+        }
+
+        // Planet revealed coords (should be zero/uninitialized)
+        let planet_revealed_coords_storage_address = self.internal.get_planet_revealed_coords_storage_address();
+        let planet_revealed_coords_storage = PlanetRevealedCoordsStorage::at(planet_revealed_coords_storage_address);
+        assert(
+            !self.view(planet_revealed_coords_storage.is_initialized(location)),
+            "Planet already revealed"
+        );
+
+        // Player state (must be initialized)
+        let player_storage_address = self.internal.get_player_storage_address();
+        let player_storage = PlayerStorage::at(player_storage_address);
+        assert(player_state_hash != 0, "Player state must be initialized");
+        assert(
+            self.view(player_storage.verify_hash(sender, player_state_hash)),
+            "Player state hash mismatch"
+        );
+
+        // World state (must be initialized)
+        let world_storage_address = self.internal.get_world_storage_address();
+        let world_storage = WorldStorage::at(world_storage_address);
+        assert(world_hash != 0, "World state must be initialized");
+        assert(
+            self.view(world_storage.verify_hash(0, world_hash)),
+            "World state hash mismatch"
+        );
+
+        // Write verified computed states to storage
+        let planet_storage_address = self.internal.get_planet_storage_address();
+        let planet_storage = PlanetStorage::at(planet_storage_address);
+        self.call(planet_storage.set(location, new_planet));
+
+        self.call(planet_revealed_coords_storage.set(location, new_planet_revealed_coords));
+        
+        self.call(player_storage.set(sender, new_player_state));
+
+        if update_world {
             self.call(world_storage.set(0, new_world));
         }
-
-        let check_timestamp = true;
-
-        if check_timestamp {
-            let player_storage_address = self.internal.get_player_storage_address();
-            let player_storage = PlayerStorage::at(player_storage_address);
-            let player_state_is_valid = self.view(player_storage.verify(sender, player_state));
-            assert(player_state_is_valid, "Player is not valid");
-
-            let timestamp = self.context.timestamp();
-            assert(
-                player_state.last_reveal_timestamp + world_config.location_reveal_cooldown
-                    < timestamp,
-                "Wait for cooldown before revealing again",
-            );
-
-            let mut new_player_state = player_state;
-            new_player_state.last_reveal_timestamp = timestamp;
-
-            self.call(player_storage.set(sender, new_player_state));
-
-            let planet_revealed_coords_storage_address =
-                self.internal.get_planet_revealed_coords_storage_address();
-            let planet_revealed_coords_storage =
-                PlanetRevealedCoordsStorage::at(planet_revealed_coords_storage_address);
-
-            let planet_coords_is_initialized: bool =
-                self.view(planet_revealed_coords_storage.is_initialized(location));
-            assert(!planet_coords_is_initialized, "Location already revealed");
-
-            let new_planet_coords =
-                PlanetRevealedCoords { location_id: location, x: x, y: y, revealer: sender };
-            self.call(planet_revealed_coords_storage.set(location, new_planet_coords));
-        }
     }
+
+  
 
     /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
     #[external("private")]
@@ -432,7 +689,19 @@ contract Core {
         location_id: Field,
         perlin: u8,
         level: u8,
+        timestamp: u64, // timestamp for private time-based computations
+        // Config inputs (to be validated via hash in public)
         provided_snark_config: SnarkConfig,
+        planet_default_stats: PlanetDefaultStats,
+        world_config: WorldConfig,
+        game_config_core: GameConfigCore,
+        planet_level_thresholds: PlanetLevelThresholds,
+        space_junk_config: SpaceJunkConfig,
+        planet_type_weights_tier_0: PlanetTypeWeightsTier,
+        planet_type_weights_tier_1: PlanetTypeWeightsTier,
+        planet_type_weights_tier_2: PlanetTypeWeightsTier,
+        planet_type_weights_tier_3: PlanetTypeWeightsTier,
+        // State inputs (to be validated via hash in public)
         planet_state: Planet,
         player_state: Player,
         world: World,
@@ -443,71 +712,65 @@ contract Core {
 
         let sender = self.msg_sender().unwrap();
 
-        self.enqueue_self.initialize_player_public(
-            sender,
+        // Compute config hashes for public verification
+        let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
+        let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+        let world_config_hash = poseidon2_hash(world_config.serialize());
+        let game_config_core_hash = poseidon2_hash(game_config_core.serialize());
+        let planet_level_thresholds_hash = poseidon2_hash(planet_level_thresholds.serialize());
+        let space_junk_config_hash = poseidon2_hash(space_junk_config.serialize());
+        let planet_type_weights_tier_0_hash = poseidon2_hash(planet_type_weights_tier_0.serialize());
+        let planet_type_weights_tier_1_hash = poseidon2_hash(planet_type_weights_tier_1.serialize());
+        let planet_type_weights_tier_2_hash = poseidon2_hash(planet_type_weights_tier_2.serialize());
+        let planet_type_weights_tier_3_hash = poseidon2_hash(planet_type_weights_tier_3.serialize());
+
+        // Compute state hashes for public verification
+        let planet_state_hash = if planet_state == Planet::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_state.serialize())
+        };
+
+        let player_state_hash = if player_state == Player::zero() {
+            0
+        } else {
+            poseidon2_hash(player_state.serialize())
+        };
+
+        let world_hash = if world == World::zero() {
+            0
+        } else {
+            poseidon2_hash(world.serialize())
+        };
+
+        // Perform computation in private using the provided timestamp
+        let planet_state_is_initialized: bool = planet_state != Planet::zero();
+        let player_state_is_initialized: bool = player_state != Player::zero();
+        let world_is_initialized: bool = world != World::zero();
+
+        assert(!player_state_is_initialized, "Player already initialized");
+        assert(world_is_initialized, "World is not valid");
+
+        // check player init
+        let check_player_init_result = check_player_init(
             location_id,
             perlin,
-            level,
             radius,
-            provided_snark_config,
-            planet_state,
+            sender,
             player_state,
             world,
+            game_config_core,
+            world_config,
         );
-    }
+        assert(check_player_init_result, "Player init is not valid");
 
-    #[external("public")]
-    #[only_self]
-    fn initialize_player_public(
-        sender: AztecAddress,
-        location_id: Field,
-        perlin: u8,
-        level: u8,
-        radius: u128,
-        provided_snark_config: SnarkConfig,
-        planet_state: Planet,
-        player_state: Player,
-        world: World,
-    ) {
-        let config_storage_address = self.internal.get_config_storage_address();
-        let config = Config::at(config_storage_address);
-        let snark_config = self.view(config.get_snark_config());
-        assert(
-            provided_snark_config.disable_zk_checks == snark_config.disable_zk_checks,
-            "Disable zk checks is not valid",
-        );
-
-        revert_if_bad_snark_perlin_flags(provided_snark_config, snark_config);
-
-        let planet_default_stats = self.view(config.get_planet_default_stats(level));
-
-        let world_config = self.view(config.get_world_config());
-        let game_config_core = self.view(config.get_game_config_core());
-        let planet_level_thresholds = self.view(config.get_planet_level_thresholds());
-        let space_junk_config = self.view(config.get_space_junk_config());
-        let planet_type_weights_tier_0 = self.view(config.get_planet_type_weights_tier(0));
-        let planet_type_weights_tier_1 = self.view(config.get_planet_type_weights_tier(1));
-        let planet_type_weights_tier_2 = self.view(config.get_planet_type_weights_tier(2));
-        let planet_type_weights_tier_3 = self.view(config.get_planet_type_weights_tier(3));
-
-        let planet_storage_address = self.internal.get_planet_storage_address();
-        let planet_storage = PlanetStorage::at(planet_storage_address);
-        let planet_is_valid = self.view(planet_storage.verify(location_id, planet_state));
-
-        assert(planet_is_valid, "Planet is not valid");
-
-        let world_storage_address = self.internal.get_world_storage_address();
-        let world_storage = WorldStorage::at(world_storage_address);
-        let world_is_valid = self.view(world_storage.verify(0, world));
-        assert(world_is_valid, "World state is not valid");
-        let mut new_world = world;
-
-        if !planet_state.is_initialized {
-            let planet = initialize_planet_with_defaults(
+        // Create new planet if not initialized
+        let (new_planet, initialize_planet) = if !planet_state_is_initialized {
+            let mut planet: Planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,
                 true, // is_home_planet
-                self.context.timestamp(),
+                timestamp,
                 sender,
                 level,
                 planet_default_stats,
@@ -520,45 +783,182 @@ contract Core {
                 planet_type_weights_tier_2,
                 planet_type_weights_tier_3,
             );
+            planet.last_updated = timestamp;
 
-            self.call(planet_storage.set(location_id, planet));
+            (planet, true)
+        } else {
+            // Planet already exists, verify timestamp is newer than planet's last_updated
+            assert(timestamp >= planet_state.last_updated, "Timestamp must be >= planet's last_updated");
 
-            new_world.planet_ids_count += 1;
-        }
+            let mut new_planet_state = planet_state;
+            new_planet_state.last_updated = timestamp;
 
-        let player_storage_address = self.internal.get_player_storage_address();
-        let player_storage = PlayerStorage::at(player_storage_address);
-        let player_state_is_valid = self.view(player_storage.verify(sender, player_state));
-        assert(player_state_is_valid, "Player is not valid");
+            (new_planet_state, false)
+        };
 
-        // check player state
-        let check_player_init_result = check_player_init(
-            location_id,
-            perlin,
-            radius,
-            sender,
-            player_state,
-            world,
-            game_config_core,
-            world_config,
-        );
-
-        assert(check_player_init_result, "Player init is not valid");
-
-        let player: Player = Player {
-            init_timestamp: self.context.timestamp(),
+        // Create new player
+        let new_player: Player = Player {
+            init_timestamp: timestamp,
             home_planet_id: location_id,
             last_reveal_timestamp: 0,
             score: 0,
             space_junk: 0,
             space_junk_limit: space_junk_config.space_junk_limit,
             claimed_ships: false,
+            last_updated: timestamp,
         };
 
-        self.call(player_storage.set(sender, player));
-
+        // Update world
+        let mut new_world = world;
         new_world.player_ids_count += 1;
+        if initialize_planet {
+            new_world.planet_ids_count += 1;
+        }
         new_world = update_world_radius(new_world, world_config);
+
+        // Enqueue public function call with all hashes and new states
+        self.enqueue_self.initialize_player_public(
+            sender,
+            location_id,
+            timestamp,
+            snark_config_hash,
+            planet_default_stats_hash,
+            world_config_hash,
+            game_config_core_hash,
+            planet_level_thresholds_hash,
+            space_junk_config_hash,
+            planet_type_weights_tier_0_hash,
+            planet_type_weights_tier_1_hash,
+            planet_type_weights_tier_2_hash,
+            planet_type_weights_tier_3_hash,
+            planet_state_hash,
+            player_state_hash,
+            world_hash,
+            new_planet,
+            new_player,
+            new_world,
+            initialize_planet,
+        );
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn initialize_player_public(
+        sender: AztecAddress,
+        location_id: Field,
+        timestamp: u64,
+        // Config hashes for verification
+        snark_config_hash: Field,
+        planet_default_stats_hash: Field,
+        world_config_hash: Field,
+        game_config_core_hash: Field,
+        planet_level_thresholds_hash: Field,
+        space_junk_config_hash: Field,
+        planet_type_weights_tier_0_hash: Field,
+        planet_type_weights_tier_1_hash: Field,
+        planet_type_weights_tier_2_hash: Field,
+        planet_type_weights_tier_3_hash: Field,
+        // State hashes for verification
+        planet_state_hash: Field,
+        player_state_hash: Field,
+        world_hash: Field,
+        // Computed results to write
+        new_planet: Planet,
+        new_player: Player,
+        new_world: World,
+        initialize_planet: bool,
+    ) {
+        // Verify timestamp is within a reasonable time window
+        let actual_timestamp = self.context.timestamp();
+        
+        // Timestamp cannot be in the future
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        
+        // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
+        let max_time_drift: u64 = 300;
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        // Verify all config hashes match on-chain config
+        let config_storage_address = self.internal.get_config_storage_address();
+        let config = Config::at(config_storage_address);
+        
+        assert(
+            self.view(config.verify_snark_config_hash(snark_config_hash)),
+            "Snark config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_default_stats_hash(planet_default_stats_hash)),
+            "Planet default stats hash mismatch"
+        );
+        assert(
+            self.view(config.verify_world_config_hash(world_config_hash)),
+            "World config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_game_config_core_hash(game_config_core_hash)),
+            "Game config core hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_level_thresholds_hash(planet_level_thresholds_hash)),
+            "Planet level thresholds hash mismatch"
+        );
+        assert(
+            self.view(config.verify_space_junk_config_hash(space_junk_config_hash)),
+            "Space junk config hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(0, planet_type_weights_tier_0_hash)),
+            "Planet type weights tier 0 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(1, planet_type_weights_tier_1_hash)),
+            "Planet type weights tier 1 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(2, planet_type_weights_tier_2_hash)),
+            "Planet type weights tier 2 hash mismatch"
+        );
+        assert(
+            self.view(config.verify_planet_type_weights_tier_hash(3, planet_type_weights_tier_3_hash)),
+            "Planet type weights tier 3 hash mismatch"
+        );
+
+        // Verify state hashes match on-chain state
+        // Planet state (may be zero if not initialized)
+        if planet_state_hash != 0 {
+            let planet_storage_address = self.internal.get_planet_storage_address();
+            let planet_storage = PlanetStorage::at(planet_storage_address);
+            assert(
+                self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
+                "Planet state hash mismatch"
+            );
+        }
+
+        // Player state (should be zero/uninitialized)
+        let player_storage_address = self.internal.get_player_storage_address();
+        let player_storage = PlayerStorage::at(player_storage_address);
+        assert(
+            !self.view(player_storage.is_initialized(sender)),
+            "Player already initialized"
+        );
+
+        // World state (must be initialized)
+        let world_storage_address = self.internal.get_world_storage_address();
+        let world_storage = WorldStorage::at(world_storage_address);
+        assert(world_hash != 0, "World state must be initialized");
+        assert(
+            self.view(world_storage.verify_hash(0, world_hash)),
+            "World state hash mismatch"
+        );
+
+        // Write verified computed states to storage
+        if initialize_planet {
+            let planet_storage_address = self.internal.get_planet_storage_address();
+            let planet_storage = PlanetStorage::at(planet_storage_address);
+            self.call(planet_storage.set(location_id, new_planet));
+        }
+
+        self.call(player_storage.set(sender, new_player));
         self.call(world_storage.set(0, new_world));
     }
 }

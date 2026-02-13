@@ -125,11 +125,12 @@ impl PlanetEventMetadata {
 pub struct PlanetEvents {
     pub events: [PlanetEventMetadata; 20],
     pub count: u32,
+    pub last_updated: u64,
 }
 
 impl PlanetEvents {
     pub fn zero() -> Self {
-        PlanetEvents { events: [PlanetEventMetadata::zero(); 20], count: 0 }
+        PlanetEvents { events: [PlanetEventMetadata::zero(); 20], count: 0, last_updated: 0 }
     }
 }
 
@@ -137,11 +138,12 @@ impl PlanetEvents {
 pub struct PlanetArtifacts {
     pub ids: [Field; 20],
     pub count: u32,
+    pub last_updated: u64,
 }
 
 impl PlanetArtifacts {
     pub fn zero() -> Self {
-        PlanetArtifacts { ids: [0; 20], count: 0 }
+        PlanetArtifacts { ids: [0; 20], count: 0, last_updated: 0 }
     }
 }
 

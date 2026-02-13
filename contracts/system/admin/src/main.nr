@@ -154,14 +154,20 @@ contract Admin {
         let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
 
-        let player_id = player_address.to_field();
-        let player_valid: bool = self.view(player_storage.verify(player_id, player_state));
+        let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
+
+        let current_timestamp = self.context.timestamp();
+        assert(
+            current_timestamp >= player_state.last_updated,
+            "Timestamp must be >= player's last_updated",
+        );
 
         assert(amount <= player_state.score, "tried to deduct much score");
         let mut new_player_state = player_state;
         new_player_state.score -= amount;
-        self.call(player_storage.set(player_id, new_player_state));
+        new_player_state.last_updated = current_timestamp;
+        self.call(player_storage.set(player_address, new_player_state));
     }
 
     #[external("public")]
@@ -171,13 +177,19 @@ contract Admin {
         let player_storage_address = self.internal.get_player_storage_address();
         let player_storage = PlayerStorage::at(player_storage_address);
 
-        let player_id = player_address.to_field();
-        let player_valid: bool = self.view(player_storage.verify(player_id, player_state));
+        let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
+
+        let current_timestamp = self.context.timestamp();
+        assert(
+            current_timestamp >= player_state.last_updated,
+            "Timestamp must be >= player's last_updated",
+        );
 
         let mut new_player_state = player_state;
         new_player_state.score += amount;
-        self.call(player_storage.set(player_id, new_player_state));
+        new_player_state.last_updated = current_timestamp;
+        self.call(player_storage.set(player_address, new_player_state));
     }
 
     /// Private function that performs all computation off-chain (in the private circuit).
@@ -191,6 +203,7 @@ contract Admin {
         perlin: u8,
         level: u8,
         new_owner: AztecAddress,
+        timestamp: u64, // timestamp for private time-based computations
         // Config inputs (to be validated via hash in public)
         provided_snark_config: SnarkConfig,
         planet_default_stats: PlanetDefaultStats, // it is determined based on the level
@@ -242,13 +255,13 @@ contract Admin {
 
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
 
-        // Perform computation in private
+        // Perform computation in private using the provided timestamp
         let (new_planet, new_world, update_world) = if !planet_state_is_initialized {
             let mut planet: Planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,
                 planet_state.is_home_planet, // false
-                self.context.timestamp(),
+                timestamp,
                 sender,
                 level,
                 planet_default_stats,
@@ -271,10 +284,17 @@ contract Admin {
 
             (planet, updated_world, true)
         } else {
+            // Planet already exists, verify timestamp is newer than planet's last_updated
+            assert(
+                timestamp >= planet_state.last_updated,
+                "Timestamp must be >= planet's last_updated",
+            );
+
             let mut new_planet_state = planet_state;
             new_planet_state.owner = new_owner;
             new_planet_state.population = new_planet_state.population_cap;
             new_planet_state.silver = new_planet_state.silver_cap;
+            new_planet_state.last_updated = timestamp;
 
             (new_planet_state, world, false)
         };
@@ -284,6 +304,7 @@ contract Admin {
             sender,
             location_id,
             level,
+            timestamp, // Pass timestamp for verification in public
             // Config hashes for verification
             snark_config_hash,
             planet_default_stats_hash,
@@ -313,6 +334,7 @@ contract Admin {
         sender: AztecAddress,
         location_id: Field,
         level: u8,
+        timestamp: u64, // timestamp from private computation for verification
         // Config hashes for verification
         snark_config_hash: Field,
         planet_default_stats_hash: Field,
@@ -334,6 +356,18 @@ contract Admin {
     ) {
         // Verify sender is admin
         assert(sender == self.storage.admin.read(), "Only admin");
+
+        // Verify timestamp is within a reasonable time window
+        // Users can't know the exact on-chain timestamp in advance, so we allow a time window
+        let actual_timestamp = self.context.timestamp();
+
+        // Timestamp cannot be in the future
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+
+        // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
+        // This prevents replay attacks with outdated timestamps
+        let max_time_drift: u64 = 300; // 5 minutes tolerance
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
 
         // Verify all config hashes match on-chain state
         let config_storage_address = self.internal.get_config_storage_address();

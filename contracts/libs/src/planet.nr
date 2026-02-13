@@ -301,7 +301,7 @@ pub fn refresh_planet(
     mut artifact_locations: [ArtifactLocation; 20],
     mut planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactLocation; 20]) {
-    assert(planet.is_initialized, "Planet is not initialized");
+    // assert(planet.is_initialized, "Planet is not initialized");
 
     let result = get_refreshed_planet(
         location_id,

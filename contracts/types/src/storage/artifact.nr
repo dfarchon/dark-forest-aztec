@@ -17,6 +17,7 @@ pub struct Artifact {
     pub last_deactivated: u64,
     pub wormhole_to: Field,
     pub controller: AztecAddress,
+    pub last_updated: u64,
 }
 
 impl Artifact {
@@ -34,6 +35,7 @@ impl Artifact {
             last_deactivated: 0,
             wormhole_to: 0 as Field,
             controller: AztecAddress::zero(),
+            last_updated: 0,
         }
     }
 }
@@ -43,6 +45,7 @@ pub struct ArtifactLocation {
     // pub artifact_id: Field,
     pub planet_id: Field, // 0 if in transit
     pub voyage_id: u128, // arrival_id if in transit, 0 if arrived
+    pub last_updated: u64,
 }
 
 impl ArtifactLocation {
@@ -51,6 +54,7 @@ impl ArtifactLocation {
             // artifact_id: 0 as Field,
             planet_id: 0 as Field,
             voyage_id: 0,
+            last_updated: 0,
         }
     }
 }

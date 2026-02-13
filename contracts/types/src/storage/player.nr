@@ -11,6 +11,7 @@ pub struct Player {
     pub space_junk: u128,
     pub space_junk_limit: u128,
     pub claimed_ships: bool,
+    pub last_updated: u64,
 }
 
 impl Player {
@@ -24,6 +25,7 @@ impl Player {
             space_junk: 0,
             space_junk_limit: 0,
             claimed_ships: false,
+            last_updated: 0,
         }
     }
 }
