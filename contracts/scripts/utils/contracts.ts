@@ -3,7 +3,10 @@
  * so you can run post-deploy interactions (e.g. Config set_default_*, Admin set_*_storage_address).
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractInstanceFromInstantiationParams, type ContractBase } from '@aztec/aztec.js/contracts';
+import {
+    type ContractBase,
+    getContractInstanceFromInstantiationParams,
+} from '@aztec/aztec.js/contracts';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import path from 'path';
@@ -16,7 +19,10 @@ export type ContractSpec = {
 };
 
 /** Scripts directory (parent of utils); modulePath in specs is relative to this. */
-const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SCRIPTS_DIR = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..'
+);
 
 /**
  * Load contract wrapper modules and return instances for the given addresses.
@@ -81,29 +87,45 @@ export async function registerContractsWithWallet(
     for (const spec of specs) {
         const addressKey = addressKeyBySpec[spec.name];
         if (!addressKey) continue;
-        const deployerKey = addressKey.replace('_CONTRACT_ADDRESS', '_DEPLOYER_ADDRESS');
-        const saltKey = addressKey.replace('_CONTRACT_ADDRESS', '_DEPLOYMENT_SALT');
+        const deployerKey = addressKey.replace(
+            '_CONTRACT_ADDRESS',
+            '_DEPLOYER_ADDRESS'
+        );
+        const saltKey = addressKey.replace(
+            '_CONTRACT_ADDRESS',
+            '_DEPLOYMENT_SALT'
+        );
         const deployerStr = process.env[deployerKey];
         const saltStr = process.env[saltKey];
         if (!deployerStr || !saltStr) continue;
         const resolvedPath = path.resolve(SCRIPTS_DIR, spec.modulePath);
         const moduleUrl = pathToFileURL(resolvedPath).href;
         const mod = await import(/* @vite-ignore */ moduleUrl);
-        const ContractClass = mod[spec.exportName] ?? mod[spec.name] ?? mod.default;
+        const ContractClass =
+            mod[spec.exportName] ?? mod[spec.name] ?? mod.default;
         const artifact =
             (ContractClass as { artifact?: unknown }).artifact ??
             mod[spec.exportName + 'Artifact'] ??
             mod[spec.exportName.replace('Contract', 'ContractArtifact')];
         if (!artifact) continue;
         try {
-            const instance = await getContractInstanceFromInstantiationParams(artifact as import('@aztec/stdlib/abi').ContractArtifact, {
-                deployer: AztecAddress.fromString(deployerStr),
-                salt: Fr.fromString(saltStr),
-                constructorArgs: [admin],
-            });
-            await wallet.registerContract(instance, artifact as import('@aztec/stdlib/abi').ContractArtifact);
+            const instance = await getContractInstanceFromInstantiationParams(
+                artifact as import('@aztec/stdlib/abi').ContractArtifact,
+                {
+                    deployer: AztecAddress.fromString(deployerStr),
+                    salt: Fr.fromString(saltStr),
+                    constructorArgs: [admin],
+                }
+            );
+            await wallet.registerContract(
+                instance,
+                artifact as import('@aztec/stdlib/abi').ContractArtifact
+            );
         } catch (err) {
-            console.warn(`[registerContractsWithWallet] Skip ${spec.name}:`, err instanceof Error ? err.message : err);
+            console.warn(
+                `[registerContractsWithWallet] Skip ${spec.name}:`,
+                err instanceof Error ? err.message : err
+            );
         }
     }
 }

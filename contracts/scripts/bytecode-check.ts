@@ -51,6 +51,7 @@ function checkBytecode() {
     let totalBytes = 0;
     let totalFields = 0;
 
+    // Collect all stats first
     for (const { name, artifact } of contracts) {
         const artifactPath = path.join(artifactsDir, artifact);
         if (!fs.existsSync(artifactPath)) {
@@ -67,35 +68,79 @@ function checkBytecode() {
         results.push({ name, ...stats });
         totalBytes += stats.bytes;
         totalFields += stats.fields;
-
-        const ok =
-            stats.fields <= MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS &&
-            stats.bytes <= MAX_PUBLIC_BYTECODE_SIZE_IN_BYTES;
-
-        console.log(`${name}:`);
-        console.log(`  Bytes:  ${stats.bytes.toLocaleString()}`);
-        console.log(
-            `  Fields: ${stats.fields} (1 + ceil(${stats.bytes}/${BYTES_PER_FIELD}))`
-        );
-        console.log(`  Status: ${ok ? '✓ OK' : '⚠️ EXCEEDS LIMIT'}\n`);
     }
 
-    if (results.length >= 2) {
-        console.log('─'.repeat(50));
-        console.log('Comparison (by size):');
-        const sorted = [...results].sort((a, b) => b.bytes - a.bytes);
-        sorted.forEach((r, i) => {
-            const diff =
-                i === 0
-                    ? ''
-                    : ` (-${(sorted[0].bytes - r.bytes).toLocaleString()} vs ${sorted[0].name})`;
-            console.log(
-                `  ${i + 1}. ${r.name}: ${r.bytes.toLocaleString()} bytes${diff}`
-            );
-        });
-        console.log(
-            `  Total: ${totalBytes.toLocaleString()} bytes, ${totalFields} fields\n`
+    // Print as table
+    if (results.length > 0) {
+        const maxNameLen = Math.max(
+            ...results.map((r) => r.name.length),
+            'Contract'.length
         );
+        const maxBytesLen = Math.max(
+            ...results.map((r) => r.bytes.toLocaleString().length),
+            'Bytes'.length
+        );
+        const maxFieldsLen = Math.max(
+            ...results.map((r) => r.fields.toString().length),
+            'Fields'.length
+        );
+
+        // Column widths (internal content width)
+        const col1 = maxNameLen;
+        const col2 = maxBytesLen + 4; // Add extra width for Bytes column
+        const col3 = maxFieldsLen + 4; // Add extra width for Fields column
+        const col4 = 8;
+
+        const line = (left: string, mid: string, right: string) =>
+            left +
+            '─'.repeat(col1 + 2) +
+            mid +
+            '─'.repeat(col2 + 2) +
+            mid +
+            '─'.repeat(col3 + 2) +
+            mid +
+            '─'.repeat(col4 + 2) +
+            right;
+
+        console.log(line('┌', '┬', '┐'));
+        console.log(
+            '│ ' +
+                'Contract'.padEnd(col1) +
+                ' │ ' +
+                'Bytes'.padStart(col2) +
+                ' │ ' +
+                'Fields'.padStart(col3) +
+                ' │ ' +
+                'Status'.padEnd(col4) +
+                ' │'
+        );
+        console.log(line('├', '┼', '┤'));
+
+        results.forEach((r) => {
+            const ok =
+                r.fields <= MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS &&
+                r.bytes <= MAX_PUBLIC_BYTECODE_SIZE_IN_BYTES;
+            const name = r.name.padEnd(col1);
+            const bytes = r.bytes.toLocaleString().padStart(col2);
+            const fields = r.fields.toString().padStart(col3);
+            const status = (ok ? '✓ OK' : '⚠️  LIMIT').padEnd(col4);
+            console.log(`│ ${name} │ ${bytes} │ ${fields} │ ${status} │`);
+        });
+
+        console.log(line('├', '┼', '┤'));
+        console.log(
+            '│ ' +
+                'TOTAL'.padEnd(col1) +
+                ' │ ' +
+                totalBytes.toLocaleString().padStart(col2) +
+                ' │ ' +
+                totalFields.toString().padStart(col3) +
+                ' │ ' +
+                ''.padEnd(col4) +
+                ' │'
+        );
+        console.log(line('└', '┴', '┘'));
+        console.log();
     }
 
     console.log('Limits (from @aztec/constants):');

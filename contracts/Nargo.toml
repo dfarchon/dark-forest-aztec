@@ -1,23 +1,20 @@
 [workspace]
 members = [
+    "types",
     "config",
-    "libs",
-    "storage/global_state",
-    "storage/arrival",
-    "storage/artifact_state",
-    "storage/player",
-    "storage/planet_meta",
-    "storage/planet_owner",
-    "storage/planet_caps",
-    "storage/planet_coords",
-    "storage/planet_resources",
-    "storage/planet_mods",
+     "libs",
+    "storage/planet",
+    "storage/planet_revealed_coords",
     "storage/planet_events",
     "storage/planet_artifacts",
-    "systems/admin",
-    "systems/core",
-    "types",
-
+    "storage/artifact",
+    "storage/artifact_location",
+    "storage/arrival",
+    "storage/player",
+    "storage/world",
+    "system/admin",
+    "system/core",
+    "system/move",
 ]
 
 # [dependencies]

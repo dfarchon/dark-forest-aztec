@@ -13,13 +13,13 @@ import {
     decodeFromAbi,
     type EventMetadataDefinition,
     EventSelector,
-} from "@aztec/stdlib/abi";
-import type { AztecNode } from "@aztec/stdlib/interfaces/client";
+} from '@aztec/stdlib/abi';
+import type { AztecNode } from '@aztec/stdlib/interfaces/client';
 
 export type LogFilter = {
     fromBlock?: number;
     toBlock?: number;
-    contractAddress?: import("@aztec/aztec.js/addresses").AztecAddress;
+    contractAddress?: import('@aztec/aztec.js/addresses').AztecAddress;
 };
 
 /**
@@ -51,13 +51,18 @@ export async function getDecodedPublicEvents<T>(
 
             const logFields = log.log.getEmittedFields();
             // EventSelector is the last field in emitted logs
-            const selector = EventSelector.fromField(logFields[logFields.length - 1]);
+            const selector = EventSelector.fromField(
+                logFields[logFields.length - 1]
+            );
             if (!selector.equals(eventMetadataDef.eventSelector)) {
                 return undefined;
             }
 
             try {
-                return decodeFromAbi([eventMetadataDef.abiType], log.log.fields) as T;
+                return decodeFromAbi(
+                    [eventMetadataDef.abiType],
+                    log.log.fields
+                ) as T;
             } catch {
                 return undefined;
             }

@@ -1,17 +1,19 @@
 use dep::aztec::protocol_types::address::AztecAddress;
-use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
 
+use dep::types::args::DFPInitPlanetArgs;
 use dep::types::config::{
-    ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
-    PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig,
-    Upgrade, WorldConfig,
+    default_stats::PlanetDefaultStats,
+    game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
+    space_junk::SpaceJunkConfig,
+    world::WorldConfig,
 };
 
 use dep::types::storage::{
-    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
-    Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
-    PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
-    PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
+    arrival::Arrival,
+    artifact::{Artifact, ArtifactLocation, ArtifactType},
+    planet::{Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetRevealedCoords},
+    player::Player,
+    world::World,
 };
 
 use crate::game_utils::{
@@ -30,24 +32,23 @@ pub fn reveal_location(
     check_timestamp: bool,
     timestamp: u64,
     sender: AztecAddress,
-    mut player_state: Player,
+    mut player: Player,
     world_config: WorldConfig,
-    mut revealed_coords: RevealedCoords,
-) -> (Player, RevealedCoords) {
+    mut revealed_coords: PlanetRevealedCoords,
+) -> (Player, PlanetRevealedCoords) {
     if check_timestamp {
         assert(
-            timestamp
-                > player_state.last_reveal_timestamp + world_config.location_reveal_cooldown_s,
+            timestamp > player.last_reveal_timestamp + world_config.location_reveal_cooldown,
             "wait for cooldown before revealing again",
         );
     }
     assert(revealed_coords.location_id == 0 as Field, "Location already revealed");
 
-    revealed_coords = RevealedCoords { location_id: location, x: x, y: y, revealer: sender };
+    revealed_coords = PlanetRevealedCoords { location_id: location, x: x, y: y, revealer: sender };
 
-    player_state.last_reveal_timestamp = timestamp;
+    player.last_reveal_timestamp = timestamp;
 
-    (player_state, revealed_coords)
+    (player, revealed_coords)
 }
 
 /// Noir port of Solidity `LibPlanet.getDefaultInitPlanetArgs`.
@@ -55,7 +56,7 @@ pub fn get_default_init_planet_args(
     location: Field,
     perlin: u8,
     is_home_planet: bool,
-    time_factor_hundredths: u128,
+    time_factor_hundredths: u16,
     game_config_core: GameConfigCore,
     planet_level_thresholds: PlanetLevelThresholds,
     planet_type_weights_tier_0: PlanetTypeWeightsTier,
@@ -83,7 +84,7 @@ pub fn get_default_init_planet_args(
         location,
         perlin,
         level,
-        time_factor_hundredths,
+        time_factor_hundredths: time_factor_hundredths,
         space_type,
         planet_type,
         is_home_planet,
@@ -159,7 +160,6 @@ pub fn _initialize_planet(
     );
 
     let mut _planet = Planet::zero();
-    _planet.location_id = args.location;
     _planet.owner = default_planet.owner;
     _planet.is_home_planet = default_planet.is_home_planet;
     _planet.range = default_planet.range;
@@ -205,13 +205,13 @@ pub fn check_player_init(
     perlin: u8,
     radius: u128,
     sender: AztecAddress,
-    player_state: Player,
-    global_state: GlobalState,
+    player: Player,
+    world: World,
     game_config_core: GameConfigCore,
     world_config: WorldConfig,
 ) -> bool {
-    assert(!player_state.is_initialized, "Player is already initialized");
-    let world_radius = global_state.world_radius;
+    assert(player.init_timestamp == 0, "Player is already initialized");
+    let world_radius = world.radius;
     assert(radius <= world_radius, "Init radius is bigger than the current world radius");
 
     if world_config.spawn_rim_area != 0 {
@@ -237,31 +237,36 @@ pub fn check_player_init(
 }
 
 /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.
+/// artifacts[i] corresponds to arrivals[i].carried_artifact_id (aligned with arrivals).
 pub fn get_refreshed_planet(
     location_id: Field,
     timestamp: u64,
     mut planet: Planet,
-    planet_events_state: PlanetEvents,
+    planet_events: PlanetEvents,
     arrivals: [Arrival; 20],
-    artifact_states: [ArtifactState; 20],
+    artifacts: [Artifact; 20],
     planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
-    let res = apply_pending_events(timestamp, planet, planet_events_state, arrivals);
+    let res = apply_pending_events(timestamp, planet, planet_events, arrivals);
 
     planet = res.0;
     let events_to_remove = res.1;
     let artifacts_to_add = res.2;
 
-    for i in 0..artifacts_to_add.artifacts_count {
-        let artifact_id = artifacts_to_add.artifacts[i];
-        let mut artifact: Artifact = Artifact::zero();
+    // Use fixed array size 20 as compile-time constant for loop bound
+    // Runtime count check is done inside the loop
+    for i in 0..20 {
+        if i < artifacts_to_add.count {
+            let artifact_id = artifacts_to_add.ids[i];
+            let mut artifact: Artifact = Artifact::zero();
 
-        for j in 0..planet_artifacts_state.artifacts_count {
-            if artifact_states[j].artifact.id == artifact_id {
-                artifact = artifact_states[j].artifact;
+            for j in 0..20 {
+                if arrivals[j].carried_artifact_id == artifact_id {
+                    artifact = artifacts[j];
+                }
             }
+            planet = apply_spaceship_arrive(artifact, planet);
         }
-        planet = apply_spaceship_arrive(artifact, planet);
     }
     planet = update_planet(timestamp, planet);
 
@@ -289,16 +294,18 @@ pub fn apply_spaceship_arrive(artifact: Artifact, mut planet: Planet) -> Planet 
 }
 
 /// Noir port of Solidity `LibPlanet.refreshPlanet`.
+/// artifacts[i] and artifact_locations[i] correspond to arrivals[i].carried_artifact_id.
 pub fn refresh_planet(
     timestamp: u64,
     location_id: Field,
     mut planet: Planet,
     mut planet_events_state: PlanetEvents,
     arrivals: [Arrival; 20],
-    mut artifact_states: [ArtifactState; 20],
+    artifacts: [Artifact; 20],
+    mut artifact_locations: [ArtifactLocation; 20],
     mut planet_artifacts_state: PlanetArtifacts,
-) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactState; 20]) {
-    assert(planet.is_initialized, "Planet is not initialized");
+) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactLocation; 20]) {
+    // assert(planet.is_initialized, "Planet is not initialized");
 
     let result = get_refreshed_planet(
         location_id,
@@ -306,7 +313,7 @@ pub fn refresh_planet(
         planet,
         planet_events_state,
         arrivals,
-        artifact_states,
+        artifacts,
         planet_artifacts_state,
     );
 
@@ -314,39 +321,50 @@ pub fn refresh_planet(
     let events_to_remove = result.1;
     let artifacts_to_add = result.2;
 
-    for i in 0..events_to_remove.events_count {
-        let event_id = events_to_remove.events[i].id;
+    // Use fixed array size 20 as compile-time constant for loop bound
+    // Runtime count check is done inside the loop
+    for i in 0..20 {
+        if i < events_to_remove.count {
+            let event_id = events_to_remove.events[i].id;
 
-        for j in 0..planet_events_state.events_count {
-            if planet_events_state.events[j].id == event_id {
-                planet_events_state.events[j] =
-                    planet_events_state.events[planet_events_state.events_count];
-                planet_events_state.events[planet_events_state.events_count] =
-                    PlanetEventMetadata::zero();
-                planet_events_state.events_count -= 1;
+            let mut found: bool = false;
+            for j in 0..20 {
+                if j < planet_events_state.count {
+                    if !found {
+                        if planet_events_state.events[j].id == event_id {
+                            let last_idx = planet_events_state.count - 1;
+                            planet_events_state.events[j] = planet_events_state.events[last_idx];
+                            planet_events_state.events[last_idx] = PlanetEventMetadata::zero();
+                            planet_events_state.count = last_idx;
+                            found = true;
+                        }
+                    }
+                }
             }
         }
     }
 
-    for i in 0..artifacts_to_add.artifacts_count {
-        let artifact_id = artifacts_to_add.artifacts[i];
+    for i in 0..20 {
+        if i < artifacts_to_add.count {
+            let artifact_id = artifacts_to_add.ids[i];
 
-        let mut artifact_state_idx: u32 = 0;
-        for j in 0..planet_artifacts_state.artifacts_count {
-            if artifact_states[j].artifact.id == artifact_id {
-                artifact_state_idx = j;
+            let mut artifact_loc_idx: u32 = 0;
+            for j in 0..20 {
+                if arrivals[j].carried_artifact_id == artifact_id {
+                    artifact_loc_idx = j;
+                }
             }
+            artifact_locations[artifact_loc_idx].voyage_id = 0;
+            let res = _put_artifact_on_planet(
+                artifact_id,
+                artifact_locations[artifact_loc_idx],
+                location_id,
+                planet_artifacts_state,
+            );
+            planet_artifacts_state = res.3;
+            artifact_locations[artifact_loc_idx] = res.1;
         }
-        artifact_states[artifact_state_idx].voyage_id = 0;
-        let res = _put_artifact_on_planet(
-            artifact_id,
-            artifact_states[artifact_state_idx],
-            location_id,
-            planet_artifacts_state,
-        );
-        planet_artifacts_state = res.3;
-        artifact_states[artifact_state_idx] = res.1;
     }
 
-    (planet, planet_events_state, planet_artifacts_state, artifact_states)
+    (planet, planet_events_state, planet_artifacts_state, artifact_locations)
 }

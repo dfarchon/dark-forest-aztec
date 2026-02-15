@@ -1,9 +1,13 @@
 /**
  * Run post-deploy interactions using contract addresses from .env.
  * Use after deploy: pnpm configure (or node --experimental-transform-types scripts/configure.ts)
- * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS, ADMIN_CONTRACT_ADDRESS, CORE_CONTRACT_ADDRESS, and all storage contract addresses.
+ * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS, ADMIN_CONTRACT_ADDRESS, CORE_CONTRACT_ADDRESS,
+ * MOVE_CONTRACT_ADDRESS, WORLD_STORAGE_CONTRACT_ADDRESS, PLAYER_STORAGE_CONTRACT_ADDRESS,
+ * PLANET_STORAGE_CONTRACT_ADDRESS, PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
+ * PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS, PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
+ * ARRIVAL_STORAGE_CONTRACT_ADDRESS, ARTIFACT_STORAGE_CONTRACT_ADDRESS,
+ * ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS.
  */
-import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
@@ -22,11 +26,15 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
 
 const CONTRACT_SPECS = [
-    { name: 'Config', modulePath: './artifacts/Config.ts', exportName: 'ConfigContract' },
     {
-        name: 'GlobalStateStorage',
-        modulePath: './artifacts/GlobalStateStorage.ts',
-        exportName: 'GlobalStateStorageContract',
+        name: 'Config',
+        modulePath: './artifacts/Config.ts',
+        exportName: 'ConfigContract',
+    },
+    {
+        name: 'WorldStorage',
+        modulePath: './artifacts/WorldStorage.ts',
+        exportName: 'WorldStorageContract',
     },
     {
         name: 'PlayerStorage',
@@ -34,34 +42,14 @@ const CONTRACT_SPECS = [
         exportName: 'PlayerStorageContract',
     },
     {
-        name: 'PlanetMetaStorage',
-        modulePath: './artifacts/PlanetMetaStorage.ts',
-        exportName: 'PlanetMetaStorageContract',
+        name: 'PlanetStorage',
+        modulePath: './artifacts/PlanetStorage.ts',
+        exportName: 'PlanetStorageContract',
     },
     {
-        name: 'PlanetOwnerStorage',
-        modulePath: './artifacts/PlanetOwnerStorage.ts',
-        exportName: 'PlanetOwnerStorageContract',
-    },
-    {
-        name: 'PlanetCapsStorage',
-        modulePath: './artifacts/PlanetCapsStorage.ts',
-        exportName: 'PlanetCapsStorageContract',
-    },
-    {
-        name: 'PlanetCoordsStorage',
-        modulePath: './artifacts/PlanetCoordsStorage.ts',
-        exportName: 'PlanetCoordsStorageContract',
-    },
-    {
-        name: 'PlanetResourcesStorage',
-        modulePath: './artifacts/PlanetResourcesStorage.ts',
-        exportName: 'PlanetResourcesStorageContract',
-    },
-    {
-        name: 'PlanetModsStorage',
-        modulePath: './artifacts/PlanetModsStorage.ts',
-        exportName: 'PlanetModsStorageContract',
+        name: 'PlanetRevealedCoordsStorage',
+        modulePath: './artifacts/PlanetRevealedCoordsStorage.ts',
+        exportName: 'PlanetRevealedCoordsStorageContract',
     },
     {
         name: 'PlanetEventsStorage',
@@ -79,32 +67,53 @@ const CONTRACT_SPECS = [
         exportName: 'ArrivalStorageContract',
     },
     {
-        name: 'ArtifactStateStorage',
-        modulePath: './artifacts/ArtifactStateStorage.ts',
-        exportName: 'ArtifactStateStorageContract',
+        name: 'ArtifactStorage',
+        modulePath: './artifacts/ArtifactStorage.ts',
+        exportName: 'ArtifactStorageContract',
     },
-    { name: 'Admin', modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
-    { name: 'Core', modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
+    {
+        name: 'ArtifactLocationStorage',
+        modulePath: './artifacts/ArtifactLocationStorage.ts',
+        exportName: 'ArtifactLocationStorageContract',
+    },
+    {
+        name: 'Admin',
+        modulePath: './artifacts/Admin.ts',
+        exportName: 'AdminContract',
+    },
+    {
+        name: 'Core',
+        modulePath: './artifacts/Core.ts',
+        exportName: 'CoreContract',
+    },
+    {
+        name: 'Move',
+        modulePath: './artifacts/Move.ts',
+        exportName: 'MoveContract',
+    },
 ];
 
 function addressesFromEnv(): Record<string, string> {
     const envKeys: Array<[string, string]> = [
         ['Config', 'CONFIG_CONTRACT_ADDRESS'],
-        ['GlobalStateStorage', 'GLOBAL_STATE_STORAGE_CONTRACT_ADDRESS'],
+        ['WorldStorage', 'WORLD_STORAGE_CONTRACT_ADDRESS'],
         ['PlayerStorage', 'PLAYER_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetMetaStorage', 'PLANET_META_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetOwnerStorage', 'PLANET_OWNER_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetCapsStorage', 'PLANET_CAPS_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetCoordsStorage', 'PLANET_COORDS_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetResourcesStorage', 'PLANET_RESOURCES_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetModsStorage', 'PLANET_MODS_STORAGE_CONTRACT_ADDRESS'],
+        ['PlanetStorage', 'PLANET_STORAGE_CONTRACT_ADDRESS'],
+        [
+            'PlanetRevealedCoordsStorage',
+            'PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS',
+        ],
         ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetCoordsStorage', 'PLANET_COORDS_STORAGE_CONTRACT_ADDRESS'],
         ['PlanetArtifactsStorage', 'PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS'],
         ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
-        ['ArtifactStateStorage', 'ARTIFACT_STATE_STORAGE_CONTRACT_ADDRESS'],
+        ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
+        [
+            'ArtifactLocationStorage',
+            'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS',
+        ],
         ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
         ['Core', 'CORE_CONTRACT_ADDRESS'],
+        ['Move', 'MOVE_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -121,18 +130,22 @@ async function main() {
     console.log(`📋 Config: ${addresses['Config']}`);
     console.log(`📋 Admin: ${addresses['Admin']}`);
     console.log(`📋 Core: ${addresses['Core']}`);
-    console.log(`📋 GlobalStateStorage: ${addresses['GlobalStateStorage']}`);
+    console.log(`📋 WorldStorage: ${addresses['WorldStorage']}`);
     console.log(`📋 PlayerStorage: ${addresses['PlayerStorage']}`);
-    console.log(`📋 PlanetMetaStorage: ${addresses['PlanetMetaStorage']}`);
-    console.log(`📋 PlanetOwnerStorage: ${addresses['PlanetOwnerStorage']}`);
-    console.log(`📋 PlanetCapsStorage: ${addresses['PlanetCapsStorage']}`);
-    console.log(`📋 PlanetResourcesStorage: ${addresses['PlanetResourcesStorage']}`);
-    console.log(`📋 PlanetModsStorage: ${addresses['PlanetModsStorage']}`);
+    console.log(`📋 PlanetStorage: ${addresses['PlanetStorage']}`);
+    console.log(
+        `📋 PlanetRevealedCoordsStorage: ${addresses['PlanetRevealedCoordsStorage']}`
+    );
     console.log(`📋 PlanetEventsStorage: ${addresses['PlanetEventsStorage']}`);
-    console.log(`📋 PlanetCoordsStorage: ${addresses['PlanetCoordsStorage']}`);
-    console.log(`📋 PlanetArtifactsStorage: ${addresses['PlanetArtifactsStorage']}`);
+    console.log(
+        `📋 PlanetArtifactsStorage: ${addresses['PlanetArtifactsStorage']}`
+    );
     console.log(`📋 ArrivalStorage: ${addresses['ArrivalStorage']}`);
-    console.log(`📋 ArtifactStateStorage: ${addresses['ArtifactStateStorage']}`);
+    console.log(`📋 ArtifactStorage: ${addresses['ArtifactStorage']}`);
+    console.log(
+        `📋 ArtifactLocationStorage: ${addresses['ArtifactLocationStorage']}`
+    );
+    console.log(`📋 Move: ${addresses['Move']}`);
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}\n`);
 
     console.log('🔗 Connecting to Aztec node...');
@@ -159,24 +172,34 @@ async function main() {
     const config = contracts['Config'];
     const admin = contracts['Admin'];
     const core = contracts['Core'];
+    const move = contracts['Move'];
 
-    const globalStateStorage = contracts['GlobalStateStorage'];
+    const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
-    const planetMetaStorage = contracts['PlanetMetaStorage'];
-    const planetOwnerStorage = contracts['PlanetOwnerStorage'];
-    const planetCapsStorage = contracts['PlanetCapsStorage'];
-    const planetResourcesStorage = contracts['PlanetResourcesStorage'];
-    const planetModsStorage = contracts['PlanetModsStorage'];
+    const planetStorage = contracts['PlanetStorage'];
+    const planetRevealedCoordsStorage =
+        contracts['PlanetRevealedCoordsStorage'];
     const planetEventsStorage = contracts['PlanetEventsStorage'];
-    const planetCoordsStorage = contracts['PlanetCoordsStorage'];
     const planetArtifactsStorage = contracts['PlanetArtifactsStorage'];
     const arrivalStorage = contracts['ArrivalStorage'];
-    const artifactStateStorage = contracts['ArtifactStateStorage'];
+    const artifactStorage = contracts['ArtifactStorage'];
+    const artifactLocationStorage = contracts['ArtifactLocationStorage'];
 
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
+    if (!move) throw new Error('Move instance missing');
 
-    if (!globalStateStorage || !playerStorage || !planetMetaStorage || !planetOwnerStorage || !planetCapsStorage || !planetResourcesStorage || !planetModsStorage || !planetEventsStorage || !planetCoordsStorage || !planetArtifactsStorage || !arrivalStorage || !artifactStateStorage) {
+    if (
+        !worldStorage ||
+        !playerStorage ||
+        !planetStorage ||
+        !planetRevealedCoordsStorage ||
+        !planetEventsStorage ||
+        !planetArtifactsStorage ||
+        !arrivalStorage ||
+        !artifactStorage ||
+        !artifactLocationStorage
+    ) {
         throw new Error('One or more storage contracts are missing');
     }
 
@@ -187,7 +210,6 @@ async function main() {
         },
     };
 
-    const addr = (name: string) => AztecAddress.fromString(addresses[name]!);
     const run = async (label: string, action: () => Promise<unknown>) => {
         console.log(`\n⚙️  ${label}`);
         await action();
@@ -201,8 +223,8 @@ async function main() {
         await tx.wait();
     });
 
-    await run('Config.set_default_snark_constants()', async () => {
-        const tx = await config.methods.set_default_snark_constants().send(opts);
+    await run('Config.set_default_snark_config()', async () => {
+        const tx = await config.methods.set_default_snark_config().send(opts);
         await tx.wait();
     });
 
@@ -212,29 +234,42 @@ async function main() {
     });
 
     for (const tier of [0, 1, 2, 3] as const) {
-        await run(`Config.set_default_game_config_planet_type_weights_tier(${tier})`, async () => {
-            const tx = await config.methods.set_default_game_config_planet_type_weights_tier(tier).send(opts);
-            await tx.wait();
-        });
+        await run(
+            `Config.set_default_game_config_planet_type_weights_tier(${tier})`,
+            async () => {
+                const tx = await config.methods
+                    .set_default_game_config_planet_type_weights_tier(tier)
+                    .send(opts);
+                await tx.wait();
+            }
+        );
     }
 
     await run('Config.set_default_artifacts_config()', async () => {
-        const tx = await config.methods.set_default_artifacts_config().send(opts);
+        const tx = await config.methods
+            .set_default_artifacts_config()
+            .send(opts);
         await tx.wait();
     });
 
     await run('Config.set_default_spaceships_config()', async () => {
-        const tx = await config.methods.set_default_spaceships_config().send(opts);
+        const tx = await config.methods
+            .set_default_spaceships_config()
+            .send(opts);
         await tx.wait();
     });
 
     await run('Config.set_default_space_junk_config()', async () => {
-        const tx = await config.methods.set_default_space_junk_config().send(opts);
+        const tx = await config.methods
+            .set_default_space_junk_config()
+            .send(opts);
         await tx.wait();
     });
 
     await run('Config.set_default_capture_zones_config()', async () => {
-        const tx = await config.methods.set_default_capture_zones_config().send(opts);
+        const tx = await config.methods
+            .set_default_capture_zones_config()
+            .send(opts);
         await tx.wait();
     });
 
@@ -391,7 +426,6 @@ async function main() {
                 .set_planet_default_stats(level, stats)
                 .send(opts);
             await tx.wait();
-
         });
     }
 
@@ -401,159 +435,270 @@ async function main() {
     });
 
     await run('Config.initialize_cumulative_rarities()', async () => {
-        const tx = await config.methods.initialize_cumulative_rarities().send(opts);
+        const tx = await config.methods
+            .initialize_cumulative_rarities()
+            .send(opts);
         await tx.wait();
     });
 
     await run('Admin system', async () => {
         await run('admin.set_config_storage_address()', async () => {
-            const tx = await admin.methods.set_config_storage_address(config.address).send(opts);
+            const tx = await admin.methods
+                .set_config_storage_address(config.address)
+                .send(opts);
             await tx.wait();
         });
 
-        await run('admin.set_global_state_storage_address()', async () => {
-            const tx1 = await admin.methods.set_global_state_storage_address(globalStateStorage.address).send(opts);
+        await run('admin.set_world_storage_address()', async () => {
+            const tx1 = await admin.methods
+                .set_world_storage_address(worldStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await globalStateStorage.methods.add_authorized_contract(admin.address).send(opts);
+            const tx2 = await worldStorage.methods
+                .add_authorized_contract(admin.address)
+                .send(opts);
             await tx2.wait();
         });
-
 
         await run('admin.set_player_storage_address()', async () => {
-            const tx1 = await admin.methods.set_player_storage_address(playerStorage.address).send(opts);
+            const tx1 = await admin.methods
+                .set_player_storage_address(playerStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await playerStorage.methods.add_authorized_contract(admin.address).send(opts);
+            const tx2 = await playerStorage.methods
+                .add_authorized_contract(admin.address)
+                .send(opts);
             await tx2.wait();
         });
 
-        await run('admin.set_planet_meta_storage_address()', async () => {
-            const tx1 = await admin.methods.set_planet_meta_storage_address(planetMetaStorage.address).send(opts);
+        await run('admin.set_planet_storage_address()', async () => {
+            const tx1 = await admin.methods
+                .set_planet_storage_address(planetStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await planetMetaStorage.methods.add_authorized_contract(admin.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('admin.set_planet_owner_storage_address()', async () => {
-            const tx1 = await admin.methods.set_planet_owner_storage_address(planetOwnerStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetOwnerStorage.methods.add_authorized_contract(admin.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('admin.set_planet_caps_storage_address()', async () => {
-            const tx1 = await admin.methods.set_planet_caps_storage_address(planetCapsStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetCapsStorage.methods.add_authorized_contract(admin.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('admin.set_planet_resources_storage_address()', async () => {
-            const tx1 = await admin.methods.set_planet_resources_storage_address(planetResourcesStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetResourcesStorage.methods.add_authorized_contract(admin.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('admin.set_planet_mods_storage_address()', async () => {
-            const tx1 = await admin.methods.set_planet_mods_storage_address(planetModsStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetModsStorage.methods.add_authorized_contract(admin.address).send(opts);
+            const tx2 = await planetStorage.methods
+                .add_authorized_contract(admin.address)
+                .send(opts);
             await tx2.wait();
         });
     });
 
-
     await run('Core system', async () => {
         await run('core.set_config_storage_address()', async () => {
-            const tx = await core.methods.set_config_storage_address(config.address).send(opts);
+            const tx = await core.methods
+                .set_config_storage_address(config.address)
+                .send(opts);
             await tx.wait();
         });
 
-        await run('core.set_global_state_storage_address()', async () => {
-            const tx1 = await core.methods.set_global_state_storage_address(globalStateStorage.address).send(opts);
+        await run('core.set_world_storage_address()', async () => {
+            const tx1 = await core.methods
+                .set_world_storage_address(worldStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await globalStateStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await worldStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
         await run('core.set_player_storage_address()', async () => {
-            const tx1 = await core.methods.set_player_storage_address(playerStorage.address).send(opts);
+            const tx1 = await core.methods
+                .set_player_storage_address(playerStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await playerStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await playerStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
-        await run('core.set_planet_meta_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_meta_storage_address(planetMetaStorage.address).send(opts);
+        await run('core.set_planet_storage_address()', async () => {
+            const tx1 = await core.methods
+                .set_planet_storage_address(planetStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await planetMetaStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await planetStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
-
-        await run('core.set_planet_owner_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_owner_storage_address(planetOwnerStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetOwnerStorage.methods.add_authorized_contract(core.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('core.set_planet_caps_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_caps_storage_address(planetCapsStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetCapsStorage.methods.add_authorized_contract(core.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('core.set_planet_resources_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_resources_storage_address(planetResourcesStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetResourcesStorage.methods.add_authorized_contract(core.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('core.set_planet_mods_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_mods_storage_address(planetModsStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetModsStorage.methods.add_authorized_contract(core.address).send(opts);
-            await tx2.wait();
-        });
-
-        await run('core.set_planet_coords_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_coords_storage_address(planetCoordsStorage.address).send(opts);
-            await tx1.wait();
-            const tx2 = await planetCoordsStorage.methods.add_authorized_contract(core.address).send(opts);
-            await tx2.wait();
-        });
+        await run(
+            'core.set_planet_revealed_coords_storage_address()',
+            async () => {
+                const tx1 = await core.methods
+                    .set_planet_revealed_coords_storage_address(
+                        planetRevealedCoordsStorage.address
+                    )
+                    .send(opts);
+                await tx1.wait();
+                const tx2 = await planetRevealedCoordsStorage.methods
+                    .add_authorized_contract(core.address)
+                    .send(opts);
+                await tx2.wait();
+            }
+        );
 
         await run('core.set_planet_events_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_events_storage_address(planetEventsStorage.address).send(opts);
+            const tx1 = await core.methods
+                .set_planet_events_storage_address(planetEventsStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await planetEventsStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await planetEventsStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
         await run('core.set_planet_artifacts_storage_address()', async () => {
-            const tx1 = await core.methods.set_planet_artifacts_storage_address(planetArtifactsStorage.address).send(opts);
+            const tx1 = await core.methods
+                .set_planet_artifacts_storage_address(
+                    planetArtifactsStorage.address
+                )
+                .send(opts);
             await tx1.wait();
-            const tx2 = await planetArtifactsStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await planetArtifactsStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
         await run('core.set_arrivals_storage_address()', async () => {
-            const tx1 = await core.methods.set_arrivals_storage_address(arrivalStorage.address).send(opts);
+            const tx1 = await core.methods
+                .set_arrivals_storage_address(arrivalStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await arrivalStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await arrivalStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
-        await run('core.set_artifacts_storage_address()', async () => {
-            const tx1 = await core.methods.set_artifacts_storage_address(artifactStateStorage.address).send(opts);
+        await run('core.set_artifact_storage_address()', async () => {
+            const tx1 = await core.methods
+                .set_artifact_storage_address(artifactStorage.address)
+                .send(opts);
             await tx1.wait();
-            const tx2 = await artifactStateStorage.methods.add_authorized_contract(core.address).send(opts);
+            const tx2 = await artifactStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
             await tx2.wait();
         });
 
+        await run('core.set_artifact_location_storage_address()', async () => {
+            const tx1 = await core.methods
+                .set_artifact_location_storage_address(
+                    artifactLocationStorage.address
+                )
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await artifactLocationStorage.methods
+                .add_authorized_contract(core.address)
+                .send(opts);
+            await tx2.wait();
+        });
+    });
+
+    await run('Move system', async () => {
+        await run('move.set_config_storage_address()', async () => {
+            const tx = await move.methods
+                .set_config_storage_address(config.address)
+                .send(opts);
+            await tx.wait();
+        });
+
+        await run('move.set_world_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_world_storage_address(worldStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await worldStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_player_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_player_storage_address(playerStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await playerStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_planet_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_planet_storage_address(planetStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await planetStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_planet_events_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_planet_events_storage_address(planetEventsStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await planetEventsStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_planet_artifacts_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_planet_artifacts_storage_address(
+                    planetArtifactsStorage.address
+                )
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await planetArtifactsStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_arrivals_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_arrivals_storage_address(arrivalStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await arrivalStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_artifact_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_artifact_storage_address(artifactStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await artifactStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('move.set_artifact_location_storage_address()', async () => {
+            const tx1 = await move.methods
+                .set_artifact_location_storage_address(
+                    artifactLocationStorage.address
+                )
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await artifactLocationStorage.methods
+                .add_authorized_contract(move.address)
+                .send(opts);
+            await tx2.wait();
+        });
     });
 
     console.log('\n✅ Configure done.');

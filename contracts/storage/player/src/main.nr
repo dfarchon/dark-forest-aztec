@@ -1,14 +1,7 @@
+// Storage contract for players (address, home planet, score, space junk, etc.).
+// Only admin or authorized contracts can write; anyone can verify state by hash.
 use dep::aztec::macros::aztec;
 
-/// PlayerStorage - table for player info (mutable: add, update, read).
-///
-/// Storage model:
-/// - On-chain: one StateRoot and one Player per address (AztecAddress). State can be updated.
-/// - Off-chain: indexer syncs via PlayerUpdated events.
-///
-/// Authorization:
-/// - Admin can manage authorized contracts and transfer admin.
-/// - Authorized contracts (and admin) can call set. Read (get) is public.
 #[aztec]
 pub contract PlayerStorage {
     use dep::aztec::{
@@ -17,25 +10,27 @@ pub contract PlayerStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Packable},
+        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
+
     use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::storage::{Player, StateRoot};
+    use dep::types::storage::player::Player;
 
     #[storage]
     struct Storage<Context> {
+        // Admin and authorized callers (only they can write; read is public).
         admin: PublicMutable<AztecAddress, Context>,
-        state_roots: Map<AztecAddress, PublicMutable<StateRoot, Context>, Context>,
         authorized_map: Map<AztecAddress, PublicMutable<bool, Context>, Context>,
         authorized_index: Map<AztecAddress, PublicMutable<u32, Context>, Context>,
         authorized_list: Map<u32, PublicMutable<AztecAddress, Context>, Context>,
         authorized_count: PublicMutable<u32, Context>,
+        // player id (as AztecAddress) -> poseidon2 hash of Player
+        state_roots: Map<AztecAddress, PublicMutable<Field, Context>, Context>,
     }
 
     #[event]
-    /// Emitted on set (add or update); contains player address, block_number, and full Player.
-    struct PlayerUpdated {
-        player: AztecAddress,
+    struct PlayerUpdate {
+        id: AztecAddress,
         block_number: u32,
         state: Player,
     }
@@ -47,9 +42,7 @@ pub contract PlayerStorage {
         self.storage.authorized_count.write(0);
     }
 
-    // =====================================================================
-    // INTERNAL - AUTH HELPERS
-    // =====================================================================
+    // ================== INTERNAL AUTH ==================
 
     #[internal("public")]
     fn assert_admin() {
@@ -61,12 +54,21 @@ pub contract PlayerStorage {
         let caller = self.msg_sender().unwrap();
         let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert(is_admin | is_authorized, "Not authorized");
+        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
     }
 
-    // =====================================================================
-    // ADMIN - EXTERNAL
-    // =====================================================================
+    // ================== ADD / UPDATE ==================
+
+    #[external("public")]
+    fn set(id: AztecAddress, state: Player) {
+        self.internal.assert_authorized();
+        let block_number = self.context.block_number();
+        let root = poseidon2_hash(state.serialize());
+        self.storage.state_roots.at(id).write(root);
+        self.emit(PlayerUpdate { id: id, block_number: block_number, state: state });
+    }
+
+    // ================== ADMIN ==================
 
     #[external("public")]
     fn transfer_admin(new_admin: AztecAddress) {
@@ -93,7 +95,6 @@ pub contract PlayerStorage {
 
         let index = self.storage.authorized_index.at(contract_address).read();
         let last_index = self.storage.authorized_count.read() - 1;
-
         self.storage.authorized_map.at(contract_address).write(false);
 
         if index != last_index {
@@ -106,110 +107,80 @@ pub contract PlayerStorage {
         self.storage.authorized_count.write(last_index);
     }
 
-    // =====================================================================
-    // ADD / UPDATE - EXTERNAL (requires admin or authorized)
-    // =====================================================================
-
-    /// Set player by address (add or update). Requires state.player == addr.
-    #[external("public")]
-    fn set(addr: AztecAddress, state: Player) {
-        self.internal.assert_authorized();
-        assert(state.player == addr, "addr mismatch");
-        let block_number = self.context.block_number();
-        let state_root = StateRoot::new(poseidon2_hash(state.pack()), block_number);
-        self.storage.state_roots.at(addr).write(state_root);
-        self.emit(PlayerUpdated { player: addr, block_number: block_number, state: state });
-    }
-
-    // =====================================================================
-    // VIEWS - EXTERNAL (read is public)
-    // =====================================================================
+    // ================== PUBLIC VIEWS ==================
 
     #[external("public")]
     #[view]
-    fn get_default_player() -> Player {
-        Player::zero()
-    }
-
-    #[external("public")]
-    #[view]
-    fn get_state_root(addr: AztecAddress) -> StateRoot {
-        self.storage.state_roots.at(addr).read()
-    }
-
-    #[external("public")]
-    #[view]
-    fn verify(addr: AztecAddress, state: Player) -> bool {
-        let state_root = self.storage.state_roots.at(addr).read();
-        if state_root.hash == 0 {
+    fn verify(id: AztecAddress, state: Player) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        if stored_hash == 0 {
             state == Player::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.pack());
-            computed_hash == state_root.hash
+            let computed_hash = poseidon2_hash(state.serialize());
+            computed_hash == stored_hash
         }
     }
 
     #[external("public")]
     #[view]
-    fn get_admin() -> AztecAddress {
-        self.storage.admin.read()
+    fn compute_state_hash(state: Player) -> Field {
+        if (state == Player::zero()) {
+            0
+        } else {
+            poseidon2_hash(state.serialize())
+        }
     }
 
     #[external("public")]
     #[view]
-    fn get_authorized_count() -> u32 {
-        self.storage.authorized_count.read()
+    fn is_initialized(id: AztecAddress) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        stored_hash != 0
     }
 
     #[external("public")]
     #[view]
-    fn get_authorized_contract(index: u32) -> AztecAddress {
-        self.storage.authorized_list.at(index).read()
+    fn get_state_root(id: AztecAddress) -> Field {
+        self.storage.state_roots.at(id).read()
     }
 
     #[external("public")]
     #[view]
-    fn is_authorized(addr: AztecAddress) -> bool {
-        let is_admin = addr == self.storage.admin.read();
-        let is_in_list = self.storage.authorized_map.at(addr).read();
-        is_admin | is_in_list
+    fn verify_hash(id: AztecAddress, hash: Field) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        stored_hash == hash
     }
 
-    /// Returns true if the player at `addr` has been initialized (a state row has been set).
-    #[external("public")]
-    #[view]
-    fn is_initialized(addr: AztecAddress) -> bool {
-        let state_root = self.storage.state_roots.at(addr).read();
-        state_root.hash != 0
-    }
-
-    // =====================================================================
-    // UTILITY - UNCONSTRAINED
-    // =====================================================================
-    #[external("utility")]
-    unconstrained fn get_default_player_unconstrained() -> Player {
-        Player::zero()
-    }
+    // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn get_state_root_unconstrained(addr: AztecAddress) -> StateRoot {
-        self.storage.state_roots.at(addr).read()
-    }
-
-    #[external("utility")]
-    unconstrained fn compute_state_hash(state: Player) -> Field {
-        poseidon2_hash(state.pack())
-    }
-
-    #[external("utility")]
-    unconstrained fn verify_unconstrained(addr: AztecAddress, state: Player) -> bool {
-        let state_root = self.storage.state_roots.at(addr).read();
-        if state_root.hash == 0 {
+    unconstrained fn verify_unconstrained(id: AztecAddress, state: Player) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        if stored_hash == 0 {
             state == Player::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.pack());
-            computed_hash == state_root.hash
+            let computed_hash = poseidon2_hash(state.serialize());
+            computed_hash == stored_hash
         }
+    }
+
+    #[external("utility")]
+    unconstrained fn compute_state_hash_unconstrained(state: Player) -> Field {
+        if (state == Player::zero()) {
+            0
+        } else {
+            poseidon2_hash(state.serialize())
+        }
+    }
+
+    #[external("utility")]
+    unconstrained fn get_state_root_unconstrained(id: AztecAddress) -> Field {
+        self.storage.state_roots.at(id).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_default_state_unconstrained() -> Player {
+        Player::zero()
     }
 
     #[external("utility")]
@@ -229,14 +200,36 @@ pub contract PlayerStorage {
 
     #[external("utility")]
     unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> bool {
-        let is_admin = addr == self.storage.admin.read();
-        let is_in_list = self.storage.authorized_map.at(addr).read();
-        is_admin | is_in_list
+        let is_admin: bool = addr == self.storage.admin.read();
+        let is_authorized: bool = self.storage.authorized_map.at(addr).read();
+        is_admin | is_authorized
     }
 
     #[external("utility")]
-    unconstrained fn is_initialized_unconstrained(addr: AztecAddress) -> bool {
-        let state_root = self.storage.state_roots.at(addr).read();
-        state_root.hash != 0
+    unconstrained fn is_initialized_unconstrained(id: AztecAddress) -> bool {
+        let stored_hash = self.storage.state_roots.at(id).read();
+        stored_hash != 0
+    }
+
+    // ================== PUBLIC VIEWS (AUTH) ==================
+
+    #[external("public")]
+    #[view]
+    fn get_authorized_count() -> u32 {
+        self.storage.authorized_count.read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_authorized_contract(index: u32) -> AztecAddress {
+        self.storage.authorized_list.at(index).read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn is_authorized(addr: AztecAddress) -> bool {
+        let is_admin: bool = addr == self.storage.admin.read();
+        let is_authorized: bool = self.storage.authorized_map.at(addr).read();
+        is_admin | is_authorized
     }
 }

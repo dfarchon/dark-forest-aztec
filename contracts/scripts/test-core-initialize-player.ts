@@ -1,377 +1,346 @@
 /**
- * Script for testing Core.initialize_player (private).
- * Prerequisites: deploy, configure, and create at least one planet (e.g. run test-admin-create-planet.ts).
- * After commit, reads planet and player state from storage events.
+ * Test script for Core.initialize_player (private).
  *
- * Run: pnpm exec tsx scripts/test-core-initialize-player.ts
+ * Prerequisites:
+ * - deploy + configure have been run (Config, Admin, Core, WorldStorage, PlayerStorage set up).
+ * - .env contains contract addresses and ACCOUNT_* (see test-setup.ts / deploy).
+ * - World must be "initialized" (not World::zero()). If the chain still has the default
+ *   World::zero(), this script calls Admin.admin_set_world_radius(53001, worldZero) once,
+ *   then runs initialize_player.
+ *
+ * Usage (from contracts/ directory):
+ *   node --experimental-transform-types scripts/test-core-initialize-player.ts [userIndex]
+ *
+ * userIndex: 0 = user1, 1 = user2 (default 0). Use different indexes for multiple runs so each
+ * account initializes once (e.g. first run no arg → user1, second run "1" → user2).
+ *
+ * Or with tsx: pnpm exec tsx scripts/test-core-initialize-player.ts [userIndex]
  */
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { GlobalStateStorageContract } from './artifacts/GlobalStateStorage.ts';
-import { PlanetCapsStorageContract } from './artifacts/PlanetCapsStorage.ts';
-import { PlanetMetaStorageContract } from './artifacts/PlanetMetaStorage.ts';
-import { PlanetModsStorageContract } from './artifacts/PlanetModsStorage.ts';
-import { PlanetOwnerStorageContract } from './artifacts/PlanetOwnerStorage.ts';
-import { PlanetResourcesStorageContract } from './artifacts/PlanetResourcesStorage.ts';
-import { PlayerStorageContract } from './artifacts/PlayerStorage.ts';
 import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
 import { getTestContext, type TestContext } from './test-setup.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-type GlobalStateShape = {
+// World shape (types/storage/world.nr)
+function worldZero(): {
     paused: boolean;
-    planet_events_count: bigint | number;
-    world_radius: bigint | number;
-    misc_nonce: bigint | number;
-    planet_ids_count: bigint | number;
-    revealed_planet_ids_count: bigint | number;
-    player_ids_count: bigint | number;
-    next_change_block: bigint | number;
-};
-
-async function loadGlobalState(ctx: TestContext): Promise<GlobalStateShape> {
-    const GlobalStateStorage = ctx.contracts['GlobalStateStorage'];
-    if (!GlobalStateStorage) throw new Error('GlobalStateStorage contract not loaded');
-
-    const latestBlock = Number(await ctx.node.getBlockNumber());
-    try {
-        const events = await getDecodedPublicEvents(
-            ctx.node,
-            GlobalStateStorageContract.events.GlobalStateUpdated,
-            0,
-            latestBlock + 1
-        );
-        if (events.length > 0) {
-            const last = events[events.length - 1] as { state?: GlobalStateShape };
-            if (last.state) return last.state;
-        }
-    } catch (err) {
-        console.warn('[loadGlobalState] failed to decode events:', err);
-    }
-
-    const defaultState = await GlobalStateStorage.methods
-        .get_default_global_state_unconstrained()
-        .simulate({ from: ctx.accounts.admin });
-    return defaultState as GlobalStateShape;
-}
-
-// ----- Helpers to read planet/player from events (same pattern as test-admin-create-planet) -----
-type Planet = {
-    location_id: string;
-    perlin: number;
-    created_at: string | number;
-    owner: string;
-    planet_level: number;
-    planet_type: number;
-    space_type: number;
-    is_home_planet: boolean;
-    is_initialized: boolean;
-    destroyed: boolean;
-    invader: string;
-    capturer: string;
-    invade_start_block: number;
-    population_cap: string | number;
-    population_growth: string | number;
-    range: string | number;
-    speed: string | number;
-    defense: string | number;
-    silver_cap: string | number;
-    silver_growth: string | number;
-    population: string | number;
-    silver: string | number;
-    upgrade_state_0: number;
-    upgrade_state_1: number;
-    upgrade_state_2: number;
-    last_updated: string | number;
-    pausers: string | number;
-    energy_gro_doublers: string | number;
-    silver_gro_doublers: string | number;
-    hat_level: string | number;
-    space_junk: string | number;
-    has_tried_finding_artifact: boolean;
-    prospected_block_number: number;
-};
-
-function toStr(v: unknown): string {
-    if (typeof v === 'bigint') return String(v);
-    if (v === undefined || v === null) return '';
-    return String(v);
-}
-function toNum(v: unknown): number {
-    if (v === undefined || v === null) return 0;
-    if (typeof v === 'bigint') return Number(v);
-    return Number(v);
-}
-
-function mergeToPlanet(
-    locationId: bigint,
-    meta: { location_id: unknown; perlin: unknown; created_at: unknown } | undefined,
-    owner: Record<string, unknown> | undefined,
-    caps: Record<string, unknown> | undefined,
-    resources: Record<string, unknown> | undefined,
-    mods: Record<string, unknown> | undefined
-): Planet {
+    planet_events_count: bigint;
+    radius: bigint;
+    misc_nonce: bigint;
+    planet_ids_count: bigint;
+    revealed_planet_ids_count: bigint;
+    player_ids_count: bigint;
+    next_change_block: number;
+} {
     return {
-        location_id: toStr(locationId),
-        perlin: meta ? toNum(meta.perlin) : 0,
-        created_at: meta ? toStr(meta.created_at) || 0 : 0,
-        owner: owner ? toStr(owner.owner) : '',
-        planet_level: owner ? toNum(owner.planet_level) : 0,
-        planet_type: owner ? toNum(owner.planet_type) : 0,
-        space_type: owner ? toNum(owner.space_type) : 0,
-        is_home_planet: owner ? Boolean(owner.is_home_planet) : false,
-        is_initialized: owner ? Boolean(owner.is_initialized) : false,
-        destroyed: owner ? Boolean(owner.destroyed) : false,
-        invader: owner ? toStr(owner.invader) : '',
-        capturer: owner ? toStr(owner.capturer) : '',
-        invade_start_block: owner ? toNum(owner.invade_start_block) : 0,
-        population_cap: caps ? toStr(caps.population_cap) || 0 : 0,
-        population_growth: caps ? toStr(caps.population_growth) || 0 : 0,
-        range: caps ? toStr(caps.range) || 0 : 0,
-        speed: caps ? toStr(caps.speed) || 0 : 0,
-        defense: caps ? toStr(caps.defense) || 0 : 0,
-        silver_cap: caps ? toStr(caps.silver_cap) || 0 : 0,
-        silver_growth: caps ? toStr(caps.silver_growth) || 0 : 0,
-        population: resources ? toStr(resources.population) || 0 : 0,
-        silver: resources ? toStr(resources.silver) || 0 : 0,
-        upgrade_state_0: resources ? toNum(resources.upgrade_state_0) : 0,
-        upgrade_state_1: resources ? toNum(resources.upgrade_state_1) : 0,
-        upgrade_state_2: resources ? toNum(resources.upgrade_state_2) : 0,
-        last_updated: resources ? toStr(resources.last_updated) || 0 : 0,
-        pausers: mods ? toStr(mods.pausers) || 0 : 0,
-        energy_gro_doublers: mods ? toStr(mods.energy_gro_doublers) || 0 : 0,
-        silver_gro_doublers: mods ? toStr(mods.silver_gro_doublers) || 0 : 0,
-        hat_level: mods ? toStr(mods.hat_level) || 0 : 0,
-        space_junk: mods ? toStr(mods.space_junk) || 0 : 0,
-        has_tried_finding_artifact: mods ? Boolean(mods.has_tried_finding_artifact) : false,
-        prospected_block_number: mods ? toNum(mods.prospected_block_number) : 0,
+        paused: false,
+        planet_events_count: 0n,
+        radius: 53_000n,
+        misc_nonce: 0n,
+        planet_ids_count: 0n,
+        revealed_planet_ids_count: 0n,
+        player_ids_count: 0n,
+        next_change_block: 0,
     };
 }
 
-/** Player state shape (from events / types/storage/player.nr). */
-type PlayerFromEvents = {
-    is_initialized: boolean;
-    player: string;
-    init_timestamp: string | number;
-    home_planet_id: string;
-    last_reveal_timestamp: string | number;
-    score: string | number;
-    space_junk: string | number;
-    space_junk_limit: string | number;
-    claimed_ships: boolean;
-};
+function worldWithRadius(radius: bigint) {
+    return { ...worldZero(), radius };
+}
 
-/** Read player from PlayerStorage.PlayerUpdated events in the given block and print as JSON. */
-async function readPlayerFromEvents(
-    ctx: TestContext,
-    blockNumber: number,
-    user: AztecAddress
-): Promise<void> {
-    const from = blockNumber;
-    const limit = 1;
-    const userStr = user.toString();
+// Player::zero() (types/storage/player.nr) — init_timestamp 0 means "not initialized"
+function playerZero(): {
+    init_timestamp: number | bigint;
+    home_planet_id: bigint;
+    last_reveal_timestamp: number | bigint;
+    score: bigint;
+    space_junk: bigint;
+    space_junk_limit: bigint;
+    claimed_ships: boolean;
+    last_updated: number | bigint;
+} {
+    return {
+        init_timestamp: 0,
+        home_planet_id: 0n,
+        last_reveal_timestamp: 0,
+        score: 0n,
+        space_junk: 0n,
+        space_junk_limit: 0n,
+        claimed_ships: false,
+        last_updated: 0,
+    };
+}
+
+// Planet::zero() (types/storage/planet.nr) — used when creating a new home planet
+function planetZero(aztecZero: string): Record<string, unknown> {
+    return {
+        perlin: 0,
+        created_at: 0,
+        owner: aztecZero,
+        planet_level: 0,
+        planet_type: 0,
+        space_type: 0,
+        is_home_planet: false,
+        is_initialized: false,
+        destroyed: false,
+        invader: aztecZero,
+        capturer: aztecZero,
+        invade_start_block: 0,
+        population_cap: 0n,
+        population_growth: 0n,
+        range: 0n,
+        speed: 0n,
+        defense: 0n,
+        silver_cap: 0n,
+        silver_growth: 0n,
+        population: 0n,
+        silver: 0n,
+        upgrade_state_0: 0,
+        upgrade_state_1: 0,
+        upgrade_state_2: 0,
+        last_updated: 0,
+        pausers: 0n,
+        energy_gro_doublers: 0n,
+        silver_gro_doublers: 0n,
+        hat_level: 0n,
+        space_junk: 0n,
+        has_tried_finding_artifact: false,
+        prospected_block_number: 0,
+    };
+}
+
+/** Load latest World state for id=0 from WorldStorage.WorldUpdate events, or return null. */
+async function loadWorldFromEvents(
+    ctx: TestContext
+): Promise<ReturnType<typeof worldZero> | null> {
+    const latestBlock = Number(await ctx.node.getBlockNumber());
+    const from = Math.max(0, latestBlock - 50);
+    const limit = latestBlock - from + 1;
+
+    // Dynamic import so we don't require artifacts at parse time
+    const mod = await import('./artifacts/WorldStorage.ts');
+    // Use only the exported WorldStorageContract; do not fallback to mod.WorldStorage (fix TS error)
+    const WorldStorageContract = mod.WorldStorageContract;
+    if (!WorldStorageContract?.events?.WorldUpdate) {
+        console.warn(
+            '   WorldStorageContract artifact or WorldUpdate event not found; using worldZero().'
+        );
+        return null;
+    }
 
     const events = await getDecodedPublicEvents<{
-        player: unknown;
-        block_number: unknown;
-        state: Record<string, unknown>;
-    }>(ctx.node, PlayerStorageContract.events.PlayerUpdated, from, limit);
+        id: unknown;
+        block_number?: number;
+        state?: Record<string, unknown>;
+    }>(ctx.node, WorldStorageContract.events.WorldUpdate, from, limit);
 
-    const ev = events.filter((e) => toStr(e.player) === userStr).pop();
-    if (!ev?.state) {
-        console.log('\n⚠️ No PlayerUpdated event for', userStr, 'in block', blockNumber);
-        return;
-    }
-    const s = ev.state;
-    const player: PlayerFromEvents = {
-        is_initialized: Boolean(s.is_initialized),
-        player: toStr(s.player),
-        init_timestamp: toStr(s.init_timestamp) || 0,
-        home_planet_id: toStr(s.home_planet_id ?? 0),
-        last_reveal_timestamp: toStr(s.last_reveal_timestamp) || 0,
-        score: toStr(s.score) || 0,
-        space_junk: toStr(s.space_junk) || 0,
-        space_junk_limit: toStr(s.space_junk_limit) || 0,
-        claimed_ships: Boolean(s.claimed_ships),
+    const forId0 = events.filter((e) => String(e?.id) === '0' && e?.state);
+    if (forId0.length === 0) return null;
+    const last = forId0[forId0.length - 1];
+    const s = last?.state;
+    if (!s) return null;
+
+    const toBigint = (v: unknown): bigint =>
+        typeof v === 'bigint'
+            ? v
+            : typeof v === 'number'
+              ? BigInt(v)
+              : BigInt(String(v ?? 0));
+    return {
+        paused: Boolean(s.paused),
+        planet_events_count: toBigint(s.planet_events_count),
+        radius: toBigint(s.radius),
+        misc_nonce: toBigint(s.misc_nonce),
+        planet_ids_count: toBigint(s.planet_ids_count),
+        revealed_planet_ids_count: toBigint(s.revealed_planet_ids_count),
+        player_ids_count: toBigint(s.player_ids_count),
+        next_change_block: Number(s.next_change_block ?? 0),
     };
-    console.log('\n👤 Player (from events, address =', userStr, ', block =', blockNumber, ')');
-    console.log(JSON.stringify(player, (_, v) => (typeof v === 'bigint' ? String(v) : v), 2));
 }
-
-/** Read planet from storage events in the given block and print as JSON. */
-async function readPlanetFromEvents(
-    ctx: TestContext,
-    blockNumber: number,
-    locationId: bigint
-): Promise<void> {
-    const from = blockNumber;
-    const limit = 1;
-
-    const meta = (await getDecodedPublicEvents<{ id: unknown; state: { location_id: unknown; perlin: unknown; created_at: unknown } }>(ctx.node, PlanetMetaStorageContract.events.PlanetMetaUpdated, from, limit))
-        .filter((e) => String(e.id) === String(locationId))
-        .pop()?.state;
-    const owner = (await getDecodedPublicEvents<{ id: unknown; state: Record<string, unknown> }>(ctx.node, PlanetOwnerStorageContract.events.PlanetOwnerUpdated, from, limit))
-        .filter((e) => String(e.id) === String(locationId))
-        .pop()?.state;
-    const caps = (await getDecodedPublicEvents<{ id: unknown; state: Record<string, unknown> }>(ctx.node, PlanetCapsStorageContract.events.PlanetCapsUpdated, from, limit))
-        .filter((e) => String(e.id) === String(locationId))
-        .pop()?.state;
-    const resources = (await getDecodedPublicEvents<{ id: unknown; state: Record<string, unknown> }>(ctx.node, PlanetResourcesStorageContract.events.PlanetResourcesUpdated, from, limit))
-        .filter((e) => String(e.id) === String(locationId))
-        .pop()?.state;
-    const mods = (await getDecodedPublicEvents<{ id: unknown; state: Record<string, unknown> }>(ctx.node, PlanetModsStorageContract.events.PlanetModsUpdated, from, limit))
-        .filter((e) => String(e.id) === String(locationId))
-        .pop()?.state;
-
-    const planet = mergeToPlanet(locationId, meta, owner, caps, resources, mods);
-    console.log('\n🌍 Planet (from events, location_id =', String(locationId), ', block =', blockNumber, ')');
-    console.log(JSON.stringify(planet, (_, v) => (typeof v === 'bigint' ? String(v) : v), 2));
-}
-
-export type ValidateInitializePlayerResult = { ok: true } | { ok: false; reason: string };
 
 /**
- * Local validation mirroring Core.initialize_player_public + check_player_init.
- * Returns { ok: true } or { ok: false, reason } so caller can skip sending the tx when invalid.
+ * Get the L2 block timestamp — this is exactly what context.timestamp() returns
+ * in public functions during simulation.
+ *
+ * In this sandbox the L1 (Anvil) time is warped ahead of system clock, and
+ * L2 block time follows L1 (slightly behind). context.timestamp() = L2 block
+ * header.globalVariables.timestamp. Using this directly satisfies:
+ *   timestamp <= actual_timestamp  AND  actual_timestamp - timestamp <= 300.
  */
-async function validateBeforeInitializePlayer(
-    ctx: TestContext,
-    params: {
-        user: AztecAddress;
-        locationId: bigint;
-        perlin: number;
-        level: number;
-        radius: number;
-        snarkConstants: Record<string, unknown>;
-        planetOwnerState: Record<string, unknown>;
-        playerState: Record<string, unknown>;
-        globalState: GlobalStateShape;
-    }
-): Promise<ValidateInitializePlayerResult> {
-    const Config = ctx.contracts['Config'];
-    const PlayerStorage = ctx.contracts['PlayerStorage'];
-    if (!Config || !PlayerStorage) return { ok: false, reason: 'Config or PlayerStorage not loaded' };
+async function getTimestampForContract(ctx: TestContext): Promise<bigint> {
+    try {
+        const block = await (
+            ctx.node as unknown as {
+                getBlock: (n: number | 'latest') => Promise<
+                    | {
+                          header?: {
+                              globalVariables?: { timestamp?: unknown };
+                          };
+                          timestamp?: number;
+                      }
+                    | undefined
+                >;
+            }
+        ).getBlock('latest');
 
-    const chainSnark = await Config.methods.get_snark_constants_public().simulate({ from: params.user });
-    if (params.snarkConstants.disable_zk_checks !== chainSnark.disable_zk_checks) {
-        return { ok: false, reason: 'Disable zk checks is not valid (must match Config)' };
-    }
-
-    const player_is_valid = await PlayerStorage.methods.verify_unconstrained(params.user, params.playerState).simulate({ from: params.user });
-    if (!player_is_valid) {
-        return { ok: false, reason: 'Player state is not valid (player is already initialized in storage)' };
-    }
-
-    if (params.playerState.is_initialized) {
-        return { ok: false, reason: 'Player is already initialized (player_state.is_initialized must be false)' };
-    }
-
-    const worldRadius = BigInt(Number(params.globalState.world_radius ?? 53_000));
-    const radiusBig = BigInt(params.radius);
-    if (radiusBig > worldRadius) {
-        return { ok: false, reason: `Init radius is bigger than the current world radius (radius=${params.radius}, world_radius=${worldRadius})` };
-    }
-
-    const worldConfig = await Config.methods.get_world_config_public().simulate({ from: params.user }) as { spawn_rim_area?: bigint | number };
-    const gameConfigCore = await Config.methods.get_game_config_core_public().simulate({ from: params.user }) as { init_perlin_min?: number; init_perlin_max?: number };
-    const spawnRimArea = BigInt(Number(worldConfig.spawn_rim_area ?? 0));
-    if (spawnRimArea !== 0n) {
-        const radiusSqPi = (radiusBig * radiusBig * 314n) / 100n;
-        const worldRadiusSqPi = (worldRadius * worldRadius * 314n) / 100n;
-        if (radiusSqPi + spawnRimArea < worldRadiusSqPi) {
-            return { ok: false, reason: 'Player can only spawn at the universe rim (radius_squared_times_pi + spawn_rim_area < world_radius_squared_times_pi)' };
+        let ts: bigint | undefined;
+        if (block?.header?.globalVariables?.timestamp != null) {
+            const raw = block.header.globalVariables.timestamp;
+            ts =
+                typeof raw === 'bigint'
+                    ? raw
+                    : BigInt(String(raw).replace(/n$/, ''));
+        } else if (block?.timestamp != null) {
+            ts = BigInt(Number(block.timestamp));
         }
+
+        if (ts != null) {
+            console.log(
+                `   [timestamp] L2 block timestamp = ${ts} (${new Date(Number(ts) * 1000).toISOString()})`
+            );
+            return ts;
+        }
+    } catch {
+        /* ignore */
     }
 
-    const initPerlinMin = Number(gameConfigCore.init_perlin_min ?? 0);
-    const initPerlinMax = Number(gameConfigCore.init_perlin_max ?? 255);
-    if (params.perlin < initPerlinMin) {
-        return { ok: false, reason: `Init not allowed in perlin value less than INIT_PERLIN_MIN (perlin=${params.perlin}, init_perlin_min=${initPerlinMin})` };
-    }
-    if (params.perlin >= initPerlinMax) {
-        return { ok: false, reason: `Init not allowed in perlin value greater than or equal to INIT_PERLIN_MAX (perlin=${params.perlin}, init_perlin_max=${initPerlinMax})` };
-    }
-
-    return { ok: true };
+    // Fallback (should not happen if node is running)
+    const nowSec = Math.floor(Date.now() / 1000);
+    console.log(`   [timestamp] Fallback system clock: ${nowSec}`);
+    return BigInt(nowSec);
 }
 
 async function main() {
+    const userIndex = (() => {
+        const arg = process.argv[2];
+        if (arg === undefined) return 0;
+        const n = parseInt(arg, 10);
+        if (n === 0 || n === 1) return n;
+        return 0;
+    })();
+
     console.log('🔗 Loading test context...\n');
     const ctx = await getTestContext();
 
     const Core = ctx.contracts['Core'];
     const Config = ctx.contracts['Config'];
+    const Admin = ctx.contracts['Admin'];
     if (!Core || !Config) {
         throw new Error('Core or Config contract not loaded');
     }
 
     const { admin, users } = ctx.accounts;
     const sendOpts = ctx.sendOpts;
-    const user = users[0];
+    const user = users[userIndex];
+    const userLabel = userIndex === 0 ? 'user1' : 'user2';
 
     console.log('✅ Core at:', Core.address.toString());
     console.log('✅ Config at:', Config.address.toString());
-    console.log('✅ Player (user1):', user.toString());
+    console.log(
+        '✅ Player (' + userLabel + ', index ' + userIndex + '):',
+        user.toString()
+    );
 
-    // location_id must yield level=0 and planet_type=0 in get_planet_level_type_and_space_type (contract assert).
-    // - Level 0: bytes 4–6 (BE) of location_id = 24-bit value in [thresholds[1], thresholds[0]) = [4_194_292, 16_777_216).
-    //   So any V in 4_194_292..16_777_215 works; put in high bits: (V << 216n).
-    // - planet_type=0: for level 0 the weights are [1,0,0,0,0], so any byte 8 is OK (PlanetType::Planet).
-    // Other valid level-0 location_ids (same formula, different V):
-    //   (4_194_292n << 216n) | (255n << 64n)
-    //   (5_000_000n << 216n) | (255n << 64n)
-    //   (7_000_000n << 216n) | (255n << 64n)
-    //   (12_000_000n << 216n) | (255n << 64n)
-    //   (16_777_215n << 216n) | (255n << 64n)
-    const locationId = (10_000_000n << 216n) | (255n << 64n); // user[0]
-    // const locationId = (4_194_292n << 216n) | (255n << 64n); // user[1]
     const level = 0;
+    const radius = 0n;
 
-    console.log('\n📥 Loading global state, config, and snark constants...');
-    const globalState = await loadGlobalState(ctx);
-    const radius = 0;
-    const snarkConstants = await Config.methods.get_snark_constants_public().simulate({ from: user });
-    const gameConfigCore = await Config.methods.get_game_config_core_public().simulate({ from: user }) as { init_perlin_min?: number; init_perlin_max?: number };
-    const perlin = Number(gameConfigCore.init_perlin_min ?? 13);
+    // location_id for level 0: bytes 4–6 (BE) in [thresholds[1], thresholds[0]) = [4_194_292, 16_777_216).
+    // Use a different location_id per user so each test account has its own home planet.
+    const locationId =
+        ((10_000_000n + BigInt(userIndex)) << 216n) | (255n << 64n);
+    const perlin = 13;
 
-    console.log('📥 Loading default planet owner state from PlanetOwnerStorage...');
-    const PlanetOwnerStorage = ctx.contracts['PlanetOwnerStorage'];
-    if (!PlanetOwnerStorage) throw new Error('PlanetOwnerStorage contract not loaded');
-    const planetOwnerState = await PlanetOwnerStorage.methods.get_default_planet_owner_unconstrained().simulate({ from: user });
+    console.log('\n📥 Loading config from Config contract...');
+    const snarkConfig = await Config.methods
+        .get_snark_config()
+        .simulate({ from: user });
+    const planetDefaultStats = await Config.methods
+        .get_planet_default_stats(level)
+        .simulate({ from: user });
+    const worldConfig = await Config.methods
+        .get_world_config()
+        .simulate({ from: user });
+    const gameConfigCore = await Config.methods
+        .get_game_config_core()
+        .simulate({ from: user });
+    const planetLevelThresholds = await Config.methods
+        .get_planet_level_thresholds()
+        .simulate({ from: user });
+    const spaceJunkConfig = await Config.methods
+        .get_space_junk_config()
+        .simulate({ from: user });
+    const planetTypeWeightsTier0 = await Config.methods
+        .get_planet_type_weights_tier(0)
+        .simulate({ from: user });
+    const planetTypeWeightsTier1 = await Config.methods
+        .get_planet_type_weights_tier(1)
+        .simulate({ from: user });
+    const planetTypeWeightsTier2 = await Config.methods
+        .get_planet_type_weights_tier(2)
+        .simulate({ from: user });
+    const planetTypeWeightsTier3 = await Config.methods
+        .get_planet_type_weights_tier(3)
+        .simulate({ from: user });
 
-    const PlayerStorage = ctx.contracts['PlayerStorage'];
-    if (!PlayerStorage) throw new Error('PlayerStorage contract not loaded');
-    const defaultPlayer = await PlayerStorage.methods.get_default_player_unconstrained().simulate({ from: user });
-    const playerState = defaultPlayer;
-
-    console.log('\n🔍 Validating locally (mirror of Core + check_player_init)...');
-    const validation = await validateBeforeInitializePlayer(ctx, {
-        user,
-        locationId,
-        perlin,
-        level,
-        radius,
-        snarkConstants,
-        planetOwnerState,
-        playerState,
-        globalState,
-    });
-    if (!validation.ok) {
-        console.error('   ❌ Validation failed:', validation.reason);
-        return;
+    console.log('📥 Resolving World state...');
+    let world = await loadWorldFromEvents(ctx);
+    if (!world) {
+        world = worldZero();
     }
-    console.log('   ✅ Local validation passed.');
+
+    // Core asserts world != World::zero(). World::zero() has radius 53000. So we need a world with different radius.
+    const ZERO_RADIUS = 53_000n;
+    if (world.radius === ZERO_RADIUS && Admin) {
+        console.log(
+            '   World is default (radius 53000); calling Admin.admin_set_world_radius(53001, world)...'
+        );
+        const tx = await Admin.methods
+            .admin_set_world_radius(53001n, world)
+            .send(sendOpts(admin));
+        await tx.wait();
+        world = worldWithRadius(53001n);
+        console.log('   ✅ World updated to radius 53001.');
+    } else if (world.radius === ZERO_RADIUS) {
+        throw new Error(
+            'World is still World::zero() (radius 53000). Core.initialize_player requires world != World::zero(). ' +
+                'Run Admin.admin_set_world_radius(53001, worldZero) first, or ensure Admin contract is loaded.'
+        );
+    }
+
+    const playerState = playerZero();
+    const aztecZero =
+        '0x0000000000000000000000000000000000000000000000000000000000000000';
+    const planetState = planetZero(aztecZero);
+
+    // Timestamp: contract requires timestamp <= block time and block_time - timestamp <= 300.
+    // Use chain block time when available so we stay within the 5-minute window.
+    const timestamp = await getTimestampForContract(ctx);
 
     const x = 0n;
     const y = 0n;
 
     console.log('\n🎮 Calling Core.initialize_player() (private)...');
-    console.log('   x =', String(x), ', y =', String(y), ', location_id =', String(locationId), ', perlin =', perlin, ', level =', level, ', radius =', radius);
+    console.log(
+        '   x =',
+        String(x),
+        ', y =',
+        String(y),
+        ', location_id =',
+        String(locationId),
+        ', perlin =',
+        perlin,
+        ', level =',
+        level,
+        ', radius =',
+        String(radius),
+        ', timestamp =',
+        String(timestamp)
+    );
 
     const initPlayerArgs = [
         x,
@@ -380,55 +349,82 @@ async function main() {
         locationId,
         perlin,
         level,
-        snarkConstants,
-        planetOwnerState,
+        timestamp,
+        snarkConfig,
+        planetDefaultStats,
+        worldConfig,
+        gameConfigCore,
+        planetLevelThresholds,
+        spaceJunkConfig,
+        planetTypeWeightsTier0,
+        planetTypeWeightsTier1,
+        planetTypeWeightsTier2,
+        planetTypeWeightsTier3,
+        planetState,
         playerState,
-        globalState,
+        world,
     ] as const;
 
-    console.log('   Simulating first...');
+    console.log('   Simulating...');
     try {
-        console.log('\n\n\n\n\n');
-        console.log('   ✅ Simulating initialize_player...');
-        console.log(initPlayerArgs);
-
-        const playerStateRoot = await PlayerStorage.methods.get_state_root(user).simulate({ from: user });
-        console.log('   ✅ playerStateRoot:', playerStateRoot);
-        console.log('\n\n\n\n\n');
-        const res = await PlayerStorage.methods.verify(user, playerState).simulate({ from: user });
-        console.log('   ✅ verify succeeded:', res);
-        if (!res) {
-            console.error('   ❌ verify failed:', res);
-            return;
-        }
-
-        await Core.methods.initialize_player(...initPlayerArgs).simulate(sendOpts(user));
-        console.log('   ✅ Simulate clear.');
+        await Core.methods
+            .initialize_player(...initPlayerArgs)
+            .simulate(sendOpts(user));
+        console.log('   ✅ Simulate passed.');
     } catch (simErr: unknown) {
         const msg = simErr instanceof Error ? simErr.message : String(simErr);
         console.error('   ❌ Simulate failed:', msg);
-        if (simErr instanceof Error && simErr.stack) console.error(simErr.stack);
-        return;
+        if (simErr instanceof Error && simErr.stack)
+            console.error(simErr.stack);
+        process.exit(1);
     }
 
+    console.log('   Sending transaction...');
     try {
-        const tx = await Core.methods.initialize_player(...initPlayerArgs).send(sendOpts(user));
+        const tx = await Core.methods
+            .initialize_player(...initPlayerArgs)
+            .send(sendOpts(user));
         const receipt = await tx.wait();
-        console.log('   ✅ initialize_player committed.');
         const blockNumber =
-            receipt && typeof (receipt as { blockNumber?: number }).blockNumber !== 'undefined'
+            receipt &&
+            typeof (receipt as { blockNumber?: number }).blockNumber !==
+                'undefined'
                 ? Number((receipt as { blockNumber: number }).blockNumber)
                 : undefined;
+        const txHash =
+            receipt &&
+            (receipt as unknown as { txHash?: unknown }).txHash != null
+                ? String((receipt as unknown as { txHash: unknown }).txHash)
+                : undefined;
+
+        console.log('\n' + '='.repeat(60));
+        console.log('✅ TEST SUCCESS — initialize_player committed');
+        console.log('='.repeat(60));
+        console.log('  Transaction:', txHash ?? '(tx hash not in receipt)');
+        console.log('  Block number:', blockNumber ?? '(unknown)');
+        console.log('  Player (' + userLabel + '):', user.toString());
+        console.log('  Home planet location_id:', String(locationId));
         if (blockNumber !== undefined) {
-            console.log('   blockNumber:', blockNumber);
-            await readPlanetFromEvents(ctx, blockNumber, locationId);
-            await readPlayerFromEvents(ctx, blockNumber, user);
-        } else {
-            console.warn('   Could not get blockNumber from receipt; skipping event read.');
+            console.log('\n  To inspect on-chain state changes, run:');
+            console.log(
+                '    node --experimental-transform-types scripts/read-initialize-player-state.ts',
+                blockNumber,
+                user.toString(),
+                String(locationId)
+            );
         }
-    } catch (error) {
-        console.error('Error calling Core.initialize_player():', error);
-        throw error;
+        const otherIndex = 1 - userIndex;
+        const otherLabel = otherIndex === 0 ? 'user1' : 'user2';
+        console.log(
+            '\n  Next run (' +
+                otherLabel +
+                '): node --experimental-transform-types scripts/test-core-initialize-player.ts',
+            otherIndex
+        );
+        console.log('\n' + '='.repeat(60));
+    } catch (err) {
+        console.error('Error calling Core.initialize_player():', err);
+        throw err;
     }
 }
 

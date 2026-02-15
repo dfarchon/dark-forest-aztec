@@ -1,18 +1,8 @@
 // Lazy update functions for planets
 // Pure computation functions that update planet state based on time elapsed
-use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
-
-use dep::types::config::{
-    ArtifactsConfig, CaptureZonesConfig, GameConfig, GameConfigCore, PlanetDefaultStats,
-    PlanetLevelThresholds, PlanetTypeWeightsTier, SnarkConstants, SpaceJunkConfig, SpaceshipsConfig,
-    Upgrade, WorldConfig,
-};
-
-use dep::types::storage::{
-    Arrival, ArrivalType, Artifact, ArtifactRarity, ArtifactState, ArtifactType, GlobalState,
-    Planet, PlanetArtifacts, PlanetCaps, PlanetData, PlanetEventMetadata, PlanetEvents,
-    PlanetEventType, PlanetFullState, PlanetMeta, PlanetMods, PlanetOwner, PlanetResources,
-    PlanetType, Player, RevealedCoords, SpaceType, StateRoot, UpgradeBranch,
+use dep::types::storage::arrival::{Arrival, ArrivalType};
+use dep::types::storage::planet::{
+    Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetType,
 };
 
 use dep::aztec::protocol_types::address::AztecAddress;
@@ -184,12 +174,11 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
 /// The arrivals array should have the same length as events, with each element
 /// corresponding to the event at the same index (or a zero-initialized Arrival if not applicable).
 ///
-/// Returns (updated_planet, event_ids_and_artifacts)
-/// - event_ids_and_artifacts: first 12 are event ids to remove, last 12 are artifact ids that are new on the planet
+/// Returns (updated_planet, events_to_remove, artifacts_to_add)
 pub fn apply_pending_events(
     current_timestamp: u64,
     mut planet: Planet,
-    planet_events_state: PlanetEvents,
+    planet_events: PlanetEvents,
     arrivals: [Arrival; 20],
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
@@ -200,70 +189,61 @@ pub fn apply_pending_events(
 
     let mut should_continue: bool = true;
 
-    let max_cnt = planet_events_state.events_count;
-
-    for _ in 0..max_cnt {
+    // Use fixed array size 20 as compile-time constant for loop bound
+    // Runtime count check is done inside the loop
+    for _ in 0..20 {
         if !should_continue {
             // Equivalent to break - do nothing
-        } else if (planet_events_state.events_count == 0) | planet.destroyed {
+        } else if (planet_events.count == 0) | planet.destroyed {
             should_continue = false;
         } else {
             // set to the upperbound of u64
             earliest_event_time = 18446744073709551615u64;
 
             // loops through the array and find the earliest event time that hasn't already been applied
-            for i in 0..planet_events_state.events_count {
-                if planet_events_state.events[i].time_trigger < earliest_event_time {
-                    let mut should_apply: bool = true;
-                    for already_removed_idx in 0..events_to_remove.events_count {
-                        if events_to_remove.events[already_removed_idx].id
-                            == planet_events_state.events[i].id {
-                            should_apply = false;
+            // PlanetEventMetadata only has id; use arrivals[i].arrival_time for ordering (index-aligned)
+            for i in 0..20 {
+                if i < planet_events.count {
+                    let arrival_time: u64 = arrivals[i].arrival_time;
+                    if arrival_time < earliest_event_time {
+                        let mut should_apply: bool = true;
+                        for already_removed_idx in 0..20 {
+                            if already_removed_idx < events_to_remove.count {
+                                if events_to_remove.events[already_removed_idx].id
+                                    == planet_events.events[i].id {
+                                    should_apply = false;
+                                }
+                            }
                         }
-                    }
-                    if should_apply {
-                        earliest_event_time = planet_events_state.events[i].time_trigger;
-                        earliest_event_index = i;
+                        if should_apply {
+                            earliest_event_time = arrival_time;
+                            earliest_event_index = i;
+                        }
                     }
                 }
             }
 
-            // only process the event if it occurs before the current time and the timeTrigger is not 0
-            // which comes from uninitialized PlanetEventMetadata
-
+            // only process the event if it occurs before the current time and arrival_time is not 0
             let max_u64: u64 = 18446744073709551615u64;
-            if planet_events_state.events[earliest_event_index].time_trigger <= current_timestamp {
+            if arrivals[earliest_event_index].arrival_time <= current_timestamp {
                 if earliest_event_time != max_u64 {
-                    planet = update_planet(
-                        planet_events_state.events[earliest_event_index].time_trigger,
-                        planet,
-                    );
+                    planet = update_planet(arrivals[earliest_event_index].arrival_time, planet);
 
-                    // PlanetEventType::Arrival = 0
-                    if planet_events_state.events[earliest_event_index].event_type
-                        == PlanetEventType::Arrival() {
-                        let arrival_id = planet_events_state.events[earliest_event_index].id;
-                        events_to_remove.events[events_to_remove.events_count].id = arrival_id;
-                        events_to_remove.events_count = events_to_remove.events_count + 1;
+                    // All events in PlanetEvents are Arrival events (PlanetEventMetadata has no event_type)
+                    let arrival_id = planet_events.events[earliest_event_index].id;
+                    events_to_remove.events[events_to_remove.count].id = arrival_id;
+                    events_to_remove.count = events_to_remove.count + 1;
 
-                        let mut arrival_data: Arrival = Arrival::zero();
+                    let arrival_data: Arrival = arrivals[earliest_event_index];
 
-                        for i in 0..planet_events_state.events_count {
-                            if arrivals[i].id == arrival_id {
-                                arrival_data = arrivals[i];
-                            }
-                        }
+                    let result = apply_arrival(planet, arrival_data);
+                    let new_artifact_id = result.0;
+                    planet = result.1;
 
-                        let result = apply_arrival(planet, arrival_data);
-                        let new_artifact_id = result.0;
-                        planet = result.1;
-
-                        if new_artifact_id != 0 {
-                            // if the arrival is carrying an artifact
-                            artifacts_to_add.artifacts[artifacts_to_add.artifacts_count] =
-                                new_artifact_id;
-                            artifacts_to_add.artifacts_count = artifacts_to_add.artifacts_count + 1;
-                        }
+                    if new_artifact_id != 0 {
+                        // if the arrival is carrying an artifact
+                        artifacts_to_add.ids[artifacts_to_add.count] = new_artifact_id;
+                        artifacts_to_add.count = artifacts_to_add.count + 1;
                     }
                 }
             }
