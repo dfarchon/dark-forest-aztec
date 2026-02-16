@@ -1,17 +1,21 @@
 {
-  "name": "@dfpunk/utils",
+  "name": "@dfpunk/hashing",
   "version": "0.0.0",
-  "description": "",
+  "description": "MiMC hashing and Perlin utilities for Dark Forest",
   "keywords": [],
   "license": "",
   "author": "",
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
+  },
+  "dependencies": {
+    "@dfpunk/types": "workspace:*",
+    "big-integer": "^1.6.48"
   },
   "devDependencies": {
     "prettier": "3.7.4",

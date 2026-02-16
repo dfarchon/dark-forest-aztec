@@ -1,0 +1,27 @@
+{
+  "name": "@dfpunk/serde",
+  "version": "0.0.0",
+  "description": "",
+  "keywords": [],
+  "license": "",
+  "author": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
+  },
+  "dependencies": {
+    "@dfpunk/constants": "workspace:*",
+    "@dfpunk/contracts": "workspace:*",
+    "@dfpunk/hexgen": "workspace:*",
+    "@dfpunk/types": "workspace:*"
+  },
+  "devDependencies": {
+    "prettier": "3.7.4",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.28.0"
+}

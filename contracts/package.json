@@ -24,7 +24,8 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
-        "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\""
+        "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
+        "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts"
     },
     "dependencies": {},
     "devDependencies": {

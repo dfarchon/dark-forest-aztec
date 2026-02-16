@@ -1,9 +1,0 @@
-# Dependencies
-node_modules/
-
-# Build outputs
-dist/
-*.tsbuildinfo
-
-# Generated files
-*.log

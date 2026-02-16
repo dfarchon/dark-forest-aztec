@@ -7,6 +7,7 @@
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import * as dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 
 import {
@@ -192,6 +193,16 @@ async function main() {
     const deployer = await getOrCreateAccount(wallet);
     console.log(`✅ Deployer: ${deployer.toString()}\n`);
 
+    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+    const envPath = path.join(scriptDir, '..', '.env');
+
+    // Record START_BLOCK before deploying the first contract
+    const startBlock = Number(await aztecNode.getBlockNumber());
+    console.log(`📌 START_BLOCK: ${startBlock}`);
+    if (process.env.WRITE_ENV_FILE !== 'false') {
+        fs.appendFileSync(envPath, `\nSTART_BLOCK=${startBlock}\n`);
+    }
+
     console.log('📦 Loading contract artifacts...');
     const configs = await loadDeployConfigs();
     console.log(`🚀 Deploying ${configs.length} contracts...\n`);
@@ -207,8 +218,6 @@ async function main() {
     for (const [name, r] of Object.entries(results)) {
         console.log(`   ${name}: ${r.contractAddress}`);
     }
-    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-    const envPath = path.join(scriptDir, '..', '.env');
     console.log(`\n📄 Deployment info appended to ${envPath}`);
 }
 

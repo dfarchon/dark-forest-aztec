@@ -1,4 +1,11 @@
 packages:
   - "client"
   - "contracts"
-  - "packages/*"
+  - "packages/constants"
+  - "packages/contracts"
+  - "packages/events"
+  - "packages/hexgen"
+  - "packages/hashing"
+  - "packages/serde"
+  - "packages/utils"
+  - "packages/types"
