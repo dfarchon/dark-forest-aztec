@@ -1,13 +1,33 @@
 import type { Planet } from "../world/planet";
 import type { WorldLocation } from "../world/world";
 import type { Biome } from "../world/game_types";
-
+import type { TransactionCollection } from "../tx/transaction";
+import type { PlanetMessage } from "../message/planetmessage";
 /**
  * A planet whose coordinates are known to the client.
+ * Optional transactions and messages are used by the renderer when present.
  */
 export type LocatablePlanet = Planet & {
   location: WorldLocation;
   biome: Biome;
+  transactions?: TransactionCollection;
+  messages?: PlanetMessage<unknown>[];
+};
+
+/**
+ * Planet with optional client-side transaction and message state (for renderer).
+ */
+export type PlanetWithClientData = Planet & {
+  transactions?: TransactionCollection;
+  messages?: PlanetMessage<unknown>[];
+};
+
+/**
+ * Locatable planet with optional client-side transaction and message state (for renderer).
+ */
+export type RenderablePlanet = LocatablePlanet & {
+  transactions?: TransactionCollection;
+  messages?: PlanetMessage<unknown>[];
 };
 
 /**

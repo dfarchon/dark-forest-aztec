@@ -11,3 +11,5 @@ packages:
   - "packages/utils"
   - "packages/types"
   - "packages/procedural"
+  - "packages/renderer"
+  - "packages/ui"

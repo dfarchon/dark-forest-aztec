@@ -7,4 +7,5 @@ export * from "./location";
 export * from "./planet";
 export * from "./player";
 export * from "./reveal";
+export * from "./tx_guards";
 export * from "./world";

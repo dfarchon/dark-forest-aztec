@@ -1,0 +1,33 @@
+{
+  "name": "@dfpunk/renderer",
+  "version": "0.0.0",
+  "description": "WebGL renderers and game view (planets, voyages, UI overlay)",
+  "keywords": [],
+  "license": "",
+  "author": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
+  },
+  "dependencies": {
+    "@dfpunk/constants": "workspace:*",
+    "@dfpunk/gamelogic": "workspace:*",
+    "@dfpunk/hashing": "workspace:*",
+    "@dfpunk/procedural": "workspace:*",
+    "@dfpunk/serde": "workspace:*",
+    "@dfpunk/types": "workspace:*",
+    "auto-bind": "4.0.0",
+    "gl-matrix": "3.3.0"
+  },
+  "devDependencies": {
+    "@types/gl-matrix": "3.2.0",
+    "@types/webgl2": "0.0.5",
+    "prettier": "3.7.4",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
