@@ -9,31 +9,56 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./PlayerStorage": {
-      "types": "./src/artifacts/PlayerStorage.ts",
-      "import": "./dist/artifacts/PlayerStorage.js",
-      "default": "./dist/artifacts/PlayerStorage.js"
+    "./artifacts/WorldStorage": {
+      "types": "./src/artifacts/WorldStorage.ts",
+      "import": "./src/artifacts/WorldStorage.ts",
+      "default": "./src/artifacts/WorldStorage.ts"
     },
     "./artifacts/PlayerStorage": {
       "types": "./src/artifacts/PlayerStorage.ts",
-      "import": "./dist/artifacts/PlayerStorage.js",
-      "default": "./dist/artifacts/PlayerStorage.js"
+      "import": "./src/artifacts/PlayerStorage.ts",
+      "default": "./src/artifacts/PlayerStorage.ts"
     },
-    "./ArtifactStorage": {
-      "types": "./src/artifacts/ArtifactStorage.ts",
-      "import": "./dist/artifacts/ArtifactStorage.js",
-      "default": "./dist/artifacts/ArtifactStorage.js"
+    "./artifacts/PlanetStorage": {
+      "types": "./src/artifacts/PlanetStorage.ts",
+      "import": "./src/artifacts/PlanetStorage.ts",
+      "default": "./src/artifacts/PlanetStorage.ts"
+    },
+    "./artifacts/PlanetRevealedCoordsStorage": {
+      "types": "./src/artifacts/PlanetRevealedCoordsStorage.ts",
+      "import": "./src/artifacts/PlanetRevealedCoordsStorage.ts",
+      "default": "./src/artifacts/PlanetRevealedCoordsStorage.ts"
+    },
+    "./artifacts/PlanetEventsStorage": {
+      "types": "./src/artifacts/PlanetEventsStorage.ts",
+      "import": "./src/artifacts/PlanetEventsStorage.ts",
+      "default": "./src/artifacts/PlanetEventsStorage.ts"
+    },
+    "./artifacts/PlanetArtifactsStorage": {
+      "types": "./src/artifacts/PlanetArtifactsStorage.ts",
+      "import": "./src/artifacts/PlanetArtifactsStorage.ts",
+      "default": "./src/artifacts/PlanetArtifactsStorage.ts"
+    },
+    "./artifacts/ArrivalStorage": {
+      "types": "./src/artifacts/ArrivalStorage.ts",
+      "import": "./src/artifacts/ArrivalStorage.ts",
+      "default": "./src/artifacts/ArrivalStorage.ts"
     },
     "./artifacts/ArtifactStorage": {
       "types": "./src/artifacts/ArtifactStorage.ts",
-      "import": "./dist/artifacts/ArtifactStorage.js",
-      "default": "./dist/artifacts/ArtifactStorage.js"
+      "import": "./src/artifacts/ArtifactStorage.ts",
+      "default": "./src/artifacts/ArtifactStorage.ts"
+    },
+    "./artifacts/ArtifactLocationStorage": {
+      "types": "./src/artifacts/ArtifactLocationStorage.ts",
+      "import": "./src/artifacts/ArtifactLocationStorage.ts",
+      "default": "./src/artifacts/ArtifactLocationStorage.ts"
     }
   },
-  "main": "dist/index.js",
+  "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",

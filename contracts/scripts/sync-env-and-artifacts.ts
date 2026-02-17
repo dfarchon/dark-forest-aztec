@@ -1,5 +1,5 @@
 /**
- * Sync .env (ACCOUNT_ADDRESS + contract addresses only) to packages/contracts/src/index.ts,
+ * Sync .env (ACCOUNT_ADDRESS, START_BLOCK, and contract addresses only) to packages/contracts/src/index.ts,
  * and copy all contents of contracts/scripts/artifacts/ to packages/contracts/src/artifacts/.
  * Run from contracts: pnpm run sync-env-and-artifacts
  */
@@ -32,14 +32,19 @@ const ARTIFACTS_DEST = path.join(
     'artifacts'
 );
 
-/** Only write ACCOUNT_ADDRESS and keys ending with _CONTRACT_ADDRESS */
+/** Only write ACCOUNT_ADDRESS, START_BLOCK, and keys ending with _CONTRACT_ADDRESS */
 function isAllowedKey(key: string): boolean {
-    return key === 'ACCOUNT_ADDRESS' || key.endsWith('_CONTRACT_ADDRESS');
+    return (
+        key === 'ACCOUNT_ADDRESS' ||
+        key === 'START_BLOCK' ||
+        key.endsWith('_CONTRACT_ADDRESS')
+    );
 }
 
 /** Human-readable comment for known keys */
 const KEY_COMMENTS: Record<string, string> = {
     ACCOUNT_ADDRESS: 'The deployer account address.',
+    START_BLOCK: 'Block number at deployment start (from deploy script).',
     CONFIG_CONTRACT_ADDRESS: 'The address for the Config contract.',
     WORLD_STORAGE_CONTRACT_ADDRESS:
         'The address for the WorldStorage contract.',
@@ -96,7 +101,7 @@ function generateIndexTs(
     const lines: string[] = [
         '',
         '/**',
-        ' * ACCOUNT_ADDRESS and contract addresses. Generated from contracts/.env by sync-env-and-artifacts.ts',
+        ' * ACCOUNT_ADDRESS, START_BLOCK, and contract addresses. Generated from contracts/.env by sync-env-and-artifacts.ts',
         ' */',
         '',
     ];
@@ -124,7 +129,7 @@ function syncEnvToIndexTs(): void {
     }
     fs.writeFileSync(INDEX_TS_PATH, tsContent, 'utf-8');
     console.log(
-        `Wrote ${entries.length} exports (ACCOUNT_ADDRESS + contract addresses) to ${INDEX_TS_PATH}`
+        `Wrote ${entries.length} exports (ACCOUNT_ADDRESS, START_BLOCK, contract addresses) to ${INDEX_TS_PATH}`
     );
 }
 

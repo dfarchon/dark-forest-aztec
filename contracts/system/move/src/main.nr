@@ -528,6 +528,7 @@ contract Move {
         let mut new_target_planet_events = target_planet_events;
         let mut new_target_planet_artifacts = target_planet_artifacts;
         let mut new_target_artifact_locations = target_artifact_locations;
+        let mut new_world = world;
 
         if target_planet_is_initialized {
             let new_target_states = refresh_planet(
@@ -613,9 +614,9 @@ contract Move {
                     new_target_artifact_locations[i].last_updated = timestamp;
                 }
             }
+            new_world.planet_ids_count += 1;
         }
-
-        let mut new_world = world;
+      
         new_world.planet_events_count += 1;
 
         // Check move validity
