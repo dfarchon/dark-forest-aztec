@@ -1,4 +1,4 @@
-import type { Abstract } from "../utils";
+import type { Abstract } from "../identifiers";
 
 /**
  * Abstract type representing a type of space.
@@ -45,7 +45,6 @@ export const Biome = {
   WASTELAND: 8 as Biome,
   LAVA: 9 as Biome,
   CORRUPTED: 10 as Biome,
-  // Don't forget to update MIN_BIOME and/or MAX_BIOME in the `constants` package
 } as const;
 
 /**

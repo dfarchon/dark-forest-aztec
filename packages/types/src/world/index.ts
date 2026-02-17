@@ -1,8 +1,7 @@
-// Storage types — mirrors contracts/types/src/storage/
-// Modules: arrival, artifact, world, planet, player
-
 export * from "./arrival";
 export * from "./artifact";
+export * from "./capture_zones";
+export * from "./claim";
 export * from "./game_types";
 export * from "./planet";
 export * from "./player";

@@ -1,17 +1,17 @@
 import type {
   Abstract,
   ArtifactId,
-  EthAddress,
+  AztecAddr,
   LocationId,
   VoyageId,
-} from "../utils";
+} from "../identifiers";
 
 /**
  * Represents a voyage.
  */
 export interface QueuedArrival {
   eventId: VoyageId;
-  player: EthAddress;
+  player: AztecAddr;
   fromPlanet: LocationId;
   toPlanet: LocationId;
   energyArriving: number;
@@ -37,15 +37,3 @@ export const ArrivalType = {
   Photoid: 2 as ArrivalType,
   Wormhole: 3 as ArrivalType,
 } as const;
-
-/**
- * Convenience type for storing a voyage and a reference to a timeout that is triggered on voyage
- * arrival (in case the timeout needs to be cancelled).
- */
-export interface ArrivalWithTimer {
-  /**
-   * TODO: rename to `arrival` or 'voyage'.
-   */
-  arrivalData: QueuedArrival;
-  timer: ReturnType<typeof setTimeout>;
-}

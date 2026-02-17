@@ -1,118 +1,88 @@
-// import { CONTRACT_PRECISION } from '@darkforest_eth/constants';
-// import type { DarkForest } from '@darkforest_eth/contracts/typechain';
-// import { bonusFromHex } from '@darkforest_eth/hexgen';
-// import type {
-//   Planet,
-//   PlanetDefaults,
-//   PlanetLevel,
-//   PlanetType,
-//   SpaceType,
-// } from '@darkforest_eth/types';
-// import { address } from './address';
-// import { locationIdFromDecStr } from './location';
+import { CONTRACT_PRECISION, EMPTY_ADDRESS } from "@dfpunk/constants";
+import { bonusFromHex } from "@dfpunk/hexgen";
+import type {
+  AztecAddr,
+  Planet,
+  PlanetLevel,
+  PlanetType,
+  SpaceType,
+  UpgradeState,
+} from "@dfpunk/types";
+import { address } from "./address";
+import { locationIdFromHexStr, locationIdFromDecStr } from "./location";
+import type { PlanetState } from "./chain_state";
 
-// export type RawPlanet = Awaited<ReturnType<DarkForest['planets']>>;
+function toLocationId(s: string) {
+  return s.startsWith("0x") ? locationIdFromHexStr(s) : locationIdFromDecStr(s);
+}
 
-// /**
-//  * Converts data obtained from a contract call (typed with Typechain) into a
-//  * `Planet` that can be used by the client (see @darkforest_eth/types). Note
-//  * that some `Planet` fields (1) store client data that the blockchain is not
-//  * aware of, such as `unconfirmedDepartures`, (2) store derived data that is
-//  * calculated later by the client, such as `silverSpent` and `bonus`, or (3)
-//  * store data which must be added later from the results of additional contract
-//  * calls, such as `coordsRevealed` and `heldArtifactIds`. Therefore this
-//  * function may not be very useful to you outside of the specific context of the
-//  * provided Dark Forest web client.
-//  *
-//  * @param rawLocationId string of decimal digits representing a number equal to
-//  * a planet's ID
-//  * @param rawPlanet typechain-typed result of a call returning a
-//  * `PlanetTypes.Planet`
-//  */
-// export function decodePlanet(rawLocationId: string, rawPlanet: RawPlanet): Planet {
-//   const locationId = locationIdFromDecStr(rawLocationId.toString());
+function optAddr(s: string): AztecAddr | undefined {
+  const normalized = s.toLowerCase().startsWith("0x")
+    ? s.toLowerCase()
+    : "0x" + s.toLowerCase();
+  const empty = EMPTY_ADDRESS.toLowerCase();
+  if (normalized === empty || s === "0" || s === "") return undefined;
+  return address(s);
+}
 
-//   const planet: Planet = {
-//     locationId: locationId,
-//     perlin: rawPlanet.perlin.toNumber(),
-//     spaceType: rawPlanet.spaceType as SpaceType,
-//     owner: address(rawPlanet.owner),
-//     hatLevel: rawPlanet.hatLevel.toNumber(),
+/**
+ * Decodes chain state (key + PlanetState) into a Planet (see @dfpunk/types).
+ * key is the location id string.
+ */
+export function decodePlanet(key: string, state: PlanetState): Planet {
+  const locationId = toLocationId(key);
+  const precision = CONTRACT_PRECISION;
 
-//     planetLevel: rawPlanet.planetLevel.toNumber() as PlanetLevel,
-//     planetType: rawPlanet.planetType as PlanetType,
-//     isHomePlanet: rawPlanet.isHomePlanet,
+  const invader = optAddr(state.invader);
+  const capturer = optAddr(state.capturer);
 
-//     energyCap: rawPlanet.populationCap.toNumber() / CONTRACT_PRECISION,
-//     energyGrowth: rawPlanet.populationGrowth.toNumber() / CONTRACT_PRECISION,
-
-//     silverCap: rawPlanet.silverCap.toNumber() / CONTRACT_PRECISION,
-//     silverGrowth: rawPlanet.silverGrowth.toNumber() / CONTRACT_PRECISION,
-
-//     energy: rawPlanet.population.toNumber() / CONTRACT_PRECISION,
-//     silver: rawPlanet.silver.toNumber() / CONTRACT_PRECISION,
-
-//     range: rawPlanet.range.toNumber(),
-//     speed: rawPlanet.speed.toNumber(),
-//     defense: rawPlanet.defense.toNumber(),
-
-//     spaceJunk: rawPlanet.spaceJunk.toNumber(),
-
-//     // metadata
-//     lastUpdated: rawPlanet.lastUpdated.toNumber(),
-//     upgradeState: [
-//       rawPlanet.upgradeState0.toNumber(),
-//       rawPlanet.upgradeState1.toNumber(),
-//       rawPlanet.upgradeState2.toNumber(),
-//     ],
-//     unconfirmedClearEmoji: false,
-//     unconfirmedAddEmoji: false,
-//     loadingServerState: false,
-//     needsServerRefresh: true,
-//     silverSpent: 0, // this is stale and will be updated in GameObjects
-//     coordsRevealed: false, // this is stale and will be updated in GameObjects
-
-//     isInContract: true,
-//     syncedWithContract: true,
-//     hasTriedFindingArtifact: rawPlanet.hasTriedFindingArtifact,
-//     prospectedBlockNumber: rawPlanet.prospectedBlockNumber.eq(0)
-//       ? undefined
-//       : rawPlanet.prospectedBlockNumber.toNumber(),
-//     destroyed: rawPlanet.destroyed,
-//     heldArtifactIds: [], // this is stale and will be updated in GameObjects
-//     bonus: bonusFromHex(locationId),
-//     pausers: rawPlanet.pausers.toNumber(),
-//     energyGroDoublers: rawPlanet.energyGroDoublers.toNumber(),
-//     silverGroDoublers: rawPlanet.silverGroDoublers.toNumber(),
-//     invader: address(rawPlanet.invader),
-//     capturer: address(rawPlanet.capturer),
-//     invadeStartBlock: rawPlanet.invadeStartBlock.eq(0)
-//       ? undefined
-//       : rawPlanet.invadeStartBlock.toNumber(),
-//   };
-
-//   return planet;
-// }
-
-// type RawDefaults = Awaited<ReturnType<DarkForest['getDefaultStats']>>;
-
-// /**
-//  * Converts the raw typechain result of a call which fetches a
-//  * `PlanetTypes.PlanetDefaultStats[]` array of structs, and converts it into
-//  * an object with type `PlanetDefaults` (see @darkforest_eth/types).
-//  *
-//  * @param rawDefaults result of a ethers.js contract call which returns a raw
-//  * `PlanetTypes.PlanetDefaultStats` struct, typed with typechain.
-//  */
-// export function decodePlanetDefaults(rawDefaults: RawDefaults): PlanetDefaults {
-//   return {
-//     populationCap: rawDefaults.map((x) => x[1].toNumber() / CONTRACT_PRECISION),
-//     populationGrowth: rawDefaults.map((x) => x[2].toNumber() / CONTRACT_PRECISION),
-//     range: rawDefaults.map((x) => x[3].toNumber()),
-//     speed: rawDefaults.map((x) => x[4].toNumber()),
-//     defense: rawDefaults.map((x) => x[5].toNumber()),
-//     silverGrowth: rawDefaults.map((x) => x[6].toNumber() / CONTRACT_PRECISION),
-//     silverCap: rawDefaults.map((x) => x[7].toNumber() / CONTRACT_PRECISION),
-//     barbarianPercentage: rawDefaults.map((x) => x[8].toNumber()),
-//   };
-// }
+  return {
+    locationId,
+    perlin: state.perlin,
+    spaceType: state.space_type as SpaceType,
+    owner: address(state.owner),
+    hatLevel: Number(state.hat_level),
+    planetLevel: state.planet_level as PlanetLevel,
+    planetType: state.planet_type as PlanetType,
+    isHomePlanet: state.is_home_planet,
+    energyCap: Number(state.population_cap) / precision,
+    energyGrowth: Number(state.population_growth) / precision,
+    silverCap: Number(state.silver_cap) / precision,
+    silverGrowth: Number(state.silver_growth) / precision,
+    range: Number(state.range),
+    defense: Number(state.defense),
+    speed: Number(state.speed),
+    energy: Number(state.population) / precision,
+    silver: Number(state.silver) / precision,
+    spaceJunk: Number(state.space_junk),
+    lastUpdated: state.last_updated,
+    upgradeState: [
+      state.upgrade_state_0,
+      state.upgrade_state_1,
+      state.upgrade_state_2,
+    ] as UpgradeState,
+    hasTriedFindingArtifact: state.has_tried_finding_artifact,
+    heldArtifactIds: [],
+    destroyed: state.destroyed,
+    prospectedBlockNumber:
+      state.prospected_block_number === 0
+        ? undefined
+        : state.prospected_block_number,
+    unconfirmedAddEmoji: false,
+    unconfirmedClearEmoji: false,
+    loadingServerState: false,
+    needsServerRefresh: true,
+    silverSpent: 0,
+    isInContract: true,
+    syncedWithContract: true,
+    coordsRevealed: false,
+    bonus: bonusFromHex(locationId),
+    pausers: Number(state.pausers),
+    energyGroDoublers: Number(state.energy_gro_doublers),
+    silverGroDoublers: Number(state.silver_gro_doublers),
+    invader,
+    capturer,
+    invadeStartBlock:
+      state.invade_start_block === 0 ? undefined : state.invade_start_block,
+  };
+}

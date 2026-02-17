@@ -1,38 +1,34 @@
-// import { LOCATION_ID_UB } from '@darkforest_eth/constants';
-// import type { DarkForest } from '@darkforest_eth/contracts/typechain';
-// import type { RevealedCoords } from '@darkforest_eth/types';
-// import bigInt from 'big-integer';
-// import { address } from './address';
-// import { locationIdFromDecStr } from './location';
+import { LOCATION_ID_UB } from "@dfpunk/constants";
+import type { RevealedCoords } from "@dfpunk/types";
+import { address } from "./address";
+import { locationIdFromHexStr, locationIdFromDecStr } from "./location";
+import type { PlanetRevealedCoordsState } from "./chain_state";
 
-// export type RawRevealedCoords = Awaited<ReturnType<DarkForest['revealedCoords']>>;
+const HALF_UB = LOCATION_ID_UB / 2n;
 
-// /**
-//  * Converts the result of a typechain-typed ethers.js contract call returning a
-//  * `RevealTypes.RevealedCoords` struct into a `RevealedCoords` object (see
-//  * @darkforest_eth/types)
-//  *
-//  * @param rawRevealedCoords the result of a typechain-typed ethers.js contract
-//  * call returning a RevealTypes.RevealedCoords` struct
-//  */
-// export function decodeRevealedCoords(rawRevealedCoords: RawRevealedCoords): RevealedCoords {
-//   const locationId = locationIdFromDecStr(rawRevealedCoords.locationId.toString());
-//   let xBI = bigInt(rawRevealedCoords.x.toString()); // nonnegative residue mod p
-//   let yBI = bigInt(rawRevealedCoords.y.toString()); // nonnegative residue mod p
-//   let x = 0;
-//   let y = 0;
-//   if (xBI.gt(LOCATION_ID_UB.divide(2))) {
-//     xBI = xBI.minus(LOCATION_ID_UB);
-//   }
-//   x = xBI.toJSNumber();
-//   if (yBI.gt(LOCATION_ID_UB.divide(2))) {
-//     yBI = yBI.minus(LOCATION_ID_UB);
-//   }
-//   y = yBI.toJSNumber();
-//   return {
-//     hash: locationId,
-//     x,
-//     y,
-//     revealer: address(rawRevealedCoords.revealer),
-//   };
-// }
+function toSignedNumber(s: string): number {
+  let n = BigInt(s);
+  if (n > HALF_UB) n = n - LOCATION_ID_UB;
+  return Number(n);
+}
+
+function toLocationId(s: string) {
+  return s.startsWith("0x") ? locationIdFromHexStr(s) : locationIdFromDecStr(s);
+}
+
+/**
+ * Decodes chain state (key + PlanetRevealedCoordsState) into RevealedCoords (see @dfpunk/types).
+ * key is the location id string; state.x and state.y are residue mod p, converted to signed number.
+ */
+export function decodePlanetRevealedCoords(
+  key: string,
+  state: PlanetRevealedCoordsState,
+): RevealedCoords {
+  const hash = toLocationId(state.location_id);
+  return {
+    hash,
+    x: toSignedNumber(state.x),
+    y: toSignedNumber(state.y),
+    revealer: address(state.revealer),
+  };
+}

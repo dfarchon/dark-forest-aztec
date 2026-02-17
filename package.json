@@ -34,7 +34,8 @@
     "husky": "9.1.7",
     "lint-staged": "15.2.11",
     "prettier": "3.7.4",
-    "sort-package-json": "2.10.1"
+    "sort-package-json": "2.10.1",
+    "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.28.0",
   "engines": {

@@ -1,7 +1,7 @@
 {
   "name": "@dfpunk/serde",
   "version": "0.0.0",
-  "description": "",
+  "description": "Decode chain state (key + State) to @dfpunk/types; no ethers/contracts",
   "keywords": [],
   "license": "",
   "author": "",
@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@dfpunk/constants": "workspace:*",
-    "@dfpunk/contracts": "workspace:*",
     "@dfpunk/hexgen": "workspace:*",
     "@dfpunk/types": "workspace:*"
   },

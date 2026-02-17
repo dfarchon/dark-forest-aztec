@@ -1,4 +1,4 @@
-import type { EthAddress, LocationId } from "../utils";
+import type { AztecAddr, LocationId } from "../identifiers";
 import type { WorldCoords, WorldLocation } from "./world";
 
 /**
@@ -6,9 +6,9 @@ import type { WorldCoords, WorldLocation } from "./world";
  */
 export type RevealedCoords = WorldCoords & {
   hash: LocationId;
-  revealer: EthAddress;
+  revealer: AztecAddr;
 };
 
 export type RevealedLocation = WorldLocation & {
-  revealer: EthAddress;
+  revealer: AztecAddr;
 };

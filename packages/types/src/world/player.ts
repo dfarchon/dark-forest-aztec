@@ -1,24 +1,16 @@
-import type { EthAddress, LocationId } from "../utils";
+import type { AztecAddr, LocationId } from "../identifiers";
 
 /**
  * Represents a player; corresponds fairly closely with the analogous contract
  * struct
  */
 export type Player = {
-  address: EthAddress;
-  // twitter?: string;
-  /**
-   * seconds (not millis)
-   */
+  address: AztecAddr;
   initTimestamp: number;
   homePlanetId: LocationId;
-  /**
-   * seconds (not millis)
-   */
   lastRevealTimestamp: number;
   lastClaimTimestamp: number;
   score: number;
-
   spaceJunk: number;
   spaceJunkLimit: number;
   claimedShips: boolean;

@@ -1,4 +1,4 @@
-import type { Abstract } from "../utils";
+import type { Abstract } from "../identifiers";
 
 /**
  * The effects of an upgrade on the stats of a planet. Both upgrades purchased

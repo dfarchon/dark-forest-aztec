@@ -5,25 +5,30 @@ import type {
   ArtifactRarity,
   ArtifactType,
   Biome,
-  EthAddress,
   LocationId,
+  Upgrade,
 } from "@dfpunk/types";
-import { ArtifactRarity as ArtifactRarityEnum } from "@dfpunk/types";
-import type { ArtifactUpdate } from "@dfpunk/contracts/artifacts/ArtifactStorage";
+import {
+  ArtifactRarity as ArtifactRarityEnum,
+  ArtifactType as ArtifactTypeEnum,
+  Biome as BiomeEnum,
+} from "@dfpunk/types";
 import { address } from "./address";
-import { locationIdFromBigInt, locationIdFromHexStr } from "./location";
+import { decodeArtifactLocation } from "./artifact_location";
+import type { ArtifactLocationState, ArtifactState } from "./chain_state";
+import { locationIdFromHexStr, locationIdFromDecStr } from "./location";
 
-/** Field value from Aztec contract (field element as bigint or hex string). */
 type FieldLike = bigint | string;
 
-/**
- * Converts a possibly 0x-prefixed string of hex digits to an `ArtifactId`: a
- * non-0x-prefixed all lowercase hex string of exactly 64 hex characters
- * (0-padded if necessary).
- *
- * @param artifactId Possibly 0x-prefixed, possibly unpadded hex `string`
- * representation of an artifact's ID.
- */
+function isFieldZero(s: string): boolean {
+  if (s === "0" || s === "0x0" || s === "0x") return true;
+  try {
+    return BigInt(s.startsWith("0x") ? s : "0x" + s) === 0n;
+  } catch {
+    return false;
+  }
+}
+
 export function artifactIdFromHexStr(artifactId: string): ArtifactId {
   const hex = artifactId.startsWith("0x") ? artifactId : "0x" + artifactId;
   const n = BigInt(hex);
@@ -33,14 +38,6 @@ export function artifactIdFromHexStr(artifactId: string): ArtifactId {
   return ret as ArtifactId;
 }
 
-/**
- * Converts a string representing a decimal number into an ArtifactID: a
- * non-0x-prefixed all lowercase hex string of exactly 64 hex characters
- * (0-padded if necessary).
- *
- * @param artifactId `string` of decimal digits, the base 10 representation of an
- * artifact ID.
- */
 export function artifactIdFromDecStr(artifactId: string): ArtifactId {
   const n = BigInt(artifactId);
   let ret = n.toString(16);
@@ -49,9 +46,9 @@ export function artifactIdFromDecStr(artifactId: string): ArtifactId {
 }
 
 /**
- * Converts a field value (from Aztec contract) to an ArtifactId.
+ * Converts a chain/field value (bigint or string) to an ArtifactId.
  */
-export function fieldToArtifactId(f: FieldLike): ArtifactId {
+export function artifactIdFromField(f: FieldLike): ArtifactId {
   if (typeof f === "bigint") return artifactIdFromDecStr(f.toString());
   const s = String(f);
   return s.startsWith("0x")
@@ -59,35 +56,12 @@ export function fieldToArtifactId(f: FieldLike): ArtifactId {
     : artifactIdFromHexStr("0x" + s);
 }
 
-/**
- * Converts an ArtifactID to a decimal string with equivalent numerical value;
- * can be used if you need to pass an artifact ID into a contract call.
- *
- * @param artifactId non-0x-prefixed lowercase hex `string` of 64 hex characters
- * representing an artifact's ID
- */
 export function artifactIdToDecStr(artifactId: ArtifactId): string {
   return BigInt("0x" + artifactId).toString(10);
 }
 
-function fieldToLocationId(f: FieldLike): LocationId {
-  if (typeof f === "bigint") return locationIdFromBigInt(f);
-  const s = String(f);
-  return locationIdFromHexStr(s.startsWith("0x") ? s : "0x" + s) as LocationId;
-}
-
-function isFieldZero(f: FieldLike): boolean {
-  if (typeof f === "bigint") return f === 0n;
-  const s = String(f);
-  return s === "0" || s === "0x0" || s === "0x";
-}
-
 export type RawArtifactPointValues = (bigint | number)[];
 
-/**
- * Converts raw artifact point values (e.g. from Config contract) to an
- * `ArtifactPointValues` object keyed by ArtifactRarity.
- */
 export function decodeArtifactPointValues(
   rawPointValues: RawArtifactPointValues,
 ): ArtifactPointValues {
@@ -113,42 +87,195 @@ export function decodeArtifactPointValues(
   };
 }
 
+const DEFENSE_MULTIPLIERS_PLANETARY_SHIELD = [100, 150, 200, 300, 450, 650];
+const DEF_MULTIPLIERS_PHOTOID_CANNON = [100, 50, 40, 30, 20, 10];
+const TIME_DELAY_RANGE_PHOTOID = [100, 200, 200, 200, 200, 200];
+const TIME_DELAY_SPEED_PHOTOID = [100, 500, 1000, 1500, 2000, 2500];
+
+function upgrade(
+  energyCap: number,
+  energyGro: number,
+  range: number,
+  speed: number,
+  def: number,
+): Upgrade {
+  return {
+    energyCapMultiplier: energyCap,
+    energyGroMultiplier: energyGro,
+    rangeMultiplier: range,
+    speedMultiplier: speed,
+    defMultiplier: def,
+  };
+}
+
 /**
- * Converts an {@link ArtifactUpdate} from the ArtifactStorage contract into an
- * {@link Artifact} object (see @dfpunk/types).
- *
- * @param artifactUpdate Raw ArtifactUpdate from get_artifact or event
- * @param currentOwner Optional current owner address (e.g. from holder registry)
+ * Returns the default Upgrade (all multipliers 100). Mirrors contract defaultUpgrade().
+ */
+export function defaultUpgrade(): Upgrade {
+  return upgrade(100, 100, 100, 100, 100);
+}
+
+/**
+ * Returns the time-delayed upgrade for an artifact. Mirrors contract timeDelayUpgrade().
+ */
+export function timeDelayUpgrade(artifact: Artifact): Upgrade {
+  if ((artifact.artifactType as number) === ArtifactTypeEnum.PhotoidCannon) {
+    const r = Math.min(5, Math.max(0, artifact.rarity as number));
+    return upgrade(
+      100,
+      100,
+      TIME_DELAY_RANGE_PHOTOID[r] ?? 100,
+      TIME_DELAY_SPEED_PHOTOID[r] ?? 100,
+      100,
+    );
+  }
+  return defaultUpgrade();
+}
+
+/**
+ * Computes the Upgrade applied when this artifact is on a planet (mirrors
+ * contract _getUpgradeForArtifact).
+ */
+export function getUpgradeForArtifact(artifact: Artifact): Upgrade {
+  const t = artifact.artifactType as number;
+  const r = Math.min(5, Math.max(0, artifact.rarity as number));
+  const b = artifact.planetBiome as number;
+
+  if (t === ArtifactTypeEnum.PlanetaryShield) {
+    return upgrade(
+      100,
+      100,
+      20,
+      20,
+      DEFENSE_MULTIPLIERS_PLANETARY_SHIELD[r] ?? 100,
+    );
+  }
+
+  if (t === ArtifactTypeEnum.PhotoidCannon) {
+    return upgrade(
+      100,
+      100,
+      100,
+      100,
+      DEF_MULTIPLIERS_PHOTOID_CANNON[r] ?? 100,
+    );
+  }
+
+  if (t >= 5) {
+    return upgrade(100, 100, 100, 100, 100);
+  }
+
+  let popCap = 100;
+  let popGro = 100;
+  let range = 100;
+  let speed = 100;
+  let def = 100;
+
+  if (t === ArtifactTypeEnum.Monolith) {
+    popCap += 5;
+    popGro += 5;
+  } else if (t === ArtifactTypeEnum.Colossus) {
+    speed += 5;
+  } else if (t === ArtifactTypeEnum.Spaceship) {
+    range += 5;
+  } else if (t === ArtifactTypeEnum.Pyramid) {
+    def += 5;
+  }
+
+  if (b === BiomeEnum.OCEAN) {
+    speed += 5;
+    def += 5;
+  } else if (b === BiomeEnum.FOREST) {
+    def += 5;
+    popCap += 5;
+    popGro += 5;
+  } else if (b === BiomeEnum.GRASSLAND) {
+    popCap += 5;
+    popGro += 5;
+    range += 5;
+  } else if (b === BiomeEnum.TUNDRA) {
+    def += 5;
+    range += 5;
+  } else if (b === BiomeEnum.SWAMP) {
+    speed += 5;
+    range += 5;
+  } else if (b === BiomeEnum.DESERT) {
+    speed += 10;
+  } else if (b === BiomeEnum.ICE) {
+    range += 10;
+  } else if (b === BiomeEnum.WASTELAND) {
+    def += 10;
+  } else if (b === BiomeEnum.LAVA) {
+    popCap += 10;
+    popGro += 10;
+  } else if (b === BiomeEnum.CORRUPTED) {
+    range += 5;
+    speed += 5;
+    popCap += 5;
+    popGro += 5;
+  }
+
+  const scale = 1 + Math.floor(r / 2);
+
+  popCap = scale * popCap - (scale - 1) * 100;
+  popGro = scale * popGro - (scale - 1) * 100;
+  speed = scale * speed - (scale - 1) * 100;
+  range = scale * range - (scale - 1) * 100;
+  def = scale * def - (scale - 1) * 100;
+
+  return upgrade(popCap, popGro, range, speed, def);
+}
+
+function toLocationId(s: string): LocationId {
+  return s.startsWith("0x") ? locationIdFromHexStr(s) : locationIdFromDecStr(s);
+}
+
+/**
+ * Decodes chain state (key + ArtifactState) into an Artifact (see @dfpunk/types).
+ * key is the artifact id string; currentOwner defaults to state.controller.
+ * When artifactLocation is provided, onPlanetId and onVoyageId are set from it.
  */
 export function decodeArtifact(
-  artifactUpdate: ArtifactUpdate,
+  key: string,
+  state: ArtifactState,
   currentOwner?: string,
+  artifactLocation?: ArtifactLocationState,
 ): Artifact {
-  const { id, state } = artifactUpdate;
-
-  const wormholeToRaw = state.wormhole_to;
-  const wormholeTo = isFieldZero(wormholeToRaw)
+  const id = key.startsWith("0x")
+    ? artifactIdFromHexStr(key)
+    : artifactIdFromDecStr(key);
+  const wormholeTo = isFieldZero(state.wormhole_to)
     ? undefined
-    : fieldToLocationId(wormholeToRaw);
+    : (toLocationId(state.wormhole_to) as LocationId);
 
-  return {
+  const art: Artifact = {
     isInititalized: true,
-    id: fieldToArtifactId(id),
-    planetDiscoveredOn: fieldToLocationId(state.planet_discovered_on),
+    id,
+    planetDiscoveredOn: toLocationId(state.planet_discovered_on),
     rarity: Number(state.rarity) as ArtifactRarity,
     planetBiome: Number(state.planet_biome) as Biome,
     mintedAtTimestamp: Number(state.minted_at_timestamp),
-    discoverer: address(String(state.discoverer)),
+    discoverer: address(state.discoverer),
     artifactType: Number(state.artifact_type) as ArtifactType,
     activations: Number(state.activations),
     lastActivated: Number(state.last_activated),
     lastDeactivated: Number(state.last_deactivated),
-    controller: address(String(state.controller)),
+    controller: address(state.controller),
     wormholeTo,
-    currentOwner: (currentOwner
+    currentOwner: currentOwner
       ? address(currentOwner)
-      : address(String(state.controller))) as EthAddress,
+      : address(state.controller),
     onPlanetId: undefined,
     onVoyageId: undefined,
+    upgrade: defaultUpgrade(),
+    timeDelayedUpgrade: defaultUpgrade(),
   };
+  if (artifactLocation) {
+    const loc = decodeArtifactLocation(key, artifactLocation);
+    art.onPlanetId = loc.planetId;
+    art.onVoyageId = loc.voyageId;
+  }
+  art.upgrade = getUpgradeForArtifact(art);
+  art.timeDelayedUpgrade = timeDelayUpgrade(art);
+  return art;
 }

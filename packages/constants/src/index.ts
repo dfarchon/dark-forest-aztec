@@ -3,8 +3,8 @@ import {
   ArtifactRarity,
   ArtifactType,
   Biome,
-  EthAddress,
-  // GasPrices,
+  AztecAddr,
+  GasPrices,
   LocationId,
   PlanetLevel,
 } from "@dfpunk/types";
@@ -34,10 +34,10 @@ export const LOCATION_ID_UB: bigint = BigInt(
 );
 
 /**
- * The 0x0 Ethereum address, which is used for unowned planets, artifacts without an owner, etc.
+ * Empty Aztec address (32 bytes, 0x + 64 hex chars). Used for unowned planets, artifacts without an owner, etc.
  */
 export const EMPTY_ADDRESS =
-  "0x0000000000000000000000000000000000000000" as EthAddress;
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as AztecAddr;
 
 /**
  * A blank LocationID (all zeros).
@@ -108,11 +108,11 @@ export const GAS_PRICE_API =
 /**
  * In case we cannot load gas prices from xDai, these are the default auto gas prices.
  */
-// export const DEFAULT_GAS_PRICES: GasPrices = {
-//     slow: 1,
-//     average: 3,
-//     fast: 10,
-// } as const;
+export const DEFAULT_GAS_PRICES: GasPrices = {
+  slow: 1,
+  average: 3,
+  fast: 10,
+} as const;
 
 /**
  * In case xDai's auto-price is something ridiculous, we don't want our players to insta run out of

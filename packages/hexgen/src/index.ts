@@ -4,7 +4,7 @@
  *
  * @packageDocumentation
  */
-import type { LocationId, Planet, PlanetBonus } from "@dfpunk/world-types";
+import type { LocationId, Planet, PlanetBonus } from "@dfpunk/types";
 
 /**
  * Extracts a range of bytes from a hex string as a big integer.

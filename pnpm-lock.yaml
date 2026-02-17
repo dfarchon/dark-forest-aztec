@@ -66,6 +66,9 @@ importers:
       sort-package-json:
         specifier: 2.10.1
         version: 2.10.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   client:
     dependencies:
@@ -122,7 +125,7 @@ importers:
         specifier: 7.3.1
         version: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1)
       vite-plugin-node-polyfills:
-        specifier: ^0.25.0
+        specifier: 0.25.0
         version: 0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1))
 
   contracts:
@@ -186,6 +189,25 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/gamelogic:
+    dependencies:
+      '@dfpunk/constants':
+        specifier: workspace:*
+        version: link:../constants
+      '@dfpunk/serde':
+        specifier: workspace:*
+        version: link:../serde
+      '@dfpunk/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      prettier:
+        specifier: 3.7.4
+        version: 3.7.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/hashing:
     dependencies:
       '@dfpunk/types':
@@ -215,14 +237,36 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/procedural:
+    dependencies:
+      '@dfpunk/constants':
+        specifier: workspace:*
+        version: link:../constants
+      '@dfpunk/gamelogic':
+        specifier: workspace:*
+        version: link:../gamelogic
+      '@dfpunk/hashing':
+        specifier: workspace:*
+        version: link:../hashing
+      '@dfpunk/serde':
+        specifier: workspace:*
+        version: link:../serde
+      '@dfpunk/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      prettier:
+        specifier: 3.7.4
+        version: 3.7.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/serde:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
         version: link:../constants
-      '@dfpunk/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@dfpunk/hexgen':
         specifier: workspace:*
         version: link:../hexgen
@@ -239,6 +283,12 @@ importers:
 
   packages/types:
     devDependencies:
+      '@types/gl-matrix':
+        specifier: 3.2.0
+        version: 3.2.0
+      gl-matrix:
+        specifier: 3.3.0
+        version: 3.3.0
       prettier:
         specifier: 3.7.4
         version: 3.7.4
@@ -1669,6 +1719,10 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
+  '@types/gl-matrix@3.2.0':
+    resolution: {integrity: sha512-CY4JAtSOGQX7rVgqVuOk7ZfaLv8VeadDMPj3smMOy8Hp/YiHONa3Mr0mEUgbo0eEwV7+Owpf6BwspcA7hv4NXg==}
+    deprecated: This is a stub types definition. gl-matrix provides its own type definitions, so you do not need this installed.
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -2607,6 +2661,9 @@ packages:
     resolution: {integrity: sha512-ICsMM1Wk8xSGMowkOmPrzo2Fgmfo4bMHLNX6ytHjajRJUqvHOw/TFapQ+QG75c3X/tTDDhOSRPGC52dDbNM8FQ==}
     engines: {node: '>=16'}
     hasBin: true
+
+  gl-matrix@3.3.0:
+    resolution: {integrity: sha512-COb7LDz+SXaHtl/h4LeaFcNdJdAQSDeVqjiIihSXNrkWObZLhDI4hIkZC11Aeqp7bcE72clzB0BnDXr2SmslRA==}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -6244,6 +6301,10 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
+  '@types/gl-matrix@3.2.0':
+    dependencies:
+      gl-matrix: 3.3.0
+
   '@types/json-schema@7.0.15': {}
 
   '@types/node@24.10.7':
@@ -7309,6 +7370,8 @@ snapshots:
       meow: 12.1.1
       split2: 4.2.0
 
+  gl-matrix@3.3.0: {}
+
   glob-parent@5.1.2:
     dependencies:
       is-glob: 4.0.3
@@ -7825,7 +7888,7 @@ snapshots:
 
   md5.js@1.3.5:
     dependencies:
-      hash-base: 3.0.5
+      hash-base: 3.1.2
       inherits: 2.0.4
       safe-buffer: 5.2.1
 

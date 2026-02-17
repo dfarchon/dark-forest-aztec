@@ -616,7 +616,7 @@ contract Move {
             }
             new_world.planet_ids_count += 1;
         }
-      
+
         new_world.planet_events_count += 1;
 
         // Check move validity
