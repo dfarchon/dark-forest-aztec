@@ -14,6 +14,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { PlanetCapsStorageContract } from './artifacts/PlanetCapsStorage.ts';
+import { PlanetEventsStorageContract } from './artifacts/PlanetEventsStorage.ts';
+import { PlanetModsStorageContract } from './artifacts/PlanetModsStorage.ts';
 import { PlanetOwnerStorageContract } from './artifacts/PlanetOwnerStorage.ts';
 import { PlanetResourcesStorageContract } from './artifacts/PlanetResourcesStorage.ts';
 import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
@@ -39,6 +41,21 @@ type PlanetResourcesState = {
     upgrade_state_1: bigint | number;
     upgrade_state_2: bigint | number;
     last_updated: bigint | number;
+};
+
+type PlanetEventsState = {
+    events: Array<Record<string, unknown>>;
+    events_count: bigint | number;
+};
+
+type PlanetModsState = {
+    pausers: bigint | number;
+    energy_gro_doublers: bigint | number;
+    silver_gro_doublers: bigint | number;
+    hat_level: bigint | number;
+    space_junk: bigint | number;
+    has_tried_finding_artifact: boolean;
+    prospected_block_number: bigint | number;
 };
 
 type UpgradeState = {
@@ -199,6 +216,27 @@ async function main() {
         location,
         'PlanetResourcesUpdated'
     );
+    const eventsBefore = await readStateFromEvent<PlanetEventsState>(
+        ctx,
+        PlanetEventsStorageContract.events.PlanetEventsUpdated,
+        createBlock,
+        location,
+        'PlanetEventsUpdated'
+    );
+    const modsBefore = await readStateFromEvent<PlanetModsState>(
+        ctx,
+        PlanetModsStorageContract.events.PlanetModsUpdated,
+        createBlock,
+        location,
+        'PlanetModsUpdated'
+    );
+
+    const pendingEventsBefore = toBigInt(eventsBefore.events_count);
+    if (pendingEventsBefore > 0n) {
+        throw new Error(
+            `Planet has pending events before upgrade: events_count=${pendingEventsBefore.toString()}`
+        );
+    }
 
     console.log('   owner (before):', String(ownerBefore.owner));
     console.log('   caps (before):', capSummary(capsBefore));
@@ -298,7 +336,9 @@ async function main() {
             0,
             ownerForUpgrade,
             capsBefore,
-            resourcesFunded
+            resourcesFunded,
+            eventsBefore,
+            modsBefore
         )
         .send(sendOpts(admin));
     const upgradeReceipt = await upgradeTx.wait();
@@ -377,6 +417,17 @@ async function main() {
         'upgrade_state_2',
         toBigInt(resourcesAfter.upgrade_state_2),
         toBigInt(resourcesFunded.upgrade_state_2)
+    );
+
+    const lastUpdatedBefore = toBigInt(resourcesFunded.last_updated);
+    const lastUpdatedAfter = toBigInt(resourcesAfter.last_updated);
+    if (lastUpdatedAfter < lastUpdatedBefore) {
+        throw new Error(
+            `last_updated regression: after=${lastUpdatedAfter.toString()} < before=${lastUpdatedBefore.toString()}`
+        );
+    }
+    console.log(
+        `   ✅ last_updated refreshed: ${lastUpdatedBefore.toString()} → ${lastUpdatedAfter.toString()}`
     );
 
     console.log('\n📊 Before/After comparison');

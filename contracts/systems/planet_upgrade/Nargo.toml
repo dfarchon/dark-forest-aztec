@@ -13,3 +13,5 @@ libs = { path = "../../libs" }
 planet_owner_storage = { path = "../../storage/planet_owner" }
 planet_caps_storage = { path = "../../storage/planet_caps" }
 planet_resources_storage = { path = "../../storage/planet_resources" }
+planet_events_storage = { path = "../../storage/planet_events" }
+planet_mods_storage = { path = "../../storage/planet_mods" }

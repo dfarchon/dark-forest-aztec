@@ -131,6 +131,8 @@ const PLANET_UPGRADE_FUNCTIONS = [
     'set_planet_owner_storage_address',
     'set_planet_caps_storage_address',
     'set_planet_resources_storage_address',
+    'set_planet_events_storage_address',
+    'set_planet_mods_storage_address',
     'upgrade_planet',
 ] as const;
 
@@ -185,6 +187,16 @@ const CONTRACT_SPECS = [
         exportName: 'PlanetResourcesStorageContract',
     },
     {
+        name: 'PlanetModsStorage',
+        modulePath: './artifacts/PlanetModsStorage.ts',
+        exportName: 'PlanetModsStorageContract',
+    },
+    {
+        name: 'PlanetEventsStorage',
+        modulePath: './artifacts/PlanetEventsStorage.ts',
+        exportName: 'PlanetEventsStorageContract',
+    },
+    {
         name: 'Admin',
         modulePath: './artifacts/Admin.ts',
         exportName: 'AdminContract',
@@ -208,6 +220,8 @@ const ENV_KEYS: Array<[string, string]> = [
     ['PlanetOwnerStorage', 'PLANET_OWNER_STORAGE_CONTRACT_ADDRESS'],
     ['PlanetCapsStorage', 'PLANET_CAPS_STORAGE_CONTRACT_ADDRESS'],
     ['PlanetResourcesStorage', 'PLANET_RESOURCES_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetModsStorage', 'PLANET_MODS_STORAGE_CONTRACT_ADDRESS'],
+    ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['PlanetUpgrade', 'PLANET_UPGRADE_CONTRACT_ADDRESS'],
@@ -341,7 +355,7 @@ async function main() {
     console.log('   user1:', ctx.accounts.users[0].toString());
     console.log('   user2:', ctx.accounts.users[1].toString());
     console.log(
-        '\n✅ Contracts loaded: Config, GlobalStateStorage, PlayerStorage, PlanetOwnerStorage, PlanetCapsStorage, PlanetResourcesStorage, Admin, Core, PlanetUpgrade'
+        '\n✅ Contracts loaded: Config, GlobalStateStorage, PlayerStorage, PlanetOwnerStorage, PlanetCapsStorage, PlanetResourcesStorage, PlanetModsStorage, PlanetEventsStorage, Admin, Core, PlanetUpgrade'
     );
 
     printContractFunctions();

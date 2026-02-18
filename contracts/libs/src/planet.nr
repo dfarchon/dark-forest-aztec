@@ -315,6 +315,8 @@ pub fn calculate_upgrade_cost(
     let new_total_level =
         current_total_level + defense_upgrades + range_upgrades + speed_upgrades;
 
+    assert((new_total_level as u32) <= 5, "new_total_level exceeds silver_cost_percent bounds");
+
     let mut silver_cost_percent_sum: u128 = 0;
     for level in (current_total_level as u32)..(new_total_level as u32) {
         silver_cost_percent_sum += upgrade_config.silver_cost_percent[level] as u128;
@@ -337,6 +339,7 @@ pub fn apply_upgrade(
     planet_resources.silver -= silver_cost;
 
     let defense_start = planet_resources.upgrade_state_0;
+    assert((defense_start + defense_upgrades) as u32 <= 4, "Defense level exceeds upgrades array bounds");
     for i in 0..(defense_upgrades as u32) {
         let level = defense_start + i as u8;
         let upgrade = upgrades[UpgradeBranch::Defense() as u32][level as u32];
@@ -344,6 +347,7 @@ pub fn apply_upgrade(
     }
 
     let range_start = planet_resources.upgrade_state_1;
+    assert((range_start + range_upgrades) as u32 <= 4, "Range level exceeds upgrades array bounds");
     for i in 0..(range_upgrades as u32) {
         let level = range_start + i as u8;
         let upgrade = upgrades[UpgradeBranch::Range() as u32][level as u32];
@@ -351,6 +355,7 @@ pub fn apply_upgrade(
     }
 
     let speed_start = planet_resources.upgrade_state_2;
+    assert((speed_start + speed_upgrades) as u32 <= 4, "Speed level exceeds upgrades array bounds");
     for i in 0..(speed_upgrades as u32) {
         let level = speed_start + i as u8;
         let upgrade = upgrades[UpgradeBranch::Speed() as u32][level as u32];

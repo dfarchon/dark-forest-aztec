@@ -109,6 +109,24 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
     planet
 }
 
+/// Light refresh: time-based resource growth using split structs.
+/// Reusable by any system that needs current population/silver.
+/// Does NOT process arrivals/events -- use refresh_planet for that.
+pub fn light_refresh_resources(
+    timestamp: u64,
+    planet_owner: PlanetOwner,
+    planet_caps: PlanetCaps,
+    planet_resources: PlanetResources,
+    planet_mods: PlanetMods,
+) -> PlanetResources {
+    let planet = Planet::from_parts(
+        PlanetMeta::zero(), planet_owner, planet_caps, planet_resources, planet_mods,
+    );
+    let mut updated = update_planet(timestamp, planet);
+    let (_, _, _, resources, _) = updated.to_meta_owner_caps_resources_mods();
+    resources
+}
+
 /// Noir port of Solidity `LibLazyUpdate.applyArrival`.
 /// Applies an arrival event to a planet.
 /// Assumes that the planet last updated time is equal to the arrival time trigger.

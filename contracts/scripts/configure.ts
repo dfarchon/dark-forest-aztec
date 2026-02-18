@@ -115,7 +115,6 @@ function addressesFromEnv(): Record<string, string> {
         ['PlanetResourcesStorage', 'PLANET_RESOURCES_STORAGE_CONTRACT_ADDRESS'],
         ['PlanetModsStorage', 'PLANET_MODS_STORAGE_CONTRACT_ADDRESS'],
         ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetCoordsStorage', 'PLANET_COORDS_STORAGE_CONTRACT_ADDRESS'],
         ['PlanetArtifactsStorage', 'PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS'],
         ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
         ['ArtifactStateStorage', 'ARTIFACT_STATE_STORAGE_CONTRACT_ADDRESS'],
@@ -599,6 +598,28 @@ async function main() {
                     .add_authorized_contract(planetUpgrade.address)
                     .send(opts);
                 await tx2.wait();
+            }
+        );
+
+        await run(
+            'planetUpgrade.set_planet_events_storage_address()',
+            async () => {
+                const tx = await planetUpgrade.methods
+                    .set_planet_events_storage_address(
+                        planetEventsStorage.address
+                    )
+                    .send(opts);
+                await tx.wait();
+            }
+        );
+
+        await run(
+            'planetUpgrade.set_planet_mods_storage_address()',
+            async () => {
+                const tx = await planetUpgrade.methods
+                    .set_planet_mods_storage_address(planetModsStorage.address)
+                    .send(opts);
+                await tx.wait();
             }
         );
     });

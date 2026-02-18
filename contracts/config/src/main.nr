@@ -210,6 +210,7 @@ pub contract Config {
     #[external("public")]
     fn set_upgrade_config(config: UpgradeConfig) {
         self.internal.assert_admin();
+        config.validate();
         self.storage.upgrade_config.write(config);
     }
 
