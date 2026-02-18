@@ -106,4 +106,4 @@ const status = indexer.getStatus();
 - `getProcessedBlockNumber()` – use for tx inputs (e.g. `next_change_block`)
 - `getWorld()`, `getPlanet(id)`, `getPlayer(id)`, `getArrival(id)`, etc.
 - `getTable(tableName, id?)` – typed by table name (`TableRowType[K]`)
-- `subscribe(listener)` – called when state changes after applying blocks
+- `subscribe(listener)` – called when state changes; listener receives `IndexerChangePayload` with `tables`, `fromBlock`, `toBlock`, and optionally `updatedIdsByTable`. Use `updatedIdsByTable` to do **incremental updates**: only re-read and merge the listed row ids per table instead of re-reading the whole table (important when a table has many rows, e.g. planets).

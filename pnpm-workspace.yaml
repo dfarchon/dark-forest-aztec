@@ -1,15 +1,22 @@
 packages:
-  - "client"
-  - "contracts"
-  - "packages/constants"
-  - "packages/contracts"
-  - "packages/events"
-  - "packages/gamelogic"
-  - "packages/hexgen"
-  - "packages/hashing"
-  - "packages/serde"
-  - "packages/utils"
-  - "packages/types"
-  - "packages/procedural"
-  - "packages/renderer"
-  - "packages/ui"
+  - client
+  - contracts
+  - packages/constants
+  - packages/contracts
+  - packages/events
+  - packages/gamelogic
+  - packages/hexgen
+  - packages/hashing
+  - packages/serde
+  - packages/utils
+  - packages/types
+  - packages/procedural
+  - packages/renderer
+  - packages/ui
+
+# ignoredBuiltDependencies:
+#   - esbuild
+#   - leveldown
+#   - lmdb
+#   - msgpackr-extract
+#   - protobufjs

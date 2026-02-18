@@ -4,28 +4,30 @@
  */
 
 import type {
-  WorldState,
-  PlayerState,
-  PlanetState,
-  PlanetRevealedCoordsState,
-  PlanetEventsState,
-  PlanetArtifactsState,
   ArrivalState,
-  ArtifactState,
   ArtifactLocationState,
-} from "../types/chain";
-import { rawToState, rawIdToTableId } from "./convert";
+  ArtifactState,
+  PlanetArtifactsState,
+  PlanetEventsState,
+  PlanetRevealedCoordsState,
+  PlanetState,
+  PlayerState,
+  WorldState,
+} from "../TableTypes/chain";
+import { rawIdToTableId, rawToState } from "./convert";
 import { debounce } from "./debounce";
 import type {
   BlockUpdates,
   IBlockEventSource,
+  IndexerChangePayload,
   IndexerSnapshot,
   IndexerStatus,
-  TableName,
   TableId,
+  TableName,
   TableRowType,
   TableUpdate,
 } from "./types";
+import { TABLE_NAMES } from "./types";
 
 type Raw = Record<string, unknown>;
 
@@ -94,7 +96,7 @@ export class IndexerService {
   private destroyRequested: boolean = false;
 
   /** Subscribers notified when state changes (after applying updates). */
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(payload: IndexerChangePayload) => void>();
 
   constructor(options: IndexerServiceOptions) {
     this.bootstrapSource = options.bootstrapSource;
@@ -141,14 +143,49 @@ export class IndexerService {
         this.applyUpdates(updates);
         this.snapshot.lastProcessedBlock = chunkEnd;
         this.onBlockProcessed?.(fromBlock, chunkEnd);
-        this.notifyListeners();
+        const tables = [
+          ...new Set(updates.updates.map((u) => u.table)),
+        ] as TableName[];
+        const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
+        this.notifyListeners({
+          tables,
+          fromBlock,
+          toBlock: chunkEnd,
+          updatedIdsByTable,
+        });
         fromBlock = chunkEnd + 1;
       }
     } catch (err) {
       console.warn("[IndexerService] processNewBlocks error:", err);
     } finally {
       this.isSyncing = false;
+      this.notifyListeners({
+        tables: [],
+        fromBlock: toBlock,
+        toBlock,
+      });
     }
+  }
+
+  /** Build per-table list of row ids that were updated in this batch. */
+  private buildUpdatedIdsByTable(
+    updates: BlockUpdates
+  ): Partial<Record<TableName, TableId[]>> {
+    const byTable = new Map<TableName, Set<TableId>>();
+    for (const u of updates.updates) {
+      const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
+      let set = byTable.get(u.table);
+      if (!set) {
+        set = new Set();
+        byTable.set(u.table, set);
+      }
+      set.add(id);
+    }
+    const out: Partial<Record<TableName, TableId[]>> = {};
+    byTable.forEach((ids, table) => {
+      out[table] = [...ids];
+    });
+    return out;
   }
 
   /** Apply a single BlockUpdates to current snapshot. */
@@ -165,11 +202,16 @@ export class IndexerService {
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
   applySnapshot(snapshot: IndexerSnapshot): void {
     this.snapshot = snapshot;
-    this.notifyListeners();
+    const block = snapshot.lastProcessedBlock;
+    this.notifyListeners({
+      tables: [...TABLE_NAMES],
+      fromBlock: block,
+      toBlock: block,
+    });
   }
 
-  private notifyListeners(): void {
-    this.listeners.forEach((cb) => cb());
+  private notifyListeners(payload: IndexerChangePayload): void {
+    this.listeners.forEach((cb) => cb(payload));
   }
 
   /**
@@ -187,7 +229,12 @@ export class IndexerService {
           this.snapshot = snap;
           this.latestKnownBlock = snap.lastProcessedBlock;
           snapshotLoaded = true;
-          this.notifyListeners();
+          const block = snap.lastProcessedBlock;
+          this.notifyListeners({
+            tables: [...TABLE_NAMES],
+            fromBlock: block,
+            toBlock: block,
+          });
         }
       } catch (err) {
         console.warn("[IndexerService] bootstrap getSnapshot failed:", err);
@@ -221,8 +268,11 @@ export class IndexerService {
     this.listeners.clear();
   }
 
-  /** Subscribe to state changes (e.g. for React re-render). */
-  subscribe(listener: () => void): () => void {
+  /**
+   * Subscribe to state changes (e.g. for React re-render).
+   * Callback receives which tables were updated so you can update only relevant state.
+   */
+  subscribe(listener: (payload: IndexerChangePayload) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }

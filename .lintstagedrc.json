@@ -1,5 +1,5 @@
 {
-  "client/**/*.{ts,tsx,js,jsx,json,css,scss}": ["pnpm --filter client format"],
+  "client/**/*.{ts,tsx,js,jsx,json,css,md}": ["pnpm --filter client format"],
   "packages/**/*.{ts,tsx,js,jsx,json}": [
     "pnpm --filter \"./packages/*\" run format"
   ],

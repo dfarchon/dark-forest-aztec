@@ -1,8 +1,7 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
@@ -32,5 +31,6 @@ export default defineConfig({
     esbuildOptions: {
       target: "esnext",
     },
+    exclude: ["@aztec/bb.js", "@aztec/noir-acvm_js", "@aztec/noir-noirc_abi"],
   },
 });

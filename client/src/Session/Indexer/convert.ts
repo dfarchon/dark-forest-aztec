@@ -8,16 +8,16 @@
  */
 
 import type {
-  WorldState,
-  PlayerState,
-  PlanetState,
-  PlanetRevealedCoordsState,
-  PlanetEventsState,
-  PlanetArtifactsState,
   ArrivalState,
-  ArtifactState,
   ArtifactLocationState,
-} from "../types/chain";
+  ArtifactState,
+  PlanetArtifactsState,
+  PlanetEventsState,
+  PlanetRevealedCoordsState,
+  PlanetState,
+  PlayerState,
+  WorldState,
+} from "../TableTypes/chain";
 import type { TableName } from "./types";
 
 type Raw = Record<string, unknown>;

@@ -7,28 +7,26 @@ import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import type { EventMetadataDefinition } from "@aztec/stdlib/abi";
 import type { AztecNode } from "@aztec/stdlib/interfaces/client";
-
-import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
-import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
-import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage";
-import { PlanetRevealedCoordsStorageContract } from "@dfpunk/contracts/artifacts/PlanetRevealedCoordsStorage";
-import { PlanetEventsStorageContract } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
-import { PlanetArtifactsStorageContract } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
-import { ArrivalStorageContract } from "@dfpunk/contracts/artifacts/ArrivalStorage";
-import { ArtifactStorageContract } from "@dfpunk/contracts/artifacts/ArtifactStorage";
-import { ArtifactLocationStorageContract } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
-
 import {
-  WORLD_STORAGE_CONTRACT_ADDRESS,
-  PLAYER_STORAGE_CONTRACT_ADDRESS,
-  PLANET_STORAGE_CONTRACT_ADDRESS,
-  PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
-  PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS,
-  PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
-  ARTIFACT_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
+  ARTIFACT_STORAGE_CONTRACT_ADDRESS,
+  PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_STORAGE_CONTRACT_ADDRESS,
+  PLAYER_STORAGE_CONTRACT_ADDRESS,
+  WORLD_STORAGE_CONTRACT_ADDRESS,
 } from "@dfpunk/contracts";
+import { ArrivalStorageContract } from "@dfpunk/contracts/artifacts/ArrivalStorage";
+import { ArtifactLocationStorageContract } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
+import { ArtifactStorageContract } from "@dfpunk/contracts/artifacts/ArtifactStorage";
+import { PlanetArtifactsStorageContract } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
+import { PlanetEventsStorageContract } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetRevealedCoordsStorageContract } from "@dfpunk/contracts/artifacts/PlanetRevealedCoordsStorage";
+import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage";
+import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
+import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 
 import { getDecodedPublicEvents } from "./getDecodedPublicEvents";
 import type { BlockUpdates, TableName } from "./types";

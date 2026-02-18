@@ -56,6 +56,26 @@
       "types": "./src/artifacts/ArtifactLocationStorage.ts",
       "import": "./src/artifacts/ArtifactLocationStorage.ts",
       "default": "./src/artifacts/ArtifactLocationStorage.ts"
+    },
+    "./artifacts/Config": {
+      "types": "./src/artifacts/Config.ts",
+      "import": "./src/artifacts/Config.ts",
+      "default": "./src/artifacts/Config.ts"
+    },
+    "./artifacts/Core": {
+      "types": "./src/artifacts/Core.ts",
+      "import": "./src/artifacts/Core.ts",
+      "default": "./src/artifacts/Core.ts"
+    },
+    "./artifacts/Move": {
+      "types": "./src/artifacts/Move.ts",
+      "import": "./src/artifacts/Move.ts",
+      "default": "./src/artifacts/Move.ts"
+    },
+    "./artifacts/Admin": {
+      "types": "./src/artifacts/Admin.ts",
+      "import": "./src/artifacts/Admin.ts",
+      "default": "./src/artifacts/Admin.ts"
     }
   },
   "main": "src/index.ts",

@@ -4,16 +4,16 @@
  */
 
 import type {
-  WorldState,
-  PlayerState,
-  PlanetState,
-  PlanetRevealedCoordsState,
-  PlanetEventsState,
-  PlanetArtifactsState,
   ArrivalState,
-  ArtifactState,
   ArtifactLocationState,
-} from "../types/chain";
+  ArtifactState,
+  PlanetArtifactsState,
+  PlanetEventsState,
+  PlanetRevealedCoordsState,
+  PlanetState,
+  PlayerState,
+  WorldState,
+} from "../TableTypes/chain";
 
 /** Table names matching contract storage and client types. */
 export const TABLE_NAMES = [
@@ -100,4 +100,21 @@ export interface IndexerStatus {
   lastProcessedBlock: number;
   latestKnownBlock: number;
   isSyncing: boolean;
+}
+
+/**
+ * Payload passed to subscribe() when state changes.
+ * Lets the upper layer know which tables (and which row ids) were updated for incremental state updates.
+ */
+export interface IndexerChangePayload {
+  /** Tables that had at least one row updated in this batch. */
+  tables: readonly TableName[];
+  /** Block range that was just applied (inclusive). */
+  fromBlock: number;
+  toBlock: number;
+  /**
+   * Per-table list of row ids that were updated. When present, only these ids changed — merge them into your state instead of re-reading the whole table.
+   * When absent (e.g. after applySnapshot/bootstrap), treat as full refresh for each table in `tables`.
+   */
+  updatedIdsByTable?: Partial<Record<TableName, readonly TableId[]>>;
 }

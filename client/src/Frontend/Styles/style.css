@@ -24,10 +24,21 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+}
+
+#root {
+  display: flex;
+  place-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#root .card {
+  text-align: center;
+  max-width: 720px;
+  padding: 2rem;
 }
 
 h1 {
