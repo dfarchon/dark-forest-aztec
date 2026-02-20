@@ -4,7 +4,9 @@
  */
 
 import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { getPublicEvents } from "@aztec/aztec.js/events";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { BlockNumber } from "@aztec/foundation/branded-types";
 import type { EventMetadataDefinition } from "@aztec/stdlib/abi";
 import type { AztecNode } from "@aztec/stdlib/interfaces/client";
 import {
@@ -28,7 +30,6 @@ import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage
 import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 
-import { getDecodedPublicEvents } from "./getDecodedPublicEvents";
 import type { BlockUpdates, TableName } from "./types";
 
 /** Decoded storage event shape: id, optional block_number, state. */
@@ -157,13 +158,12 @@ export function createAztecNodeBlockSource(
       const updates: BlockUpdates["updates"] = [];
 
       for (const { table, eventDef, address } of specsWithArtifacts) {
-        const events = await getDecodedPublicEvents<DecodedUpdate>(
-          node,
-          eventDef,
-          fromBlock,
-          limit,
-          { contractAddress: address }
-        );
+        const raw = await getPublicEvents(node, eventDef, {
+          fromBlock: BlockNumber(fromBlock),
+          toBlock: BlockNumber(fromBlock + limit),
+          contractAddress: address,
+        });
+        const events = raw.map((e) => e.event) as DecodedUpdate[];
         for (const ev of events) {
           if (ev?.state == null) continue;
           const id = table === "world" ? "0" : toIdStr(ev.id);

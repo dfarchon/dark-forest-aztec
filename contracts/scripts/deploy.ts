@@ -21,9 +21,9 @@ import {
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
+const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
 
-/** Wallet options for deploy: fresh store, prover on/off from env. */
+/** Wallet options for deploy: fresh store, prover off for fast local deploy. */
 const WALLET_SETUP_OPTIONS = {
     clearStore: false,
     proverEnabled: PROVER_ENABLED,
@@ -176,8 +176,29 @@ async function loadDeployConfigs(): Promise<ContractDeployConfig[]> {
     return configs;
 }
 
+function formatElapsed(ms: number): string {
+    if (ms >= 60000) {
+        const m = Math.floor(ms / 60000);
+        const s = ((ms % 60000) / 1000).toFixed(1);
+        return `${m}m ${s}s`;
+    }
+    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${ms}ms`;
+}
+
 async function main() {
-    console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}\n`);
+    const scriptStartTime = Date.now();
+
+    console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
+    console.log(
+        `⚡ Prover: ${PROVER_ENABLED ? 'ON (slow — each contract ~2–5 min)' : 'OFF (fast)'}\n`
+    );
+
+    if (PROVER_ENABLED) {
+        console.warn(
+            '⚠️  PROVER_ENABLED=true: deploy will be very slow. For fast local deploy, unset it or set PROVER_ENABLED=false.\n'
+        );
+    }
 
     console.log('🔗 Connecting to Aztec node...');
     const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
@@ -211,14 +232,31 @@ async function main() {
         writeEnv: process.env.WRITE_ENV_FILE !== 'false',
         timeoutMs: 120_000,
         sponsoredFpc: sponsoredFPC,
+        scriptStartTime,
+        onDeploy: (name, index, total) => {
+            console.log(`   [${index + 1}/${total}] Deploying ${name}...`);
+        },
+        onDeployComplete: (name, index, total, stepMs, totalElapsed) => {
+            const stepTime =
+                stepMs >= 1000
+                    ? `${(stepMs / 1000).toFixed(1)}s`
+                    : `${stepMs}ms`;
+            console.log(
+                `   ✅ ${name} (${stepTime}) | elapsed: ${formatElapsed(totalElapsed)}`
+            );
+        },
     });
 
+    const totalElapsed = Date.now() - scriptStartTime;
     console.log('✅ Deployment complete.\n');
     console.log('📋 Contract addresses:');
     for (const [name, r] of Object.entries(results)) {
         console.log(`   ${name}: ${r.contractAddress}`);
     }
     console.log(`\n📄 Deployment info appended to ${envPath}`);
+    console.log(
+        `⏱️  Total time: ${formatElapsed(totalElapsed)} (${totalElapsed}ms)`
+    );
 }
 
 main()

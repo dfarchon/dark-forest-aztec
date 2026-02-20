@@ -1,22 +1,22 @@
-use dep::aztec::macros::aztec;
+use ::aztec::macros::aztec;
 
 #[aztec]
 contract Core {
-    use dep::aztec::{
+    use ::aztec::{
         macros::{
             events::event,
             functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
-    use dep::aztec::state_vars::{Map, PublicMutable};
+    use ::aztec::state_vars::{Map, PublicMutable};
 
-    use dep::types::args::{
+    use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
     };
 
-    use dep::types::config::{
+    use ::types::config::{
         artifacts::ArtifactsConfig,
         capture_zones::CaptureZonesConfig,
         default_stats::PlanetDefaultStats,
@@ -28,7 +28,7 @@ contract Core {
         world::WorldConfig,
     };
 
-    use dep::types::storage::{
+    use ::types::storage::{
         arrival::{Arrival, ArrivalType},
         artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType},
         planet::{
@@ -39,20 +39,20 @@ contract Core {
         world::World,
     };
 
-    use dep::libs::game_utils::{revert_if_bad_snark_perlin_flags, update_world_radius};
+    use ::libs::game_utils::{revert_if_bad_snark_perlin_flags, update_world_radius};
 
-    use dep::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
+    use ::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
 
-    use dep::arrival_storage::ArrivalStorage;
-    use dep::artifact_location_storage::ArtifactLocationStorage;
-    use dep::artifact_storage::ArtifactStorage;
-    use dep::config::Config;
-    use dep::planet_artifacts_storage::PlanetArtifactsStorage;
-    use dep::planet_events_storage::PlanetEventsStorage;
-    use dep::planet_revealed_coords_storage::PlanetRevealedCoordsStorage;
-    use dep::planet_storage::PlanetStorage;
-    use dep::player_storage::PlayerStorage;
-    use dep::world_storage::WorldStorage;
+    use ::arrival_storage::ArrivalStorage;
+    use ::artifact_location_storage::ArtifactLocationStorage;
+    use ::artifact_storage::ArtifactStorage;
+    use ::config::Config;
+    use ::planet_artifacts_storage::PlanetArtifactsStorage;
+    use ::planet_events_storage::PlanetEventsStorage;
+    use ::planet_revealed_coords_storage::PlanetRevealedCoordsStorage;
+    use ::planet_storage::PlanetStorage;
+    use ::player_storage::PlayerStorage;
+    use ::world_storage::WorldStorage;
 
     #[storage]
     struct Storage<Context> {
@@ -71,7 +71,7 @@ contract Core {
 
     #[internal("public")]
     fn assert_admin() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
     }
 
     #[internal("public")]
@@ -470,7 +470,7 @@ contract Core {
             // todo: implement zk checks
         }
 
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         // Compute config hashes for public verification
         let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
@@ -787,7 +787,7 @@ contract Core {
             //todo: implement zk checks
         }
 
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         // Compute config hashes for public verification
         let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());

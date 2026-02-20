@@ -1,6 +1,6 @@
-use dep::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
+use ::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
 
-use dep::types::config::{
+use ::types::config::{
     artifacts::ArtifactsConfig,
     capture_zones::CaptureZonesConfig,
     default_stats::PlanetDefaultStats,
@@ -12,7 +12,7 @@ use dep::types::config::{
     world::WorldConfig,
 };
 
-use dep::types::storage::{
+use ::types::storage::{
     arrival::{Arrival, ArrivalType},
     artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType},
     planet::{
@@ -23,7 +23,7 @@ use dep::types::storage::{
     world::World,
 };
 
-use dep::aztec::protocol_types::address::AztecAddress;
+use ::aztec::protocol::address::AztecAddress;
 
 // Game utility functions that don't require storage access
 // Pure computation functions extracted from LibGameUtils

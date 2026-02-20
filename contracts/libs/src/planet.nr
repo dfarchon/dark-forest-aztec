@@ -1,14 +1,14 @@
-use dep::aztec::protocol_types::address::AztecAddress;
+use ::aztec::protocol::address::AztecAddress;
 
-use dep::types::args::DFPInitPlanetArgs;
-use dep::types::config::{
+use ::types::args::DFPInitPlanetArgs;
+use ::types::config::{
     default_stats::PlanetDefaultStats,
     game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
     space_junk::SpaceJunkConfig,
     world::WorldConfig,
 };
 
-use dep::types::storage::{
+use ::types::storage::{
     arrival::Arrival,
     artifact::{Artifact, ArtifactLocation, ArtifactType},
     planet::{Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetRevealedCoords},

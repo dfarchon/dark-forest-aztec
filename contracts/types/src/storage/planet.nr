@@ -1,5 +1,5 @@
-use dep::aztec::protocol_types::address::AztecAddress;
-use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
+use ::aztec::protocol::address::AztecAddress;
+use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct Planet {

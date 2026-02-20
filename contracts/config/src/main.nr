@@ -1,18 +1,18 @@
-use dep::aztec::macros::aztec;
+use ::aztec::macros::aztec;
 
 #[aztec]
 pub contract Config {
-    use dep::aztec::{
+    use ::aztec::{
         macros::{functions::{external, initializer, internal, view}, storage::storage},
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
-    use dep::aztec::state_vars::{Map, PublicMutable};
+    use ::aztec::state_vars::{Map, PublicMutable};
 
-    use dep::types::args::{
+    use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
     };
 
-    use dep::types::config::{
+    use ::types::config::{
         artifacts::ArtifactsConfig,
         capture_zones::CaptureZonesConfig,
         default_stats::PlanetDefaultStats,
@@ -79,7 +79,7 @@ pub contract Config {
 
     #[internal("public")]
     fn is_admin() -> bool {
-        self.msg_sender().unwrap() == self.storage.admin.read()
+        self.msg_sender() == self.storage.admin.read()
     }
 
     #[internal("public")]

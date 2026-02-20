@@ -63,6 +63,18 @@ export type DeployContractsOptions = {
     timeoutMs?: number;
     /** SponsoredFPC instance for gas/fees. If set, used for every deploy; else getSponsoredPFCContract() per contract. */
     sponsoredFpc?: SponsoredFpcInstance;
+    /** Script start time (Date.now()) for elapsed-time stats. */
+    scriptStartTime?: number;
+    /** Called before each contract deploy (name, index, total). */
+    onDeploy?: (name: string, index: number, total: number) => void;
+    /** Called after each contract deploy (name, index, total, stepMs, totalElapsed). */
+    onDeployComplete?: (
+        name: string,
+        index: number,
+        total: number,
+        stepMs: number,
+        totalElapsed: number
+    ) => void;
 };
 
 function appendDeploymentToEnv(
@@ -129,17 +141,14 @@ export async function deployOneContract(
         initializer?.name
     );
 
-    await deployMethod
-        .send({
-            from: deployer,
-            contractAddressSalt: salt,
-            fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                    sponsoredFPC.address
-                ),
-            },
-        })
-        .wait({ timeout: timeoutMs });
+    await deployMethod.send({
+        from: deployer,
+        contractAddressSalt: salt,
+        fee: {
+            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
+        },
+        wait: { timeout: timeoutMs },
+    });
 
     await wallet.registerContract(contract, config.artifact);
 
@@ -189,12 +198,19 @@ export async function deployContracts(
         writeEnv = process.env.WRITE_ENV_FILE !== 'false',
         timeoutMs = 120_000,
         sponsoredFpc,
+        scriptStartTime,
+        onDeploy,
+        onDeployComplete,
     } = options;
 
     const addresses: Record<string, AztecAddress> = {};
     const results: Record<string, DeploymentResult> = {};
+    const total = configs.length;
 
-    for (const config of configs) {
+    for (let i = 0; i < configs.length; i++) {
+        const config = configs[i]!;
+        onDeploy?.(config.name, i, total);
+        const stepStart = Date.now();
         const ctx: DeployContext = { deployer, addresses: { ...addresses } };
         const result = await deployOneContract(wallet, deployer, config, ctx, {
             writeEnv,
@@ -206,6 +222,10 @@ export async function deployContracts(
             result.contractAddress
         );
         results[config.name] = result;
+
+        const stepMs = Date.now() - stepStart;
+        const totalElapsed = scriptStartTime ? Date.now() - scriptStartTime : 0;
+        onDeployComplete?.(config.name, i, total, stepMs, totalElapsed);
     }
 
     return results;

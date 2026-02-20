@@ -14,12 +14,17 @@
  * userIndex: 0 = user1, 1 = user2 (default 0). Player must already be initialized.
  */
 import { getGasLimits } from '@aztec/aztec.js/contracts';
+import { getPublicEvents } from '@aztec/aztec.js/events';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
-import { getTestContext, type TestContext } from './test-setup.ts';
+import {
+    getTestContext,
+    sendTimestampRefreshTx,
+    type TestContext,
+} from './test-setup.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -89,10 +94,14 @@ async function loadWorldFromEvents(
         const mod = await import('./artifacts/WorldStorage.ts');
         const W = mod.WorldStorageContract;
         if (!W?.events?.WorldUpdate) return null;
-        const events = await getDecodedPublicEvents<{
+        const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
+            fromBlock: BlockNumber(from),
+            toBlock: BlockNumber(from + limit),
+        });
+        const events = raw.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
-        }>(ctx.node, W.events.WorldUpdate, from, limit);
+        }[];
         const ev = events.filter((e) => String(e?.id) === '0').pop();
         return ev?.state ?? null;
     } catch {
@@ -112,12 +121,15 @@ async function loadPlanetFromEvents(
         const mod = await import('./artifacts/PlanetStorage.ts');
         const P = mod.PlanetStorageContract;
         if (!P?.events?.PlanetUpdate) return null;
-        const events = await getDecodedPublicEvents<{
-            id: unknown;
-            state?: Record<string, unknown>;
-        }>(ctx.node, P.events.PlanetUpdate, from, limit, {
+        const raw = await getPublicEvents(ctx.node, P.events.PlanetUpdate, {
+            fromBlock: BlockNumber(from),
+            toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['PlanetStorage']?.address,
         });
+        const events = raw.map((e) => e.event) as {
+            id: unknown;
+            state?: Record<string, unknown>;
+        }[];
         const ev = events
             .filter((e) => String(e?.id) === String(locationId))
             .pop();
@@ -139,12 +151,19 @@ async function loadPlanetEventsFromEvents(
         const mod = await import('./artifacts/PlanetEventsStorage.ts');
         const PE = mod.PlanetEventsStorageContract;
         if (!PE?.events?.PlanetEventsUpdate) return null;
-        const events = await getDecodedPublicEvents<{
+        const raw = await getPublicEvents(
+            ctx.node,
+            PE.events.PlanetEventsUpdate,
+            {
+                fromBlock: BlockNumber(from),
+                toBlock: BlockNumber(from + limit),
+                contractAddress: ctx.contracts['PlanetEventsStorage']?.address,
+            }
+        );
+        const events = raw.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
-        }>(ctx.node, PE.events.PlanetEventsUpdate, from, limit, {
-            contractAddress: ctx.contracts['PlanetEventsStorage']?.address,
-        });
+        }[];
         const ev = events
             .filter((e) => String(e?.id) === String(locationId))
             .pop();
@@ -166,12 +185,20 @@ async function loadPlanetArtifactsFromEvents(
         const mod = await import('./artifacts/PlanetArtifactsStorage.ts');
         const PA = mod.PlanetArtifactsStorageContract;
         if (!PA?.events?.PlanetArtifactsUpdate) return null;
-        const events = await getDecodedPublicEvents<{
+        const raw = await getPublicEvents(
+            ctx.node,
+            PA.events.PlanetArtifactsUpdate,
+            {
+                fromBlock: BlockNumber(from),
+                toBlock: BlockNumber(from + limit),
+                contractAddress:
+                    ctx.contracts['PlanetArtifactsStorage']?.address,
+            }
+        );
+        const events = raw.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
-        }>(ctx.node, PA.events.PlanetArtifactsUpdate, from, limit, {
-            contractAddress: ctx.contracts['PlanetArtifactsStorage']?.address,
-        });
+        }[];
         const ev = events
             .filter((e) => String(e?.id) === String(locationId))
             .pop();
@@ -234,12 +261,15 @@ async function loadArrivalFromEvents(
         const mod = await import('./artifacts/ArrivalStorage.ts');
         const A = mod.ArrivalStorageContract;
         if (!A?.events?.ArrivalUpdate) return null;
-        const events = await getDecodedPublicEvents<{
-            id: unknown;
-            state?: Record<string, unknown>;
-        }>(ctx.node, A.events.ArrivalUpdate, from, limit, {
+        const raw = await getPublicEvents(ctx.node, A.events.ArrivalUpdate, {
+            fromBlock: BlockNumber(from),
+            toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['ArrivalStorage']?.address,
         });
+        const events = raw.map((e) => e.event) as {
+            id: unknown;
+            state?: Record<string, unknown>;
+        }[];
         const ev = events
             .filter((e) => String(e?.id) === String(arrivalId))
             .pop();
@@ -354,40 +384,17 @@ async function main() {
         ((10_000_000n + BigInt(userIndex)) << 216n) | (255n << 64n);
     const targetLoc = (10_000_002n << 216n) | (255n << 64n);
 
-    const Admin = ctx.contracts['Admin'];
-    if (!Admin) {
-        throw new Error(
-            'Admin not loaded. Needed to force a fresh L2 block before Move.'
-        );
-    }
-
     console.log('✅ Move at:', Move.address.toString());
     console.log('✅ Player (' + userLabel + '):', user.toString());
     console.log('   source_loc (home):', String(sourceLoc));
     console.log('   target_loc (uninitialized):', String(targetLoc));
 
-    // Force a fresh L2 block so that getBlock('latest').timestamp is close to
-    // the node's actual_timestamp during simulation. Without this, the latest
-    // confirmed L2 block can be minutes old and "Timestamp too old" fires.
-    console.log('\n⏱  Forcing fresh L2 block (sending a no-op Admin tx)...');
     const world = await loadWorldFromEvents(ctx);
     if (!world)
         throw new Error(
             'Could not load World from events. Run test-core-initialize-player first.'
         );
     const worldRadius = toBigint(world.radius);
-    try {
-        const noop = await Admin.methods
-            .admin_set_world_radius(worldRadius, world)
-            .send(sendOpts(ctx.accounts.admin));
-        await noop.wait();
-        console.log('   ✅ Fresh L2 block produced.');
-    } catch (e) {
-        console.warn(
-            '   ⚠️  No-op tx failed (non-fatal, continuing):',
-            e instanceof Error ? e.message : e
-        );
-    }
 
     console.log('\n📥 Loading config...');
     const snarkConfig = await Config.methods
@@ -420,14 +427,6 @@ async function main() {
     const tier3 = await Config.methods
         .get_planet_type_weights_tier(3)
         .simulate({ from: user });
-
-    // Reload world after the fresh block (the no-op admin tx may have updated it)
-    const freshWorld = await loadWorldFromEvents(ctx);
-    if (!freshWorld)
-        throw new Error(
-            'Could not load World from events. Run test-core-initialize-player first.'
-        );
-    const freshWorldRadius = toBigint(freshWorld.radius);
 
     const sourcePlanet = await loadPlanetFromEvents(ctx, sourceLoc);
     if (!sourcePlanet)
@@ -489,7 +488,7 @@ async function main() {
 
     // Check #1: target_radius <= world.radius
     console.log(
-        `   worldRadius=${freshWorldRadius}, targetRadius will be=${freshWorldRadius} (same) ✓`
+        `   worldRadius=${worldRadius}, targetRadius will be=${worldRadius} (same) ✓`
     );
 
     const popMoved =
@@ -574,7 +573,7 @@ async function main() {
 
     const targetPerlin = 13;
     const targetLevel = 0;
-    const targetRadius = freshWorldRadius;
+    const targetRadius = worldRadius;
     // Coordinates: (x1,y1) source, (x2,y2) target. max_dist must be the actual distance (used for decay & travel time).
     const x1 = 0n;
     const y1 = 0n;
@@ -584,6 +583,11 @@ async function main() {
     const movedArtifactId = 0n;
     const activatedArtifactId = 0n;
     const isAbandoning = false;
+
+    // Send a no-op tx to refresh block timestamp before the main test tx.
+    console.log('\n🔄 Refreshing block timestamp...');
+    await sendTimestampRefreshTx(ctx);
+
     const timestamp = await getL2BlockTimestamp(ctx);
 
     const moveArgs = [
@@ -625,7 +629,7 @@ async function main() {
         targetArtifacts,
         targetArtifactLocations,
         targetPlanetArtifacts,
-        freshWorld,
+        world,
         movedArtifact,
         movedArtifactLocation,
         activatedArtifact,
@@ -639,7 +643,7 @@ async function main() {
             .move(...moveArgs)
             .request(sendOpts(user));
         const txSimResult = await Move.wallet.simulateTx(movePayload, {
-            ...sendOpts(user),
+            from: user,
         });
         console.log('   ✅ Simulate passed.');
 
@@ -675,8 +679,9 @@ async function main() {
     }
 
     try {
-        const tx = await Move.methods.move(...moveArgs).send(sendOpts(user));
-        const receipt = await tx.wait();
+        const receipt = await Move.methods
+            .move(...moveArgs)
+            .send(sendOpts(user));
         const blockNumber =
             receipt &&
             typeof (receipt as { blockNumber?: number }).blockNumber !==

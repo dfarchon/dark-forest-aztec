@@ -12,12 +12,13 @@
  * If playerAddress is omitted, all PlayerUpdate events in the block are printed.
  * If locationId is omitted, all PlanetUpdate and PlanetRevealedCoordsUpdate events in the block are printed.
  */
+import { getPublicEvents } from '@aztec/aztec.js/events';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import type { EventMetadataDefinition } from '@aztec/stdlib/abi';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
 import { getTestContext, type TestContext } from './test-setup.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,13 +69,20 @@ async function printWorldFromEvents(
 ): Promise<void> {
     const WorldStorage = ctx.contracts['WorldStorage'];
     if (!WorldStorage?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.WorldStorage.events.WorldUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: WorldStorage.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
-    }>(ctx.node, artifacts.WorldStorage.events.WorldUpdate, blockNumber, 1, {
-        contractAddress: WorldStorage.address,
-    });
+    }[];
     const ev = events.filter((e) => toStr(e?.id) === '0').pop();
     if (!ev?.state) {
         console.log('\n  World: no WorldUpdate (id=0) in this block.');
@@ -105,13 +113,20 @@ async function printPlayerFromEvents(
 ): Promise<void> {
     const PlayerStorage = ctx.contracts['PlayerStorage'];
     if (!PlayerStorage?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.PlayerStorage.events.PlayerUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: PlayerStorage.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
-    }>(ctx.node, artifacts.PlayerStorage.events.PlayerUpdate, blockNumber, 1, {
-        contractAddress: PlayerStorage.address,
-    });
+    }[];
     const filtered = playerFilter
         ? events.filter((e) => toStr(e?.id) === playerFilter)
         : events;
@@ -151,13 +166,20 @@ async function printPlanetFromEvents(
 ): Promise<void> {
     const PlanetStorage = ctx.contracts['PlanetStorage'];
     if (!PlanetStorage?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.PlanetStorage.events.PlanetUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: PlanetStorage.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
-    }>(ctx.node, artifacts.PlanetStorage.events.PlanetUpdate, blockNumber, 1, {
-        contractAddress: PlanetStorage.address,
-    });
+    }[];
     const filtered = locationFilter
         ? events.filter((e) => toStr(e?.id) === locationFilter)
         : events;
@@ -201,17 +223,20 @@ async function printPlanetRevealedCoordsFromEvents(
 ): Promise<void> {
     const PRC = ctx.contracts['PlanetRevealedCoordsStorage'];
     if (!PRC?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.PlanetRevealedCoordsStorage.events.PlanetRevealedCoordsUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: PRC.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
-    }>(
-        ctx.node,
-        artifacts.PlanetRevealedCoordsStorage.events.PlanetRevealedCoordsUpdate,
-        blockNumber,
-        1,
-        { contractAddress: PRC.address }
-    );
+    }[];
     const filtered = locationFilter
         ? events.filter((e) => toStr(e?.id) === locationFilter)
         : events;

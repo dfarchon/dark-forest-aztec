@@ -4,5 +4,5 @@ type = "lib"
 authors = [""]
 
 [dependencies]
-aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v3.0.0-devnet.6-patch.1", directory = "aztec" }
+aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v4.0.0-devnet.2-patch.1", directory = "aztec" }
 types = { path = "../types" }

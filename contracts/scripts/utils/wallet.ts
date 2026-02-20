@@ -3,12 +3,9 @@ import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/cont
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import type { DeployAccountOptions } from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { createStore } from '@aztec/kv-store/lmdb';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import { getPXEConfig } from '@aztec/pxe/server';
-import { TestWallet } from '@aztec/test-wallet/server';
+import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 
@@ -30,13 +27,13 @@ export type SetupWalletOptions = {
 };
 
 /**
- * Create a TestWallet connected to the given Aztec node.
+ * Create a EmbeddedWallet connected to the given Aztec node.
  * Other scripts can use this for deploy or interaction.
  */
 export async function setupWallet(
     aztecNode: AztecNode,
     options: SetupWalletOptions = {}
-): Promise<TestWallet> {
+): Promise<EmbeddedWallet> {
     const {
         clearStore = false,
         proverEnabled = true,
@@ -47,18 +44,12 @@ export async function setupWallet(
         fs.rmSync(storeDir, { recursive: true, force: true });
     }
 
-    const store = await createStore('pxe', {
-        dataDirectory: storeDir,
-        dataStoreMapSizeKb: 1e6,
-    });
-
-    const config = getPXEConfig();
-    config.dataDirectory = 'pxe';
-    config.proverEnabled = proverEnabled;
-
-    return await TestWallet.create(aztecNode, config, {
-        store,
-        useLogSuffix: true,
+    return await EmbeddedWallet.create(aztecNode, {
+        pxeConfig: {
+            dataDirectory: storeDir,
+            proverEnabled,
+            dataStoreMapSizeKb: 1e6,
+        },
     });
 }
 
@@ -90,7 +81,7 @@ export async function getSponsoredPFCContract() {
  * or wallet.getAccounts() and use it as `from` without calling this.
  */
 export async function loadAccountFromEnv(
-    wallet: TestWallet
+    wallet: EmbeddedWallet
 ): Promise<AztecAddress> {
     const salt = process.env.ACCOUNT_SALT;
     const secretKey = process.env.ACCOUNT_SECRET_KEY;
@@ -138,7 +129,7 @@ function appendAccountToEnv(
  * Caller must have already registered SponsoredFPC with the wallet.
  */
 export async function createAccount(
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
     const {
@@ -158,15 +149,16 @@ export async function createAccount(
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts: DeployAccountOptions = {
+    const deployOpts = {
         from: AztecAddress.ZERO,
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },
         skipClassPublication: true,
         skipInstancePublication: true,
+        wait: { timeout: deployTimeoutMs },
     };
-    await deployMethod.send(deployOpts).wait({ timeout: deployTimeoutMs });
+    await deployMethod.send(deployOpts);
 
     if (writeEnv) {
         appendAccountToEnv(
@@ -186,7 +178,7 @@ export async function createAccount(
  * Caller must have registered SponsoredFPC with the wallet before calling this.
  */
 export async function getOrCreateAccount(
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
     const hasAccount =
@@ -212,7 +204,7 @@ export type TestAccountCredentials = {
  * Use with loadAccountFromCredentials on later runs to reuse the same account.
  */
 export async function createAccountWithCredentials(
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     options: { deployTimeoutMs?: number } = {}
 ): Promise<TestAccountCredentials> {
     const { deployTimeoutMs = 120_000 } = options;
@@ -227,15 +219,16 @@ export async function createAccountWithCredentials(
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts: DeployAccountOptions = {
+    const deployOpts = {
         from: AztecAddress.ZERO,
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },
         skipClassPublication: true,
         skipInstancePublication: true,
+        wait: { timeout: deployTimeoutMs },
     };
-    await deployMethod.send(deployOpts).wait({ timeout: deployTimeoutMs });
+    await deployMethod.send(deployOpts);
 
     return {
         salt: salt.toString(),
@@ -249,7 +242,7 @@ export async function createAccountWithCredentials(
  * Recreate an ECDSAR account in the wallet from saved credentials (e.g. from .test-accounts.json).
  */
 export async function loadAccountFromCredentials(
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     cred: TestAccountCredentials
 ): Promise<AztecAddress> {
     const accountManager = await wallet.createECDSARAccount(

@@ -8,6 +8,8 @@
  * ARRIVAL_STORAGE_CONTRACT_ADDRESS, ARTIFACT_STORAGE_CONTRACT_ADDRESS,
  * ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS.
  */
+import { AztecAddress } from '@aztec/aztec.js/addresses';
+import type { ContractBase } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
@@ -23,7 +25,8 @@ import {
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
+/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true only for proof benchmarking. */
+const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
 
 const CONTRACT_SPECS = [
     {
@@ -124,7 +127,19 @@ function addressesFromEnv(): Record<string, string> {
     return out;
 }
 
+function formatElapsed(ms: number): string {
+    if (ms >= 60000) {
+        const m = Math.floor(ms / 60000);
+        const s = ((ms % 60000) / 1000).toFixed(1);
+        return `${m}m ${s}s`;
+    }
+    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${ms}ms`;
+}
+
 async function main() {
+    const scriptStartTime = Date.now();
+
     const addresses = addressesFromEnv();
     console.log('✅ All required environment variables are present');
     console.log(`📋 Config: ${addresses['Config']}`);
@@ -146,7 +161,14 @@ async function main() {
         `📋 ArtifactLocationStorage: ${addresses['ArtifactLocationStorage']}`
     );
     console.log(`📋 Move: ${addresses['Move']}`);
-    console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}\n`);
+    console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
+    console.log(`⚡ Prover: ${PROVER_ENABLED ? 'ON (slow)' : 'OFF (fast)'}\n`);
+
+    if (PROVER_ENABLED) {
+        console.warn(
+            '⚠️  PROVER_ENABLED=true: configure will be very slow. For fast run, set PROVER_ENABLED=false.\n'
+        );
+    }
 
     console.log('🔗 Connecting to Aztec node...');
     const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
@@ -154,7 +176,7 @@ async function main() {
     console.log('📝 Registering SponsoredFPC contract...');
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
-        proverEnabled: PROVER_ENABLED,
+        proverEnabled: false, // Always false for fast configure
     });
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
@@ -210,67 +232,81 @@ async function main() {
         },
     };
 
+    /** Add authorized contract only if not already authorized (idempotent for re-runs). */
+    const addAuthorizedIfNeeded = async (
+        storage: ContractBase,
+        contractAddr: AztecAddress
+    ) => {
+        const methods = storage.methods as unknown as {
+            is_authorized: (a: AztecAddress) => {
+                simulate: (o?: object) => Promise<boolean>;
+            };
+            add_authorized_contract: (a: AztecAddress) => {
+                send: (o: typeof opts) => Promise<unknown>;
+            };
+        };
+        const isAuth = await methods
+            .is_authorized(contractAddr)
+            .simulate({ from: deployer });
+        if (isAuth) return;
+        await methods.add_authorized_contract(contractAddr).send(opts);
+    };
+
+    const TOTAL_STEPS = 46;
+    let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
-        console.log(`\n⚙️  ${label}`);
+        stepIndex += 1;
+        console.log(`\n⚙️  [${stepIndex}/${TOTAL_STEPS}] ${label}`);
+        const stepStart = Date.now();
         await action();
-        console.log(`✅ ${label}`);
+        const stepMs = Date.now() - stepStart;
+        const stepTime =
+            stepMs >= 1000 ? `${(stepMs / 1000).toFixed(1)}s` : `${stepMs}ms`;
+        const totalElapsed = Date.now() - scriptStartTime;
+        console.log(
+            `✅ ${label} (${stepTime}) | elapsed: ${formatElapsed(totalElapsed)}`
+        );
     };
 
     console.log('\n🔍 Configuring contracts...\n');
 
     await run('Config.set_default_world_config()', async () => {
-        const tx = await config.methods.set_default_world_config().send(opts);
-        await tx.wait();
+        await config.methods.set_default_world_config().send(opts);
     });
 
     await run('Config.set_default_snark_config()', async () => {
-        const tx = await config.methods.set_default_snark_config().send(opts);
-        await tx.wait();
+        await config.methods.set_default_snark_config().send(opts);
     });
 
     await run('Config.set_default_game_config()', async () => {
-        const tx = await config.methods.set_default_game_config().send(opts);
-        await tx.wait();
+        await config.methods.set_default_game_config().send(opts);
     });
 
     for (const tier of [0, 1, 2, 3] as const) {
         await run(
             `Config.set_default_game_config_planet_type_weights_tier(${tier})`,
             async () => {
-                const tx = await config.methods
+                await config.methods
                     .set_default_game_config_planet_type_weights_tier(tier)
                     .send(opts);
-                await tx.wait();
             }
         );
     }
 
     await run('Config.set_default_artifacts_config()', async () => {
-        const tx = await config.methods
-            .set_default_artifacts_config()
-            .send(opts);
-        await tx.wait();
+        await config.methods.set_default_artifacts_config().send(opts);
     });
 
     await run('Config.set_default_spaceships_config()', async () => {
-        const tx = await config.methods
-            .set_default_spaceships_config()
-            .send(opts);
-        await tx.wait();
+        await config.methods.set_default_spaceships_config().send(opts);
     });
 
     await run('Config.set_default_space_junk_config()', async () => {
-        const tx = await config.methods
-            .set_default_space_junk_config()
-            .send(opts);
-        await tx.wait();
+        await config.methods.set_default_space_junk_config().send(opts);
     });
 
     await run('Config.set_default_capture_zones_config()', async () => {
-        const tx = await config.methods
-            .set_default_capture_zones_config()
-            .send(opts);
-        await tx.wait();
+        await config.methods.set_default_capture_zones_config().send(opts);
     });
 
     // ---- planet default stats & upgrades ----
@@ -422,286 +458,211 @@ async function main() {
 
     for (const { level, stats } of planetDefaultStats) {
         await run(`set_planet_default_stats(${level})`, async () => {
-            const tx = await config.methods
+            await config.methods
                 .set_planet_default_stats(level, stats)
                 .send(opts);
-            await tx.wait();
         });
     }
 
     await run('Config.initializeUpgrades()', async () => {
-        const tx = await config.methods.initializeUpgrades().send(opts);
-        await tx.wait();
+        await config.methods.initializeUpgrades().send(opts);
     });
 
     await run('Config.initialize_cumulative_rarities()', async () => {
-        const tx = await config.methods
-            .initialize_cumulative_rarities()
-            .send(opts);
-        await tx.wait();
+        await config.methods.initialize_cumulative_rarities().send(opts);
     });
 
     await run('Admin system', async () => {
         await run('admin.set_config_storage_address()', async () => {
-            const tx = await admin.methods
+            await admin.methods
                 .set_config_storage_address(config.address)
                 .send(opts);
-            await tx.wait();
         });
 
         await run('admin.set_world_storage_address()', async () => {
-            const tx1 = await admin.methods
+            await admin.methods
                 .set_world_storage_address(worldStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await worldStorage.methods
-                .add_authorized_contract(admin.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(worldStorage, admin.address);
         });
 
         await run('admin.set_player_storage_address()', async () => {
-            const tx1 = await admin.methods
+            await admin.methods
                 .set_player_storage_address(playerStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await playerStorage.methods
-                .add_authorized_contract(admin.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(playerStorage, admin.address);
         });
 
         await run('admin.set_planet_storage_address()', async () => {
-            const tx1 = await admin.methods
+            await admin.methods
                 .set_planet_storage_address(planetStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetStorage.methods
-                .add_authorized_contract(admin.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetStorage, admin.address);
         });
     });
 
     await run('Core system', async () => {
         await run('core.set_config_storage_address()', async () => {
-            const tx = await core.methods
+            await core.methods
                 .set_config_storage_address(config.address)
                 .send(opts);
-            await tx.wait();
         });
 
         await run('core.set_world_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_world_storage_address(worldStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await worldStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(worldStorage, core.address);
         });
 
         await run('core.set_player_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_player_storage_address(playerStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await playerStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(playerStorage, core.address);
         });
 
         await run('core.set_planet_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_planet_storage_address(planetStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetStorage, core.address);
         });
 
         await run(
             'core.set_planet_revealed_coords_storage_address()',
             async () => {
-                const tx1 = await core.methods
+                await core.methods
                     .set_planet_revealed_coords_storage_address(
                         planetRevealedCoordsStorage.address
                     )
                     .send(opts);
-                await tx1.wait();
-                const tx2 = await planetRevealedCoordsStorage.methods
-                    .add_authorized_contract(core.address)
-                    .send(opts);
-                await tx2.wait();
+                await addAuthorizedIfNeeded(
+                    planetRevealedCoordsStorage,
+                    core.address
+                );
             }
         );
 
         await run('core.set_planet_events_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_planet_events_storage_address(planetEventsStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetEventsStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetEventsStorage, core.address);
         });
 
         await run('core.set_planet_artifacts_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_planet_artifacts_storage_address(
                     planetArtifactsStorage.address
                 )
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetArtifactsStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetArtifactsStorage, core.address);
         });
 
         await run('core.set_arrivals_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_arrivals_storage_address(arrivalStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await arrivalStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(arrivalStorage, core.address);
         });
 
         await run('core.set_artifact_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_artifact_storage_address(artifactStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await artifactStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(artifactStorage, core.address);
         });
 
         await run('core.set_artifact_location_storage_address()', async () => {
-            const tx1 = await core.methods
+            await core.methods
                 .set_artifact_location_storage_address(
                     artifactLocationStorage.address
                 )
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await artifactLocationStorage.methods
-                .add_authorized_contract(core.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(artifactLocationStorage, core.address);
         });
     });
 
     await run('Move system', async () => {
         await run('move.set_config_storage_address()', async () => {
-            const tx = await move.methods
+            await move.methods
                 .set_config_storage_address(config.address)
                 .send(opts);
-            await tx.wait();
         });
 
         await run('move.set_world_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_world_storage_address(worldStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await worldStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(worldStorage, move.address);
         });
 
         await run('move.set_player_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_player_storage_address(playerStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await playerStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(playerStorage, move.address);
         });
 
         await run('move.set_planet_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_planet_storage_address(planetStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetStorage, move.address);
         });
 
         await run('move.set_planet_events_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_planet_events_storage_address(planetEventsStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetEventsStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetEventsStorage, move.address);
         });
 
         await run('move.set_planet_artifacts_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_planet_artifacts_storage_address(
                     planetArtifactsStorage.address
                 )
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetArtifactsStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(planetArtifactsStorage, move.address);
         });
 
         await run('move.set_arrivals_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_arrivals_storage_address(arrivalStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await arrivalStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(arrivalStorage, move.address);
         });
 
         await run('move.set_artifact_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_artifact_storage_address(artifactStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await artifactStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(artifactStorage, move.address);
         });
 
         await run('move.set_artifact_location_storage_address()', async () => {
-            const tx1 = await move.methods
+            await move.methods
                 .set_artifact_location_storage_address(
                     artifactLocationStorage.address
                 )
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await artifactLocationStorage.methods
-                .add_authorized_contract(move.address)
-                .send(opts);
-            await tx2.wait();
+            await addAuthorizedIfNeeded(artifactLocationStorage, move.address);
         });
     });
 
+    const elapsedMs = Date.now() - scriptStartTime;
+    const elapsedSec = (elapsedMs / 1000).toFixed(1);
+    const elapsedMin = Math.floor(elapsedMs / 60000);
+    const elapsedSecRem = ((elapsedMs % 60000) / 1000).toFixed(1);
+    const timeStr =
+        elapsedMs >= 60000
+            ? `${elapsedMin}m ${elapsedSecRem}s`
+            : `${elapsedSec}s`;
+
     console.log('\n✅ Configure done.');
+    console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);
 }
 
 main()

@@ -1,4 +1,4 @@
-use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
+use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 /// # Spaceships
 #[derive(Eq, Serialize, Deserialize, Packable)]

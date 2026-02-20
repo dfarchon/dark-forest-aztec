@@ -1,20 +1,20 @@
 // Storage contract for players (address, home planet, score, space junk, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use dep::aztec::macros::aztec;
+use ::aztec::macros::aztec;
 
 #[aztec]
 pub contract PlayerStorage {
-    use dep::aztec::{
+    use ::aztec::{
         macros::{
             events::event,
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
 
-    use dep::aztec::state_vars::{Map, PublicMutable};
-    use dep::types::storage::player::Player;
+    use ::aztec::state_vars::{Map, PublicMutable};
+    use ::types::storage::player::Player;
 
     #[storage]
     struct Storage<Context> {
@@ -46,12 +46,12 @@ pub contract PlayerStorage {
 
     #[internal("public")]
     fn assert_admin() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
     }
 
     #[internal("public")]
     fn assert_authorized() {
-        let caller = self.msg_sender().unwrap();
+        let caller = self.msg_sender();
         let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
         assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");

@@ -1,22 +1,22 @@
-use dep::aztec::macros::aztec;
+use ::aztec::macros::aztec;
 
 #[aztec]
 contract Move {
-    use dep::aztec::{
+    use ::aztec::{
         macros::{
             events::event,
             functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
-    use dep::aztec::state_vars::{Map, PublicMutable};
+    use ::aztec::state_vars::{Map, PublicMutable};
 
-    use dep::types::args::{
+    use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
     };
 
-    use dep::types::config::{
+    use ::types::config::{
         artifacts::ArtifactsConfig,
         capture_zones::CaptureZonesConfig,
         default_stats::PlanetDefaultStats,
@@ -28,7 +28,7 @@ contract Move {
         world::WorldConfig,
     };
 
-    use dep::types::storage::{
+    use ::types::storage::{
         arrival::{Arrival, ArrivalType},
         artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType},
         planet::{
@@ -39,22 +39,22 @@ contract Move {
         world::World,
     };
 
-    use dep::libs::game_utils::{
+    use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _take_artifact_off_planet, revert_if_bad_snark_perlin_flags,
         update_world_radius,
     };
 
-    use dep::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
+    use ::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
 
-    use dep::arrival_storage::ArrivalStorage;
-    use dep::artifact_location_storage::ArtifactLocationStorage;
-    use dep::artifact_storage::ArtifactStorage;
-    use dep::config::Config;
-    use dep::planet_artifacts_storage::PlanetArtifactsStorage;
-    use dep::planet_events_storage::PlanetEventsStorage;
-    use dep::planet_storage::PlanetStorage;
-    use dep::player_storage::PlayerStorage;
-    use dep::world_storage::WorldStorage;
+    use ::arrival_storage::ArrivalStorage;
+    use ::artifact_location_storage::ArtifactLocationStorage;
+    use ::artifact_storage::ArtifactStorage;
+    use ::config::Config;
+    use ::planet_artifacts_storage::PlanetArtifactsStorage;
+    use ::planet_events_storage::PlanetEventsStorage;
+    use ::planet_storage::PlanetStorage;
+    use ::player_storage::PlayerStorage;
+    use ::world_storage::WorldStorage;
 
     #[storage]
     struct Storage<Context> {
@@ -72,7 +72,7 @@ contract Move {
 
     #[internal("public")]
     fn assert_admin() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
     }
 
     #[internal("public")]
@@ -237,7 +237,7 @@ contract Move {
             // todo: implement zk checks
         }
 
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         assert(target_radius <= world.radius, "Attempting to move out of bounds");
 
@@ -981,6 +981,7 @@ contract Move {
         for i in 0..20 {
             let arrival_id = source_arrivals_ids[i];
             let arrival_hash = source_arrivals_hash[i];
+
             assert(
                 self.view(arrivals_storage.verify_hash(arrival_id, arrival_hash)),
                 "Source arrival hash mismatch",

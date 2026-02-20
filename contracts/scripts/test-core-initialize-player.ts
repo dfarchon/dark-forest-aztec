@@ -16,12 +16,17 @@
  *
  * Or with tsx: pnpm exec tsx scripts/test-core-initialize-player.ts [userIndex]
  */
+import { getPublicEvents } from '@aztec/aztec.js/events';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
-import { getTestContext, type TestContext } from './test-setup.ts';
+import {
+    getTestContext,
+    sendTimestampRefreshTx,
+    type TestContext,
+} from './test-setup.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -133,11 +138,19 @@ async function loadWorldFromEvents(
         return null;
     }
 
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        WorldStorageContract.events.WorldUpdate,
+        {
+            fromBlock: BlockNumber(from),
+            toBlock: BlockNumber(from + limit),
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
-    }>(ctx.node, WorldStorageContract.events.WorldUpdate, from, limit);
+    }[];
 
     const forId0 = events.filter((e) => String(e?.id) === '0' && e?.state);
     if (forId0.length === 0) return null;
@@ -299,10 +312,9 @@ async function main() {
         console.log(
             '   World is default (radius 53000); calling Admin.admin_set_world_radius(53001, world)...'
         );
-        const tx = await Admin.methods
+        await Admin.methods
             .admin_set_world_radius(53001n, world)
             .send(sendOpts(admin));
-        await tx.wait();
         world = worldWithRadius(53001n);
         console.log('   ✅ World updated to radius 53001.');
     } else if (world.radius === ZERO_RADIUS) {
@@ -316,6 +328,10 @@ async function main() {
     const aztecZero =
         '0x0000000000000000000000000000000000000000000000000000000000000000';
     const planetState = planetZero(aztecZero);
+
+    // Send a no-op tx to refresh block timestamp before the main test tx.
+    console.log('\n🔄 Refreshing block timestamp...');
+    await sendTimestampRefreshTx(ctx);
 
     // Timestamp: contract requires timestamp <= block time and block_time - timestamp <= 300.
     // Use chain block time when available so we stay within the 5-minute window.
@@ -381,10 +397,9 @@ async function main() {
 
     console.log('   Sending transaction...');
     try {
-        const tx = await Core.methods
+        const receipt = await Core.methods
             .initialize_player(...initPlayerArgs)
             .send(sendOpts(user));
-        const receipt = await tx.wait();
         const blockNumber =
             receipt &&
             typeof (receipt as { blockNumber?: number }).blockNumber !==

@@ -188,7 +188,7 @@ export type MoveFunctionName = (typeof MOVE_FUNCTIONS)[number];
 // ---------------------------------------------------------------------------
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED !== 'false';
+const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
 
 const CONTRACT_SPECS = [
     {
@@ -303,7 +303,7 @@ export type TestAccounts = {
 export type TestContext = {
     accounts: TestAccounts;
     contracts: Record<string, ContractBase>;
-    /** Aztec node client (e.g. for getDecodedPublicEvents). */
+    /** Aztec node client (e.g. for getPublicEvents). */
     node: AztecNode;
     /** Options for sending a tx from a given address (includes SponsoredFPC fee). */
     sendOpts: (from: AztecAddress) => {
@@ -382,6 +382,21 @@ export async function getTestContext(): Promise<TestContext> {
         node: aztecNode,
         sendOpts,
     };
+}
+
+/**
+ * Sends a no-op transaction (Admin.transfer_admin to self) to refresh the block timestamp.
+ * Call this before the main test transaction so context.timestamp() in the next block is fresh.
+ */
+export async function sendTimestampRefreshTx(ctx: TestContext): Promise<void> {
+    const Admin = ctx.contracts['Admin'];
+    if (!Admin) return;
+    const admin = ctx.accounts.admin;
+    console.log(
+        '   Sending timestamp refresh tx (Admin.transfer_admin self)...'
+    );
+    await Admin.methods.transfer_admin(admin).send(ctx.sendOpts(admin));
+    console.log('   ✅ Timestamp refresh tx confirmed.');
 }
 
 /** Log contract function list for reference when writing tests. */

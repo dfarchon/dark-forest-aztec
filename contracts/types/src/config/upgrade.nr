@@ -1,4 +1,4 @@
-use dep::aztec::protocol_types::traits::{Deserialize, Packable, Serialize};
+use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Serialize, Deserialize, Packable)]
 pub struct Upgrade {

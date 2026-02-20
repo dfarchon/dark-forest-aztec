@@ -2,7 +2,7 @@
  * WalletManager: EthConnection-equivalent for Aztec.
  *
  * Connects to an Aztec Node via createAztecNodeClient, creates a browser-embedded
- * TestWallet (with internal PXE), registers SponsoredFPC for fee-free transactions,
+ * EmbeddedWallet (with internal PXE), registers SponsoredFPC for fee-free transactions,
  * and manages ECDSAR accounts with localStorage persistence via KeyStore.
  */
 
@@ -13,10 +13,9 @@ import { Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { DeployAccountOptions } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
-import { TestWallet } from "@aztec/test-wallet/client/lazy";
+import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
@@ -28,7 +27,7 @@ const DEPLOY_TIMEOUT_MS = 120_000;
 
 export class WalletManager {
   private readonly node: AztecNode;
-  private readonly wallet: TestWallet;
+  private readonly wallet: EmbeddedWallet;
   private readonly sponsoredFpcAddress: AztecAddress;
   private readonly keyStore: KeyStore;
   private activeAddress: AztecAddress | undefined;
@@ -40,7 +39,7 @@ export class WalletManager {
 
   private constructor(
     node: AztecNode,
-    wallet: TestWallet,
+    wallet: EmbeddedWallet,
     sponsoredFpcAddress: AztecAddress,
     keyStore: KeyStore
   ) {
@@ -60,7 +59,7 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
-    const wallet = await TestWallet.create(node);
+    const wallet = await EmbeddedWallet.create(node);
 
     const sponsoredFPC = await getContractInstanceFromInstantiationParams(
       SponsoredFPCContractArtifact,
@@ -105,15 +104,16 @@ export class WalletManager {
     );
 
     const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts: DeployAccountOptions = {
+    const deployOpts = {
       from: AztecAddress.ZERO,
       fee: {
         paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
       },
       skipClassPublication: true,
       skipInstancePublication: true,
+      wait: { timeout: DEPLOY_TIMEOUT_MS },
     };
-    await deployMethod.send(deployOpts).wait({ timeout: DEPLOY_TIMEOUT_MS });
+    await deployMethod.send(deployOpts);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -188,7 +188,7 @@ export class WalletManager {
   // Queries
   // ---------------------------------------------------------------------------
 
-  getWallet(): TestWallet {
+  getWallet(): EmbeddedWallet {
     return this.wallet;
   }
 

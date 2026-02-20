@@ -54,6 +54,12 @@ vite.config.ts.timestamp-*
 **/.sandbox/
 **/.store/
 
+# Aztec PXE & wallet data (contracts folder)
+contracts/pxe_data_*/
+contracts/wallet_data_*/
+contracts/scripts/pxe_data_*/
+contracts/scripts/wallet_data_*/
+
 ############################################
 # Smart contract generated files
 ############################################
@@ -84,8 +90,10 @@ packages/*/build/
 contracts/scripts/.test-accounts.json
 
 ############################################
-# Editor / IDE
+# Editor / IDE / AI tools
 ############################################
+.claude/
+
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json

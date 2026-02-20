@@ -1,16 +1,16 @@
-use dep::aztec::macros::aztec;
+use ::aztec::macros::aztec;
 
 #[aztec]
 contract Admin {
-    use dep::aztec::{
+    use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self}, storage::storage},
-        protocol_types::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
-    use dep::aztec::state_vars::PublicMutable;
+    use ::aztec::state_vars::PublicMutable;
 
-    use dep::types::args::{AdminCreatePlanetArgs, DFPInitPlanetArgs};
+    use ::types::args::{AdminCreatePlanetArgs, DFPInitPlanetArgs};
 
-    use dep::types::config::{
+    use ::types::config::{
         default_stats::PlanetDefaultStats,
         game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
         snark::SnarkConfig,
@@ -18,18 +18,18 @@ contract Admin {
         world::WorldConfig,
     };
 
-    use dep::types::storage::{planet::Planet, player::Player, world::World};
+    use ::types::storage::{planet::Planet, player::Player, world::World};
 
-    use dep::libs::game_utils::{
+    use ::libs::game_utils::{
         location_id_valid, revert_if_bad_snark_perlin_flags, space_type_from_perlin,
     };
-    use dep::libs::planet::{_initialize_planet, initialize_planet_with_defaults};
+    use ::libs::planet::{_initialize_planet, initialize_planet_with_defaults};
 
-    use dep::config::Config;
+    use ::config::Config;
 
-    use dep::planet_storage::PlanetStorage;
-    use dep::player_storage::PlayerStorage;
-    use dep::world_storage::WorldStorage;
+    use ::planet_storage::PlanetStorage;
+    use ::player_storage::PlayerStorage;
+    use ::world_storage::WorldStorage;
 
     #[storage]
     struct Storage<Context> {
@@ -48,7 +48,7 @@ contract Admin {
 
     #[internal("public")]
     fn assert_admin() {
-        assert(self.msg_sender().unwrap() == self.storage.admin.read(), "Only admin");
+        assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
     }
 
     #[internal("public")]
@@ -223,7 +223,7 @@ contract Admin {
             //todo: implement zk checks
         }
 
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         // Compute config hashes for public verification
         let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
@@ -468,7 +468,7 @@ contract Admin {
     fn create_planet(args: AdminCreatePlanetArgs) {
         self.internal.assert_admin();
 
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         let config_storage_address = self.internal.get_config_storage_address();
         let config = Config::at(config_storage_address);
@@ -518,7 +518,7 @@ contract Admin {
     #[external("public")]
     fn admin_initialize_planet(location_id: Field, perlin: u8, level: u8, world: World) {
         self.internal.assert_admin();
-        let sender = self.msg_sender().unwrap();
+        let sender = self.msg_sender();
 
         let planet_storage_address = self.internal.get_planet_storage_address();
         let planet_storage = PlanetStorage::at(planet_storage_address);

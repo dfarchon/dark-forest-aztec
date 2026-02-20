@@ -1,11 +1,11 @@
 // Lazy update functions for planets
 // Pure computation functions that update planet state based on time elapsed
-use dep::types::storage::arrival::{Arrival, ArrivalType};
-use dep::types::storage::planet::{
+use ::types::storage::arrival::{Arrival, ArrivalType};
+use ::types::storage::planet::{
     Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetType,
 };
 
-use dep::aztec::protocol_types::address::AztecAddress;
+use ::aztec::protocol::address::AztecAddress;
 
 /// Noir port of Solidity `LibLazyUpdate._updateSilver`.
 /// Updates silver for silver-producing planets using linear growth formula.

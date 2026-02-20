@@ -11,12 +11,13 @@
  *
  * If sourceLoc/targetLoc omitted, all PlanetUpdate and ArrivalUpdate events in the block are printed.
  */
+import { getPublicEvents } from '@aztec/aztec.js/events';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import type { EventMetadataDefinition } from '@aztec/stdlib/abi';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { getDecodedPublicEvents } from './getDecodedPublicEvents.ts';
 import { getTestContext, type TestContext } from './test-setup.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -61,12 +62,19 @@ async function printWorld(
 ): Promise<void> {
     const W = ctx.contracts['WorldStorage'];
     if (!W?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.WorldStorage.events.WorldUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: W.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         state?: Record<string, unknown>;
-    }>(ctx.node, artifacts.WorldStorage.events.WorldUpdate, blockNumber, 1, {
-        contractAddress: W.address,
-    });
+    }[];
     const ev = events.filter((e) => toStr(e?.id) === '0').pop();
     if (!ev?.state) {
         console.log('\n  World: no WorldUpdate (id=0) in this block.');
@@ -94,12 +102,19 @@ async function printPlanets(
 ): Promise<void> {
     const P = ctx.contracts['PlanetStorage'];
     if (!P?.address) return;
-    const events = await getDecodedPublicEvents<{
+    const raw = await getPublicEvents(
+        ctx.node,
+        artifacts.PlanetStorage.events.PlanetUpdate,
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: P.address,
+        }
+    );
+    const events = raw.map((e) => e.event) as {
         id: unknown;
         state?: Record<string, unknown>;
-    }>(ctx.node, artifacts.PlanetStorage.events.PlanetUpdate, blockNumber, 1, {
-        contractAddress: P.address,
-    });
+    }[];
     const filter = (e: { id?: unknown }) => {
         if (!sourceLoc && !targetLoc) return true;
         const id = toStr(e?.id);
@@ -141,16 +156,19 @@ async function printArrivals(
 ): Promise<void> {
     const A = ctx.contracts['ArrivalStorage'];
     if (!A?.address) return;
-    const events = await getDecodedPublicEvents<{
-        id: unknown;
-        state?: Record<string, unknown>;
-    }>(
+    const raw = await getPublicEvents(
         ctx.node,
         artifacts.ArrivalStorage.events.ArrivalUpdate,
-        blockNumber,
-        1,
-        { contractAddress: A.address }
+        {
+            fromBlock: BlockNumber(blockNumber),
+            toBlock: BlockNumber(blockNumber + 1),
+            contractAddress: A.address,
+        }
     );
+    const events = raw.map((e) => e.event) as {
+        id: unknown;
+        state?: Record<string, unknown>;
+    }[];
     if (events.length === 0) {
         console.log('\n  🚀 Arrival: no ArrivalUpdate in this block.');
         return;
