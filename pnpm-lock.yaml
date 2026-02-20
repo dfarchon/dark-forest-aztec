@@ -87,6 +87,9 @@ importers:
       '@dfpunk/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
+      '@dfpunk/events':
+        specifier: workspace:*
+        version: link:../packages/events
       react:
         specifier: 19.2.3
         version: 19.2.3

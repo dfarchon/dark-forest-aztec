@@ -1,6 +1,6 @@
 /**
  * Chain state types aligned with contracts/types and contracts/scripts/artifacts *Update.state.
- * Scalars: Field/address → string, u128 → string, u64/u32/u8 → number, bool → boolean.
+ * Scalars: Field/address → string, u128/u64 → bigint, u32/u8 → number, bool → boolean.
  */
 
 /** Field element or location/planet/artifact id (hex or decimal string). */
@@ -16,11 +16,11 @@ export type AddressString = string;
 export interface WorldState {
   paused: boolean;
   planet_events_count: string;
-  radius: string;
-  misc_nonce: string;
-  planet_ids_count: string;
-  revealed_planet_ids_count: string;
-  player_ids_count: string;
+  radius: bigint;
+  misc_nonce: bigint;
+  planet_ids_count: bigint;
+  revealed_planet_ids_count: bigint;
+  player_ids_count: bigint;
   next_change_block: number;
 }
 
@@ -29,14 +29,14 @@ export interface WorldState {
 // ---------------------------------------------------------------------------
 
 export interface PlayerState {
-  init_timestamp: number;
+  init_timestamp: bigint;
   home_planet_id: string;
-  last_reveal_timestamp: number;
-  score: string;
-  space_junk: string;
-  space_junk_limit: string;
+  last_reveal_timestamp: bigint;
+  score: bigint;
+  space_junk: bigint;
+  space_junk_limit: bigint;
   claimed_ships: boolean;
-  last_updated: number;
+  last_updated: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ export interface PlayerState {
 
 export interface PlanetState {
   perlin: number;
-  created_at: number;
+  created_at: bigint;
   owner: string;
   planet_level: number;
   planet_type: number;
@@ -56,24 +56,24 @@ export interface PlanetState {
   invader: string;
   capturer: string;
   invade_start_block: number;
-  population_cap: string;
-  population_growth: string;
-  range: string;
-  speed: string;
-  defense: string;
-  silver_cap: string;
-  silver_growth: string;
-  population: string;
-  silver: string;
+  population_cap: bigint;
+  population_growth: bigint;
+  range: bigint;
+  speed: bigint;
+  defense: bigint;
+  silver_cap: bigint;
+  silver_growth: bigint;
+  population: bigint;
+  silver: bigint;
   upgrade_state_0: number;
   upgrade_state_1: number;
   upgrade_state_2: number;
-  last_updated: number;
-  pausers: string;
-  energy_gro_doublers: string;
-  silver_gro_doublers: string;
-  hat_level: string;
-  space_junk: string;
+  last_updated: bigint;
+  pausers: bigint;
+  energy_gro_doublers: bigint;
+  silver_gro_doublers: bigint;
+  hat_level: bigint;
+  space_junk: bigint;
   has_tried_finding_artifact: boolean;
   prospected_block_number: number;
 }
@@ -100,7 +100,7 @@ export interface PlanetEventMetadata {
 export interface PlanetEventsState {
   events: PlanetEventMetadata[];
   count: number;
-  last_updated: number;
+  last_updated: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ export interface PlanetEventsState {
 export interface PlanetArtifactsState {
   ids: string[];
   count: number;
-  last_updated: number;
+  last_updated: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,13 +122,13 @@ export interface ArrivalState {
   player: string;
   from_planet: string;
   to_planet: string;
-  pop_arriving: string;
-  silver_moved: string;
-  departure_time: number;
-  arrival_time: number;
+  pop_arriving: bigint;
+  silver_moved: bigint;
+  departure_time: bigint;
+  arrival_time: bigint;
   arrival_type: number;
   carried_artifact_id: string;
-  distance: string;
+  distance: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,15 +139,15 @@ export interface ArtifactState {
   planet_discovered_on: string;
   rarity: number;
   planet_biome: number;
-  minted_at_timestamp: number;
+  minted_at_timestamp: bigint;
   discoverer: string;
   artifact_type: number;
-  activations: string;
-  last_activated: number;
-  last_deactivated: number;
+  activations: bigint;
+  last_activated: bigint;
+  last_deactivated: bigint;
   wormhole_to: string;
   controller: string;
-  last_updated: number;
+  last_updated: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ export interface ArtifactState {
 export interface ArtifactLocationState {
   planet_id: string;
   voyage_id: string;
-  last_updated: number;
+  last_updated: bigint;
 }
 
 // ---------------------------------------------------------------------------

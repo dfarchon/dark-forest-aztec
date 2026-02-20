@@ -31,6 +31,7 @@ export {
   type BlockUpdates,
   type IBlockEventSource,
   type IndexerChangePayload,
+  type IndexerLifecycle,
   type IndexerSnapshot,
   type IndexerStatus,
   TABLE_NAMES,
@@ -40,3 +41,13 @@ export {
   type TableStateMap,
   type TableUpdate,
 } from "./types";
+
+// IndexerConnection — EthConnection-equivalent adapter
+export type { IndexerConnectionConfig } from "./IndexerConnection";
+export {
+  createIndexerConnection,
+  IndexerConnection,
+} from "./IndexerConnection";
+
+// TableTypes — chain state types and enums
+export * from "./TableTypes";

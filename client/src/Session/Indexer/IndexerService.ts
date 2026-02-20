@@ -1,8 +1,14 @@
 /**
  * IndexerService: maintains latest chain table state by syncing block-by-block
  * with debounce. Supports init from off-chain indexer and query API for tx inputs.
+ *
+ * Lifecycle: idle → bootstrapping → syncing → live → destroyed.
+ * Subscriber notifications are only dispatched in the "live" phase so that
+ * callers never receive partial state during initial catch-up.
  */
 
+import { rawIdToTableId, rawToState } from "./convert";
+import { debounce } from "./debounce";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -13,13 +19,12 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "../TableTypes/chain";
-import { rawIdToTableId, rawToState } from "./convert";
-import { debounce } from "./debounce";
+} from "./TableTypes/chain";
 import type {
   BlockUpdates,
   IBlockEventSource,
   IndexerChangePayload,
+  IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
   TableId,
@@ -93,7 +98,7 @@ export class IndexerService {
   private latestKnownBlock: number = 0;
   private isSyncing: boolean = false;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
-  private destroyRequested: boolean = false;
+  private lifecycle: IndexerLifecycle = "idle";
 
   /** Subscribers notified when state changes (after applying updates). */
   private listeners = new Set<(payload: IndexerChangePayload) => void>();
@@ -210,17 +215,26 @@ export class IndexerService {
     });
   }
 
+  /**
+   * Notify subscribers. Only dispatches during the "live" phase so that
+   * initial sync never leaks partial updates to callers.
+   */
   private notifyListeners(payload: IndexerChangePayload): void {
+    if (this.lifecycle !== "live") return;
     this.listeners.forEach((cb) => cb(payload));
   }
 
   /**
    * Start the indexer: optionally load snapshot from bootstrapSource (init to block X);
-   * otherwise start from startBlock. Then use only source for getLatestBlockNumber and
-   * getBlockUpdates so blocks after X are maintained by the frontend from the chain.
+   * otherwise start from startBlock. Then catch up to latest block (no notifications).
+   * Once fully synced, transition to "ready" — snapshot is consistent and safe to read,
+   * but polling has NOT started yet. Call startPolling() to begin real-time updates.
+   *
+   * @returns syncedToBlock — the block number at which the snapshot is consistent.
+   *   All subsequent subscriber notifications correspond to blocks after this point.
    */
-  async start(): Promise<void> {
-    this.destroyRequested = false;
+  async start(): Promise<{ syncedToBlock: number }> {
+    this.lifecycle = "bootstrapping";
     let snapshotLoaded = false;
     if (this.bootstrapSource?.getSnapshot) {
       try {
@@ -229,12 +243,6 @@ export class IndexerService {
           this.snapshot = snap;
           this.latestKnownBlock = snap.lastProcessedBlock;
           snapshotLoaded = true;
-          const block = snap.lastProcessedBlock;
-          this.notifyListeners({
-            tables: [...TABLE_NAMES],
-            fromBlock: block,
-            toBlock: block,
-          });
         }
       } catch (err) {
         console.warn("[IndexerService] bootstrap getSnapshot failed:", err);
@@ -243,12 +251,36 @@ export class IndexerService {
     if (!snapshotLoaded && this.startBlock > 0) {
       this.snapshot.lastProcessedBlock = this.startBlock - 1;
     }
+
+    this.lifecycle = "syncing";
     const latest = await this.source.getLatestBlockNumber();
     this.latestKnownBlock = latest;
     await this.processNewBlocks();
 
+    const syncedToBlock = this.snapshot.lastProcessedBlock;
+
+    this.lifecycle = "ready";
+
+    return { syncedToBlock };
+  }
+
+  /**
+   * Begin real-time polling for new blocks and dispatching notifications.
+   * Must be called after start() has completed (lifecycle === "ready").
+   * Mirrors the pattern in darkforest-v0.6 where GameManager calls
+   * contractsAPI.setupEventListeners() only after game state is loaded.
+   */
+  startPolling(): void {
+    if (this.lifecycle !== "ready") {
+      throw new Error(
+        `[IndexerService] startPolling() requires lifecycle "ready", ` +
+          `current: "${this.lifecycle}"`
+      );
+    }
+    this.lifecycle = "live";
+
     this.pollTimer = setInterval(async () => {
-      if (this.destroyRequested) return;
+      if (this.lifecycle === "destroyed") return;
       try {
         const next = await this.source.getLatestBlockNumber();
         this.onLatestBlock(next);
@@ -260,7 +292,7 @@ export class IndexerService {
 
   /** Stop polling and clear timer. */
   destroy(): void {
-    this.destroyRequested = true;
+    this.lifecycle = "destroyed";
     if (this.pollTimer !== undefined) {
       clearInterval(this.pollTimer);
       this.pollTimer = undefined;
@@ -271,10 +303,23 @@ export class IndexerService {
   /**
    * Subscribe to state changes (e.g. for React re-render).
    * Callback receives which tables were updated so you can update only relevant state.
+   * Only fires in the "live" lifecycle phase.
    */
   subscribe(listener: (payload: IndexerChangePayload) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  // ---------- Lifecycle ----------
+
+  /** Current lifecycle phase. */
+  getLifecycle(): IndexerLifecycle {
+    return this.lifecycle;
+  }
+
+  /** Whether the service is in "live" mode (initial sync complete, processing real-time blocks). */
+  isLive(): boolean {
+    return this.lifecycle === "live";
   }
 
   // ---------- Query API ----------
@@ -284,6 +329,7 @@ export class IndexerService {
       lastProcessedBlock: this.snapshot.lastProcessedBlock,
       latestKnownBlock: this.latestKnownBlock,
       isSyncing: this.isSyncing,
+      lifecycle: this.lifecycle,
     };
   }
 
@@ -361,5 +407,35 @@ export class IndexerService {
   /** All arrival ids. */
   getArrivalIds(): string[] {
     return Array.from(this.snapshot.arrival.keys());
+  }
+
+  /** All artifact ids. */
+  getArtifactIds(): string[] {
+    return Array.from(this.snapshot.artifact.keys());
+  }
+
+  /** Full player map (id → PlayerState). */
+  getPlayerMap(): Map<string, PlayerState> {
+    return new Map(this.snapshot.player as Map<string, PlayerState>);
+  }
+
+  /** Full planet map (id → PlanetState). */
+  getPlanetMap(): Map<string, PlanetState> {
+    return new Map(this.snapshot.planet as Map<string, PlanetState>);
+  }
+
+  /** Full arrival map (id → ArrivalState). */
+  getArrivalMap(): Map<string, ArrivalState> {
+    return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
+  }
+
+  /** Full revealed coords map (id → PlanetRevealedCoordsState). */
+  getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
+    return new Map(
+      this.snapshot.planet_revealed_coords as Map<
+        string,
+        PlanetRevealedCoordsState
+      >
+    );
   }
 }

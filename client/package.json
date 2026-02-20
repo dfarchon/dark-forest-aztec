@@ -20,6 +20,7 @@
     "@aztec/noir-contracts.js": "3.0.0-devnet.6-patch.1",
     "@aztec/test-wallet": "3.0.0-devnet.6-patch.1",
     "@dfpunk/contracts": "workspace:*",
+    "@dfpunk/events": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router-dom": "6.30.3"

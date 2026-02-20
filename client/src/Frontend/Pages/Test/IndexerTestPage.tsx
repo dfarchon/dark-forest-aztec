@@ -1,18 +1,27 @@
 /**
- * Indexer test page: uses IndexerService via class initialization (no useContext).
- * Holds instance in useRef, start/destroy in useEffect, subscribe() → setState for UI updates.
- * Layout and sections mirror aztec-client-v0 IndexerPage.
+ * IndexerConnection test page.
+ *
+ * Demonstrates the full lifecycle:
+ *  1. createIndexerConnection() factory — mirrors createEthConnection()
+ *  2. initialize() with syncedToBlock atomicity boundary
+ *  3. subscribeToContractEvents(handlers) — domain event stream
+ *  4. blockNumber$ reactive stream — real-time block updates
+ *  5. Read API — getPlayers, getPlanet, getArrivals, etc.
+ *  6. Raw IndexerChangePayload debug view
  */
+
+import "./TestPageStyles.css";
 
 import { START_BLOCK } from "@dfpunk/contracts";
 import * as React from "react";
 
+import type { IndexerLifecycle } from "../../../Session/Indexer";
 import {
-  createAztecNodeBlockSource,
-  type IndexerChangePayload,
-  IndexerService,
-  type IndexerStatus,
-} from "../../../Session/Indexer";
+  createIndexerConnection,
+  IndexerConnection,
+  type IndexerConnectionConfig,
+} from "../../../Session/Indexer/IndexerConnection";
+import type { WorldState } from "../../../Session/Indexer/TableTypes/chain";
 
 const NODE_URL =
   typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
@@ -20,10 +29,53 @@ const NODE_URL =
     ? import.meta.env.VITE_AZTEC_NODE_URL
     : "http://localhost:8080";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface EventLogEntry {
+  type: string;
+  id?: string;
+  from?: string;
+  to?: string;
+  revealer?: string;
+  paused?: boolean;
+  block: number;
+  timestamp: number;
+}
+
+interface BlockHistoryEntry {
+  block: number;
+  time: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function truncate(str: string, head = 8, tail = 6): string {
   if (str.length <= head + tail) return str;
   return `${str.slice(0, head)}…${str.slice(-tail)}`;
 }
+
+const MAX_EVENT_LOG = 50;
+const MAX_BLOCK_HISTORY = 20;
+
+function lifecycleBadgeClass(lc: IndexerLifecycle): string {
+  const map: Record<IndexerLifecycle, string> = {
+    idle: "test-page__badge--idle",
+    bootstrapping: "test-page__badge--bootstrapping",
+    syncing: "test-page__badge--syncing",
+    ready: "test-page__badge--ready",
+    live: "test-page__badge--live",
+    destroyed: "test-page__badge--destroyed",
+  };
+  return `test-page__badge ${map[lc] ?? ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Shared UI components
+// ---------------------------------------------------------------------------
 
 function Section({
   title,
@@ -36,325 +88,499 @@ function Section({
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
+    <section className="test-page__section">
       <button
         type="button"
+        className="test-page__section-header"
         onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          padding: "0.5rem 0",
-          fontWeight: "bold",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-        }}
       >
-        {open ? "▼ " : "▶ "}
+        <span className={`test-page__section-chevron ${open ? "open" : ""}`}>
+          ▶
+        </span>
         {title}
       </button>
-      {open ? children : null}
+      {open ? <div className="test-page__section-body">{children}</div> : null}
     </section>
   );
 }
 
-function JsonTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
-  if (data === null || data === undefined)
-    return <span style={{ color: "#999" }}>null</span>;
-  if (typeof data === "boolean")
-    return <span style={{ color: "#b35e14" }}>{String(data)}</span>;
-  if (typeof data === "number")
-    return <span style={{ color: "#b35e14" }}>{data}</span>;
-  if (typeof data === "string")
-    return <span style={{ color: "#2a7e4f" }}>"{data}"</span>;
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <span style={{ color: "#999" }}>[]</span>;
-    return (
-      <div style={{ paddingLeft: depth > 0 ? "1.2rem" : 0 }}>
-        {data.map((item, i) => (
-          <div key={i} style={{ display: "flex", gap: "0.4rem" }}>
-            <span style={{ color: "#999", flexShrink: 0 }}>{i}:</span>
-            <JsonTree data={item} depth={depth + 1} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (typeof data === "object") {
-    const entries = Object.entries(data as Record<string, unknown>);
-    if (entries.length === 0)
-      return <span style={{ color: "#999" }}>{"{}"}</span>;
-    return (
-      <div style={{ paddingLeft: depth > 0 ? "1.2rem" : 0 }}>
-        {entries.map(([key, val]) => (
-          <div key={key} style={{ display: "flex", gap: "0.4rem" }}>
-            <span style={{ color: "#1a6fb5", flexShrink: 0 }}>{key}:</span>
-            <JsonTree data={val} depth={depth + 1} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return <span>{String(data)}</span>;
-}
-
-const thStyle: React.CSSProperties = {
-  border: "1px solid #ccc",
-  padding: "0.35rem 0.5rem",
-  textAlign: "left",
-};
-const tdStyle: React.CSSProperties = {
-  border: "1px solid #ccc",
-  padding: "0.35rem 0.5rem",
-};
-
-function createIndexer(): IndexerService {
-  const source = createAztecNodeBlockSource(NODE_URL);
-  return new IndexerService({
-    source,
-    startBlock: START_BLOCK,
-    debounceMs: 1000,
-    pollIntervalMs: 2000,
-    maxBlocksPerRequest: 100,
-  });
-}
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
 
 export function IndexerTestPage() {
-  const indexerRef = React.useRef<IndexerService | null>(null);
-  const [status, setStatus] = React.useState<IndexerStatus | null>(null);
-  const [lastPayload, setLastPayload] =
-    React.useState<IndexerChangePayload | null>(null);
+  const connRef = React.useRef<IndexerConnection | null>(null);
+  const blockSubRef = React.useRef<{ unsubscribe: () => void } | null>(null);
+  const unsubEventsRef = React.useRef<(() => void) | null>(null);
+
+  const [lifecycle, setLifecycle] = React.useState<IndexerLifecycle>("idle");
+  const [syncedToBlock, setSyncedToBlock] = React.useState<number | null>(null);
+  const [currentBlock, setCurrentBlock] = React.useState<number>(0);
+  const [blockHistory, setBlockHistory] = React.useState<BlockHistoryEntry[]>(
+    []
+  );
+  const [eventLog, setEventLog] = React.useState<EventLogEntry[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [, forceRender] = React.useReducer((x: number) => x + 1, 0);
+
+  const appendEvent = React.useCallback((entry: EventLogEntry) => {
+    setEventLog((prev) => [entry, ...prev].slice(0, MAX_EVENT_LOG));
+  }, []);
 
   React.useEffect(() => {
-    if (!indexerRef.current) {
-      indexerRef.current = createIndexer();
-    }
-    const indexer = indexerRef.current;
+    let destroyed = false;
 
-    const unsubscribe = indexer.subscribe((payload) => {
-      setStatus(indexer.getStatus());
-      if (payload.tables.length > 0) {
-        setLastPayload(payload);
-      }
-    });
+    const config: IndexerConnectionConfig = {
+      nodeUrl: NODE_URL,
+      startBlock: START_BLOCK,
+      debounceMs: 1000,
+      pollIntervalMs: 2000,
+      maxBlocksPerRequest: 100,
+    };
 
-    indexer
-      .start()
-      .then(() => {
+    createIndexerConnection(config)
+      .then(({ connection, syncedToBlock: synced }) => {
+        if (destroyed) {
+          connection.destroy();
+          return;
+        }
+        connRef.current = connection;
+        setSyncedToBlock(synced);
+        setLifecycle(connection.getLifecycle());
+        setCurrentBlock(connection.getCurrentBlockNumber());
         setError(null);
-        setStatus(indexer.getStatus());
+
+        // --- blockNumber$ stream (mirrors EthConnection.blockNumber$) ---
+        const blockSub = connection.blockNumber$.subscribe((blockNum) => {
+          setCurrentBlock(blockNum);
+          setBlockHistory((prev) =>
+            [...prev, { block: blockNum, time: Date.now() }].slice(
+              -MAX_BLOCK_HISTORY
+            )
+          );
+          setLifecycle(connection.getLifecycle());
+          forceRender();
+        });
+
+        // --- subscribeToContractEvents (handlers match Aztec storage contract event names 1:1) ---
+        const unsubEvents = connection.subscribeToContractEvents({
+          WorldUpdate: (worldState: WorldState) => {
+            appendEvent({
+              type: "WorldUpdate",
+              paused: worldState.paused,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          PlayerUpdate: (playerId: string) => {
+            appendEvent({
+              type: "PlayerUpdate",
+              id: playerId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          PlanetUpdate: (planetId: string) => {
+            appendEvent({
+              type: "PlanetUpdate",
+              id: planetId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          PlanetRevealedCoordsUpdate: (
+            locationId: string,
+            revealer: string
+          ) => {
+            appendEvent({
+              type: "PlanetRevealedCoordsUpdate",
+              id: locationId,
+              revealer,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          PlanetEventsUpdate: (planetId: string) => {
+            appendEvent({
+              type: "PlanetEventsUpdate",
+              id: planetId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          PlanetArtifactsUpdate: (planetId: string) => {
+            appendEvent({
+              type: "PlanetArtifactsUpdate",
+              id: planetId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          ArrivalUpdate: (arrivalId: string, from: string, to: string) => {
+            appendEvent({
+              type: "ArrivalUpdate",
+              id: arrivalId,
+              from,
+              to,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          ArtifactUpdate: (artifactId: string) => {
+            appendEvent({
+              type: "ArtifactUpdate",
+              id: artifactId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+          ArtifactLocationUpdate: (artifactId: string) => {
+            appendEvent({
+              type: "ArtifactLocationUpdate",
+              id: artifactId,
+              block: connection.getCurrentBlockNumber(),
+              timestamp: Date.now(),
+            });
+          },
+        });
+
+        // Store teardown references on the ref so cleanup can reach them
+        blockSubRef.current = blockSub;
+        unsubEventsRef.current = unsubEvents;
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!destroyed) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       });
 
     return () => {
-      unsubscribe();
-      indexer.destroy();
-      indexerRef.current = null;
+      destroyed = true;
+      blockSubRef.current?.unsubscribe();
+      unsubEventsRef.current?.();
+      blockSubRef.current = null;
+      unsubEventsRef.current = null;
+      const conn = connRef.current;
+      if (conn) {
+        conn.destroy();
+        connRef.current = null;
+      }
     };
-  }, []);
+  }, [appendEvent]);
 
-  const indexer = indexerRef.current;
-  const world = indexer ? indexer.getWorld() : undefined;
-  const planetIds = indexer ? indexer.getPlanetIds() : [];
-  const playerIds = indexer ? indexer.getPlayerIds() : [];
-  const arrivalIds = indexer ? indexer.getArrivalIds() : [];
+  // Derive display data from connection's read API
+  const conn = connRef.current;
+  const world = conn?.getWorld();
+  const worldRadius = conn?.getWorldRadius() ?? 0n;
+  const isPaused = conn?.getIsPaused() ?? false;
+  const planetIds = conn?.getPlanetIds() ?? [];
+  const playerIds = conn?.getPlayerIds() ?? [];
+  const arrivalIds = conn?.getArrivalIds() ?? [];
 
   return (
-    <div style={{ textAlign: "left", maxWidth: "960px" }}>
-      <h1>Indexer live data</h1>
-      <p>
-        <a href="/">← Back to home</a>
-      </p>
+    <div className="test-page">
+      <header className="test-page__header">
+        <h1 className="test-page__title">IndexerConnection Demo</h1>
+        <nav className="test-page__nav">
+          <a href="/">← Home</a>
+          <span className="test-page__nav-sep">·</span>
+          <a href="/test/wallet">WalletManager</a>
+        </nav>
+      </header>
 
       {error && (
-        <div style={{ color: "red", marginBottom: "1rem" }}>
+        <div className="test-page__error">
           <strong>Error:</strong> {error}
         </div>
       )}
 
-      <Section title="Sync status" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem" }}>
-          <p>
-            <strong>Syncing:</strong> {status?.isSyncing ? "Yes" : "No"}
-          </p>
-          <p>
-            <strong>Last processed block:</strong>{" "}
-            {status?.lastProcessedBlock ?? "—"}
-          </p>
-          <p>
-            <strong>Latest known block:</strong>{" "}
-            {status?.latestKnownBlock ?? "—"}
-          </p>
+      {/* 1. Connection Status */}
+      <Section title="Connection Status" defaultOpen={true}>
+        <div className="test-page__stats">
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">Lifecycle</div>
+            <div className="test-page__stat-value">
+              <span className={lifecycleBadgeClass(lifecycle)}>
+                {lifecycle}
+              </span>
+            </div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">syncedToBlock</div>
+            <div className="test-page__stat-value">{syncedToBlock ?? "—"}</div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">Current block</div>
+            <div className="test-page__stat-value">{currentBlock || "—"}</div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">World radius</div>
+            <div className="test-page__stat-value">
+              {conn && world ? String(worldRadius) : "—"}
+            </div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">Paused</div>
+            <div className="test-page__stat-value">
+              {isPaused ? "Yes" : "No"}
+            </div>
+          </div>
         </div>
       </Section>
 
-      <Section title="World" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem" }}>
-          {world ? (
-            <>
-              <p>
-                <strong>paused:</strong> {world.paused ? "Yes" : "No"}
-              </p>
-              <p>
-                <strong>radius:</strong> {world.radius}
-              </p>
-              <p>
-                <strong>next_change_block:</strong> {world.next_change_block}
-              </p>
-              <p>
-                <strong>planet_ids_count:</strong> {world.planet_ids_count}
-              </p>
-              <p>
-                <strong>player_ids_count:</strong> {world.player_ids_count}
-              </p>
-            </>
-          ) : (
-            <p>No data or syncing…</p>
-          )}
-        </div>
+      {/* 2. Block Stream (blockNumber$) */}
+      <Section title="Block Stream (blockNumber$)" defaultOpen={true}>
+        {blockHistory.length === 0 ? (
+          <div className="test-page__empty">Waiting for live blocks…</div>
+        ) : (
+          <div className="test-page__block-pills">
+            {blockHistory.map((entry, i) => (
+              <span key={i} className="test-page__block-pill">
+                #{entry.block}
+              </span>
+            ))}
+          </div>
+        )}
       </Section>
 
-      <Section title="Planets" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem", overflowX: "auto" }}>
-          {planetIds.length === 0 ? (
-            <p>No data or syncing…</p>
-          ) : (
-            <>
-              <p>Total: {planetIds.length} rows</p>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>id</th>
-                    <th style={thStyle}>owner</th>
-                    <th style={thStyle}>population</th>
-                    <th style={thStyle}>silver</th>
-                    <th style={thStyle}>planet_level</th>
-                    <th style={thStyle}>planet_type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {planetIds.map((id) => {
-                    const p = indexer?.getPlanet(id);
-                    if (!p) return null;
-                    return (
-                      <tr key={id}>
-                        <td style={tdStyle}>{truncate(id)}</td>
-                        <td style={tdStyle}>{truncate(p.owner)}</td>
-                        <td style={tdStyle}>{p.population}</td>
-                        <td style={tdStyle}>{p.silver}</td>
-                        <td style={tdStyle}>{p.planet_level}</td>
-                        <td style={tdStyle}>{p.planet_type}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
+      {/* 3. World State */}
+      <Section title="World State" defaultOpen={true}>
+        {world ? (
+          <div className="test-page__stats">
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">paused</div>
+              <div className="test-page__stat-value">
+                {world.paused ? "Yes" : "No"}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">radius</div>
+              <div className="test-page__stat-value">
+                {String(world.radius)}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">next_change_block</div>
+              <div className="test-page__stat-value">
+                {world.next_change_block}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">planet_ids_count</div>
+              <div className="test-page__stat-value">
+                {String(world.planet_ids_count)}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">player_ids_count</div>
+              <div className="test-page__stat-value">
+                {String(world.player_ids_count)}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">planet_events_count</div>
+              <div className="test-page__stat-value">
+                {world.planet_events_count}
+              </div>
+            </div>
+            <div className="test-page__stat">
+              <div className="test-page__stat-label">
+                revealed_planet_ids_count
+              </div>
+              <div className="test-page__stat-value">
+                {String(world.revealed_planet_ids_count)}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="test-page__empty">No data yet…</div>
+        )}
       </Section>
 
+      {/* 4. Players */}
       <Section title="Players" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem", overflowX: "auto" }}>
-          {playerIds.length === 0 ? (
-            <p>No data or syncing…</p>
-          ) : (
-            <>
-              <p>Total: {playerIds.length} rows</p>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        {playerIds.length === 0 ? (
+          <div className="test-page__empty">No data yet…</div>
+        ) : (
+          <>
+            <div className="test-page__table-count">
+              Total: {playerIds.length} rows
+            </div>
+            <div className="test-page__table-wrap">
+              <table className="test-page__table">
                 <thead>
                   <tr>
-                    <th style={thStyle}>id (address)</th>
-                    <th style={thStyle}>score</th>
-                    <th style={thStyle}>home_planet_id</th>
+                    <th>id (address)</th>
+                    <th>score</th>
+                    <th>home_planet_id</th>
+                    <th>space_junk</th>
                   </tr>
                 </thead>
                 <tbody>
                   {playerIds.map((id) => {
-                    const pl = indexer?.getPlayer(id);
+                    const pl = conn?.getPlayer(id);
                     if (!pl) return null;
                     return (
                       <tr key={id}>
-                        <td style={tdStyle}>{truncate(id)}</td>
-                        <td style={tdStyle}>{pl.score}</td>
-                        <td style={tdStyle}>{truncate(pl.home_planet_id)}</td>
+                        <td>
+                          <code>{truncate(id)}</code>
+                        </td>
+                        <td>{String(pl.score)}</td>
+                        <td>
+                          <code>{truncate(pl.home_planet_id)}</code>
+                        </td>
+                        <td>{String(pl.space_junk)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </Section>
 
-      <Section title="Arrivals" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem", overflowX: "auto" }}>
-          {arrivalIds.length === 0 ? (
-            <p>No data or syncing…</p>
-          ) : (
-            <>
-              <p>Total: {arrivalIds.length} rows</p>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      {/* 5. Planets */}
+      <Section title="Planets" defaultOpen={true}>
+        {planetIds.length === 0 ? (
+          <div className="test-page__empty">No data yet…</div>
+        ) : (
+          <>
+            <div className="test-page__table-count">
+              Total: {planetIds.length} rows
+            </div>
+            <div className="test-page__table-wrap">
+              <table className="test-page__table">
                 <thead>
                   <tr>
-                    <th style={thStyle}>id</th>
-                    <th style={thStyle}>from_planet</th>
-                    <th style={thStyle}>to_planet</th>
-                    <th style={thStyle}>pop_arriving</th>
-                    <th style={thStyle}>arrival_time</th>
+                    <th>id</th>
+                    <th>owner</th>
+                    <th>population</th>
+                    <th>silver</th>
+                    <th>planet_level</th>
+                    <th>planet_type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planetIds.map((id) => {
+                    const p = conn?.getPlanet(id);
+                    if (!p) return null;
+                    return (
+                      <tr key={id}>
+                        <td>
+                          <code>{truncate(id)}</code>
+                        </td>
+                        <td>
+                          <code>{truncate(p.owner)}</code>
+                        </td>
+                        <td>{String(p.population)}</td>
+                        <td>{String(p.silver)}</td>
+                        <td>{p.planet_level}</td>
+                        <td>{p.planet_type}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </Section>
+
+      {/* 6. Arrivals */}
+      <Section title="Arrivals" defaultOpen={true}>
+        {arrivalIds.length === 0 ? (
+          <div className="test-page__empty">No data yet…</div>
+        ) : (
+          <>
+            <div className="test-page__table-count">
+              Total: {arrivalIds.length} rows
+            </div>
+            <div className="test-page__table-wrap">
+              <table className="test-page__table">
+                <thead>
+                  <tr>
+                    <th>id</th>
+                    <th>from_planet</th>
+                    <th>to_planet</th>
+                    <th>pop_arriving</th>
+                    <th>arrival_time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {arrivalIds.map((id) => {
-                    const a = indexer?.getArrival(id);
+                    const a = conn?.getArrival(id);
                     if (!a) return null;
                     return (
                       <tr key={id}>
-                        <td style={tdStyle}>{truncate(a.id)}</td>
-                        <td style={tdStyle}>{truncate(a.from_planet)}</td>
-                        <td style={tdStyle}>{truncate(a.to_planet)}</td>
-                        <td style={tdStyle}>{a.pop_arriving}</td>
-                        <td style={tdStyle}>{a.arrival_time}</td>
+                        <td>
+                          <code>{truncate(a.id)}</code>
+                        </td>
+                        <td>
+                          <code>{truncate(a.from_planet)}</code>
+                        </td>
+                        <td>
+                          <code>{truncate(a.to_planet)}</code>
+                        </td>
+                        <td>{String(a.pop_arriving)}</td>
+                        <td>{String(a.arrival_time)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </Section>
 
-      <Section title="Last change payload" defaultOpen={true}>
-        <div className="card" style={{ padding: "1rem" }}>
-          {lastPayload ? (
-            <div
-              style={{
-                background: "#f5f5f5",
-                color: "#333",
-                padding: "0.75rem 1rem",
-                borderRadius: "6px",
-                fontFamily:
-                  "'SF Mono', Menlo, Monaco, 'Courier New', monospace",
-                fontSize: "0.8rem",
-                lineHeight: 1.6,
-                overflowX: "auto",
-                textAlign: "left",
-              }}
-            >
-              <JsonTree data={lastPayload} />
-            </div>
-          ) : (
-            <p>No updates yet.</p>
-          )}
-        </div>
+      {/* 7. Event Log (subscribeToContractEvents) */}
+      <Section title="Event Log (subscribeToContractEvents)" defaultOpen={true}>
+        {eventLog.length === 0 ? (
+          <div className="test-page__empty">
+            No domain events yet. Waiting for live updates…
+          </div>
+        ) : (
+          <div
+            className="test-page__table-wrap"
+            style={{ maxHeight: "320px", overflowY: "auto" }}
+          >
+            <table className="test-page__table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>ID</th>
+                  <th>Details</th>
+                  <th>Block</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {eventLog.map((e, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{e.type}</td>
+                    <td>
+                      <code>{e.id ? truncate(e.id) : "—"}</code>
+                    </td>
+                    <td style={{ fontSize: "0.85rem" }}>
+                      {e.from && e.to
+                        ? `${truncate(e.from)} → ${truncate(e.to)}`
+                        : e.revealer
+                          ? `by ${truncate(e.revealer)}`
+                          : e.paused !== undefined
+                            ? `paused=${String(e.paused)}`
+                            : ""}
+                    </td>
+                    <td>#{e.block}</td>
+                    <td style={{ fontSize: "0.8rem" }}>
+                      {new Date(e.timestamp).toLocaleTimeString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
     </div>
   );

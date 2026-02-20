@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, Route, Routes } from "react-router-dom";
 
-import { IndexerTestPage } from "./Test";
+import { IndexerTestPage, WalletManagerTestPage } from "./Test";
 
 function Home() {
   return (
@@ -12,6 +12,8 @@ function Home() {
       </p>
       <p>
         <Link to="/test/indexer">Indexer</Link>
+        {" · "}
+        <Link to="/test/wallet">WalletManager</Link>
       </p>
     </div>
   );
@@ -22,6 +24,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/test/indexer" element={<IndexerTestPage />} />
+      <Route path="/test/wallet" element={<WalletManagerTestPage />} />
     </Routes>
   );
 }

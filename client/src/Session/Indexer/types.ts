@@ -13,7 +13,7 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "../TableTypes/chain";
+} from "./TableTypes/chain";
 
 /** Table names matching contract storage and client types. */
 export const TABLE_NAMES = [
@@ -95,11 +95,21 @@ export interface IBlockEventSource {
   getBlockUpdates(fromBlock: number, toBlock: number): Promise<BlockUpdates>;
 }
 
+/** Lifecycle states for IndexerService. */
+export type IndexerLifecycle =
+  | "idle"
+  | "bootstrapping"
+  | "syncing"
+  | "ready"
+  | "live"
+  | "destroyed";
+
 /** Query result: processed block info for tx inputs and UI. */
 export interface IndexerStatus {
   lastProcessedBlock: number;
   latestKnownBlock: number;
   isSyncing: boolean;
+  lifecycle: IndexerLifecycle;
 }
 
 /**
