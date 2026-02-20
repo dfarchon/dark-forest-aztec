@@ -160,6 +160,19 @@ pub contract ArrivalStorage {
         stored_hash == hash
     }
 
+    #[external("public")]
+    #[view]
+    fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20]) -> bool {
+        let mut result = true;
+        for i in 0..20 {
+            let stored_hash = self.storage.state_roots.at(ids[i]).read();
+            if stored_hash != hashes[i] {
+                result = false;
+            }
+        }
+        result
+    }
+
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]

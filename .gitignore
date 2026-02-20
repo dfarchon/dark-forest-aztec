@@ -93,6 +93,7 @@ contracts/scripts/.test-accounts.json
 # Editor / IDE / AI tools
 ############################################
 .claude/
+CLAUDE.md
 
 .vscode/*
 !.vscode/extensions.json

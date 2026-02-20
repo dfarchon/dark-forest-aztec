@@ -796,6 +796,28 @@ pub contract Config {
         all_match
     }
 
+    /// Verifies config hashes needed for the move function.
+    /// Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
+    /// Also verifies planet_default_stats_hash for the given level.
+    #[external("public")]
+    #[view]
+    fn verify_move_config_hashes(
+        level: u8,
+        planet_default_stats_hash: Field,
+        hashes: [Field; 9],
+    ) -> bool {
+        (self.storage.snark_config_hash.read() == hashes[0])
+            & (self.storage.world_config_hash.read() == hashes[1])
+            & (self.storage.game_config_core_hash.read() == hashes[2])
+            & (self.storage.planet_level_thresholds_hash.read() == hashes[3])
+            & (self.storage.space_junk_config_hash.read() == hashes[4])
+            & (self.storage.planet_type_weights_tier_0_hash.read() == hashes[5])
+            & (self.storage.planet_type_weights_tier_1_hash.read() == hashes[6])
+            & (self.storage.planet_type_weights_tier_2_hash.read() == hashes[7])
+            & (self.storage.planet_type_weights_tier_3_hash.read() == hashes[8])
+            & (self.storage.planet_default_stats_hash.at(level).read() == planet_default_stats_hash)
+    }
+
     /// Verifies all config hashes at once. Returns true if all match.
     /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones]
     #[external("public")]

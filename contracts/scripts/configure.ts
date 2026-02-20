@@ -252,7 +252,7 @@ async function main() {
         await methods.add_authorized_contract(contractAddr).send(opts);
     };
 
-    const TOTAL_STEPS = 46;
+    const TOTAL_STEPS = 49;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;

@@ -75,49 +75,19 @@ contract Move {
         assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
     }
 
+    // Returns all storage addresses in a single internal call to minimize gas.
+    // Order: (config, world, player, planet, planet_events, planet_artifacts, arrivals, artifact, artifact_location)
     #[internal("public")]
-    fn get_config_storage_address() -> AztecAddress {
-        self.storage.config_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_player_storage_address() -> AztecAddress {
-        self.storage.player_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_world_storage_address() -> AztecAddress {
-        self.storage.world_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_storage_address() -> AztecAddress {
-        self.storage.planet_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_events_storage_address() -> AztecAddress {
-        self.storage.planet_events_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_artifacts_storage_address() -> AztecAddress {
-        self.storage.planet_artifacts_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_arrivals_storage_address() -> AztecAddress {
-        self.storage.arrivals_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_artifact_storage_address() -> AztecAddress {
-        self.storage.artifact_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_artifact_location_storage_address() -> AztecAddress {
-        self.storage.artifact_location_storage_address.read()
+    fn get_all_storage_addresses() -> (AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress) {
+        (
+            self.storage.config_storage_address.read(), self.storage.world_storage_address.read(),
+            self.storage.player_storage_address.read(), self.storage.planet_storage_address.read(),
+            self.storage.planet_events_storage_address.read(),
+            self.storage.planet_artifacts_storage_address.read(),
+            self.storage.arrivals_storage_address.read(),
+            self.storage.artifact_storage_address.read(),
+            self.storage.artifact_location_storage_address.read(),
+        )
     }
 
     #[external("public")]
@@ -771,16 +741,10 @@ contract Move {
 
         new_world = update_world_radius(new_world, world_config);
 
-        // Pass hashes and computed results to public for verification and storage
-        self.enqueue_self.move_public(
-            source_loc,
-            target_loc,
-            target_level,
-            moved_artifact_id,
-            activated_artifact_id,
-            timestamp,
+        // Pack config hashes into array for batch verification
+        // Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
+        let config_hashes: [Field; 9] = [
             snark_config_hash,
-            planet_default_stats_hash,
             world_config_hash,
             game_config_core_hash,
             planet_level_thresholds_hash,
@@ -789,6 +753,18 @@ contract Move {
             planet_type_weights_tier_1_hash,
             planet_type_weights_tier_2_hash,
             planet_type_weights_tier_3_hash,
+        ];
+
+        // Pass hashes and computed results to public for verification and storage
+        self.enqueue_self.move_public(
+            source_loc,
+            target_loc,
+            target_level,
+            moved_artifact_id,
+            activated_artifact_id,
+            timestamp,
+            config_hashes,
+            planet_default_stats_hash,
             source_planet_hash,
             source_planet_events_hash,
             source_arrivals_ids,
@@ -833,17 +809,9 @@ contract Move {
         moved_artifact_id: Field,
         activated_artifact_id: Field,
         timestamp: u64,
-        // Config hashes from private function
-        snark_config_hash: Field,
+        // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
+        config_hashes: [Field; 9],
         planet_default_stats_hash: Field,
-        world_config_hash: Field,
-        game_config_core_hash: Field,
-        planet_level_thresholds_hash: Field,
-        space_junk_config_hash: Field,
-        planet_type_weights_tier_0_hash: Field,
-        planet_type_weights_tier_1_hash: Field,
-        planet_type_weights_tier_2_hash: Field,
-        planet_type_weights_tier_3_hash: Field,
         // State hashes from private function for verification
         source_planet_hash: Field,
         source_planet_events_hash: Field,
@@ -878,86 +846,26 @@ contract Move {
         new_arrival: Arrival,
         new_moved_artifact_location: ArtifactLocation,
     ) {
-        // Verify timstamp
+        // Verify timestamp
         let actual_timestamp = self.context.timestamp();
         assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
 
         let max_time_drift: u64 = 300;
         assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
 
-        // Verify all config hashes match on-chain state
-        let config_storage_address = self.internal.get_config_storage_address();
+        // Get all storage addresses in a single internal call
+        let addrs = self.internal.get_all_storage_addresses();
+        let config_storage_address = addrs.0;
+        let world_storage_address = addrs.1;
+        // addrs.2 = player_storage_address (unused in move_public)
+        let planet_storage_address = addrs.3;
+        let planet_events_storage_address = addrs.4;
+        let planet_artifacts_storage_address = addrs.5;
+        let arrivals_storage_address = addrs.6;
+        let artifact_storage_address = addrs.7;
+        let artifact_location_storage_address = addrs.8;
+
         let config = Config::at(config_storage_address);
-
-        assert(
-            self.view(config.verify_snark_config_hash(snark_config_hash)),
-            "Snark config hash mismatch",
-        );
-        assert(
-            self.view(config.verify_planet_default_stats_hash(
-                target_level,
-                planet_default_stats_hash,
-            )),
-            "Planet default stats hash mismatch",
-        );
-        assert(
-            self.view(config.verify_world_config_hash(world_config_hash)),
-            "World config hash mismatch",
-        );
-        assert(
-            self.view(config.verify_game_config_core_hash(game_config_core_hash)),
-            "Game config core hash mismatch",
-        );
-        assert(
-            self.view(config.verify_planet_level_thresholds_hash(planet_level_thresholds_hash)),
-            "Planet level thresholds hash mismatch",
-        );
-        assert(
-            self.view(config.verify_space_junk_config_hash(space_junk_config_hash)),
-            "Space junk config hash mismatch",
-        );
-        assert(
-            self.view(config.verify_planet_type_weights_tier_hash(
-                0,
-                planet_type_weights_tier_0_hash,
-            )),
-            "Planet type weights tier 0 hash mismatch",
-        );
-
-        assert(
-            self.view(config.verify_planet_type_weights_tier_hash(
-                1,
-                planet_type_weights_tier_1_hash,
-            )),
-            "Planet type weights tier 1 hash mismatch",
-        );
-
-        assert(
-            self.view(config.verify_planet_type_weights_tier_hash(
-                2,
-                planet_type_weights_tier_2_hash,
-            )),
-            "Planet type weights tier 2 hash mismatch",
-        );
-
-        assert(
-            self.view(config.verify_planet_type_weights_tier_hash(
-                3,
-                planet_type_weights_tier_3_hash,
-            )),
-            "Planet type weights tier 3 hash mismatch",
-        );
-
-        // Get storage contract addresses
-        let world_storage_address = self.internal.get_world_storage_address();
-        let planet_storage_address = self.internal.get_planet_storage_address();
-        let planet_events_storage_address = self.internal.get_planet_events_storage_address();
-        let planet_artifacts_storage_address = self.internal.get_planet_artifacts_storage_address();
-        let arrivals_storage_address = self.internal.get_arrivals_storage_address();
-        let artifact_location_storage_address =
-            self.internal.get_artifact_location_storage_address();
-        let artifact_storage_address = self.internal.get_artifact_storage_address();
-
         let world_storage = WorldStorage::at(world_storage_address);
         let planet_storage = PlanetStorage::at(planet_storage_address);
         let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
@@ -967,8 +875,17 @@ contract Move {
             ArtifactLocationStorage::at(artifact_location_storage_address);
         let artifact_storage = ArtifactStorage::at(artifact_storage_address);
 
-        // Verify source planet state hashes
+        // Verify all config hashes in a single cross-contract call
+        assert(
+            self.view(config.verify_move_config_hashes(
+                target_level,
+                planet_default_stats_hash,
+                config_hashes,
+            )),
+            "Config hash mismatch",
+        );
 
+        // Verify source planet state hashes
         assert(
             self.view(planet_storage.verify_hash(source_loc, source_planet_hash)),
             "Source planet hash mismatch",
@@ -978,32 +895,35 @@ contract Move {
             "Source planet events hash mismatch",
         );
 
-        for i in 0..20 {
-            let arrival_id = source_arrivals_ids[i];
-            let arrival_hash = source_arrivals_hash[i];
+        // Batch verify source arrivals, artifacts, artifact_locations (3 calls instead of 60)
+        assert(
+            self.view(arrivals_storage.verify_hashes_batch(
+                source_arrivals_ids,
+                source_arrivals_hash,
+            )),
+            "Source arrival hash mismatch",
+        );
+        assert(
+            self.view(artifact_storage.verify_hashes_batch(
+                source_artifacts_ids,
+                source_artifacts_hash,
+            )),
+            "Source artifact hash mismatch",
+        );
+        assert(
+            self.view(artifact_location_storage.verify_hashes_batch(
+                source_artifacts_ids,
+                source_artifact_locations_hash,
+            )),
+            "Source artifact location hash mismatch",
+        );
 
-            assert(
-                self.view(arrivals_storage.verify_hash(arrival_id, arrival_hash)),
-                "Source arrival hash mismatch",
-            );
-
-            let artifact_id = source_artifacts_ids[i];
-            let artifact_hash = source_artifacts_hash[i];
-            let artifact_location_hash = source_artifact_locations_hash[i];
-            assert(
-                self.view(artifact_storage.verify_hash(artifact_id, artifact_hash)),
-                "Source artifact hash mismatch",
-            );
-            assert(
-                self.view(artifact_location_storage.verify_hash(artifact_id, artifact_location_hash)),
-                "Source artifact location hash mismatch",
-            );
-        }
         assert(
             self.view(planet_artifacts_storage.verify_hash(source_loc, source_planet_artifacts_hash)),
             "Source planet artifacts hash mismatch",
         );
 
+        // Verify target planet state hashes
         assert(
             self.view(planet_storage.verify_hash(target_loc, target_planet_hash)),
             "Target planet hash mismatch",
@@ -1012,31 +932,36 @@ contract Move {
             self.view(planet_events_storage.verify_hash(target_loc, target_planet_events_hash)),
             "Target planet events hash mismatch",
         );
-        for i in 0..20 {
-            let arrival_id = target_arrivals_ids[i];
-            let arrival_hash = target_arrivals_hash[i];
-            assert(
-                self.view(arrivals_storage.verify_hash(arrival_id, arrival_hash)),
-                "Target arrival hash mismatch",
-            );
 
-            let artifact_id = target_artifacts_ids[i];
-            let artifact_hash = target_artifacts_hash[i];
-            let artifact_location_hash = target_artifact_locations_hash[i];
-            assert(
-                self.view(artifact_storage.verify_hash(artifact_id, artifact_hash)),
-                "Target artifact hash mismatch",
-            );
-            assert(
-                self.view(artifact_location_storage.verify_hash(artifact_id, artifact_location_hash)),
-                "Target artifact location hash mismatch",
-            );
-        }
+        // Batch verify target arrivals, artifacts, artifact_locations (3 calls instead of 60)
+        assert(
+            self.view(arrivals_storage.verify_hashes_batch(
+                target_arrivals_ids,
+                target_arrivals_hash,
+            )),
+            "Target arrival hash mismatch",
+        );
+        assert(
+            self.view(artifact_storage.verify_hashes_batch(
+                target_artifacts_ids,
+                target_artifacts_hash,
+            )),
+            "Target artifact hash mismatch",
+        );
+        assert(
+            self.view(artifact_location_storage.verify_hashes_batch(
+                target_artifacts_ids,
+                target_artifact_locations_hash,
+            )),
+            "Target artifact location hash mismatch",
+        );
+
         assert(
             self.view(planet_artifacts_storage.verify_hash(target_loc, target_planet_artifacts_hash)),
             "Target planet artifacts hash mismatch",
         );
 
+        // Verify world, moved artifact, and activated artifact hashes
         assert(self.view(world_storage.verify_hash(0, world_hash)), "World hash mismatch");
 
         assert(
@@ -1059,30 +984,24 @@ contract Move {
         self.call(planet_storage.set(source_loc, new_source_planet));
         self.call(planet_events_storage.set(source_loc, new_source_planet_events));
         self.call(planet_artifacts_storage.set(source_loc, new_source_planet_artifacts));
-        // Write artifact_locations for artifacts on source planet
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < new_source_planet_artifacts.count {
-                self.call(artifact_location_storage.set(
-                    new_source_planet_artifacts.ids[i],
-                    new_source_artifact_locations[i],
-                ));
-            }
-        }
+
+        // Batch write source artifact locations (1 call instead of up to 20)
+        self.call(artifact_location_storage.set_batch(
+            new_source_planet_artifacts.ids,
+            new_source_artifact_locations,
+            new_source_planet_artifacts.count,
+        ));
 
         self.call(planet_storage.set(target_loc, new_target_planet));
         self.call(planet_events_storage.set(target_loc, new_target_planet_events));
         self.call(planet_artifacts_storage.set(target_loc, new_target_planet_artifacts));
-        // Write artifact_locations for artifacts on target planet
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < new_target_planet_artifacts.count {
-                self.call(artifact_location_storage.set(
-                    new_target_planet_artifacts.ids[i],
-                    new_target_artifact_locations[i],
-                ));
-            }
-        }
+
+        // Batch write target artifact locations (1 call instead of up to 20)
+        self.call(artifact_location_storage.set_batch(
+            new_target_planet_artifacts.ids,
+            new_target_artifact_locations,
+            new_target_planet_artifacts.count,
+        ));
 
         self.call(world_storage.set(0, new_world));
 

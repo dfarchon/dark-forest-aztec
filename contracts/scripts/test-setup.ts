@@ -117,6 +117,7 @@ const CONFIG_FUNCTIONS = [
     'verify_planet_default_stats_hash',
     'verify_all_planet_default_stats_hashes',
     'verify_all_config_hashes',
+    'verify_move_config_hashes',
 ] as const;
 
 export const ADMIN_FUNCTIONS = [

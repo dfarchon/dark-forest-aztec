@@ -9,7 +9,8 @@
   "main": "index.js",
   "scripts": {
     "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json'",
-    "format": "pnpm -r run format",
+    "format": "pnpm -r run format && pnpm run format:nr",
+    "format:nr": "node -e \"require('child_process').execSync('pnpm --filter contracts run aztec:fmt', {stdio:'inherit'})\"",
     "prepare": "husky",
     "reinstall": "pnpm store prune && pnpm install --force",
     "test": "echo \"Error: no test specified\" && exit 1"
