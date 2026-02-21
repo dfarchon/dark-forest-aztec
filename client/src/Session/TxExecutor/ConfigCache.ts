@@ -6,7 +6,17 @@
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { ContractBase } from "@aztec/aztec.js/contracts";
 
+/** Raw Upgrade from contract (snake_case). */
+export type RawUpgrade = {
+  pop_cap_multiplier?: number | bigint;
+  pop_gro_multiplier?: number | bigint;
+  range_multiplier?: number | bigint;
+  speed_multiplier?: number | bigint;
+  def_multiplier?: number | bigint;
+};
+
 export interface GameConfig {
+  admin: string;
   snarkConfig: unknown;
   planetDefaultStats: unknown[];
   worldConfig: unknown;
@@ -14,6 +24,10 @@ export interface GameConfig {
   planetLevelThresholds: unknown;
   spaceJunkConfig: unknown;
   planetTypeWeightsTiers: [unknown, unknown, unknown, unknown];
+  /** [branch][level] — 3 branches × 4 levels, from get_upgrade_by_branch_level */
+  upgrades: RawUpgrade[][];
+  /** Cumulative rarities for levels 0-9, from get_cumulative_rarity */
+  planetCumulativeRarities: number[];
 }
 
 export class ConfigCache {
@@ -49,6 +63,7 @@ export class ConfigCache {
 
     // Load all config objects in parallel where possible
     const [
+      admin,
       snarkConfig,
       worldConfig,
       gameConfigCore,
@@ -59,6 +74,7 @@ export class ConfigCache {
       tier2,
       tier3,
     ] = await Promise.all([
+      c.methods.get_admin().simulate({ from }),
       c.methods.get_snark_config().simulate({ from }),
       c.methods.get_world_config().simulate({ from }),
       c.methods.get_game_config_core().simulate({ from }),
@@ -77,6 +93,29 @@ export class ConfigCache {
       )
     );
 
+    // Load upgrades: 3 branches × 4 levels (key = branch * 10 + level)
+    const upgradesPromises: Promise<RawUpgrade>[][] = [
+      [0, 1, 2, 3].map((level) =>
+        c.methods.get_upgrade_by_branch_level(0, level).simulate({ from })
+      ) as Promise<RawUpgrade>[],
+      [0, 1, 2, 3].map((level) =>
+        c.methods.get_upgrade_by_branch_level(1, level).simulate({ from })
+      ) as Promise<RawUpgrade>[],
+      [0, 1, 2, 3].map((level) =>
+        c.methods.get_upgrade_by_branch_level(2, level).simulate({ from })
+      ) as Promise<RawUpgrade>[],
+    ];
+    const upgrades = await Promise.all(
+      upgradesPromises.map((branch) => Promise.all(branch))
+    );
+
+    // Load cumulative rarities for levels 0-9
+    const planetCumulativeRarities = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        c.methods.get_cumulative_rarity(i).simulate({ from })
+      )
+    ).then((vals) => vals.map((v) => Number(v ?? 0)));
+
     // Debug: log shape of get_planet_default_stats return (snake_case vs camelCase, undefined?)
     const level0 = planetDefaultStats[0] as Record<string, unknown> | undefined;
     console.log("[ConfigCache] get_planet_default_stats(0) raw:", level0);
@@ -92,6 +131,7 @@ export class ConfigCache {
     }
 
     return {
+      admin: admin != null ? String(admin) : "",
       snarkConfig,
       planetDefaultStats,
       worldConfig,
@@ -99,6 +139,8 @@ export class ConfigCache {
       planetLevelThresholds,
       spaceJunkConfig,
       planetTypeWeightsTiers: [tier0, tier1, tier2, tier3],
+      upgrades,
+      planetCumulativeRarities,
     };
   }
 }
