@@ -1,5 +1,4 @@
-import type { SentTx } from "@aztec/aztec.js/contracts";
-import type { TxHash, TxReceipt } from "@aztec/aztec.js/tx";
+import type { TxHash, TxReceipt } from "@aztec/stdlib/tx";
 import type { ClientTxStatus, TxIntent } from "./transactions";
 
 export interface TransactionCollection {
@@ -41,14 +40,14 @@ export interface Transaction<T extends TxIntent = TxIntent> {
   onSubmissionError: (e: Error | undefined) => void;
   /** Called if there was an error waiting for this transaction to complete. */
   onReceiptError: (e: Error | undefined) => void;
-  /** Called when the transaction was successfully submitted to the mempool (Aztec: SentTx, analogue of TransactionResponse). */
-  onTransactionResponse: (e: SentTx) => void;
+  /** Called when the transaction was successfully submitted (Aztec TxHash, analogue of TransactionResponse). */
+  onTransactionResponse: (e: TxHash) => void;
   /** Called when the transaction successfully completes. */
   onReceipt: (receipt: TxReceipt) => void;
   /** Optional label for logging (e.g. gas setting). */
   autoGasPriceSetting?: string;
   /** Resolves with the tx hash when submitted, or rejects on submit failure. */
-  submittedPromise: Promise<SentTx>;
+  submittedPromise: Promise<TxHash>;
   /** Resolves with the receipt when the transaction is mined, or rejects. */
   confirmedPromise: Promise<TxReceipt>;
 }

@@ -1,7 +1,11 @@
 import * as React from "react";
 import { Link, Route, Routes } from "react-router-dom";
 
-import { IndexerTestPage, WalletManagerTestPage } from "./Test";
+import {
+  IndexerTestPage,
+  TxExecutorTestPage,
+  WalletManagerTestPage,
+} from "./Test";
 
 function Home() {
   return (
@@ -14,6 +18,8 @@ function Home() {
         <Link to="/test/indexer">Indexer</Link>
         {" · "}
         <Link to="/test/wallet">WalletManager</Link>
+        {" · "}
+        <Link to="/test/tx-executor">TxExecutor</Link>
       </p>
     </div>
   );
@@ -25,6 +31,7 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/test/indexer" element={<IndexerTestPage />} />
       <Route path="/test/wallet" element={<WalletManagerTestPage />} />
+      <Route path="/test/tx-executor" element={<TxExecutorTestPage />} />
     </Routes>
   );
 }

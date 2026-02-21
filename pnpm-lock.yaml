@@ -90,6 +90,9 @@ importers:
       '@dfpunk/events':
         specifier: workspace:*
         version: link:../packages/events
+      '@dfpunk/types':
+        specifier: workspace:*
+        version: link:../packages/types
       react:
         specifier: 19.2.3
         version: 19.2.3

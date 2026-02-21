@@ -28,8 +28,10 @@ import { IndexerService } from "./IndexerService";
 import { OffChainBlockSource } from "./OffChainSource";
 import type {
   ArrivalState,
+  ArtifactLocationState,
   ArtifactState,
   PlanetArtifactsState,
+  PlanetEventsState,
   PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
@@ -391,6 +393,21 @@ export class IndexerConnection {
       }
     }
     return result;
+  }
+
+  /** Raw PlanetEventsState for a planet (from planet_events table). */
+  public getPlanetEvents(id: TableId): PlanetEventsState | undefined {
+    return this.indexer.getPlanetEvents(id);
+  }
+
+  /** Raw PlanetArtifactsState for a planet (from planet_artifacts table). */
+  public getPlanetArtifacts(id: TableId): PlanetArtifactsState | undefined {
+    return this.indexer.getPlanetArtifacts(id);
+  }
+
+  /** ArtifactLocationState for an artifact (from artifact_location table). */
+  public getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
+    return this.indexer.getArtifactLocation(id);
   }
 }
 

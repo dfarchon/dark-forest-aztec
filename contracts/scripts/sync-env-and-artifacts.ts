@@ -32,12 +32,14 @@ const ARTIFACTS_DEST = path.join(
     'artifacts'
 );
 
-/** Only write ACCOUNT_ADDRESS, START_BLOCK, and keys ending with _CONTRACT_ADDRESS */
+/** Only write ACCOUNT_ADDRESS, START_BLOCK, contract addresses, and deploy params (for PXE registration). */
 function isAllowedKey(key: string): boolean {
     return (
         key === 'ACCOUNT_ADDRESS' ||
         key === 'START_BLOCK' ||
-        key.endsWith('_CONTRACT_ADDRESS')
+        key.endsWith('_CONTRACT_ADDRESS') ||
+        key.endsWith('_DEPLOYER_ADDRESS') ||
+        key.endsWith('_DEPLOYMENT_SALT')
     );
 }
 
@@ -67,6 +69,13 @@ const KEY_COMMENTS: Record<string, string> = {
     ADMIN_CONTRACT_ADDRESS: 'The address for the Admin contract.',
     CORE_CONTRACT_ADDRESS: 'The address for the Core contract.',
     MOVE_CONTRACT_ADDRESS: 'The address for the Move contract.',
+    CORE_DEPLOYER_ADDRESS: 'Deployer address for Core (for PXE registration).',
+    CORE_DEPLOYMENT_SALT: 'Deployment salt for Core (for PXE registration).',
+    MOVE_DEPLOYER_ADDRESS: 'Deployer address for Move (for PXE registration).',
+    MOVE_DEPLOYMENT_SALT: 'Deployment salt for Move (for PXE registration).',
+    ADMIN_DEPLOYER_ADDRESS:
+        'Deployer address for Admin (for PXE registration).',
+    ADMIN_DEPLOYMENT_SALT: 'Deployment salt for Admin (for PXE registration).',
 };
 
 function commentForKey(key: string): string {
@@ -115,13 +124,31 @@ function generateIndexTs(
     return lines.join('\n').trimEnd() + '\n';
 }
 
+/** Deploy params required by client for PXE registration. Always emitted (use '' when missing). */
+const PXE_REGISTRATION_KEYS = [
+    'CORE_DEPLOYER_ADDRESS',
+    'CORE_DEPLOYMENT_SALT',
+    'MOVE_DEPLOYER_ADDRESS',
+    'MOVE_DEPLOYMENT_SALT',
+    'ADMIN_DEPLOYER_ADDRESS',
+    'ADMIN_DEPLOYMENT_SALT',
+] as const;
+
 function syncEnvToIndexTs(): void {
     if (!fs.existsSync(ENV_PATH)) {
         throw new Error(`.env not found at ${ENV_PATH}`);
     }
     const envContent = fs.readFileSync(ENV_PATH, 'utf-8');
     const allEntries = parseEnv(envContent);
+    const byKey = Object.fromEntries(allEntries.map((e) => [e.key, e.value]));
     const entries = allEntries.filter((e) => isAllowedKey(e.key));
+    // Ensure PXE registration keys are always present (use '' when missing in .env)
+    for (const key of PXE_REGISTRATION_KEYS) {
+        if (!entries.some((e) => e.key === key)) {
+            entries.push({ key, value: byKey[key] ?? '' });
+        }
+    }
+    entries.sort((a, b) => a.key.localeCompare(b.key));
     const tsContent = generateIndexTs(entries);
     const destDir = path.dirname(INDEX_TS_PATH);
     if (!fs.existsSync(destDir)) {

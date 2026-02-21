@@ -238,6 +238,8 @@ export function WalletManagerTestPage() {
           <a href="/">← Home</a>
           <span className="test-page__nav-sep">·</span>
           <a href="/test/indexer">Indexer</a>
+          <span className="test-page__nav-sep">·</span>
+          <a href="/test/tx-executor">TxExecutor</a>
         </nav>
       </header>
 

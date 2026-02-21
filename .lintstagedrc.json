@@ -3,7 +3,9 @@
   "packages/**/*.{ts,tsx,js,jsx,json}": [
     "pnpm --filter \"./packages/*\" run format"
   ],
-  "contracts/scripts/**/*.{ts,js,json}": ["pnpm --filter contracts format"],
-  "contracts/**/*.nr": ["pnpm run format:nr"],
+  "contracts/scripts/**/*.{ts,js,json}": [
+    "pnpm --filter contracts scripts:fmt"
+  ],
+  "contracts/**/*.nr": ["pnpm --filter contracts run aztec:fmt:lint-staged"],
   "**/package.json": ["pnpm fix:package-json"]
 }

@@ -21,6 +21,7 @@
     "@aztec/wallets": "4.0.0-devnet.2-patch.1",
     "@dfpunk/contracts": "workspace:*",
     "@dfpunk/events": "workspace:*",
+    "@dfpunk/types": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router-dom": "6.30.3"

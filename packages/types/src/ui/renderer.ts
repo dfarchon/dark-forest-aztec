@@ -2,7 +2,7 @@ import type { mat3, mat4 } from "gl-matrix";
 import type { RenderedArtifact } from "../client/artifact";
 import type { HatType } from "./hat";
 import type { Abstract, LocationId } from "../identifiers";
-import type { LocatablePlanet } from "../client/planet";
+import type { LocatablePlanet } from "../world/planet";
 import type { Planet } from "../world/planet";
 import type { Chunk, WorldCoords } from "../world/world";
 

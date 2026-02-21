@@ -16,6 +16,18 @@ import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import {
+  ACCOUNT_ADDRESS,
+  ADMIN_DEPLOYER_ADDRESS,
+  ADMIN_DEPLOYMENT_SALT,
+  CORE_DEPLOYER_ADDRESS,
+  CORE_DEPLOYMENT_SALT,
+  MOVE_DEPLOYER_ADDRESS,
+  MOVE_DEPLOYMENT_SALT,
+} from "@dfpunk/contracts";
+import { AdminContractArtifact } from "@dfpunk/contracts/artifacts/Admin";
+import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
+import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
@@ -24,6 +36,62 @@ import type { AccountRecord, WalletManagerConfig } from "./types";
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 const DEPLOY_TIMEOUT_MS = 120_000;
+/** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
+const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
+
+/**
+ * Register Core, Move, Admin with the wallet's PXE so simulate() and send() can run.
+ * Requires deployer + salt from @dfpunk/contracts (run sync-env-and-artifacts after deploy).
+ */
+async function registerGameContractsWithPxe(
+  wallet: EmbeddedWallet,
+  admin: AztecAddress
+): Promise<void> {
+  const specs: Array<{
+    deployer: string;
+    salt: string;
+    artifact: typeof CoreContractArtifact;
+    name: string;
+  }> = [
+    {
+      deployer: CORE_DEPLOYER_ADDRESS,
+      salt: CORE_DEPLOYMENT_SALT,
+      artifact: CoreContractArtifact,
+      name: "Core",
+    },
+    {
+      deployer: MOVE_DEPLOYER_ADDRESS,
+      salt: MOVE_DEPLOYMENT_SALT,
+      artifact: MoveContractArtifact,
+      name: "Move",
+    },
+    {
+      deployer: ADMIN_DEPLOYER_ADDRESS,
+      salt: ADMIN_DEPLOYMENT_SALT,
+      artifact: AdminContractArtifact,
+      name: "Admin",
+    },
+  ];
+  for (const { deployer, salt, artifact, name } of specs) {
+    if (!deployer || !salt) continue;
+    try {
+      const instance = await getContractInstanceFromInstantiationParams(
+        artifact,
+        {
+          deployer: AztecAddress.fromString(deployer),
+          salt: Fr.fromString(salt),
+          constructorArgs: [admin],
+        }
+      );
+      await wallet.registerContract(instance, artifact);
+    } catch (err) {
+      console.warn(
+        `[WalletManager] Skip PXE registration for ${name}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+}
 
 export class WalletManager {
   private readonly node: AztecNode;
@@ -59,13 +127,23 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
-    const wallet = await EmbeddedWallet.create(node);
+    const wallet = await EmbeddedWallet.create(node, {
+      pxeConfig: {
+        dataStoreMapSizeKb:
+          config.pxeConfig?.dataStoreMapSizeKb ??
+          DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
+        ...config.pxeConfig,
+      },
+    });
 
     const sponsoredFPC = await getContractInstanceFromInstantiationParams(
       SponsoredFPCContractArtifact,
       { salt: new Fr(SPONSORED_FPC_SALT) }
     );
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+
+    const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
+    await registerGameContractsWithPxe(wallet, admin);
 
     const keyStore = new KeyStore(config.storagePrefix);
 
