@@ -3,7 +3,7 @@
  * - ClientTxStatus: type of Transaction.state
  * - TxIntent / Unconfirmed*: type of Transaction.intent
  */
-import type { AztecAddr, ArtifactId, LocationId } from "../identifiers";
+import type { EthAddress, ArtifactId, LocationId } from "../identifiers";
 import type { WorldLocation } from "../world/world";
 
 export type ContractMethodName =
@@ -49,7 +49,7 @@ export type ClientTxStatus =
  * ContractFunctionInteraction in application code.
  */
 export type TxIntent = {
-  contractAddress?: string;
+  // contractAddress?: string;
   methodName: ContractMethodName | string;
   args: Promise<unknown[]> | unknown[];
 };
@@ -83,12 +83,12 @@ export type UnconfirmedProspectPlanet = TxIntent & {
 export type UnconfirmedPlanetTransfer = TxIntent & {
   methodName: "transferPlanet";
   planetId: LocationId;
-  newOwner: AztecAddr;
+  newOwner: EthAddress;
 };
 
 export type UnconfirmedClaimReward = TxIntent & {
   methodName: "claimReward";
-  sortedPlayerAddresses: AztecAddr[];
+  sortedPlayerAddresses: EthAddress[];
   sortedScores: number[];
 };
 

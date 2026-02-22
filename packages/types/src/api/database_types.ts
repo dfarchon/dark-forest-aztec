@@ -1,4 +1,4 @@
-import type { AztecAddr } from "../identifiers";
+import type { EthAddress } from "../identifiers";
 
 /**
  * Map from game version -> leaderboard.
@@ -17,6 +17,6 @@ export interface Leaderboard {
 
 export interface LeaderboardEntry {
   score: number | undefined;
-  aztecAddr: AztecAddr;
+  aztecAddr: EthAddress;
   twitter?: string;
 }

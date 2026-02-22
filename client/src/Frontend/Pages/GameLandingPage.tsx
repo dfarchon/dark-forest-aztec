@@ -1,0 +1,883 @@
+import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import {
+  CONFIG_CONTRACT_ADDRESS,
+  CORE_CONTRACT_ADDRESS,
+  START_BLOCK,
+} from "@dfpunk/contracts";
+import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
+import { address } from "@dfpunk/serde";
+import { reverse } from "lodash";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useParams } from "react-router-dom";
+
+import GameManager, {
+  GameManagerEvent,
+} from "../../Backend/GameLogic/GameManager";
+import GameUIManager from "../../Backend/GameLogic/GameUIManager";
+import TutorialManager, {
+  TutorialState,
+} from "../../Backend/GameLogic/TutorialManager";
+import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
+import {
+  createIndexerConnection,
+  IndexerConnection,
+  type IndexerConnectionConfig,
+} from "../../Session/Indexer/IndexerConnection";
+import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
+import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
+import {
+  createWalletManager,
+  WalletManager,
+} from "../../Session/WalletManager";
+import {
+  GameWindowWrapper,
+  InitRenderState,
+  TerminalToggler,
+  TerminalWrapper,
+  Wrapper,
+} from "../Components/GameLandingPageComponents";
+import { MythicLabelText } from "../Components/Labels/MythicLabel";
+import { TextPreview } from "../Components/TextPreview";
+import { TopLevelDivProvider, UIManagerProvider } from "../Utils/AppHooks";
+import { Incompatibility, unsupportedFeatures } from "../Utils/BrowserChecks";
+import { TerminalTextStyle } from "../Utils/TerminalTypes";
+import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
+import { GameWindowLayout } from "../Views/GameWindowLayout";
+import { Terminal, TerminalHandle } from "../Views/Terminal";
+
+const NODE_URL =
+  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
+  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
+    ? import.meta.env.VITE_AZTEC_NODE_URL
+    : "http://localhost:8080";
+
+const enum TerminalPromptStep {
+  NONE,
+  COMPATIBILITY_CHECKS_PASSED,
+  DISPLAY_ACCOUNTS,
+  GENERATE_ACCOUNT,
+  IMPORT_ACCOUNT,
+  ACCOUNT_SET,
+  FETCHING_ETH_DATA,
+  ASK_ADD_ACCOUNT,
+  ADD_ACCOUNT,
+  NO_HOME_PLANET,
+  SEARCHING_FOR_HOME_PLANET,
+  ALL_CHECKS_PASS,
+  COMPLETE,
+  TERMINATED,
+  ERROR,
+}
+
+export function GameLandingPage() {
+  const { contract } = useParams<{ contract: string }>();
+  const location = useLocation();
+  const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
+  const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
+  const topLevelContainer = useRef<HTMLDivElement | null>(null);
+
+  const [gameManager, setGameManager] = useState<GameManager | undefined>();
+  const [terminalVisible, setTerminalVisible] = useState(true);
+  const [initRenderState, setInitRenderState] = useState(InitRenderState.NONE);
+  const [walletManager, setWalletManager] = useState<
+    WalletManager | undefined
+  >();
+  const indexerRef = useRef<IndexerConnection | undefined>(undefined);
+  const [step, setStep] = useState(TerminalPromptStep.NONE);
+
+  const params = new URLSearchParams(location.search);
+  const selectedAddress = params.get("account");
+  const contractAddress = contract
+    ? address(contract)
+    : address(CORE_CONTRACT_ADDRESS);
+  const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
+
+  useEffect(() => {
+    let destroyed = false;
+    (async () => {
+      try {
+        const wm = await createWalletManager({
+          nodeUrl: NODE_URL,
+          storagePrefix: "dfpunk",
+        });
+        if (destroyed) {
+          wm.destroy();
+          return;
+        }
+
+        const { connection } = await createIndexerConnection({
+          nodeUrl: NODE_URL,
+          startBlock: START_BLOCK,
+          debounceMs: 1000,
+          pollIntervalMs: 2000,
+          maxBlocksPerRequest: 100,
+        } as IndexerConnectionConfig);
+        if (destroyed) {
+          connection.destroy();
+          wm.destroy();
+          return;
+        }
+
+        indexerRef.current = connection;
+        setWalletManager(wm);
+      } catch (e) {
+        console.error("Failed to initialize Aztec session:", e);
+        alert("Error connecting to Aztec network");
+      }
+    })();
+    return () => {
+      destroyed = true;
+    };
+  }, []);
+
+  const advanceStateFromNone = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const issues = await unsupportedFeatures();
+
+      if (issues.includes(Incompatibility.MobileOrTablet)) {
+        terminal.current?.println(
+          "ERROR: Mobile or tablet device detected. Please use desktop.",
+          TerminalTextStyle.Red
+        );
+      }
+
+      if (issues.includes(Incompatibility.NoIDB)) {
+        terminal.current?.println(
+          "ERROR: IndexedDB not found. Try using a different browser.",
+          TerminalTextStyle.Red
+        );
+      }
+
+      if (issues.includes(Incompatibility.UnsupportedBrowser)) {
+        terminal.current?.println(
+          "ERROR: Browser unsupported. Try Brave, Firefox, or Chrome.",
+          TerminalTextStyle.Red
+        );
+      }
+
+      if (issues.length > 0) {
+        terminal.current?.print(
+          `${issues.length.toString()} errors found. `,
+          TerminalTextStyle.Red
+        );
+        terminal.current?.println("Please resolve them and refresh the page.");
+        setStep(TerminalPromptStep.TERMINATED);
+      } else {
+        setStep(TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED);
+      }
+    },
+    []
+  );
+
+  const advanceStateFromCompatibilityPassed = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (isLobby) {
+        terminal.current?.newline();
+        terminal.current?.printElement(
+          <MythicLabelText text={`You are joining a Dark Forest lobby`} />
+        );
+        terminal.current?.newline();
+        terminal.current?.newline();
+      } else {
+        terminal.current?.newline();
+        terminal.current?.newline();
+        terminal.current?.printElement(
+          <MythicLabelText text={`                 Dark Forest`} />
+        );
+        terminal.current?.newline();
+        terminal.current?.newline();
+
+        terminal.current?.print("    ");
+        terminal.current?.print("Version", TerminalTextStyle.Sub);
+        terminal.current?.print("    ");
+        terminal.current?.print("Date", TerminalTextStyle.Sub);
+        terminal.current?.print("              ");
+        terminal.current?.print("Champion", TerminalTextStyle.Sub);
+        terminal.current?.newline();
+
+        terminal.current?.print("    v0.1       ", TerminalTextStyle.Text);
+        terminal.current?.print("02/05/2020        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "Dylan Field",
+          () => {
+            window.open("https://twitter.com/zoink");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+        terminal.current?.print("    v0.2       ", TerminalTextStyle.Text);
+        terminal.current?.println(
+          "06/06/2020        Nate Foss",
+          TerminalTextStyle.Text
+        );
+        terminal.current?.print("    v0.3       ", TerminalTextStyle.Text);
+        terminal.current?.print("08/07/2020        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "@hideandcleanse",
+          () => {
+            window.open("https://twitter.com/hideandcleanse");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+        terminal.current?.print("    v0.4       ", TerminalTextStyle.Text);
+        terminal.current?.print("10/02/2020        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "Jacob Rosenthal",
+          () => {
+            window.open("https://twitter.com/jacobrosenthal");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+        terminal.current?.print("    v0.5       ", TerminalTextStyle.Text);
+        terminal.current?.print("12/25/2020        ", TerminalTextStyle.Text);
+        terminal.current?.printElement(
+          <TextPreview
+            text={"0xb05d95422bf8d5024f9c340e8f7bd696d67ee3a9"}
+            focusedWidth={"100px"}
+            unFocusedWidth={"100px"}
+          />
+        );
+        terminal.current?.println("");
+
+        terminal.current?.print("    v0.6 r1    ", TerminalTextStyle.Text);
+        terminal.current?.print("05/22/2021        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "Ansgar Dietrichs",
+          () => {
+            window.open("https://twitter.com/adietrichs");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+
+        terminal.current?.print("    v0.6 r2    ", TerminalTextStyle.Text);
+        terminal.current?.print("06/28/2021        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "@orden_gg",
+          () => {
+            window.open("https://twitter.com/orden_gg");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+
+        terminal.current?.print("    v0.6 r3    ", TerminalTextStyle.Text);
+        terminal.current?.print("08/22/2021        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "@dropswap_gg",
+          () => {
+            window.open("https://twitter.com/dropswap_gg");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+
+        terminal.current?.print("    v0.6 r4    ", TerminalTextStyle.Text);
+        terminal.current?.print("10/01/2021        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "@orden_gg",
+          () => {
+            window.open("https://twitter.com/orden_gg");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+
+        terminal.current?.print("    v0.6 r5    ", TerminalTextStyle.Text);
+        terminal.current?.print("02/18/2022        ", TerminalTextStyle.Text);
+        terminal.current?.printLink(
+          "@d_fdao",
+          () => {
+            window.open("https://twitter.com/d_fdao");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.print(" + ");
+        terminal.current?.printLink(
+          "@orden_gg",
+          () => {
+            window.open("https://twitter.com/orden_gg");
+          },
+          TerminalTextStyle.Text
+        );
+        terminal.current?.newline();
+        terminal.current?.newline();
+      }
+
+      const accounts = walletManager?.getAccounts() ?? [];
+      terminal.current?.println(
+        `Found ${accounts.length} accounts on this device.`
+      );
+      terminal.current?.println(``);
+
+      if (accounts.length > 0) {
+        terminal.current?.print("(a) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Login with existing account.");
+      }
+
+      terminal.current?.print("(n) ", TerminalTextStyle.Sub);
+      terminal.current?.println(`Generate new Aztec account.`);
+      terminal.current?.print("(i) ", TerminalTextStyle.Sub);
+      terminal.current?.println(`Import account.`);
+      terminal.current?.println(``);
+      terminal.current?.println(`Select an option:`, TerminalTextStyle.Text);
+
+      if (selectedAddress !== null) {
+        terminal.current?.println(
+          `Selecting account ${selectedAddress} from url...`,
+          TerminalTextStyle.Green
+        );
+
+        const account = reverse(walletManager?.getAccounts() ?? []).find(
+          (a) => a.address === selectedAddress
+        );
+        if (!account) {
+          terminal.current?.println(
+            "Unrecognized account found in url.",
+            TerminalTextStyle.Red
+          );
+          return;
+        }
+
+        try {
+          await walletManager?.switchAccount(account.address);
+          setStep(TerminalPromptStep.ACCOUNT_SET);
+        } catch (e) {
+          terminal.current?.println(
+            "An unknown error occurred. please try again.",
+            TerminalTextStyle.Red
+          );
+        }
+      } else {
+        const userInput = await terminal.current?.getInput();
+        if (userInput === "a" && accounts.length > 0) {
+          setStep(TerminalPromptStep.DISPLAY_ACCOUNTS);
+        } else if (userInput === "n") {
+          setStep(TerminalPromptStep.GENERATE_ACCOUNT);
+        } else if (userInput === "i") {
+          setStep(TerminalPromptStep.IMPORT_ACCOUNT);
+        } else {
+          terminal.current?.println("Unrecognized input. Please try again.");
+          await advanceStateFromCompatibilityPassed(terminal);
+        }
+      }
+    },
+    [isLobby, walletManager, selectedAddress]
+  );
+
+  const advanceStateFromDisplayAccounts = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      terminal.current?.println(``);
+      const accounts = walletManager?.getAccounts() ?? [];
+      for (let i = 0; i < accounts.length; i += 1) {
+        terminal.current?.print(`(${i + 1}): `, TerminalTextStyle.Sub);
+        terminal.current?.println(`${accounts[i].address}`);
+      }
+      terminal.current?.println(``);
+      terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
+
+      const selection = +((await terminal.current?.getInput()) || "");
+      if (isNaN(selection) || selection > accounts.length) {
+        terminal.current?.println("Unrecognized input. Please try again.");
+        await advanceStateFromDisplayAccounts(terminal);
+      } else {
+        const account = accounts[selection - 1];
+        try {
+          await walletManager?.switchAccount(account.address);
+          setStep(TerminalPromptStep.ACCOUNT_SET);
+        } catch (e) {
+          terminal.current?.println(
+            "An unknown error occurred. please try again.",
+            TerminalTextStyle.Red
+          );
+        }
+      }
+    },
+    [walletManager]
+  );
+
+  const advanceStateFromGenerateAccount = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      try {
+        terminal.current?.println(``);
+        terminal.current?.print("Deploying new Aztec account... ");
+        const record = await walletManager!.createAccount();
+        const newAddr = record.address;
+
+        terminal.current?.println("Done.", TerminalTextStyle.Green);
+        terminal.current?.println(``);
+        terminal.current?.print(`Created account with address `);
+        terminal.current?.printElement(
+          <TextPreview text={newAddr} unFocusedWidth={"100px"} />
+        );
+        terminal.current?.println(``);
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Note: Account keys are stored in local storage.",
+          TerminalTextStyle.Text
+        );
+        terminal.current?.println(
+          "Clearing browser local storage/cache will render your"
+        );
+        terminal.current?.println(
+          "accounts inaccessible, unless you export your keys."
+        );
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Press any key to continue:",
+          TerminalTextStyle.Text
+        );
+
+        await terminal.current?.getInput();
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (e) {
+        console.error("Failed to create account:", e);
+        terminal.current?.println(
+          "An unknown error occurred. please try again.",
+          TerminalTextStyle.Red
+        );
+      }
+    },
+    [walletManager]
+  );
+
+  const advanceStateFromImportAccount = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      terminal.current?.println(
+        "Enter the secretKey of the account you wish to import:",
+        TerminalTextStyle.Text
+      );
+      const secretKey = (await terminal.current?.getInput()) || "";
+      terminal.current?.println("Enter the salt:", TerminalTextStyle.Text);
+      const salt = (await terminal.current?.getInput()) || "";
+      terminal.current?.println(
+        "Enter the signingKey (hex):",
+        TerminalTextStyle.Text
+      );
+      const signingKey = (await terminal.current?.getInput()) || "";
+      try {
+        const record = await walletManager!.importAccount(
+          secretKey,
+          salt,
+          signingKey
+        );
+        terminal.current?.println(
+          `Imported account with address ${record.address}.`
+        );
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (e) {
+        terminal.current?.println(
+          "An unknown error occurred. please try again.",
+          TerminalTextStyle.Red
+        );
+      }
+    },
+    [walletManager]
+  );
+
+  const advanceStateFromAccountSet = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const playerAddress = walletManager?.getActiveAddress()?.toString();
+      if (!playerAddress) {
+        terminal.current?.println(
+          "ERROR: No active account. Please refresh and try again.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+        return;
+      }
+
+      terminal.current?.println("");
+      terminal.current?.println(`Welcome, player ${playerAddress}.`);
+      setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+    },
+    [walletManager]
+  );
+
+  const advanceStateFromFetchingEthData = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      let newGameManager: GameManager;
+
+      try {
+        if (!walletManager) throw new Error("no wallet manager");
+        const indexerConnection = indexerRef.current;
+        if (!indexerConnection) throw new Error("no indexer connection");
+
+        terminal.current?.println("Building ContractsAPI...");
+
+        const node = createAztecNodeClient(NODE_URL);
+        const wallet = walletManager.getWallet();
+        const configContract = ConfigContract.at(
+          AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
+          wallet
+        );
+        const txExecutor = new TxExecutor(
+          walletManager,
+          indexerConnection,
+          node,
+          configContract
+        );
+        const configCache = new ConfigCache(
+          configContract,
+          walletManager.getActiveAddress()!
+        );
+        const contractsAPI = await makeContractsAPI({
+          indexerConnection,
+          txExecutor,
+          walletManager,
+          configCache,
+        });
+        contractsAPI.setupEventListeners();
+
+        newGameManager = await GameManager.create({
+          contractsAPI,
+          terminal,
+          contractAddress,
+        });
+      } catch (e) {
+        console.error(e);
+
+        setStep(TerminalPromptStep.ERROR);
+
+        terminal.current?.println(
+          "Network under heavy load. Please refresh the page and try again.",
+          TerminalTextStyle.Red
+        );
+
+        return;
+      }
+
+      setGameManager(newGameManager);
+
+      window.df = newGameManager;
+
+      const newGameUIManager = await GameUIManager.create(
+        newGameManager,
+        terminal
+      );
+
+      window.ui = newGameUIManager;
+
+      terminal.current?.newline();
+      terminal.current?.println("Connected to Dark Forest Contract");
+      gameUIManagerRef.current = newGameUIManager;
+
+      if (!newGameManager.hasJoinedGame()) {
+        setStep(TerminalPromptStep.NO_HOME_PLANET);
+      } else {
+        const browserHasData = !!newGameManager.getHomeCoords();
+        if (!browserHasData) {
+          terminal.current?.println(
+            "ERROR: Home coords not found on this browser.",
+            TerminalTextStyle.Red
+          );
+          setStep(TerminalPromptStep.ASK_ADD_ACCOUNT);
+          return;
+        }
+        terminal.current?.println("Validated Local Data...");
+        setStep(TerminalPromptStep.ALL_CHECKS_PASS);
+      }
+    },
+    [walletManager, contractAddress]
+  );
+
+  const advanceStateFromAskAddAccount = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      terminal.current?.println(
+        "Import account home coordinates? (y/n)",
+        TerminalTextStyle.Text
+      );
+      terminal.current?.println(
+        "If you're importing an account, make sure you know what you're doing."
+      );
+      const userInput = await terminal.current?.getInput();
+      if (userInput === "y") {
+        setStep(TerminalPromptStep.ADD_ACCOUNT);
+      } else if (userInput === "n") {
+        terminal.current?.println("Try using a different account and reload.");
+        setStep(TerminalPromptStep.TERMINATED);
+      } else {
+        terminal.current?.println("Unrecognized input. Please try again.");
+        await advanceStateFromAskAddAccount(terminal);
+      }
+    },
+    []
+  );
+
+  const advanceStateFromAddAccount = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const gameUIManager = gameUIManagerRef.current;
+
+      if (gameUIManager) {
+        try {
+          terminal.current?.println("x: ", TerminalTextStyle.Blue);
+          const x = parseInt((await terminal.current?.getInput()) || "");
+          terminal.current?.println("y: ", TerminalTextStyle.Blue);
+          const y = parseInt((await terminal.current?.getInput()) || "");
+          if (
+            Number.isNaN(x) ||
+            Number.isNaN(y) ||
+            Math.abs(x) > 2 ** 32 ||
+            Math.abs(y) > 2 ** 32
+          ) {
+            throw "Invalid home coordinates.";
+          }
+          if (await gameUIManager.addAccount({ x, y })) {
+            terminal.current?.println("Successfully added account.");
+            terminal.current?.println("Initializing game...");
+            setStep(TerminalPromptStep.ALL_CHECKS_PASS);
+          } else {
+            throw "Invalid home coordinates.";
+          }
+        } catch (e) {
+          terminal.current?.println(`ERROR: ${e}`, TerminalTextStyle.Red);
+          terminal.current?.println("Please try again.");
+        }
+      } else {
+        terminal.current?.println(
+          "ERROR: Game UI Manager not found. Terminating session."
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+      }
+    },
+    []
+  );
+
+  const advanceStateFromNoHomePlanet = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      terminal.current?.println("Welcome to DARK FOREST.");
+
+      const gameUIManager = gameUIManagerRef.current;
+      if (!gameUIManager) {
+        terminal.current?.println(
+          "ERROR: Game UI Manager not found. Terminating session."
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+        return;
+      }
+
+      if (Date.now() / 1000 > gameUIManager.getEndTimeSeconds()) {
+        terminal.current?.println(
+          "ERROR: This game has ended. Terminating session."
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+        return;
+      }
+
+      terminal.current?.newline();
+
+      terminal.current?.println(
+        "We collect a minimal set of statistics such as SNARK proving"
+      );
+      terminal.current?.println(
+        "times and average transaction times across browsers, to help "
+      );
+      terminal.current?.println(
+        "us optimize performance and fix bugs. You can opt out of this"
+      );
+      terminal.current?.println("in the Settings pane.");
+      terminal.current?.println("");
+
+      terminal.current?.newline();
+
+      terminal.current?.println(
+        "Press ENTER to find a home planet. This may take up to 120s."
+      );
+      terminal.current?.println("This will consume a lot of CPU.");
+
+      await terminal.current?.getInput();
+
+      gameUIManager
+        .getGameManager()
+        .on(GameManagerEvent.InitializedPlayer, () => {
+          setTimeout(() => {
+            terminal.current?.println("Initializing game...");
+            setStep(TerminalPromptStep.ALL_CHECKS_PASS);
+          });
+        });
+
+      gameUIManager
+        .joinGame(async (e) => {
+          console.error(e);
+
+          terminal.current?.println("Error Joining Game:");
+          terminal.current?.println("");
+          terminal.current?.println(e.message, TerminalTextStyle.Red);
+          terminal.current?.println("");
+          terminal.current?.println("Press Enter to Try Again:");
+
+          await terminal.current?.getInput();
+          return true;
+        })
+        .catch((error: Error) => {
+          terminal.current?.println(
+            `[ERROR] An error occurred: ${error.toString().slice(0, 10000)}`,
+            TerminalTextStyle.Red
+          );
+        });
+    },
+    []
+  );
+
+  const advanceStateFromAllChecksPass = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      terminal.current?.println("");
+      terminal.current?.println("Press ENTER to begin");
+      terminal.current?.println(
+        "Press 's' then ENTER to begin in SAFE MODE - plugins disabled"
+      );
+
+      const input = await terminal.current?.getInput();
+
+      if (input === "s") {
+        const gameUIManager = gameUIManagerRef.current;
+        gameUIManager?.getGameManager()?.setSafeMode(true);
+      }
+
+      setStep(TerminalPromptStep.COMPLETE);
+      setInitRenderState(InitRenderState.COMPLETE);
+      terminal.current?.clear();
+
+      terminal.current?.println(
+        "Welcome to the Dark Forest.",
+        TerminalTextStyle.Green
+      );
+      terminal.current?.println("");
+      terminal.current?.println(
+        "This is the Dark Forest interactive JavaScript terminal. Only use this if you know exactly what you're doing."
+      );
+      terminal.current?.println("");
+      terminal.current?.println("Try running: df.getAccount()");
+      terminal.current?.println("");
+    },
+    []
+  );
+
+  const advanceStateFromComplete = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const input = (await terminal.current?.getInput()) || "";
+      let res = "";
+      try {
+        // indrect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
+        res = (1, eval)(input);
+        if (res !== undefined) {
+          terminal.current?.println(res.toString(), TerminalTextStyle.Text);
+        }
+      } catch (e) {
+        res = e instanceof Error ? e.message : String(e);
+        terminal.current?.println(`ERROR: ${res}`, TerminalTextStyle.Red);
+      }
+      advanceStateFromComplete(terminal);
+    },
+    []
+  );
+
+  const advanceStateFromError = useCallback(async () => {
+    await new Promise(() => {});
+  }, []);
+
+  const advanceState = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (step === TerminalPromptStep.NONE && walletManager) {
+        await advanceStateFromNone(terminal);
+      } else if (step === TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED) {
+        await advanceStateFromCompatibilityPassed(terminal);
+      } else if (step === TerminalPromptStep.DISPLAY_ACCOUNTS) {
+        await advanceStateFromDisplayAccounts(terminal);
+      } else if (step === TerminalPromptStep.GENERATE_ACCOUNT) {
+        await advanceStateFromGenerateAccount(terminal);
+      } else if (step === TerminalPromptStep.IMPORT_ACCOUNT) {
+        await advanceStateFromImportAccount(terminal);
+      } else if (step === TerminalPromptStep.ACCOUNT_SET) {
+        await advanceStateFromAccountSet(terminal);
+      } else if (step === TerminalPromptStep.FETCHING_ETH_DATA) {
+        await advanceStateFromFetchingEthData(terminal);
+      } else if (step === TerminalPromptStep.ASK_ADD_ACCOUNT) {
+        await advanceStateFromAskAddAccount(terminal);
+      } else if (step === TerminalPromptStep.ADD_ACCOUNT) {
+        await advanceStateFromAddAccount(terminal);
+      } else if (step === TerminalPromptStep.NO_HOME_PLANET) {
+        await advanceStateFromNoHomePlanet(terminal);
+      } else if (step === TerminalPromptStep.ALL_CHECKS_PASS) {
+        await advanceStateFromAllChecksPass(terminal);
+      } else if (step === TerminalPromptStep.COMPLETE) {
+        await advanceStateFromComplete(terminal);
+      } else if (step === TerminalPromptStep.ERROR) {
+        await advanceStateFromError();
+      }
+    },
+    [
+      step,
+      advanceStateFromAccountSet,
+      advanceStateFromAddAccount,
+      advanceStateFromAllChecksPass,
+      advanceStateFromAskAddAccount,
+      advanceStateFromCompatibilityPassed,
+      advanceStateFromComplete,
+      advanceStateFromDisplayAccounts,
+      advanceStateFromError,
+      advanceStateFromFetchingEthData,
+      advanceStateFromGenerateAccount,
+      advanceStateFromImportAccount,
+      advanceStateFromNoHomePlanet,
+      advanceStateFromNone,
+      walletManager,
+    ]
+  );
+
+  useEffect(() => {
+    const uiEmitter = UIEmitter.getInstance();
+    uiEmitter.emit(UIEmitterEvent.UIChange);
+  }, [initRenderState]);
+
+  useEffect(() => {
+    const gameUiManager = gameUIManagerRef.current;
+    if (!terminalVisible && gameUiManager) {
+      const tutorialManager = TutorialManager.getInstance(gameUiManager);
+      tutorialManager.acceptInput(TutorialState.Terminal);
+    }
+  }, [terminalVisible]);
+
+  useEffect(() => {
+    if (terminalHandle.current && topLevelContainer.current) {
+      advanceState(terminalHandle);
+    }
+  }, [terminalHandle, topLevelContainer, advanceState]);
+
+  return (
+    <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
+      <GameWindowWrapper
+        initRender={initRenderState}
+        terminalEnabled={terminalVisible}
+      >
+        {gameUIManagerRef.current &&
+          topLevelContainer.current &&
+          gameManager && (
+            <TopLevelDivProvider value={topLevelContainer.current}>
+              <UIManagerProvider value={gameUIManagerRef.current}>
+                <GameWindowLayout
+                  terminalVisible={terminalVisible}
+                  setTerminalVisible={setTerminalVisible}
+                />
+              </UIManagerProvider>
+            </TopLevelDivProvider>
+          )}
+      </GameWindowWrapper>
+      <TerminalToggler
+        terminalEnabled={terminalVisible}
+        setTerminalEnabled={setTerminalVisible}
+        initRender={initRenderState}
+      />
+      <TerminalWrapper
+        initRender={initRenderState}
+        terminalEnabled={terminalVisible}
+      >
+        <Terminal ref={terminalHandle} promptCharacter={"$"} />
+      </TerminalWrapper>
+      <div ref={topLevelContainer}></div>
+    </Wrapper>
+  );
+}

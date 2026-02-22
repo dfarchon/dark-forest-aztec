@@ -18,7 +18,7 @@ import type {
   Abstract,
   Artifact,
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   Planet,
   RenderedArtifact,
 } from "@dfpunk/types";
@@ -265,7 +265,7 @@ export function canActivateArtifact(
 }
 
 export function canWithdrawArtifact(
-  account: AztecAddr,
+  account: EthAddress,
   artifact: Artifact,
   planet?: Planet,
 ): boolean {
@@ -280,7 +280,7 @@ export function canWithdrawArtifact(
 }
 
 export function canDepositArtifact(
-  account: AztecAddr,
+  account: EthAddress,
   artifact: Artifact,
   planet?: Planet,
 ): boolean {
@@ -295,7 +295,7 @@ export function canDepositArtifact(
 
 export function getPlayerControlledSpaceships(
   artifacts: (Artifact | undefined)[] | undefined,
-  owner: AztecAddr | undefined,
+  owner: EthAddress | undefined,
 ): Artifact[] {
   if (!owner) return [];
   return (artifacts ?? []).filter(

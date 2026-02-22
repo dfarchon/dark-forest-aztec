@@ -1,5 +1,5 @@
 import type { mat3, mat4 } from "gl-matrix";
-import type { RenderedArtifact } from "../client/artifact";
+import type { RenderedArtifact } from "../world/artifact";
 import type { HatType } from "./hat";
 import type { Abstract, LocationId } from "../identifiers";
 import type { LocatablePlanet } from "../world/planet";

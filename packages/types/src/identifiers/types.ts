@@ -21,13 +21,13 @@ export type VoyageId = Abstract<string, "VoyageId">;
 export type LocationId = Abstract<string, "LocationId">;
 
 /**
- * Aztec address. Expected to be a 32-byte value represented as a 0x-prefixed
- * lowercase hex string (64 hex chars, 66 chars total). Align with
- * AztecAddress.toHexString() from @aztec/aztec.js. Create/validate via
- * AztecAddress.fromString / toHexString in application code; this package
- * only defines the branded type and format convention.
+ * Address type for compatibility with the previous client (EthAddress).
+ * Expected to be a 32-byte value represented as a 0x-prefixed lowercase hex
+ * string (64 hex chars, 66 chars total). On Aztec this aligns with
+ * AztecAddress.toHexString(); create/validate via AztecAddress.fromString /
+ * toHexString in application code. This package only defines the branded type.
  */
-export type AztecAddr = Abstract<string, "AztecAddr">;
+export type EthAddress = Abstract<string, "EthAddress">;
 
 /**
  * A unique identifier for a Dark Forest NFT artifact. This is a 64-character

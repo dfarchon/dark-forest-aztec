@@ -1,4 +1,4 @@
-import type { Abstract, AztecAddr, LocationId } from "../identifiers";
+import type { Abstract, EthAddress, LocationId } from "../identifiers";
 
 /**
  * Protocol for messages on planets (e.g. emoji flags). Rate limiting and
@@ -19,7 +19,7 @@ export type PlanetMessageBody = EmojiFlagBody | unknown;
 export interface PlanetMessage<T extends PlanetMessageBody> {
   id: string;
   type: PlanetMessageType;
-  sender: AztecAddr;
+  sender: EthAddress;
   timeCreated: number;
   planetId: LocationId;
   body: T;
@@ -45,7 +45,7 @@ export interface DeleteMessagesRequest {
 }
 
 export interface SignedMessage<T> {
-  sender?: AztecAddr;
+  sender?: EthAddress;
   signature?: string;
   message: T;
 }

@@ -15,10 +15,10 @@ export class CaptureZoneRenderer implements CaptureZoneRendererType {
   }
 
   queueCaptureZones(): void {
-    const { circleRenderer: cR } = this.renderer;
-    for (const zone of this.context.getCaptureZones()) {
-      cR.queueCircleWorld(zone.coords, zone.radius, [255, 215, 0, 75]);
-    }
+    // const { circleRenderer: cR } = this.renderer;
+    // for (const zone of this.context.getCaptureZones()) {
+    //   cR.queueCircleWorld(zone.coords, zone.radius, [255, 215, 0, 75]);
+    // }
   }
 
   flush(): void {

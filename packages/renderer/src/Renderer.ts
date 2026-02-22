@@ -11,7 +11,7 @@ import {
   Chunk,
   CircleRendererType,
   DiagnosticUpdater,
-  AztecAddr,
+  EthAddress,
   GameViewport,
   IRendererConfig,
   LineRendererType,
@@ -122,9 +122,9 @@ export interface RendererGameContext extends DiagnosticUpdater {
   };
   getLocationOfPlanet(planetId: LocationId): WorldLocation | undefined;
   getPlanetWithId(planetId: LocationId | undefined): Planet | undefined;
-  getAccount(): AztecAddr | undefined;
+  getAccount(): EthAddress | undefined;
   getAllVoyages(): QueuedArrival[];
-  getPlayer(address?: AztecAddr): Player | undefined;
+  getPlayer(address?: EthAddress): Player | undefined;
   getUnconfirmedMoves(): Transaction<UnconfirmedMove>[];
   spaceTypeFromPerlin(perlin: number): SpaceType;
   getPerlinConfig(isBiome: boolean): PerlinConfig;
@@ -157,7 +157,7 @@ export interface RendererGameContext extends DiagnosticUpdater {
   isAbandoning(): boolean;
   getArtifactSending(planetId: LocationId): Artifact | undefined;
   getAbandonRangeChangePercent(): number;
-  getCaptureZones(): Iterable<CaptureZone>;
+  // getCaptureZones(): Iterable<CaptureZone>;
 }
 
 export class Renderer {

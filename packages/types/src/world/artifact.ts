@@ -1,10 +1,11 @@
 import type {
   Abstract,
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   LocationId,
   VoyageId,
 } from "../identifiers";
+import type { TransactionCollection } from "../tx/transaction";
 import type { Biome } from "./game_types";
 import type { Upgrade } from "./upgrade";
 
@@ -32,6 +33,8 @@ export const ArtifactType = {
   ShipWhale: 12 as ArtifactType,
   ShipGear: 13 as ArtifactType,
   ShipTitan: 14 as ArtifactType,
+
+  // Don't forget to update MIN_ARTIFACT_TYPE and/or MAX_ARTIFACT_TYPE in the `constants` package
 } as const;
 
 /**
@@ -70,6 +73,7 @@ export const ArtifactRarity = {
   Epic: 3 as ArtifactRarity,
   Legendary: 4 as ArtifactRarity,
   Mythic: 5 as ArtifactRarity,
+  // Don't forget to update MIN_ARTIFACT_RARITY and/or MAX_ARTIFACT_RARITY in the `constants` package
 } as const;
 
 /**
@@ -90,7 +94,11 @@ export const ArtifactRarityNames = {
 export type ArtifactPointValues = { [ArtifactRarity: number]: number };
 
 /**
- * Represents data associated with a Dark Forest artifact NFT.
+ * Represents data associated with a Dark Forest artifact NFT. Note
+ * that some `Artifact` fields store client-specific data that the blockchain is
+ * not aware of, such as `unconfirmedDepositArtifact` (tracks pending
+ * depositArtifact transaction that involves this artifact). If you're using a
+ * client that can't send transactions, these fields should be ignored.
  */
 export type Artifact = {
   isInititalized: boolean;
@@ -99,19 +107,24 @@ export type Artifact = {
   rarity: ArtifactRarity;
   planetBiome: Biome;
   mintedAtTimestamp: number;
-  discoverer: AztecAddr;
+  discoverer: EthAddress;
   artifactType: ArtifactType;
   activations: number;
   lastActivated: number;
   lastDeactivated: number;
-  controller: AztecAddr;
+  controller: EthAddress;
+
   upgrade: Upgrade;
   timeDelayedUpgrade: Upgrade;
-  currentOwner: AztecAddr; // owner of the NFT - can be the contract
+  currentOwner: EthAddress; // owner of the NFT - can be the contract
   wormholeTo?: LocationId;
   onPlanetId?: LocationId;
   onVoyageId?: VoyageId;
+
+  transactions?: TransactionCollection;
 };
+
+// TODO: get this out of here
 
 const godGrammar = {
   god1: [
@@ -151,13 +164,42 @@ const godGrammar = {
 
 /**
  * Deterministically generates the name of the artifact from its ID.
+ *
+ * @param artifact The artifact to generate a name for
  */
-export function artifactNameFromArtifact(artifact: Artifact): string {
-  const idNum = parseInt(artifact.id as string, 16);
-  const roll1 = (idNum % 7919) % godGrammar.god1.length;
-  const roll2 = (idNum % 7883) % godGrammar.god2.length;
+export function artifactNameFromArtifact(artifact: Artifact) {
+  const idNum = parseInt(artifact.id, 16);
+
+  const roll1 = (idNum % 7919) % godGrammar.god1.length; // 7919 is a big prime
+  const roll2 = (idNum % 7883) % godGrammar.god2.length; // 7883 is a big prime
+
   const name = godGrammar.god1[roll1] + godGrammar.god2[roll2];
-  return name.charAt(0).toUpperCase() + name.slice(1);
+  const nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
+
+  return nameCapitalized;
+}
+
+/**
+ * type interface for ERC721 metadata.
+ */
+
+type NFTAttribute = {
+  trait_type: string;
+  value: string | number;
+  display_type?: string;
+};
+export type NFTMetadata = {
+  name: string;
+  description: string;
+  image: string;
+  attributes: NFTAttribute[];
+};
+
+export interface RenderedArtifact extends Partial<Artifact> {
+  artifactType: ArtifactType;
+  planetBiome: Biome;
+  rarity: ArtifactRarity;
+  id: ArtifactId; // for rolls
 }
 
 export type Wormhole = {

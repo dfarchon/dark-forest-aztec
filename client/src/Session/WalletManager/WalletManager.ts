@@ -286,6 +286,11 @@ export class WalletManager {
     return this.keyStore.listAccounts();
   }
 
+  /** Last known balance (synchronous). Updated by getBalance() and polling. */
+  getLastBalance(): bigint {
+    return this.balance;
+  }
+
   /** Query the active account's FeeJuice balance from the Aztec Node. */
   async getBalance(): Promise<bigint> {
     if (!this.activeAddress) return 0n;

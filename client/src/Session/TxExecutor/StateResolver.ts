@@ -33,6 +33,23 @@ import {
 } from "./stateZeros";
 import type { TimestampProvider } from "./TimestampProvider";
 
+// BN254 scalar field modulus (Fr order).
+// Negative coordinates are mapped to field elements: -n → p - n.
+const BN254_FR_MODULUS =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
+function signedCoordToField(v: number | bigint): bigint {
+  const n = typeof v === "bigint" ? v : BigInt(v);
+  return n < 0n ? BN254_FR_MODULUS + n : n;
+}
+
+/** Convert a hex LocationId string (no 0x prefix) to bigint for Fr encoding. */
+function hexIdToField(v: unknown): bigint {
+  if (typeof v === "bigint") return v;
+  const s = String(v);
+  return BigInt(s.startsWith("0x") ? s : `0x${s}`);
+}
+
 // ---------------------------------------------------------------------------
 // StateResolver
 // ---------------------------------------------------------------------------
@@ -85,7 +102,10 @@ export class StateResolver {
   ): Promise<unknown[]> {
     const intentArgs = await intent.args;
     // intentArgs = [x, y, radius, locationId, perlin, level]
-    const [x, y, radius, locationId, perlin, level] = intentArgs;
+    const [rawX, rawY, radius, rawLocationId, perlin, level] = intentArgs;
+    const x = signedCoordToField(rawX as number | bigint);
+    const y = signedCoordToField(rawY as number | bigint);
+    const locationId = hexIdToField(rawLocationId);
 
     const [config, timestamp] = await Promise.all([
       this.configCache.getConfig(),
@@ -93,7 +113,7 @@ export class StateResolver {
     ]);
 
     // Read current state from indexer (or zeros if not yet on-chain)
-    const locationIdStr = String(locationId);
+    const locationIdStr = String(rawLocationId);
     const playerAddr = this.getPlayerAddress();
 
     const planetRaw = this.indexer.getPlanet(locationIdStr);
@@ -154,17 +174,23 @@ export class StateResolver {
     // intentArgs = [sourceLoc, targetLoc, targetPerlin, targetLevel,
     //               targetRadius, maxDist, x1, y1, x2, y2]
     const [
-      sourceLoc,
-      targetLoc,
+      rawSourceLoc,
+      rawTargetLoc,
       targetPerlin,
       targetLevel,
       targetRadius,
       maxDist,
-      x1,
-      y1,
-      x2,
-      y2,
+      rawX1,
+      rawY1,
+      rawX2,
+      rawY2,
     ] = intentArgs;
+    const sourceLoc = hexIdToField(rawSourceLoc);
+    const targetLoc = hexIdToField(rawTargetLoc);
+    const x1 = signedCoordToField(rawX1 as number | bigint);
+    const y1 = signedCoordToField(rawY1 as number | bigint);
+    const x2 = signedCoordToField(rawX2 as number | bigint);
+    const y2 = signedCoordToField(rawY2 as number | bigint);
 
     const popMoved = BigInt(intent.forces);
     const silverMoved = BigInt(intent.silver);
@@ -177,8 +203,8 @@ export class StateResolver {
       this.timestampProvider.getTimestamp(),
     ]);
 
-    const sourceLocStr = String(sourceLoc);
-    const targetLocStr = String(targetLoc);
+    const sourceLocStr = String(rawSourceLoc);
+    const targetLocStr = String(rawTargetLoc);
 
     // Source planet state
     const sourcePlanetRaw = this.indexer.getPlanet(sourceLocStr);

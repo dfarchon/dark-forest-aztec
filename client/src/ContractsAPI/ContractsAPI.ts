@@ -23,7 +23,7 @@ import {
 import type {
   Artifact,
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   LocationId,
   Planet,
   Player,
@@ -93,7 +93,7 @@ export class ContractsAPI extends EventEmitter {
         this.emit(ContractsAPIEvent.RadiusUpdated);
       },
       PlayerUpdate: (playerId: string) => {
-        this.emit(ContractsAPIEvent.PlayerUpdate, playerId as AztecAddr);
+        this.emit(ContractsAPIEvent.PlayerUpdate, playerId as EthAddress);
       },
       PlanetUpdate: (planetId: string) => {
         this.emit(ContractsAPIEvent.PlanetUpdate, planetId as LocationId);
@@ -119,7 +119,7 @@ export class ContractsAPI extends EventEmitter {
         this.emit(
           ContractsAPIEvent.LocationRevealed,
           locationId as LocationId,
-          revealer as AztecAddr
+          revealer as EthAddress
         );
       },
     });
@@ -134,15 +134,19 @@ export class ContractsAPI extends EventEmitter {
   // Identity & address  (mirrors v0.6 getAddress / getContractAddress)
   // =========================================================================
 
-  public getAddress(): AztecAddr | undefined {
+  public getAddress(): EthAddress | undefined {
     return this.walletManager.getActiveAddress()?.toString() as
-      | AztecAddr
+      | EthAddress
       | undefined;
   }
 
-  public getContractAddress(): string {
-    //NOTE: actually we have lots of contracts
-    return CORE_CONTRACT_ADDRESS;
+  public getContractAddress(): EthAddress {
+    // todo: fix this
+    return CORE_CONTRACT_ADDRESS as EthAddress;
+  }
+
+  public getWalletManager(): WalletManager {
+    return this.walletManager;
   }
 
   // =========================================================================
@@ -224,7 +228,9 @@ export class ContractsAPI extends EventEmitter {
     return result;
   }
 
-  public async getPlayerById(playerId: AztecAddr): Promise<Player | undefined> {
+  public async getPlayerById(
+    playerId: EthAddress
+  ): Promise<Player | undefined> {
     const state = this.indexerConnection.getPlayer(playerId);
     if (!state) return undefined;
     return decodePlayer(playerId, state as any);
@@ -429,7 +435,7 @@ export class ContractsAPI extends EventEmitter {
   }
 
   public async getPlayerArtifacts(
-    playerId?: AztecAddr,
+    playerId?: EthAddress,
     onProgress?: (percent: number) => void
   ): Promise<Artifact[]> {
     if (!playerId) return [];

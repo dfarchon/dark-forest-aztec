@@ -2,7 +2,7 @@ import type { Biome, SpaceType } from "./game_types";
 import type {
   Abstract,
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   LocationId,
 } from "../identifiers";
 import type { PlanetMessage } from "../message/planetmessage";
@@ -140,7 +140,7 @@ export type Planet = {
   locationId: LocationId;
   perlin: number;
   spaceType: SpaceType;
-  owner: AztecAddr; // should never be null; all unowned planets should have 0 address
+  owner: EthAddress; // should never be null; all unowned planets should have 0 address
   hatLevel: number;
 
   planetLevel: PlanetLevel;
@@ -186,8 +186,8 @@ export type Planet = {
   isInContract: boolean;
   syncedWithContract: boolean;
   coordsRevealed: boolean;
-  revealer?: AztecAddr;
-  claimer?: AztecAddr;
+  revealer?: EthAddress;
+  claimer?: EthAddress;
   messages?: PlanetMessage<unknown>[];
 
   bonus: PlanetBonus;
@@ -195,8 +195,8 @@ export type Planet = {
   pausers: number;
   energyGroDoublers: number;
   silverGroDoublers: number;
-  invader?: AztecAddr;
-  capturer?: AztecAddr;
+  invader?: EthAddress;
+  capturer?: EthAddress;
   invadeStartBlock?: number;
 };
 

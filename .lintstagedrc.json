@@ -1,8 +1,6 @@
 {
   "client/**/*.{ts,tsx,js,jsx,json,css,md}": ["pnpm --filter client format"],
-  "packages/**/*.{ts,tsx,js,jsx,json}": [
-    "pnpm --filter \"./packages/*\" run format"
-  ],
+  "packages/**/*.{ts,tsx,js,jsx,json}": ["prettier --write"],
   "contracts/scripts/**/*.{ts,js,json}": [
     "pnpm --filter contracts scripts:fmt"
   ],

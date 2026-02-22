@@ -1,7 +1,7 @@
 import type {
   Abstract,
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   LocationId,
   VoyageId,
 } from "../identifiers";
@@ -11,7 +11,7 @@ import type {
  */
 export interface QueuedArrival {
   eventId: VoyageId;
-  player: AztecAddr;
+  player: EthAddress;
   fromPlanet: LocationId;
   toPlanet: LocationId;
   energyArriving: number;

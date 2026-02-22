@@ -1,4 +1,4 @@
-import type { AztecAddr } from "@dfpunk/types";
+import type { EthAddress } from "@dfpunk/types";
 
 /**
  * Converts a string to an Aztec address: 0x-prefixed lowercase hex string
@@ -6,7 +6,7 @@ import type { AztecAddr } from "@dfpunk/types";
  *
  * @param str Address-like string (hex or decimal, with or without 0x)
  */
-export function address(str: string): AztecAddr {
+export function address(str: string): EthAddress {
   let ret = str.toLowerCase();
   if (ret.startsWith("0x")) ret = ret.slice(2);
   for (const c of ret) {
@@ -14,7 +14,7 @@ export function address(str: string): AztecAddr {
       throw new Error("not a valid address");
   }
   if (ret.length !== 64) throw new Error("not a valid address");
-  return ("0x" + ret) as AztecAddr;
+  return ("0x" + ret) as EthAddress;
 }
 
 const HASH_INT_MASK = 0xffffffffffn;

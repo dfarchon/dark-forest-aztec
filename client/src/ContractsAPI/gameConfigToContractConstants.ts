@@ -8,7 +8,7 @@
  * is missing from a particular deployment the value defaults to 0/false.
  */
 
-import type { AztecAddr } from "@dfpunk/types";
+import type { EthAddress } from "@dfpunk/types";
 import type { Upgrade, UpgradeBranches } from "@dfpunk/types";
 
 import type { GameConfig, RawUpgrade } from "../Session/TxExecutor/ConfigCache";
@@ -168,7 +168,12 @@ export function gameConfigToContractConstants(
   const core = (config.gameConfigCore as Record<string, unknown>) ?? {};
   const world = (config.worldConfig as Record<string, unknown>) ?? {};
   const junk = (config.spaceJunkConfig as Record<string, unknown>) ?? {};
-  const thresholds = config.planetLevelThresholds;
+  const rawThresholds = config.planetLevelThresholds as
+    | { thresholds: unknown[] }
+    | unknown[];
+  const thresholds = Array.isArray(rawThresholds)
+    ? rawThresholds
+    : (rawThresholds as { thresholds: unknown[] })?.thresholds;
   const tiers = config.planetTypeWeightsTiers;
 
   const planetDefaults = config.planetDefaultStats.map(
@@ -232,7 +237,7 @@ export function gameConfigToContractConstants(
     planetCumulativeRarities: config.planetCumulativeRarities ?? [],
     upgrades: buildUpgrades(config.upgrades),
 
-    adminAddress: (config.admin ?? "") as AztecAddr,
+    adminAddress: (config.admin ?? "") as EthAddress,
 
     GAME_START_BLOCK: num(core.game_start_block),
     CAPTURE_ZONES_ENABLED: bool(core.capture_zones_enabled),

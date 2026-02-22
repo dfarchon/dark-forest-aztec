@@ -7,7 +7,7 @@
 
 import type {
   ArtifactPointValues,
-  AztecAddr,
+  EthAddress,
   UpgradeBranches,
 } from "@dfpunk/types";
 
@@ -95,7 +95,7 @@ type TenNumbers = [
 ];
 
 // ---------------------------------------------------------------------------
-// ContractConstants — adapted from v0.6, EthAddress → AztecAddr
+// ContractConstants — adapted from v0.6, EthAddress → EthAddress
 // ---------------------------------------------------------------------------
 
 export interface ContractConstants {
@@ -153,7 +153,7 @@ export interface ContractConstants {
 
   upgrades: UpgradeBranches;
 
-  adminAddress: AztecAddr;
+  adminAddress: EthAddress;
 
   GAME_START_BLOCK: number;
   CAPTURE_ZONES_ENABLED: boolean;

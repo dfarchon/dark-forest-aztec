@@ -3,7 +3,7 @@ import {
   ArtifactRarity,
   ArtifactType,
   Biome,
-  AztecAddr,
+  EthAddress,
   GasPrices,
   LocationId,
   PlanetLevel,
@@ -37,7 +37,7 @@ export const LOCATION_ID_UB: bigint = BigInt(
  * Empty Aztec address (32 bytes, 0x + 64 hex chars). Used for unowned planets, artifacts without an owner, etc.
  */
 export const EMPTY_ADDRESS =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as AztecAddr;
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as EthAddress;
 
 /**
  * A blank LocationID (all zeros).

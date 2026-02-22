@@ -1,7 +1,7 @@
 import { CONTRACT_PRECISION, EMPTY_ADDRESS } from "@dfpunk/constants";
 import { bonusFromHex } from "@dfpunk/hexgen";
 import type {
-  AztecAddr,
+  EthAddress,
   Planet,
   PlanetLevel,
   PlanetType,
@@ -16,7 +16,7 @@ function toLocationId(s: string) {
   return s.startsWith("0x") ? locationIdFromHexStr(s) : locationIdFromDecStr(s);
 }
 
-function optAddr(s: string): AztecAddr | undefined {
+function optAddr(s: string): EthAddress | undefined {
   const normalized = s.toLowerCase().startsWith("0x")
     ? s.toLowerCase()
     : "0x" + s.toLowerCase();

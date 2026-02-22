@@ -1,2 +1,2 @@
 export * from "./arrival";
-export * from "./artifact";
+export * from "../world/artifact";

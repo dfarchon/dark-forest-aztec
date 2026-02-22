@@ -35,5 +35,4 @@ export interface DiagnosticUpdater {
 export interface Diagnostics {
   transactionsInQueue: number;
   totalTransactions: number;
-  [key: string]: unknown;
 }

@@ -9,7 +9,7 @@ import { seededRandom } from "@dfpunk/hashing";
 import { hashToInt } from "@dfpunk/serde";
 import type {
   ArtifactId,
-  AztecAddr,
+  EthAddress,
   LocationId,
   Planet,
   PlanetCosmeticInfo,
@@ -216,11 +216,11 @@ export function hashToHue(hash: string): number {
   return baseHue;
 }
 
-export function getPlayerColor(player: AztecAddr): string {
+export function getPlayerColor(player: EthAddress): string {
   return hslStr(hashToHue(player.slice(2)), 100, 70);
 }
 
-export function getPlayerColorVec(player: AztecAddr): RGBAVec {
+export function getPlayerColorVec(player: EthAddress): RGBAVec {
   if (!rgbsByHash.has(player)) {
     const noAlpha = hslToRgb([hashToHue(player.slice(2)), 100, 70]);
 
