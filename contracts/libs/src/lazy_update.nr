@@ -140,18 +140,8 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
         }
     }
 
-    // quasars have 0 energy growth, so they have 0 energy decay as well
-    // so don't allow them to become overful
-    // PlanetType::SilverBank = 4
-    if planet.planet_type == 4 {
-        if planet.population > planet.population_cap {
-            planet.population = planet.population_cap;
-        }
-    }
-    if planet.pausers > 0 {
-        if planet.population > planet.population_cap {
-            planet.population = planet.population_cap;
-        }
+    if planet.population > planet.population_cap {
+        planet.population = planet.population_cap;
     }
 
     let max_silver: u128 = planet.silver_cap;

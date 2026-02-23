@@ -8,6 +8,7 @@ import {
 } from "@dfpunk/constants";
 import { Monomitter, monomitter, Subscription } from "@dfpunk/events";
 import {
+  DECAY_SCALE_OVER_RANGE,
   getRange,
   isActivated,
   isLocatable,
@@ -87,7 +88,6 @@ import {
   Wormhole,
 } from "@dfpunk/types";
 import bigInt, { BigInteger } from "big-integer";
-import delay from "delay";
 import { EventEmitter } from "events";
 
 import {
@@ -131,6 +131,7 @@ import {
 import { SerializedPlugin } from "../Plugins/SerializedPlugin";
 import PersistentChunkStore from "../Storage/PersistentChunkStore";
 import { easeInAnimation, emojiEaseOutAnimation } from "../Utils/Animation";
+import { ChainClock } from "../Utils/ChainClock";
 import { weiToEth } from "../Utils/Utils";
 import { hexifyBigIntNestedArray } from "../Utils/Utils";
 import { getEmojiMessage } from "./ArrivalUtils";
@@ -157,6 +158,9 @@ class GameManager extends EventEmitter {
    * This variable contains the internal state of objects that live in the game world.
    */
   private readonly entityStore: GameObjects;
+
+  /** Chain-adjusted clock for game-time calculations. */
+  private readonly chainClock: ChainClock;
 
   /**
    * Kind of hacky, but we store a reference to the terminal that the player sees when the initially
@@ -383,7 +387,8 @@ class GameManager extends EventEmitter {
     homeLocation: WorldLocation | undefined,
     useMockHash: boolean,
     artifacts: Map<ArtifactId, Artifact>,
-    paused: boolean
+    paused: boolean,
+    chainClock: ChainClock
   ) {
     super();
 
@@ -479,9 +484,11 @@ class GameManager extends EventEmitter {
       unprocessedArrivals,
       unprocessedPlanetArrivalIds,
       contractConstants,
-      worldRadius
+      worldRadius,
+      chainClock
     );
 
+    this.chainClock = chainClock;
     this.contractsAPI = contractsAPI;
     this.persistentChunkStore = persistentChunkStore;
     this.useMockHash = useMockHash;
@@ -505,6 +512,14 @@ class GameManager extends EventEmitter {
         this.hardRefreshPlayer(this.account);
       }
     }, 5000);
+
+    this.contractsAPI.indexerConnection.blockNumber$.subscribe(() => {
+      this.chainClock
+        .resync(() => this.contractsAPI.getChainTimestamp())
+        .then(() => {
+          this.entityStore.flushMaturedArrivals();
+        });
+    });
 
     this.hashRate = 0;
 
@@ -686,6 +701,18 @@ class GameManager extends EventEmitter {
 
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
 
+    // Sync chain clock so game-time calculations use L2 block time
+    const chainClock = new ChainClock();
+    try {
+      const chainTs = await contractsAPI.getChainTimestamp();
+      chainClock.sync(chainTs);
+      terminal.current?.println(
+        `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
+      );
+    } catch {
+      terminal.current?.println("Chain clock sync failed, using system clock");
+    }
+
     const gameManager = new GameManager(
       terminal,
       account,
@@ -705,7 +732,8 @@ class GameManager extends EventEmitter {
       homeLocation,
       useMockHash,
       knownArtifacts,
-      initialState.paused
+      initialState.paused,
+      chainClock
     );
 
     // gameManager.setPlayerTwitters(initialState.twitters);
@@ -757,6 +785,7 @@ class GameManager extends EventEmitter {
         // don't reload planets that you don't have in your map. once a planet
         // is in your map it will be loaded from the contract.
         const localPlanet = gameManager.entityStore.getPlanetWithId(planetId);
+
         if (localPlanet && isLocatable(localPlanet)) {
           await gameManager.hardRefreshPlanet(planetId);
           gameManager.emit(GameManagerEvent.PlanetUpdate);
@@ -796,18 +825,9 @@ class GameManager extends EventEmitter {
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedInitTx(tx)) {
           terminal.current?.println("Loading Home Planet from Blockchain...");
-          const retries = 5;
-          for (let i = 0; i < retries; i++) {
-            const planet = await gameManager.contractsAPI.getPlanetById(
-              tx.intent.locationId
-            );
-            if (planet) {
-              break;
-            } else if (i === retries - 1) {
-              console.error("couldn't load player's home planet");
-            } else {
-              await delay(2000);
-            }
+          const receipt = await tx.confirmedPromise;
+          if (receipt.blockNumber != null) {
+            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
           }
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
           // mining manager should be initialized already via joinGame, but just in case...
@@ -930,8 +950,12 @@ class GameManager extends EventEmitter {
 
   public async hardRefreshPlanet(planetId: LocationId): Promise<void> {
     const planet = await this.contractsAPI.getPlanetById(planetId);
-    if (!planet) return;
-    const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+    if (!planet) {
+      return;
+    }
+
+    const allArrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+    const arrivals = allArrivals.filter((a) => a.toPlanet === planetId);
     const artifactsOnPlanets =
       await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
     const artifactsOnPlanet = artifactsOnPlanets[0];
@@ -1230,11 +1254,15 @@ class GameManager extends EventEmitter {
     );
   }
 
+  public getChainTimeMs(): number {
+    return this.chainClock.now();
+  }
+
   /**
    * Returns whether or not the current round has ended.
    */
   public isRoundOver(): boolean {
-    return Date.now() / 1000 > this.getTokenMintEndTimeSeconds();
+    return this.chainClock.nowSec() > this.getTokenMintEndTimeSeconds();
   }
 
   /**
@@ -1762,7 +1790,7 @@ class GameManager extends EventEmitter {
   // }
 
   private checkGameHasEnded(): boolean {
-    if (Date.now() / 1000 > this.endTimeSeconds) {
+    if (this.chainClock.nowSec() > this.endTimeSeconds) {
       this.terminal.current?.println("[ERROR] Game has ended.");
       return true;
     }
@@ -1773,7 +1801,7 @@ class GameManager extends EventEmitter {
    * Gets the timestamp (ms) of the next time that we can broadcast the coordinates of a planet.
    */
   public getNextBroadcastAvailableTimestamp() {
-    return Date.now() + this.timeUntilNextBroadcastAvailable();
+    return this.chainClock.now() + this.timeUntilNextBroadcastAvailable();
   }
 
   /**
@@ -1938,7 +1966,14 @@ class GameManager extends EventEmitter {
       while (true) {
         try {
           const tx = await this.contractsAPI.submitTransaction(txIntent);
-          await tx.confirmedPromise;
+          const receipt = await tx.confirmedPromise;
+
+          // Wait for the indexer to process the block containing this tx
+          // before refreshing planet state, otherwise we get stale data.
+          if (receipt.blockNumber != null) {
+            await this.contractsAPI.waitForBlock(receipt.blockNumber);
+          }
+
           break;
         } catch (e) {
           if (beforeRetry) {
@@ -3130,12 +3165,14 @@ class GameManager extends EventEmitter {
     const from = this.getPlanetWithId(fromId);
     if (!from) throw new Error("origin planet unknown");
     const dist = this.getDist(fromId, toId);
-    const range = from.range * this.getRangeBuff(abandoning);
-    const rangeSteps = dist / range;
+    const decayScale =
+      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
 
-    const arrivingProp = arrivingEnergy / from.energyCap + 0.05;
+    // Linear decay matching contract: popArriving = popMoved * (1 - dist/L) - energyCap/20, L = range*4.55
+    const remainingRatio = 1 - dist / decayScale;
+    if (remainingRatio <= 0) return Infinity;
 
-    return arrivingProp * Math.pow(2, rangeSteps) * from.energyCap;
+    return (arrivingEnergy + from.energyCap / 20) / remainingRatio;
   }
 
   /**
@@ -3168,12 +3205,18 @@ class GameManager extends EventEmitter {
       }
     }
 
-    const range = from.range * this.getRangeBuff(abandoning);
-    const scale = (1 / 2) ** (dist / range);
-    let ret = scale * sentEnergy - 0.05 * from.energyCap;
-    if (ret < 0) ret = 0;
+    const decayScale =
+      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
 
-    return ret;
+    // Linear decay matching contract (move/src/main.nr): popArriving = popMoved * (1 - dist/L) - populationCap/20, L = range*4.55
+    if (dist >= decayScale) return 0;
+
+    const remainingRatio = 1 - dist / decayScale;
+    const popAfterDecay = sentEnergy * remainingRatio;
+    const debuff = from.energyCap / 20;
+    const ret = popAfterDecay - debuff;
+
+    return ret > 0 ? ret : 0;
   }
 
   /**

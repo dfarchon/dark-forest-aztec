@@ -273,77 +273,110 @@ export class TxExecutor {
     let tx_hash: string | undefined;
 
     const time_exec_called = Date.now();
+    const MAX_RETRIES = 1;
 
     try {
-      // 1. Processing
-      tx.state = "Processing";
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.warn(
+            `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
+          );
+        }
 
-      if (this.beforeTransaction) {
-        await this.beforeTransaction(tx);
-      }
+        // 1. Processing
+        tx.state = "Processing";
 
-      // 2. Resolve full contract args from indexer state + config + timestamp
-      const contractArgs = await this.stateResolver.resolve(tx.intent);
+        if (this.beforeTransaction) {
+          await this.beforeTransaction(tx);
+        }
 
-      // 3. Get contract + method
-      const { contract, method } = this.contractResolver.resolve(
-        tx.intent.methodName
-      );
+        // 2. Resolve full contract args from indexer state + config + timestamp
+        const contractArgs = await this.stateResolver.resolve(tx.intent);
 
-      time_called = Date.now();
+        // 3. Get contract + method
+        const { contract, method } = this.contractResolver.resolve(
+          tx.intent.methodName
+        );
 
-      // 4. Build send options
-      const sendOpts = {
-        from: this.walletManager.getActiveAddress()!,
-        fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(
-            this.walletManager.getSponsoredFpcAddress()
-          ),
-        },
-        wait: NO_WAIT,
-      };
+        time_called = Date.now();
 
-      // 5. Submit — send({ wait: NO_WAIT }) returns TxHash immediately
-      //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
-      const submitted: TxHash = await timeout(
-        (
-          contract.methods as Record<
-            string,
-            (...a: unknown[]) => { send: (o: unknown) => Promise<TxHash> }
-          >
-        )
-          [method](...contractArgs)
-          .send(sendOpts),
-        TX_SUBMIT_TIMEOUT,
-        `tx request ${tx.id} failed to submit: timed out`
-      );
+        // 4. Build send options
+        const sendOpts = {
+          from: this.walletManager.getActiveAddress()!,
+          fee: {
+            paymentMethod: new SponsoredFeePaymentMethod(
+              this.walletManager.getSponsoredFpcAddress()
+            ),
+          },
+          wait: NO_WAIT,
+        };
 
-      // 6. Submit state — v0.6 lines 376-383
-      tx.state = "Submit";
-      tx.hash = submitted;
-      time_submitted = Date.now();
-      tx.lastUpdatedAt = time_submitted;
-      tx_hash = submitted.toString();
-      tx.onTransactionResponse(submitted);
+        // 5. Submit — send({ wait: NO_WAIT }) returns TxHash immediately
+        //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
+        const submitted: TxHash = await timeout(
+          (
+            contract.methods as Record<
+              string,
+              (...a: unknown[]) => { send: (o: unknown) => Promise<TxHash> }
+            >
+          )
+            [method](...contractArgs)
+            .send(sendOpts),
+          TX_SUBMIT_TIMEOUT,
+          `tx request ${tx.id} failed to submit: timed out`
+        );
 
-      // 7. Wait for confirmation — v0.6 line 385
-      //    Aztec equivalent of ethConnection.waitForTransaction(hash)
-      const receipt = await waitForTx(this.node, submitted, {
-        timeout: 120,
-        dontThrowOnRevert: true,
-      });
+        // 6. Submit state — v0.6 lines 376-383
+        tx.state = "Submit";
+        tx.hash = submitted;
+        time_submitted = Date.now();
+        tx.lastUpdatedAt = time_submitted;
+        tx_hash = submitted.toString();
+        tx.onTransactionResponse(submitted);
 
-      // 8. Check result — v0.6 lines 386-397
-      if (receipt.hasExecutionReverted() || receipt.isDropped()) {
-        time_errored = Date.now();
-        tx.lastUpdatedAt = time_errored;
-        tx.state = "Fail";
-        throw new Error(receipt.error || "transaction reverted");
-      } else {
+        // 7. Wait for confirmation — v0.6 line 385
+        //    Aztec equivalent of ethConnection.waitForTransaction(hash)
+        const receipt = await waitForTx(this.node, submitted, {
+          timeout: 120,
+          dontThrowOnRevert: true,
+        });
+
+        // 8. Check result — v0.6 lines 386-397
+        if (receipt.hasExecutionReverted() || receipt.isDropped()) {
+          time_errored = Date.now();
+          tx.lastUpdatedAt = time_errored;
+          tx.state = "Fail";
+          const reason = receipt.error || "transaction reverted";
+          console.error(
+            `[TxExecutor] tx ${tx.id} (${tx.intent.methodName}) reverted:`,
+            reason
+          );
+          console.error(
+            "[TxExecutor] receipt:",
+            JSON.stringify({
+              blockNumber: receipt.blockNumber,
+              error: receipt.error,
+              status: receipt.status,
+            })
+          );
+          if (attempt < MAX_RETRIES) {
+            const latestBlock = receipt.blockNumber ?? 0;
+            if (latestBlock > 0) {
+              this.stateResolver.setLastConfirmedBlock(latestBlock);
+            }
+            continue;
+          }
+          throw new Error(reason);
+        }
+
         tx.state = "Confirm";
         time_confirmed = Date.now();
         tx.lastUpdatedAt = time_confirmed;
+        if (receipt.blockNumber != null) {
+          this.stateResolver.setLastConfirmedBlock(receipt.blockNumber);
+        }
         tx.onReceipt(receipt);
+        break;
       }
     } catch (e) {
       // 9. Error handling — v0.6 lines 398-415
@@ -404,6 +437,12 @@ export class TxExecutor {
 
   getQueueSize(): number {
     return this.queue.size();
+  }
+
+  /** Get the latest L2 block timestamp (seconds). */
+  async getChainTimestamp(): Promise<number> {
+    const ts = await new TimestampProvider(this.node).getTimestamp();
+    return Number(ts);
   }
 
   destroy(): void {

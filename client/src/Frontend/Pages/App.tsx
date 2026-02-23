@@ -1,3 +1,5 @@
+import "./Test/TestPageStyles.css";
+
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { address } from "@dfpunk/serde";
 import React from "react";
@@ -28,15 +30,19 @@ const defaultAddress = address(CORE_CONTRACT_ADDRESS);
 
 function TestHub() {
   return (
-    <div className="card">
-      <h1>DFPunk Aztec Client — Test</h1>
-      <p>
-        <Link to="/test/indexer">Indexer</Link>
-        {" · "}
-        <Link to="/test/wallet">WalletManager</Link>
-        {" · "}
-        <Link to="/test/tx-executor">TxExecutor</Link>
-      </p>
+    <div className="test-page" style={{ maxWidth: "960px" }}>
+      <header className="test-page__header">
+        <h1 className="test-page__title">DFPunk Aztec Client — Test</h1>
+        <nav className="test-page__nav">
+          <Link to="/">← Home</Link>
+          <span className="test-page__nav-sep"> · </span>
+          <Link to="/test/indexer">Indexer</Link>
+          <span className="test-page__nav-sep"> · </span>
+          <Link to="/test/wallet">WalletManager</Link>
+          <span className="test-page__nav-sep"> · </span>
+          <Link to="/test/tx-executor">TxExecutor</Link>
+        </nav>
+      </header>
     </div>
   );
 }

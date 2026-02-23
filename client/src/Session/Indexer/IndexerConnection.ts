@@ -409,6 +409,11 @@ export class IndexerConnection {
   public getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
     return this.indexer.getArtifactLocation(id);
   }
+
+  /** Wait for the indexer to process at least up to the given block number. */
+  public waitForBlock(blockNumber: number, timeoutMs?: number): Promise<void> {
+    return this.indexer.waitForBlock(blockNumber, timeoutMs);
+  }
 }
 
 // ---------------------------------------------------------------------------

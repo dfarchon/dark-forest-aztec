@@ -19,6 +19,8 @@ import {
   decodePlanet,
   decodePlanetRevealedCoords,
   decodePlayer,
+  locationIdFromDecStr,
+  locationIdToDecStr,
 } from "@dfpunk/serde";
 import type {
   Artifact,
@@ -82,6 +84,11 @@ export class ContractsAPI extends EventEmitter {
     this.removeEventListeners();
   }
 
+  /** Get the latest L2 block timestamp (seconds). */
+  public async getChainTimestamp(): Promise<number> {
+    return this.txExecutor.getChainTimestamp();
+  }
+
   // =========================================================================
   // Event listeners  (mirrors v0.6 setupEventListeners / removeEventListeners)
   // =========================================================================
@@ -96,7 +103,10 @@ export class ContractsAPI extends EventEmitter {
         this.emit(ContractsAPIEvent.PlayerUpdate, playerId as EthAddress);
       },
       PlanetUpdate: (planetId: string) => {
-        this.emit(ContractsAPIEvent.PlanetUpdate, planetId as LocationId);
+        this.emit(
+          ContractsAPIEvent.PlanetUpdate,
+          locationIdFromDecStr(planetId)
+        );
       },
       ArrivalUpdate: (
         arrivalId: string,
@@ -106,8 +116,8 @@ export class ContractsAPI extends EventEmitter {
         this.emit(
           ContractsAPIEvent.ArrivalQueued,
           arrivalId as VoyageId,
-          fromPlanet as LocationId,
-          toPlanet as LocationId
+          locationIdFromDecStr(fromPlanet),
+          locationIdFromDecStr(toPlanet)
         );
         this.emit(ContractsAPIEvent.RadiusUpdated);
       },
@@ -115,10 +125,11 @@ export class ContractsAPI extends EventEmitter {
         this.emit(ContractsAPIEvent.ArtifactUpdate, artifactId);
       },
       PlanetRevealedCoordsUpdate: (locationId: string, revealer: string) => {
-        this.emit(ContractsAPIEvent.PlanetUpdate, locationId as LocationId);
+        const hexId = locationIdFromDecStr(locationId);
+        this.emit(ContractsAPIEvent.PlanetUpdate, hexId);
         this.emit(
           ContractsAPIEvent.LocationRevealed,
-          locationId as LocationId,
+          hexId,
           revealer as EthAddress
         );
       },
@@ -201,6 +212,14 @@ export class ContractsAPI extends EventEmitter {
   }
 
   // =========================================================================
+  // Indexer sync  (wait for indexer to catch up after tx confirmation)
+  // =========================================================================
+
+  public waitForBlock(blockNumber: number, timeoutMs?: number): Promise<void> {
+    return this.indexerConnection.waitForBlock(blockNumber, timeoutMs);
+  }
+
+  // =========================================================================
   // Read API — game constants  (mirrors v0.6 getConstants)
   // =========================================================================
 
@@ -261,11 +280,14 @@ export class ContractsAPI extends EventEmitter {
     _startingAt: number,
     onProgress?: (fractionCompleted: number) => void
   ): Promise<LocationId[]> {
-    const ids = this.indexerConnection.getPlanetIds();
-    const total = ids.length;
-    ids.forEach((_, i) => onProgress?.((i + 1) / total));
+    const decIds = this.indexerConnection.getPlanetIds();
+    const total = decIds.length;
+    const hexIds = decIds.map((decId, i) => {
+      onProgress?.((i + 1) / total);
+      return locationIdFromDecStr(decId);
+    });
     if (total === 0) onProgress?.(1);
-    return ids as LocationId[];
+    return hexIds;
   }
 
   public async bulkGetPlanets(
@@ -275,9 +297,10 @@ export class ContractsAPI extends EventEmitter {
     const planets = new Map<LocationId, Planet>();
     const total = toLoadPlanets.length;
     toLoadPlanets.forEach((locId, i) => {
-      const raw = this.indexerConnection.getPlanet(locId);
+      const decId = locationIdToDecStr(locId);
+      const raw = this.indexerConnection.getPlanet(decId);
       if (raw) {
-        const planet = decodePlanet(locId, raw as any);
+        const planet = decodePlanet(decId, raw as any);
         planets.set(planet.locationId, planet);
       }
       onProgressPlanet?.((i + 1) / total);
@@ -289,9 +312,14 @@ export class ContractsAPI extends EventEmitter {
   public async getPlanetById(
     planetId: LocationId
   ): Promise<Planet | undefined> {
-    const raw = this.indexerConnection.getPlanet(planetId);
-    if (!raw) return undefined;
-    return decodePlanet(planetId, raw as any);
+    const decId = locationIdToDecStr(planetId);
+    const raw = this.indexerConnection.getPlanet(decId);
+    if (!raw) {
+      return undefined;
+    }
+    const planet = decodePlanet(decId, raw as any);
+
+    return planet;
   }
 
   // =========================================================================
@@ -309,7 +337,8 @@ export class ContractsAPI extends EventEmitter {
   public async getArrivalsForPlanet(
     planetId: LocationId
   ): Promise<QueuedArrival[]> {
-    const arrivals = this.indexerConnection.getArrivalsForPlanets([planetId]);
+    const decId = locationIdToDecStr(planetId);
+    const arrivals = this.indexerConnection.getArrivalsForPlanets([decId]);
     return arrivals.map((a) => decodeArrival(a.id ?? "", a as any));
   }
 
@@ -317,8 +346,8 @@ export class ContractsAPI extends EventEmitter {
     planetsToLoad: LocationId[],
     onProgress?: (fractionCompleted: number) => void
   ): Promise<QueuedArrival[]> {
-    const arrivals =
-      this.indexerConnection.getArrivalsForPlanets(planetsToLoad);
+    const decIds = planetsToLoad.map(locationIdToDecStr);
+    const arrivals = this.indexerConnection.getArrivalsForPlanets(decIds);
     const total = arrivals.length;
     const result = arrivals.map((a, i) => {
       const decoded = decodeArrival(a.id ?? "", a as any);
@@ -336,7 +365,8 @@ export class ContractsAPI extends EventEmitter {
   public async getRevealedCoordsByIdIfExists(
     planetId: LocationId
   ): Promise<RevealedCoords | undefined> {
-    const raw = this.indexerConnection.getRevealedCoordsById(planetId);
+    const decId = locationIdToDecStr(planetId);
+    const raw = this.indexerConnection.getRevealedCoordsById(decId);
     if (!raw) return undefined;
     const ret = decodePlanetRevealedCoords(planetId, raw as any);
     if (ret.hash === EMPTY_LOCATION_ID) return undefined;
@@ -386,7 +416,8 @@ export class ContractsAPI extends EventEmitter {
     const result: Artifact[][] = [];
     const total = locationIds.length;
     locationIds.forEach((locId, locIdx) => {
-      const artIds = this.indexerConnection.getArtifactsOnPlanet(locId);
+      const decId = locationIdToDecStr(locId);
+      const artIds = this.indexerConnection.getArtifactsOnPlanet(decId);
       const artifacts: Artifact[] = [];
       for (const artId of artIds) {
         const state = this.indexerConnection.getArtifact(artId);

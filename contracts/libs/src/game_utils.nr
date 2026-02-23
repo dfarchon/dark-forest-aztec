@@ -628,7 +628,6 @@ pub fn _default_planet(
     planet.speed = planet_default_stats.speed;
     planet.defense = planet_default_stats.defense;
     planet.silver_cap = planet_default_stats.silver_cap;
-    planet.silver_growth = planet_default_stats.silver_growth;
 
     if planet_type == PlanetType::SilverMine() {
         planet.silver_growth = planet_default_stats.silver_growth;

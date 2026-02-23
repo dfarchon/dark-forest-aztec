@@ -438,4 +438,39 @@ export class IndexerService {
       >
     );
   }
+
+  /**
+   * Returns a promise that resolves when the indexer has processed
+   * at least up to the given block number.
+   */
+  waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
+    console.log(
+      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`
+    );
+    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+      console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsub();
+        reject(
+          new Error(
+            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`
+          )
+        );
+      }, timeoutMs);
+
+      const unsub = this.subscribe((payload) => {
+        if (payload.toBlock >= blockNumber) {
+          console.log(
+            `[DEBUG waitForBlock] synced to block ${payload.toBlock}, resolving`
+          );
+          clearTimeout(timer);
+          unsub();
+          resolve();
+        }
+      });
+    });
+  }
 }

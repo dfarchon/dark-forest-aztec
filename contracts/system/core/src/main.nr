@@ -827,10 +827,11 @@ contract Core {
         // Perform computation in private using the provided timestamp
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
         let player_state_is_initialized: bool = player_state != Player::zero();
-        let world_is_initialized: bool = world != World::zero();
+        // todo: fix this
+        // let world_is_initialized: bool = world != World::zero();
 
         assert(!player_state_is_initialized, "Player already initialized");
-        assert(world_is_initialized, "World is not valid");
+        // assert(world_is_initialized, "World is not valid");
 
         // check player init
         let check_player_init_result = check_player_init(

@@ -660,20 +660,19 @@ contract Move {
         // _createArrival - Enter the arrival data for event id
 
         // Calculate decayed population that will arrive
-        // Linear decay based on distance/range ratio
-        // When distance = range and popMoved = populationCap, arrival = 0
+        // Linear decay: remaining = popMoved * (1 - distance/L) with L chosen so max reachable
+        // distance matches Solidity (range * log2(20) ~= 4.32*range). L = range * 455/100.
         let pop_arriving = if is_spaceship_move {
             0 // Spaceship moves are 0-energy moves
         } else {
-            let range_times_hundred = new_source_planet.range * 100;
+            // Decay scale L = range * 91/20 so that at d = range*log2(20) we get pop_after_decay = cap/20
+            let decay_range_times_hundred = new_source_planet.range * 455u128;
 
-            // Calculate linear decay: remaining = popMoved * (1 - distance/range)
-            // Using fixed-point math to avoid division loss
-            let distance_ratio = if effectiveDistTimesHundred >= range_times_hundred {
-                100 // Distance >= range, 100% decay (0% remaining)
+            // Linear decay: distance_ratio = (distance/L)*100 (0-100), remaining = 1 - distance_ratio/100
+            let distance_ratio = if effectiveDistTimesHundred >= decay_range_times_hundred {
+                100u128 // Distance >= L, 100% decay (0% remaining)
             } else {
-                // distance_ratio = (distance * 100) / range (percentage)
-                (effectiveDistTimesHundred * 100) / range_times_hundred
+                (effectiveDistTimesHundred * 100) / decay_range_times_hundred
             };
 
             let remaining_ratio = 100 - distance_ratio; // percentage remaining (0-100)

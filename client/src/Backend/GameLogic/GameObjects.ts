@@ -72,6 +72,7 @@ import {
   getPlanetOwner,
   setObjectSyncState,
 } from "../../Frontend/Utils/EmitterUtils";
+import type { ChainClock } from "../Utils/ChainClock";
 import { arrive, PlanetDiff, updatePlanetToTime } from "./ArrivalUtils";
 import { LayeredMap } from "./LayeredMap";
 import { TxCollection } from "./TransactionCollection";
@@ -99,6 +100,9 @@ export class GameObjects {
    * new field: {@code player: PlayerInfo}
    */
   private readonly address: EthAddress | undefined;
+
+  /** Chain-adjusted clock for game-time calculations. */
+  private readonly chainClock: ChainClock;
 
   /**
    * Cached index of all known planet data.
@@ -237,7 +241,8 @@ export class GameObjects {
     unprocessedArrivals: Map<VoyageId, QueuedArrival>,
     unprocessedPlanetArrivalIds: Map<LocationId, VoyageId[]>,
     contractConstants: ContractConstants,
-    worldRadius: number
+    worldRadius: number,
+    chainClock: ChainClock
   ) {
     autoBind(this);
 
@@ -250,6 +255,7 @@ export class GameObjects {
     this.artifacts = artifacts;
     this.myArtifacts = new Map();
     this.contractConstants = contractConstants;
+    this.chainClock = chainClock;
     this.coordsToLocation = new Map();
     this.planetLocationMap = new Map();
     const planetArrivalIds = new Map();
@@ -324,12 +330,13 @@ export class GameObjects {
     // TODO: do this better...
     // set interval to update all planets every 120s
     setInterval(() => {
+      const now = this.chainClock.now();
       this.planets.forEach((planet) => {
         if (planet && hasOwner(planet)) {
           updatePlanetToTime(
             planet,
             this.getPlanetArtifacts(planet.locationId),
-            Date.now(),
+            now,
             this.contractConstants
           );
         }
@@ -1137,7 +1144,7 @@ export class GameObjects {
 
     // sort arrivals by timestamp
     arrivals.sort((a, b) => a.arrivalTime - b.arrivalTime);
-    const nowInSeconds = Date.now() / 1000;
+    const nowInSeconds = this.chainClock.now() / 1000;
     for (const arrival of arrivals) {
       try {
         if (nowInSeconds - arrival.arrivalTime > 0) {
@@ -1167,7 +1174,7 @@ export class GameObjects {
               this.emitArrivalNotifications(update);
               this.removeArrival(planetId, update.arrival.eventId);
             },
-            arrival.arrivalTime * 1000 - Date.now()
+            arrival.arrivalTime * 1000 - this.chainClock.now()
           );
 
           const arrivalWithTimer = {
@@ -1202,6 +1209,36 @@ export class GameObjects {
       }
     }
     this.planetArrivalIds.set(planetId, []);
+  }
+
+  /**
+   * Process any pending arrivals whose arrivalTime has already passed according
+   * to chain time. Called after ChainClock resync to handle time jumps that
+   * make existing setTimeout delays stale.
+   */
+  public flushMaturedArrivals(): void {
+    const nowSec = this.chainClock.nowSec();
+    for (const [voyageId, awt] of this.arrivals) {
+      if (nowSec >= awt.arrivalData.arrivalTime) {
+        clearTimeout(awt.timer);
+        const planet = this.planets.get(awt.arrivalData.toPlanet);
+        if (planet) {
+          try {
+            const update = arrive(
+              planet,
+              this.getPlanetArtifacts(planet.locationId),
+              awt.arrivalData,
+              this.getArtifactById(awt.arrivalData.artifactId),
+              this.contractConstants
+            );
+            this.emitArrivalNotifications(update);
+          } catch (e) {
+            console.error(`error flushing matured arrival ${voyageId}: ${e}`);
+          }
+        }
+        this.removeArrival(awt.arrivalData.toPlanet, voyageId);
+      }
+    }
   }
 
   public planetLevelFromHexPerlin(
@@ -1436,7 +1473,7 @@ export class GameObjects {
 
       spaceJunk,
 
-      lastUpdated: Math.floor(Date.now() / 1000),
+      lastUpdated: Math.floor(this.chainClock.now() / 1000),
 
       upgradeState: [0, 0, 0],
 
@@ -1467,7 +1504,7 @@ export class GameObjects {
   }
 
   private updatePlanetIfStale(planet: Planet): void {
-    const now = Date.now();
+    const now = this.chainClock.now();
     if (now / 1000 - planet.lastUpdated > 1) {
       updatePlanetToTime(
         planet,

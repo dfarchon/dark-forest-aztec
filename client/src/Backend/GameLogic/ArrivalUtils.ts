@@ -11,6 +11,7 @@ import {
   QueuedArrival,
   Upgrade,
 } from "@dfpunk/types";
+import _ from "lodash";
 
 import type { ContractConstants } from "../../ContractsAPI/ContractsAPITypes";
 
@@ -195,7 +196,7 @@ export const arrive = (
     contractConstants
   );
 
-  const prevPlanet = structuredClone(toPlanet) as Planet;
+  const prevPlanet = _.cloneDeep(toPlanet);
   if (toPlanet.destroyed) {
     return { arrival: arrival, previous: toPlanet, current: toPlanet };
   }
@@ -241,13 +242,8 @@ export const arrive = (
     toPlanet.energy += energyArriving;
   }
 
-  if (
-    toPlanet.planetType === PlanetType.SILVER_BANK ||
-    toPlanet.pausers !== 0
-  ) {
-    if (toPlanet.energy > toPlanet.energyCap) {
-      toPlanet.energy = toPlanet.energyCap;
-    }
+  if (toPlanet.energy > toPlanet.energyCap) {
+    toPlanet.energy = toPlanet.energyCap;
   }
 
   // apply silver

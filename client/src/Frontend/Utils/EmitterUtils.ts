@@ -1,3 +1,4 @@
+import { EMPTY_ADDRESS } from "@dfpunk/constants";
 import { Monomitter, monomitter } from "@dfpunk/events";
 import { isSpaceShip } from "@dfpunk/gamelogic";
 import { Artifact, EthAddress, Planet } from "@dfpunk/types";
@@ -86,7 +87,9 @@ export function setObjectSyncState<Obj, Id>(
 
   let myObjListChanged = false;
 
-  if (address === getOwner(obj)) {
+  const ownerAddr = getOwner(obj);
+
+  if (address === ownerAddr) {
     myObjectMap.set(getId(obj), obj);
     myObjListChanged = true;
   } else if (myObjectMap.has(getId(obj))) {

@@ -7,6 +7,8 @@
  * the complete argument array matching the Noir contract function signature.
  */
 
+import { CONTRACT_PRECISION } from "@dfpunk/constants";
+import { locationIdToDecStr } from "@dfpunk/serde";
 import type { TxIntent, UnconfirmedInit, UnconfirmedMove } from "@dfpunk/types";
 
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
@@ -60,6 +62,9 @@ export class StateResolver {
   private readonly timestampProvider: TimestampProvider;
   private readonly getPlayerAddress: () => string;
 
+  /** Last chain block we know a tx was confirmed in; resolve() waits for indexer to sync to this before reading state. */
+  private lastConfirmedBlock = 0;
+
   constructor(
     indexer: IndexerConnection,
     configCache: ConfigCache,
@@ -72,11 +77,19 @@ export class StateResolver {
     this.getPlayerAddress = getPlayerAddress;
   }
 
+  /** Called by TxExecutor after a tx confirms so the next resolve() waits for indexer to sync to that block. */
+  setLastConfirmedBlock(block: number): void {
+    this.lastConfirmedBlock = Math.max(this.lastConfirmedBlock, block);
+  }
+
   /**
    * Resolve a TxIntent into the full contract argument array.
-   * Reads indexer state, loads config, gets timestamp, and assembles args.
+   * Waits for indexer to sync to lastConfirmedBlock (if set), then reads indexer state, loads config, gets timestamp, and assembles args.
    */
   async resolve(intent: TxIntent): Promise<unknown[]> {
+    if (this.lastConfirmedBlock > 0) {
+      await this.indexer.waitForBlock(this.lastConfirmedBlock);
+    }
     switch (intent.methodName) {
       case "initializePlayer":
         return this.resolveInitializePlayer(intent as UnconfirmedInit);
@@ -113,10 +126,13 @@ export class StateResolver {
     ]);
 
     // Read current state from indexer (or zeros if not yet on-chain)
-    const locationIdStr = String(rawLocationId);
+    // Indexer stores by decimal string key; rawLocationId is hex LocationId
+    const locationIdDec = locationIdToDecStr(
+      String(rawLocationId) as import("@dfpunk/types").LocationId
+    );
     const playerAddr = this.getPlayerAddress();
 
-    const planetRaw = this.indexer.getPlanet(locationIdStr);
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
     const planetState = planetRaw ? planetToContract(planetRaw) : planetZero();
 
     const playerRaw = this.indexer.getPlayer(playerAddr);
@@ -192,8 +208,10 @@ export class StateResolver {
     const x2 = signedCoordToField(rawX2 as number | bigint);
     const y2 = signedCoordToField(rawY2 as number | bigint);
 
-    const popMoved = BigInt(intent.forces);
-    const silverMoved = BigInt(intent.silver);
+    // Frontend energy/silver values are divided by CONTRACT_PRECISION (1000).
+    // Contract expects raw u128 values, so multiply back.
+    const popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
+    const silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
     const movedArtifactId = intent.artifact ? BigInt(intent.artifact) : 0n;
     const activatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
@@ -203,22 +221,27 @@ export class StateResolver {
       this.timestampProvider.getTimestamp(),
     ]);
 
-    const sourceLocStr = String(rawSourceLoc);
-    const targetLocStr = String(rawTargetLoc);
+    // Indexer stores by decimal string key; rawSourceLoc/rawTargetLoc are hex LocationIds
+    const sourceLocDec = locationIdToDecStr(
+      String(rawSourceLoc) as import("@dfpunk/types").LocationId
+    );
+    const targetLocDec = locationIdToDecStr(
+      String(rawTargetLoc) as import("@dfpunk/types").LocationId
+    );
 
     // Source planet state
-    const sourcePlanetRaw = this.indexer.getPlanet(sourceLocStr);
+    const sourcePlanetRaw = this.indexer.getPlanet(sourceLocDec);
     const sourcePlanet = sourcePlanetRaw
       ? planetToContract(sourcePlanetRaw)
       : planetZero();
 
-    const sourcePlanetEventsRaw = this.indexer.getPlanetEvents(sourceLocStr);
+    const sourcePlanetEventsRaw = this.indexer.getPlanetEvents(sourceLocDec);
     const sourcePlanetEvents = sourcePlanetEventsRaw
       ? planetEventsToContract(sourcePlanetEventsRaw)
       : planetEventsZero();
 
     const sourcePlanetArtifactsRaw =
-      this.indexer.getPlanetArtifacts(sourceLocStr);
+      this.indexer.getPlanetArtifacts(sourceLocDec);
     const sourcePlanetArtifacts = sourcePlanetArtifactsRaw
       ? planetArtifactsToContract(sourcePlanetArtifactsRaw)
       : planetArtifactsZero();
@@ -229,18 +252,18 @@ export class StateResolver {
     );
 
     // Target planet state
-    const targetPlanetRaw = this.indexer.getPlanet(targetLocStr);
+    const targetPlanetRaw = this.indexer.getPlanet(targetLocDec);
     const targetPlanet = targetPlanetRaw
       ? planetToContract(targetPlanetRaw)
       : planetZero();
 
-    const targetPlanetEventsRaw = this.indexer.getPlanetEvents(targetLocStr);
+    const targetPlanetEventsRaw = this.indexer.getPlanetEvents(targetLocDec);
     const targetPlanetEvents = targetPlanetEventsRaw
       ? planetEventsToContract(targetPlanetEventsRaw)
       : planetEventsZero();
 
     const targetPlanetArtifactsRaw =
-      this.indexer.getPlanetArtifacts(targetLocStr);
+      this.indexer.getPlanetArtifacts(targetLocDec);
     const targetPlanetArtifacts = targetPlanetArtifactsRaw
       ? planetArtifactsToContract(targetPlanetArtifactsRaw)
       : planetArtifactsZero();
@@ -268,6 +291,8 @@ export class StateResolver {
         : artifactZero();
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
+    const levelIndex = Math.min(9, Math.max(0, Number(targetLevel)));
+    const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
     return [
       sourceLoc,
@@ -287,7 +312,7 @@ export class StateResolver {
       isAbandoning,
       timestamp,
       config.snarkConfig,
-      config.planetDefaultStats,
+      planetDefaultStats,
       config.worldConfig,
       config.gameConfigCore,
       config.planetLevelThresholds,

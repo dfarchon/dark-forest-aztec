@@ -1,6 +1,7 @@
 /**
  * Shared styles for Test pages (Indexer, WalletManager).
  * Dark theme with accent colors.
+ * Explicit background/color so content stays readable regardless of app theme.
  */
 
 /* ---------------------------------------------------------------------------
@@ -12,6 +13,11 @@
   max-width: 960px;
   padding: 2rem 1.5rem;
   text-align: left;
+  /* Ensure readable contrast: distinct background and default text color */
+  background: #1e2130;
+  color: #e2e8f0;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .test-page__header {
@@ -409,10 +415,15 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Light mode overrides
+   Light mode overrides — light page background so dark text is readable
    --------------------------------------------------------------------------- */
 
 @media (prefers-color-scheme: light) {
+  .test-page {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
   .test-page__title {
     color: rgba(0, 0, 0, 0.95);
   }

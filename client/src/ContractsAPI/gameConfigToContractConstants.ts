@@ -8,6 +8,7 @@
  * is missing from a particular deployment the value defaults to 0/false.
  */
 
+import { CONTRACT_PRECISION } from "@dfpunk/constants";
 import type { EthAddress } from "@dfpunk/types";
 import type { Upgrade, UpgradeBranches } from "@dfpunk/types";
 
@@ -183,6 +184,11 @@ export function gameConfigToContractConstants(
   const extract = (arr: Record<string, unknown>[], key: string): number[] =>
     arr.map((s) => num(s[key]));
 
+  const extractScaled = (
+    arr: Record<string, unknown>[],
+    key: string
+  ): number[] => arr.map((s) => num(s[key]) / CONTRACT_PRECISION);
+
   return {
     ADMIN_CAN_ADD_PLANETS: bool(core.admin_can_add_planets),
     WORLD_RADIUS_LOCKED: bool(world.world_radius_locked),
@@ -225,10 +231,10 @@ export function gameConfigToContractConstants(
     PHOTOID_ACTIVATION_DELAY: num(core.photoid_activation_delay),
     LOCATION_REVEAL_COOLDOWN: num(core.location_reveal_cooldown),
 
-    defaultPopulationCap: extract(planetDefaults, "population_cap"),
-    defaultPopulationGrowth: extract(planetDefaults, "population_growth"),
-    defaultSilverCap: extract(planetDefaults, "silver_cap"),
-    defaultSilverGrowth: extract(planetDefaults, "silver_growth"),
+    defaultPopulationCap: extractScaled(planetDefaults, "population_cap"),
+    defaultPopulationGrowth: extractScaled(planetDefaults, "population_growth"),
+    defaultSilverCap: extractScaled(planetDefaults, "silver_cap"),
+    defaultSilverGrowth: extractScaled(planetDefaults, "silver_growth"),
     defaultRange: extract(planetDefaults, "range"),
     defaultSpeed: extract(planetDefaults, "speed"),
     defaultDefense: extract(planetDefaults, "defense"),

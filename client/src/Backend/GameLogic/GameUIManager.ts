@@ -1190,6 +1190,10 @@ class GameUIManager extends EventEmitter {
     return this.gameManager.getAllVoyages();
   }
 
+  public getChainTimeMs(): number {
+    return this.gameManager.getChainTimeMs();
+  }
+
   public getSpeedBuff(): number {
     return this.gameManager.getSpeedBuff(this.abandoning);
   }

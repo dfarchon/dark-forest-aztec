@@ -157,6 +157,7 @@ export interface RendererGameContext extends DiagnosticUpdater {
   isAbandoning(): boolean;
   getArtifactSending(planetId: LocationId): Artifact | undefined;
   getAbandonRangeChangePercent(): number;
+  getChainTimeMs(): number;
   // getCaptureZones(): Iterable<CaptureZone>;
 }
 
@@ -327,7 +328,7 @@ export class Renderer {
 
   private loop() {
     this.frameCount++;
-    this.now = Date.now();
+    this.now = this.context.getChainTimeMs();
     this.draw();
     this.recordRender(Date.now());
 

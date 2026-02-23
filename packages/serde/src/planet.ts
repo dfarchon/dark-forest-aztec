@@ -55,11 +55,11 @@ export function decodePlanet(key: string, state: PlanetState): Planet {
     energy: Number(state.population) / precision,
     silver: Number(state.silver) / precision,
     spaceJunk: Number(state.space_junk),
-    lastUpdated: state.last_updated,
+    lastUpdated: Number(state.last_updated),
     upgradeState: [
-      state.upgrade_state_0,
-      state.upgrade_state_1,
-      state.upgrade_state_2,
+      Number(state.upgrade_state_0),
+      Number(state.upgrade_state_1),
+      Number(state.upgrade_state_2),
     ] as UpgradeState,
     hasTriedFindingArtifact: state.has_tried_finding_artifact,
     heldArtifactIds: [],
@@ -67,7 +67,7 @@ export function decodePlanet(key: string, state: PlanetState): Planet {
     prospectedBlockNumber:
       state.prospected_block_number === 0
         ? undefined
-        : state.prospected_block_number,
+        : Number(state.prospected_block_number),
     unconfirmedAddEmoji: false,
     unconfirmedClearEmoji: false,
     loadingServerState: false,
