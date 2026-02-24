@@ -5,13 +5,17 @@ use ::types::config::{
     default_stats::PlanetDefaultStats,
     game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
     space_junk::SpaceJunkConfig,
+    upgrade::UpgradeConfig,
     world::WorldConfig,
 };
 
 use ::types::storage::{
     arrival::Arrival,
     artifact::{Artifact, ArtifactLocation, ArtifactType},
-    planet::{Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetRevealedCoords},
+    planet::{
+        Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetRevealedCoords,
+        PlanetType, SpaceType, UpgradeBranch,
+    },
     player::Player,
     world::World,
 };
@@ -234,6 +238,59 @@ pub fn check_player_init(
     );
 
     true
+}
+
+pub fn validate_upgrade_planet(
+    planet: Planet,
+    branch: u8,
+    sender: AztecAddress,
+    upgrade_config: UpgradeConfig,
+) -> (u8, u128) {
+    assert(planet.owner == sender, "Only owner can upgrade");
+    assert(planet.planet_level > 0, "Cannot upgrade level 0 planets");
+    assert(planet.planet_type == PlanetType::Planet(), "Can only upgrade regular planets");
+    assert(!planet.destroyed, "Planet is destroyed");
+    assert(branch <= UpgradeBranch::Speed(), "Invalid branch");
+
+    let current_branch_level = if branch == UpgradeBranch::Defense() {
+        planet.upgrade_state_0
+    } else if branch == UpgradeBranch::Range() {
+        planet.upgrade_state_1
+    } else {
+        planet.upgrade_state_2
+    };
+    assert(current_branch_level < upgrade_config.max_branch_level, "Branch level maxed");
+
+    let total_level: u8 = planet.upgrade_state_0 + planet.upgrade_state_1 + planet.upgrade_state_2;
+    let max_total_level = if planet.space_type == SpaceType::Nebula() {
+        upgrade_config.max_total_level_nebula
+    } else if planet.space_type == SpaceType::Space() {
+        upgrade_config.max_total_level_space
+    } else if planet.space_type == SpaceType::DeepSpace() {
+        upgrade_config.max_total_level_deep_space
+    } else if planet.space_type == SpaceType::DeadSpace() {
+        upgrade_config.max_total_level_dead_space
+    } else {
+        assert(false, "Invalid space type");
+        0
+    };
+    assert(total_level < max_total_level, "Planet is maxed");
+
+    let silver_cost: u128 = (
+        planet.silver_cap * upgrade_config.silver_cost_percent * ((total_level as u128) + 1)
+    )
+        / 100;
+    assert(planet.silver >= silver_cost, "Not enough silver");
+
+    (current_branch_level, silver_cost)
+}
+
+pub fn validate_withdraw_silver(planet: Planet, silver_to_withdraw: u128, sender: AztecAddress) {
+    assert(planet.owner == sender, "Only owner can withdraw");
+    assert(planet.planet_type == PlanetType::TradingPost(), "Only trading posts can withdraw");
+    assert(!planet.destroyed, "Planet is destroyed");
+    assert(silver_to_withdraw > 0, "Must withdraw positive silver");
+    assert(planet.silver >= silver_to_withdraw, "Not enough silver");
 }
 
 /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.

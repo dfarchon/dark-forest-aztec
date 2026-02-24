@@ -31,7 +31,7 @@ import {
   planetEventsZero,
   planetZero,
   playerZero,
-  worldZero,
+  worldInitial,
 } from "./stateZeros";
 import type { TimestampProvider } from "./TimestampProvider";
 
@@ -139,7 +139,7 @@ export class StateResolver {
     const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
 
     const worldRaw = this.indexer.getWorld();
-    const world = worldRaw ? worldToContract(worldRaw) : worldZero();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, Number(level)));
@@ -274,7 +274,7 @@ export class StateResolver {
 
     // World state
     const worldRaw = this.indexer.getWorld();
-    const world = worldRaw ? worldToContract(worldRaw) : worldZero();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
     // Moved/activated artifact state
     const movedArtifact =

@@ -20,6 +20,11 @@ export function worldZero(): Record<string, unknown> {
   };
 }
 
+/** Initial world state as stored by WorldStorage constructor (misc_nonce = 1). */
+export function worldInitial(): Record<string, unknown> {
+  return { ...worldZero(), misc_nonce: 1n };
+}
+
 export function playerZero(): Record<string, unknown> {
   return {
     init_timestamp: 0,

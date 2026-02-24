@@ -270,7 +270,7 @@ async function main() {
             .send(opts);
     };
 
-    const TOTAL_STEPS = 22;
+    const TOTAL_STEPS = 23;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -475,6 +475,10 @@ async function main() {
 
     await run('Config.initializeUpgrades()', async () => {
         await config.methods.initializeUpgrades().send(opts);
+    });
+
+    await run('Config.set_default_upgrade_config()', async () => {
+        await config.methods.set_default_upgrade_config().send(opts);
     });
 
     await run('Config.initialize_cumulative_rarities()', async () => {
