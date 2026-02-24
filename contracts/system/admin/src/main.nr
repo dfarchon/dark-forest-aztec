@@ -101,6 +101,21 @@ contract Admin {
         self.storage.planet_storage_address.write(planet_storage_address);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_addr: AztecAddress,
+        world_addr: AztecAddress,
+        player_addr: AztecAddress,
+        planet_addr: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_addr);
+        self.storage.world_storage_address.write(world_addr);
+        self.storage.player_storage_address.write(player_addr);
+        self.storage.planet_storage_address.write(planet_addr);
+    }
+
     /// Pause the game. Verifies world matches on-chain state via WorldStorage.verify(), then sets paused = true.
     #[external("public")]
     fn pause(world: World) {

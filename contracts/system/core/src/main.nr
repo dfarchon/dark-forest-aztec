@@ -200,6 +200,33 @@ contract Core {
         self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_addr: AztecAddress,
+        world_addr: AztecAddress,
+        player_addr: AztecAddress,
+        planet_addr: AztecAddress,
+        planet_revealed_coords_addr: AztecAddress,
+        planet_events_addr: AztecAddress,
+        planet_artifacts_addr: AztecAddress,
+        arrivals_addr: AztecAddress,
+        artifact_addr: AztecAddress,
+        artifact_location_addr: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_addr);
+        self.storage.world_storage_address.write(world_addr);
+        self.storage.player_storage_address.write(player_addr);
+        self.storage.planet_storage_address.write(planet_addr);
+        self.storage.planet_revealed_coords_storage_address.write(planet_revealed_coords_addr);
+        self.storage.planet_events_storage_address.write(planet_events_addr);
+        self.storage.planet_artifacts_storage_address.write(planet_artifacts_addr);
+        self.storage.arrivals_storage_address.write(arrivals_addr);
+        self.storage.artifact_storage_address.write(artifact_addr);
+        self.storage.artifact_location_storage_address.write(artifact_location_addr);
+    }
+
     #[external("private")]
     fn refresh_planet_private(
         location: Field,

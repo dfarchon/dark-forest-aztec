@@ -388,6 +388,65 @@ pub contract Config {
         self.storage.planet_default_stats_hash.at(level).write(poseidon2_hash(stats.serialize()));
     }
 
+    /// Batch set planet default stats for up to 5 levels in a single transaction.
+    /// 5 x (8 stats fields + 1 hash) = 45 storage writes, well under the 63-write limit.
+    #[external("public")]
+    fn set_planet_default_stats_batch(levels: [u8; 5], stats: [PlanetDefaultStats; 5], count: u8) {
+        self.internal.assert_admin();
+        for i in 0..5 {
+            if (i as u8) < count {
+                self.storage.planet_default_stats.at(levels[i]).write(stats[i]);
+                self.storage.planet_default_stats_hash.at(levels[i]).write(poseidon2_hash(stats[i]
+                    .serialize()));
+            }
+        }
+    }
+
+    /// Batch initialize default configs (part 1): world, snark, game_core, thresholds, artifacts, spaceships.
+    /// Total storage writes: ~55 slots (under 63-write limit).
+    #[external("public")]
+    fn set_default_configs_batch_1() {
+        self.internal.assert_admin();
+
+        let world = WorldConfig::zero();
+        self.storage.world_config.write(world);
+        self.storage.world_config_hash.write(poseidon2_hash(world.serialize()));
+
+        let snark = SnarkConfig::zero();
+        self.storage.snark_config.write(snark);
+        self.storage.snark_config_hash.write(poseidon2_hash(snark.serialize()));
+
+        let core = GameConfigCore::zero();
+        let thresholds = PlanetLevelThresholds::zero();
+        self.storage.game_config_core.write(core);
+        self.storage.planet_level_thresholds.write(thresholds);
+        self.storage.game_config_core_hash.write(poseidon2_hash(core.serialize()));
+        self.storage.planet_level_thresholds_hash.write(poseidon2_hash(thresholds.serialize()));
+
+        let artifacts = ArtifactsConfig::zero();
+        self.storage.artifacts_config.write(artifacts);
+        self.storage.artifacts_config_hash.write(poseidon2_hash(artifacts.serialize()));
+
+        let spaceships = SpaceshipsConfig::zero();
+        self.storage.spaceships_config.write(spaceships);
+        self.storage.spaceships_config_hash.write(poseidon2_hash(spaceships.serialize()));
+    }
+
+    /// Batch initialize default configs (part 2): space_junk, capture_zones.
+    /// Total storage writes: ~31 slots (under 63-write limit).
+    #[external("public")]
+    fn set_default_configs_batch_2() {
+        self.internal.assert_admin();
+
+        let space_junk = SpaceJunkConfig::zero();
+        self.storage.space_junk_config.write(space_junk);
+        self.storage.space_junk_config_hash.write(poseidon2_hash(space_junk.serialize()));
+
+        let capture_zones = CaptureZonesConfig::zero();
+        self.storage.capture_zones_config.write(capture_zones);
+        self.storage.capture_zones_config_hash.write(poseidon2_hash(capture_zones.serialize()));
+    }
+
     #[external("public")]
     fn set_upgrade(key: u128, upgrade: Upgrade) {
         self.internal.assert_admin();

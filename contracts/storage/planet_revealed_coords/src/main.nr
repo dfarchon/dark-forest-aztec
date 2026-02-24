@@ -89,6 +89,23 @@ pub contract PlanetRevealedCoordsStorage {
     }
 
     #[external("public")]
+    fn add_authorized_contracts_batch(addresses: [AztecAddress; 3], count: u8) {
+        self.internal.assert_admin();
+        let mut current_count = self.storage.authorized_count.read();
+        for i in 0..3 {
+            if (i as u8) < count {
+                let addr = addresses[i];
+                assert(!self.storage.authorized_map.at(addr).read(), "Already authorized");
+                self.storage.authorized_map.at(addr).write(true);
+                self.storage.authorized_index.at(addr).write(current_count);
+                self.storage.authorized_list.at(current_count).write(addr);
+                current_count += 1;
+            }
+        }
+        self.storage.authorized_count.write(current_count);
+    }
+
+    #[external("public")]
     fn remove_authorized_contract(contract_address: AztecAddress) {
         self.internal.assert_admin();
         assert(self.storage.authorized_map.at(contract_address).read(), "Not authorized");
