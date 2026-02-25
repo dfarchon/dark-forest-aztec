@@ -13,7 +13,7 @@
         "build": "pnpm build-contracts",
         "build-contracts": "pnpm clean && pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts",
         "bytecode-check": "node --experimental-transform-types scripts/bytecode-check.ts",
-        "clean": "del-cli dist target codegenCache.json",
+        "clean": "del-cli dist node_modules target codegenCache.json",
         "clean-store": "del-cli .env pxe_data_* wallet_data_* ./scripts/pxe_data_* ./scripts/wallet_data_* ./scripts/.test-accounts.json .store",
         "codegen-contracts": "aztec codegen ./target -o ./target",
         "compile-contracts": "aztec compile",
@@ -29,6 +29,7 @@
         "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
         "scripts:fmt": "pnpm run lint:fix && pnpm run prettier",
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
+        "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",
         "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts",
         "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts"
     },
@@ -36,7 +37,6 @@
     "devDependencies": {
         "@eslint/js": "9.39.2",
         "@types/node": "24.10.7",
-        "del-cli": "6.0.0",
         "eslint": "9.39.2",
         "eslint-config-prettier": "9.1.0",
         "eslint-plugin-simple-import-sort": "12.1.1",

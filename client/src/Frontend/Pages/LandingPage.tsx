@@ -53,7 +53,7 @@ export default function LandingPage() {
   return (
     <>
       <PrettyOverlayGradient />
-      <Hiring />
+      {/* <Hiring /> */}
 
       <Page>
         <OnlyMobile>
@@ -114,12 +114,12 @@ export default function LandingPage() {
               >
                 Enter Round 5
               </Btn>
-              <Btn size="large" onClick={() => navigate(`/events`)}>
+              {/* <Btn size="large" onClick={() => navigate(`/events`)}>
                 Events
-              </Btn>
+              </Btn> */}
             </ButtonWrapper>
           </Header>
-          <EmSpacer height={3} />
+          {/* <EmSpacer height={3} />
           Ways to get Involved
           <EmSpacer height={1} />
           <Involved>
@@ -156,9 +156,9 @@ export default function LandingPage() {
                 backgroundImage: "url('/public/get_involved/lobby.png')",
               }}
             ></InvolvedItem>
-          </Involved>
-          <EmSpacer height={3} />
-          <HallOfFame style={{ color: dfstyles.colors.text }}>
+          </Involved> */}
+          {/* <EmSpacer height={3} /> */}
+          {/* <HallOfFame style={{ color: dfstyles.colors.text }}>
             <HallOfFameTitle>Space Masters</HallOfFameTitle>
             <Spacer height={8} />
             <table>
@@ -297,15 +297,13 @@ export default function LandingPage() {
                 </TRow>
               </tbody>
             </table>
-          </HallOfFame>
-          <Spacer height={32} />
+          </HallOfFame> */}
+          {/* <Spacer height={32} /> */}
         </MainContentContainer>
 
-        <Spacer height={128} />
-
-        <LeadboardDisplay />
-
-        <Spacer height={256} />
+        {/* <Spacer height={128} />
+        <LeadboardDisplay /> 
+        <Spacer height={256} /> */}
       </Page>
     </>
   );

@@ -221,7 +221,7 @@ async function main() {
     const startBlock = Number(await aztecNode.getBlockNumber());
     console.log(`📌 START_BLOCK: ${startBlock}`);
     if (process.env.WRITE_ENV_FILE !== 'false') {
-        fs.appendFileSync(envPath, `\nSTART_BLOCK=${startBlock}\n`);
+        fs.appendFileSync(envPath, `\n\nSTART_BLOCK=${startBlock}\n`);
     }
 
     console.log('📦 Loading contract artifacts...');

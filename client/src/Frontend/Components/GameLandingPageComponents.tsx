@@ -27,6 +27,7 @@ const StyledWrapper = styled.div<{
   flex-direction: row;
   overflow: hidden;
   position: relative;
+  background: ${dfstyles.colors.background};
 
   justify-content: ${(props) =>
     props.initRender !== InitRenderState.NONE

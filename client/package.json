@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
+    "clean": "del-cli dist node_modules .vite",
     "dev": "vite",
     "format": "pnpm run lint:fix && pnpm run prettier",
     "format:check": "pnpm prettier:check && pnpm lint",
