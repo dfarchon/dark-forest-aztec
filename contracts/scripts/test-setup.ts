@@ -28,7 +28,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from contracts/ so it works regardless of cwd (e.g. run from repo root)
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true });
 
 /** Path to persisted test accounts (user1, user2) so they can be reused across runs. */
 const TEST_ACCOUNTS_PATH = path.join(__dirname, '.test-accounts.json');
@@ -64,6 +64,7 @@ const CONFIG_FUNCTIONS = [
     'initializeUpgrades',
     'initialize_cumulative_rarities',
     'set_planet_default_stats',
+    'set_default_upgrade_config',
     'set_upgrade',
     'set_upgrade_by_branch_level',
     // Getters
@@ -78,6 +79,7 @@ const CONFIG_FUNCTIONS = [
     'get_space_junk_config',
     'get_capture_zones_config',
     'get_planet_default_stats',
+    'get_upgrade_config',
     'get_upgrade',
     'get_upgrade_by_branch_level',
     'get_cumulative_rarity',
@@ -156,6 +158,10 @@ const CORE_FUNCTIONS = [
     'reveal_location_public',
     'initialize_player', // private
     'initialize_player_public',
+    'upgrade_planet', // private
+    'upgrade_planet_public',
+    'withdraw_silver', // private
+    'withdraw_silver_public',
 ] as const;
 
 const MOVE_FUNCTIONS = [

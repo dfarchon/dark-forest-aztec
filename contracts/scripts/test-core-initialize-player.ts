@@ -54,8 +54,8 @@ function worldZero(): {
     };
 }
 
-function worldWithRadius(radius: bigint) {
-    return { ...worldZero(), radius };
+function worldWithRadius(world: ReturnType<typeof worldZero>, radius: bigint) {
+    return { ...world, radius };
 }
 
 // Player::zero() (types/storage/player.nr) — init_timestamp 0 means "not initialized"
@@ -124,7 +124,7 @@ async function loadWorldFromEvents(
     ctx: TestContext
 ): Promise<ReturnType<typeof worldZero> | null> {
     const latestBlock = Number(await ctx.node.getBlockNumber());
-    const from = Math.max(0, latestBlock - 50);
+    const from = 0;
     const limit = latestBlock - from + 1;
 
     // Dynamic import so we don't require artifacts at parse time
@@ -315,7 +315,7 @@ async function main() {
         await Admin.methods
             .admin_set_world_radius(53001n, world)
             .send(sendOpts(admin));
-        world = worldWithRadius(53001n);
+        world = worldWithRadius(world, 53001n);
         console.log('   ✅ World updated to radius 53001.');
     } else if (world.radius === ZERO_RADIUS) {
         throw new Error(
