@@ -363,6 +363,24 @@ export async function getTestContext(): Promise<TestContext> {
         );
     }
 
+    // Ensure account contracts are known senders so account-auth notes can be discovered
+    // even when using a fresh local PXE store.
+    try {
+        await wallet.registerSender(admin, 'admin-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user1, 'user1-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user2, 'user2-self');
+    } catch {
+        /* ignore */
+    }
+
     const contracts = await getContractInstances(
         wallet,
         addresses,

@@ -199,6 +199,16 @@ export type TestAccountCredentials = {
     address: string;
 };
 
+function isAccountAlreadyDeployedError(error: unknown): boolean {
+    const msg =
+        error instanceof Error ? error.message.toLowerCase() : String(error);
+    return (
+        msg.includes('already deployed') ||
+        msg.includes('already exists') ||
+        (msg.includes('account') && msg.includes('deployed'))
+    );
+}
+
 /**
  * Create a new ECDSAR account, deploy it, and return credentials (no .env write).
  * Use with loadAccountFromCredentials on later runs to reuse the same account.
@@ -243,12 +253,38 @@ export async function createAccountWithCredentials(
  */
 export async function loadAccountFromCredentials(
     wallet: EmbeddedWallet,
-    cred: TestAccountCredentials
+    cred: TestAccountCredentials,
+    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
 ): Promise<AztecAddress> {
+    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
     const accountManager = await wallet.createECDSARAccount(
         Fr.fromString(cred.secretKey),
         Fr.fromString(cred.salt),
         Buffer.from(cred.signingKey, 'hex')
     );
+
+    if (ensureDeployed) {
+        const sponsoredFPC = await getSponsoredPFCContract();
+        const deployMethod = await accountManager.getDeployMethod();
+        const deployOpts = {
+            from: AztecAddress.ZERO,
+            fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(
+                    sponsoredFPC.address
+                ),
+            },
+            skipClassPublication: true,
+            skipInstancePublication: true,
+            wait: { timeout: deployTimeoutMs },
+        } as const;
+        try {
+            await deployMethod.send(deployOpts);
+        } catch (error) {
+            if (!isAccountAlreadyDeployedError(error)) {
+                throw error;
+            }
+        }
+    }
+
     return accountManager.address;
 }
