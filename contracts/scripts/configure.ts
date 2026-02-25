@@ -94,6 +94,11 @@ const CONTRACT_SPECS = [
         modulePath: './artifacts/Move.ts',
         exportName: 'MoveContract',
     },
+    {
+        name: 'ArtifactSystem',
+        modulePath: './artifacts/ArtifactSystem.ts',
+        exportName: 'ArtifactSystemContract',
+    },
 ];
 
 function addressesFromEnv(): Record<string, string> {
@@ -117,6 +122,7 @@ function addressesFromEnv(): Record<string, string> {
         ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
+        ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -195,6 +201,7 @@ async function main() {
     const admin = contracts['Admin'];
     const core = contracts['Core'];
     const move = contracts['Move'];
+    const artifactSystem = contracts['ArtifactSystem'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -210,6 +217,7 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
+    if (!artifactSystem) throw new Error('ArtifactSystem instance missing');
 
     if (
         !worldStorage ||
@@ -660,6 +668,102 @@ async function main() {
         elapsedMs >= 60000
             ? `${elapsedMin}m ${elapsedSecRem}s`
             : `${elapsedSec}s`;
+    await run('ArtifactSystem system', async () => {
+        await run('artifactSystem.set_config_storage_address()', async () => {
+            const tx = await artifactSystem.methods
+                .set_config_storage_address(config.address)
+                .send(opts);
+            await tx.wait();
+        });
+
+        await run('artifactSystem.set_player_storage_address()', async () => {
+            const tx1 = await artifactSystem.methods
+                .set_player_storage_address(playerStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await playerStorage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run('artifactSystem.set_planet_storage_address()', async () => {
+            const tx1 = await artifactSystem.methods
+                .set_planet_storage_address(planetStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await planetStorage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run(
+            'artifactSystem.set_planet_artifacts_storage_address()',
+            async () => {
+                const tx1 = await artifactSystem.methods
+                    .set_planet_artifacts_storage_address(
+                        planetArtifactsStorage.address
+                    )
+                    .send(opts);
+                await tx1.wait();
+                const tx2 = await planetArtifactsStorage.methods
+                    .add_authorized_contract(artifactSystem.address)
+                    .send(opts);
+                await tx2.wait();
+            }
+        );
+
+        await run(
+            'artifactSystem.set_planet_events_storage_address()',
+            async () => {
+                const tx1 = await artifactSystem.methods
+                    .set_planet_events_storage_address(
+                        planetEventsStorage.address
+                    )
+                    .send(opts);
+                await tx1.wait();
+                const tx2 = await planetEventsStorage.methods
+                    .add_authorized_contract(artifactSystem.address)
+                    .send(opts);
+                await tx2.wait();
+            }
+        );
+
+        await run('artifactSystem.set_arrivals_storage_address()', async () => {
+            const tx = await artifactSystem.methods
+                .set_arrivals_storage_address(arrivalStorage.address)
+                .send(opts);
+            await tx.wait();
+        });
+
+        await run('artifactSystem.set_artifact_storage_address()', async () => {
+            const tx1 = await artifactSystem.methods
+                .set_artifact_storage_address(artifactStorage.address)
+                .send(opts);
+            await tx1.wait();
+            const tx2 = await artifactStorage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
+            await tx2.wait();
+        });
+
+        await run(
+            'artifactSystem.set_artifact_location_storage_address()',
+            async () => {
+                const tx1 = await artifactSystem.methods
+                    .set_artifact_location_storage_address(
+                        artifactLocationStorage.address
+                    )
+                    .send(opts);
+                await tx1.wait();
+                const tx2 = await artifactLocationStorage.methods
+                    .add_authorized_contract(artifactSystem.address)
+                    .send(opts);
+                await tx2.wait();
+            }
+        );
+    });
 
     console.log('\n✅ Configure done.');
     console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);

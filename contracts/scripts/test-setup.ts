@@ -173,12 +173,32 @@ const MOVE_FUNCTIONS = [
     'move_public',
 ] as const;
 
+const ARTIFACT_SYSTEM_FUNCTIONS = [
+    'transfer_admin',
+    'set_config_storage_address',
+    'set_player_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'set_planet_storage_address',
+    'set_planet_artifacts_storage_address',
+    'create_artifact',
+    'update_artifact',
+    'prospect_planet',
+    'find_artifact', // private
+    'find_artifact_public',
+    'deposit_artifact',
+    'withdraw_artifact',
+    'activate_artifact',
+    'deactivate_artifact',
+] as const;
+
 /** All contracts and their public method names (for iteration or assertions). */
 const CONTRACT_FUNCTIONS = {
     Config: CONFIG_FUNCTIONS,
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
     Move: MOVE_FUNCTIONS,
+    ArtifactSystem: ARTIFACT_SYSTEM_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
@@ -243,6 +263,11 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactLocationStorageContract',
     },
     {
+        name: 'ArtifactSystem',
+        modulePath: './artifacts/ArtifactSystem.ts',
+        exportName: 'ArtifactSystemContract',
+    },
+    {
         name: 'Admin',
         modulePath: './artifacts/Admin.ts',
         exportName: 'AdminContract',
@@ -273,6 +298,7 @@ const ENV_KEYS: Array<[string, string]> = [
     ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS'],
+    ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['Move', 'MOVE_CONTRACT_ADDRESS'],
@@ -282,7 +308,10 @@ function addressesFromEnv(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, key] of ENV_KEYS) {
         const v = process.env[key];
-        if (key === 'MOVE_CONTRACT_ADDRESS') {
+        if (
+            key === 'MOVE_CONTRACT_ADDRESS' ||
+            key === 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'
+        ) {
             if (v) out[name] = v;
             continue;
         }

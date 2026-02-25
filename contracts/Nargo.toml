@@ -2,7 +2,7 @@
 members = [
     "types",
     "config",
-     "libs",
+    "libs",
     "storage/planet",
     "storage/planet_revealed_coords",
     "storage/planet_events",
@@ -15,6 +15,7 @@ members = [
     "system/admin",
     "system/core",
     "system/move",
+    "system/artifact",
 ]
 
 # [dependencies]
