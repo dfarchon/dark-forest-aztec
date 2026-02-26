@@ -5,60 +5,8 @@ use ::aztec::protocol::address::AztecAddress;
 use ::types::args::DFTCreateArtifactArgs;
 use ::types::config::upgrade::Upgrade;
 use ::types::storage::arrival::Arrival;
-use ::types::storage::artifact::{Artifact, ArtifactLocation};
-use ::types::storage::planet::{Planet, PlanetArtifacts, PlanetEvents};
-
-// ========== ArtifactType Constants (as u8) ==========
-// These match the ArtifactType enum in types.nr
-pub global ARTIFACT_TYPE_UNKNOWN: u8 = 0;
-pub global ARTIFACT_TYPE_MONOLITH: u8 = 1;
-pub global ARTIFACT_TYPE_COLOSSUS: u8 = 2;
-pub global ARTIFACT_TYPE_SPACESHIP: u8 = 3;
-pub global ARTIFACT_TYPE_PYRAMID: u8 = 4;
-pub global ARTIFACT_TYPE_WORMHOLE: u8 = 5;
-pub global ARTIFACT_TYPE_PLANETARY_SHIELD: u8 = 6;
-pub global ARTIFACT_TYPE_PHOTOID_CANNON: u8 = 7;
-pub global ARTIFACT_TYPE_BLOOM_FILTER: u8 = 8;
-pub global ARTIFACT_TYPE_BLACK_DOMAIN: u8 = 9;
-pub global ARTIFACT_TYPE_SHIP_MOTHERSHIP: u8 = 10;
-pub global ARTIFACT_TYPE_SHIP_CRESCENT: u8 = 11;
-pub global ARTIFACT_TYPE_SHIP_WHALE: u8 = 12;
-pub global ARTIFACT_TYPE_SHIP_GEAR: u8 = 13;
-pub global ARTIFACT_TYPE_SHIP_TITAN: u8 = 14;
-
-// ========== ArtifactRarity Constants (as u8) ==========
-pub global ARTIFACT_RARITY_UNKNOWN: u8 = 0;
-pub global ARTIFACT_RARITY_COMMON: u8 = 1;
-pub global ARTIFACT_RARITY_RARE: u8 = 2;
-pub global ARTIFACT_RARITY_EPIC: u8 = 3;
-pub global ARTIFACT_RARITY_LEGENDARY: u8 = 4;
-pub global ARTIFACT_RARITY_MYTHIC: u8 = 5;
-
-// ========== Biome Constants (as u8) ==========
-pub global BIOME_UNKNOWN: u8 = 0;
-pub global BIOME_OCEAN: u8 = 1;
-pub global BIOME_FOREST: u8 = 2;
-pub global BIOME_GRASSLAND: u8 = 3;
-pub global BIOME_TUNDRA: u8 = 4;
-pub global BIOME_SWAMP: u8 = 5;
-pub global BIOME_DESERT: u8 = 6;
-pub global BIOME_ICE: u8 = 7;
-pub global BIOME_WASTELAND: u8 = 8;
-pub global BIOME_LAVA: u8 = 9;
-pub global BIOME_CORRUPTED: u8 = 10;
-
-// ========== PlanetType Constants (as u8) ==========
-pub global PLANET_TYPE_PLANET: u8 = 0;
-pub global PLANET_TYPE_SILVER_MINE: u8 = 1;
-pub global PLANET_TYPE_RUINS: u8 = 2;
-pub global PLANET_TYPE_TRADING_POST: u8 = 3;
-pub global PLANET_TYPE_SILVER_BANK: u8 = 4;
-
-// ========== SpaceType Constants (as u8) ==========
-pub global SPACE_TYPE_NEBULA: u8 = 0;
-pub global SPACE_TYPE_SPACE: u8 = 1;
-pub global SPACE_TYPE_DEEP_SPACE: u8 = 2;
-pub global SPACE_TYPE_DEAD_SPACE: u8 = 3;
+use ::types::storage::artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType};
+use ::types::storage::planet::{Biome, Planet, PlanetArtifacts, PlanetEvents, PlanetType, SpaceType};
 
 /// Noir port of Solidity `LibArtifactUtils.isSpaceship`.
 /// Checks if an artifact type is a spaceship.
@@ -66,8 +14,8 @@ pub global SPACE_TYPE_DEAD_SPACE: u8 = 3;
 /// Spaceships are: ShipMothership(10), ShipCrescent(11), ShipWhale(12), ShipGear(13), ShipTitan(14)
 pub fn is_spaceship(artifact_type: u8) -> bool {
     // Noir doesn't support && operator, use nested if
-    if artifact_type >= ARTIFACT_TYPE_SHIP_MOTHERSHIP {
-        artifact_type <= ARTIFACT_TYPE_SHIP_TITAN
+    if artifact_type >= ArtifactType::ShipMothership() {
+        artifact_type <= ArtifactType::ShipTitan()
     } else {
         false
     }
@@ -122,17 +70,17 @@ pub fn get_artifact_cooldown_seconds(artifact_type: u8) -> u64 {
     // artifactCooldownsHours = [24, 0, 0, 0, 0, 4, 4, 24, 24, 24]
     // Index: Unknown=0, Monolith=1, Colossus=2, Spaceship=3, Pyramid=4,
     //        Wormhole=5, PlanetaryShield=6, PhotoidCannon=7, BloomFilter=8, BlackDomain=9
-    let cooldown_hours: u64 = if artifact_type == ARTIFACT_TYPE_UNKNOWN {
+    let cooldown_hours: u64 = if artifact_type == ArtifactType::Unknown() {
         24
-    } else if artifact_type == ARTIFACT_TYPE_WORMHOLE {
+    } else if artifact_type == ArtifactType::Wormhole() {
         4
-    } else if artifact_type == ARTIFACT_TYPE_PLANETARY_SHIELD {
+    } else if artifact_type == ArtifactType::PlanetaryShield() {
         4
-    } else if artifact_type == ARTIFACT_TYPE_PHOTOID_CANNON {
+    } else if artifact_type == ArtifactType::PhotoidCannon() {
         24
-    } else if artifact_type == ARTIFACT_TYPE_BLOOM_FILTER {
+    } else if artifact_type == ArtifactType::BloomFilter() {
         24
-    } else if artifact_type == ARTIFACT_TYPE_BLACK_DOMAIN {
+    } else if artifact_type == ArtifactType::BlackDomain() {
         24
     } else {
         0 // Monolith, Colossus, Spaceship, Pyramid have no cooldown
@@ -147,36 +95,36 @@ pub fn get_biome(space_type: u8, biomebase: u128) -> u8 {
     // biomebase is expected to be in range [0, 10)
     let biome_index = biomebase % 10;
 
-    if space_type == SPACE_TYPE_NEBULA {
+    if space_type == SpaceType::Nebula() {
         // Nebula: Ocean(1), Forest(2), Grassland(3)
         if biome_index < 3 {
-            BIOME_OCEAN
+            Biome::Ocean()
         } else if biome_index < 6 {
-            BIOME_FOREST
+            Biome::Forest()
         } else {
-            BIOME_GRASSLAND
+            Biome::Grassland()
         }
-    } else if space_type == SPACE_TYPE_SPACE {
+    } else if space_type == SpaceType::Space() {
         // Space: Tundra(4), Swamp(5), Desert(6)
         if biome_index < 3 {
-            BIOME_TUNDRA
+            Biome::Tundra()
         } else if biome_index < 6 {
-            BIOME_SWAMP
+            Biome::Swamp()
         } else {
-            BIOME_DESERT
+            Biome::Desert()
         }
-    } else if space_type == SPACE_TYPE_DEEP_SPACE {
+    } else if space_type == SpaceType::DeepSpace() {
         // Deep Space: Ice(7), Wasteland(8), Lava(9)
         if biome_index < 3 {
-            BIOME_ICE
+            Biome::Ice()
         } else if biome_index < 6 {
-            BIOME_WASTELAND
+            Biome::Wasteland()
         } else {
-            BIOME_LAVA
+            Biome::Lava()
         }
     } else {
         // Dead Space: Corrupted(10)
-        BIOME_CORRUPTED
+        Biome::Corrupted()
     }
 }
 
@@ -184,15 +132,15 @@ pub fn get_biome(space_type: u8, biomebase: u128) -> u8 {
 /// Noir port of Solidity `LibGameUtils.artifactRarityFromPlanetLevel`.
 pub fn artifact_rarity_from_planet_level(level_with_bonus: u8) -> u8 {
     if level_with_bonus <= 1 {
-        ARTIFACT_RARITY_COMMON
+        ArtifactRarity::Common()
     } else if level_with_bonus <= 3 {
-        ARTIFACT_RARITY_RARE
+        ArtifactRarity::Rare()
     } else if level_with_bonus <= 5 {
-        ARTIFACT_RARITY_EPIC
+        ArtifactRarity::Epic()
     } else if level_with_bonus <= 7 {
-        ARTIFACT_RARITY_LEGENDARY
+        ArtifactRarity::Legendary()
     } else {
-        ARTIFACT_RARITY_MYTHIC
+        ArtifactRarity::Mythic()
     }
 }
 
@@ -210,21 +158,21 @@ pub fn random_artifact_type_and_level_bonus(seed: Field, biome: u8, space_type: 
     // Nebula biomes: Ocean(1), Forest(2), Grassland(3)
     // Space biomes: Tundra(4), Swamp(5), Desert(6)
     // Deep biomes: Ice(7), Wasteland(8), Lava(9), Corrupted(10)
-    let is_nebula_biome = if biome == BIOME_OCEAN {
+    let is_nebula_biome = if biome == Biome::Ocean() {
         true
-    } else if biome == BIOME_FOREST {
+    } else if biome == Biome::Forest() {
         true
-    } else if biome == BIOME_GRASSLAND {
+    } else if biome == Biome::Grassland() {
         true
     } else {
         false
     };
 
-    let is_space_biome = if biome == BIOME_TUNDRA {
+    let is_space_biome = if biome == Biome::Tundra() {
         true
-    } else if biome == BIOME_SWAMP {
+    } else if biome == Biome::Swamp() {
         true
-    } else if biome == BIOME_DESERT {
+    } else if biome == Biome::Desert() {
         true
     } else {
         false
@@ -234,58 +182,58 @@ pub fn random_artifact_type_and_level_bonus(seed: Field, biome: u8, space_type: 
     let artifact_type = if is_nebula_biome {
         // Nebula biomes: more likely to get defensive artifacts
         if type_roll < 40 {
-            ARTIFACT_TYPE_MONOLITH
+            ArtifactType::Monolith()
         } else if type_roll < 80 {
-            ARTIFACT_TYPE_COLOSSUS
+            ArtifactType::Colossus()
         } else if type_roll < 120 {
-            ARTIFACT_TYPE_PYRAMID
+            ArtifactType::Pyramid()
         } else if type_roll < 160 {
-            ARTIFACT_TYPE_WORMHOLE
+            ArtifactType::Wormhole()
         } else if type_roll < 200 {
-            ARTIFACT_TYPE_PLANETARY_SHIELD
+            ArtifactType::PlanetaryShield()
         } else if type_roll < 230 {
-            ARTIFACT_TYPE_BLOOM_FILTER
+            ArtifactType::BloomFilter()
         } else {
-            ARTIFACT_TYPE_BLACK_DOMAIN
+            ArtifactType::BlackDomain()
         }
     } else if is_space_biome {
         // Space biomes: balanced distribution
         if type_roll < 50 {
-            ARTIFACT_TYPE_MONOLITH
+            ArtifactType::Monolith()
         } else if type_roll < 100 {
-            ARTIFACT_TYPE_COLOSSUS
+            ArtifactType::Colossus()
         } else if type_roll < 140 {
-            ARTIFACT_TYPE_PYRAMID
+            ArtifactType::Pyramid()
         } else if type_roll < 180 {
-            ARTIFACT_TYPE_WORMHOLE
+            ArtifactType::Wormhole()
         } else if type_roll < 210 {
-            ARTIFACT_TYPE_PHOTOID_CANNON
+            ArtifactType::PhotoidCannon()
         } else if type_roll < 240 {
-            ARTIFACT_TYPE_BLOOM_FILTER
+            ArtifactType::BloomFilter()
         } else {
-            ARTIFACT_TYPE_BLACK_DOMAIN
+            ArtifactType::BlackDomain()
         }
     } else {
         // Deep Space/Dead Space biomes: more powerful artifacts
         if type_roll < 30 {
-            ARTIFACT_TYPE_MONOLITH
+            ArtifactType::Monolith()
         } else if type_roll < 60 {
-            ARTIFACT_TYPE_COLOSSUS
+            ArtifactType::Colossus()
         } else if type_roll < 100 {
-            ARTIFACT_TYPE_PYRAMID
+            ArtifactType::Pyramid()
         } else if type_roll < 140 {
-            ARTIFACT_TYPE_WORMHOLE
+            ArtifactType::Wormhole()
         } else if type_roll < 180 {
-            ARTIFACT_TYPE_PHOTOID_CANNON
+            ArtifactType::PhotoidCannon()
         } else if type_roll < 220 {
-            ARTIFACT_TYPE_BLOOM_FILTER
+            ArtifactType::BloomFilter()
         } else {
-            ARTIFACT_TYPE_BLACK_DOMAIN
+            ArtifactType::BlackDomain()
         }
     };
 
     // Determine level bonus (0-2) based on space type
-    let level_bonus = if space_type == SPACE_TYPE_DEAD_SPACE {
+    let level_bonus = if space_type == SpaceType::DeadSpace() {
         if bonus_roll < 100 {
             2
         } else if bonus_roll < 200 {
@@ -293,7 +241,7 @@ pub fn random_artifact_type_and_level_bonus(seed: Field, biome: u8, space_type: 
         } else {
             0
         }
-    } else if space_type == SPACE_TYPE_DEEP_SPACE {
+    } else if space_type == SpaceType::DeepSpace() {
         if bonus_roll < 80 {
             2
         } else if bonus_roll < 180 {
@@ -301,7 +249,7 @@ pub fn random_artifact_type_and_level_bonus(seed: Field, biome: u8, space_type: 
         } else {
             0
         }
-    } else if space_type == SPACE_TYPE_SPACE {
+    } else if space_type == SpaceType::Space() {
         if bonus_roll < 50 {
             1
         } else {
@@ -330,37 +278,37 @@ pub fn get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
     let mut def_mult: u128 = 100;
 
     // Rarity bonus: Common=5%, Rare=10%, Epic=15%, Legendary=20%, Mythic=25%
-    let rarity_bonus: u128 = if rarity == ARTIFACT_RARITY_COMMON {
+    let rarity_bonus: u128 = if rarity == ArtifactRarity::Common() {
         5
-    } else if rarity == ARTIFACT_RARITY_RARE {
+    } else if rarity == ArtifactRarity::Rare() {
         10
-    } else if rarity == ARTIFACT_RARITY_EPIC {
+    } else if rarity == ArtifactRarity::Epic() {
         15
-    } else if rarity == ARTIFACT_RARITY_LEGENDARY {
+    } else if rarity == ArtifactRarity::Legendary() {
         20
-    } else if rarity == ARTIFACT_RARITY_MYTHIC {
+    } else if rarity == ArtifactRarity::Mythic() {
         25
     } else {
         0
     };
 
     // Apply artifact type bonuses
-    if artifact_type == ARTIFACT_TYPE_MONOLITH {
+    if artifact_type == ArtifactType::Monolith() {
         // Monolith: Boosts energy cap
         pop_cap_mult = 100 + rarity_bonus * 2;
-    } else if artifact_type == ARTIFACT_TYPE_COLOSSUS {
+    } else if artifact_type == ArtifactType::Colossus() {
         // Colossus: Boosts energy growth
         pop_gro_mult = 100 + rarity_bonus * 2;
-    } else if artifact_type == ARTIFACT_TYPE_PYRAMID {
+    } else if artifact_type == ArtifactType::Pyramid() {
         // Pyramid: Boosts defense
         def_mult = 100 + rarity_bonus * 2;
-    } else if artifact_type == ARTIFACT_TYPE_WORMHOLE {
+    } else if artifact_type == ArtifactType::Wormhole() {
         // Wormhole: Boosts speed
         speed_mult = 100 + rarity_bonus * 2;
-    } else if artifact_type == ARTIFACT_TYPE_PLANETARY_SHIELD {
+    } else if artifact_type == ArtifactType::PlanetaryShield() {
         // Planetary Shield: Big defense boost
         def_mult = 100 + rarity_bonus * 4;
-    } else if artifact_type == ARTIFACT_TYPE_PHOTOID_CANNON {
+    } else if artifact_type == ArtifactType::PhotoidCannon() {
         // Photoid Cannon: Boosts range and speed
         range_mult = 100 + rarity_bonus * 2;
         speed_mult = 100 + rarity_bonus;
@@ -409,7 +357,7 @@ pub fn prospect_planet_logic(
     has_gear: bool,
 ) -> Planet {
     assert(!planet.destroyed, "planet is destroyed");
-    assert(planet.planet_type == PLANET_TYPE_RUINS, "you can't find an artifact on this planet");
+    assert(planet.planet_type == PlanetType::Ruins(), "you can't find an artifact on this planet");
     assert(planet.owner == sender, "you must own this planet");
     assert(planet.prospected_block_number == 0, "this planet has already been prospected");
     if gear_required {
@@ -429,8 +377,8 @@ pub fn build_create_spaceship_args(
     ship_type: u8,
     nonce: u32,
 ) -> (Field, DFTCreateArtifactArgs) {
-    assert(ship_type >= ARTIFACT_TYPE_SHIP_MOTHERSHIP, "ship type out of range");
-    assert(ship_type <= ARTIFACT_TYPE_SHIP_TITAN, "ship type out of range");
+    assert(ship_type >= ArtifactType::ShipMothership(), "ship type out of range");
+    assert(ship_type <= ArtifactType::ShipTitan(), "ship type out of range");
     let artifact_id = planet_id + (nonce as Field);
     let create_args = DFTCreateArtifactArgs {
         id: artifact_id,

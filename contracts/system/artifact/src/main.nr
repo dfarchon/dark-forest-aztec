@@ -17,8 +17,8 @@ contract ArtifactSystem {
     };
     use ::types::storage::{
         arrival::Arrival,
-        artifact::{Artifact, ArtifactLocation},
-        planet::{Planet, PlanetArtifacts, PlanetEvents},
+        artifact::{Artifact, ArtifactLocation, ArtifactType},
+        planet::{Biome, Planet, PlanetArtifacts, PlanetEvents, PlanetType},
         player::Player,
         world::World,
     };
@@ -527,7 +527,7 @@ contract ArtifactSystem {
         );
 
         assert(!new_planet.destroyed, "planet is destroyed");
-        assert(new_planet.planet_type == 2, "not a ruins"); // RUINS = 2
+        assert(new_planet.planet_type == PlanetType::Ruins(), "not a ruins");
         assert(new_planet.owner == sender, "you must own this planet");
         assert(new_planet.prospected_block_number != 0, "planet not prospected");
         assert(!new_planet.has_tried_finding_artifact, "artifact already found on this planet");
@@ -861,7 +861,10 @@ contract ArtifactSystem {
             "artifact_location hash mismatch",
         );
 
-        assert(new_planet.planet_type == 3, "can only deposit on trading posts"); // TRADING_POST = 3
+        assert(
+            new_planet.planet_type == PlanetType::TradingPost(),
+            "can only deposit on trading posts",
+        );
         assert(new_planet.owner == sender, "you must own this planet");
         assert(!new_planet.destroyed, "planet is destroyed");
         assert(artifact != Artifact::zero(), "artifact does not exist");
@@ -959,7 +962,10 @@ contract ArtifactSystem {
             "artifact_location hash mismatch",
         );
 
-        assert(new_planet.planet_type == 3, "can only withdraw from trading posts");
+        assert(
+            new_planet.planet_type == PlanetType::TradingPost(),
+            "can only withdraw from trading posts",
+        );
         assert(!new_planet.destroyed, "planet is destroyed");
         assert(new_planet.owner == sender, "you can only withdraw from a planet you own");
         assert(artifact != Artifact::zero(), "artifact does not exist");
@@ -1108,7 +1114,7 @@ contract ArtifactSystem {
         assert(artifact != Artifact::zero(), "artifact not found");
         assert(artifact_location.planet_id == location_id, "artifact not on this planet");
 
-        let is_crescent = artifact.artifact_type == 11; // SHIP_CRESCENT
+        let is_crescent = artifact.artifact_type == ArtifactType::ShipCrescent();
 
         if is_crescent {
             assert(artifact.activations == 0, "crescent cannot be activated more than once");
@@ -1135,14 +1141,14 @@ contract ArtifactSystem {
                 let (silver_growth, _silver_cap, _initial_silver) = artifact_utils::default_planet_silver_stats(
                     location_id,
                     new_planet_crescent.planet_level,
-                    1, // SILVER_MINE
+                    PlanetType::SilverMine(),
                     new_planet_crescent.space_type,
                     default_stats,
                     world_config.time_factor_hundredths as u128,
                 );
                 new_planet_crescent.silver_growth = silver_growth;
             }
-            new_planet_crescent.planet_type = 1; // SILVER_MINE
+            new_planet_crescent.planet_type = PlanetType::SilverMine();
             new_planet_crescent.last_updated = ts;
 
             self.call(artifact_storage.set(artifact_id, new_artifact));
@@ -1163,7 +1169,7 @@ contract ArtifactSystem {
                 assert(time_since_last >= cooldown_seconds, "artifact on cooldown");
             }
 
-            if artifact.artifact_type == 5 {
+            if artifact.artifact_type == ArtifactType::Wormhole() {
                 assert(wormhole_to != 0, "must provide wormholeTo to activate a wormhole");
                 assert(
                     wormhole_planet_id == wormhole_to,
@@ -1184,8 +1190,8 @@ contract ArtifactSystem {
 
             let mut new_planet_act = new_planet;
 
-            let is_bloom = artifact.artifact_type == 8;
-            let is_black_domain = artifact.artifact_type == 9;
+            let is_bloom = artifact.artifact_type == ArtifactType::BloomFilter();
+            let is_black_domain = artifact.artifact_type == ArtifactType::BlackDomain();
 
             if is_bloom {
                 assert(
@@ -1319,7 +1325,8 @@ contract ArtifactSystem {
         new_artifact.wormhole_to = 0;
         new_artifact.last_updated = ts;
 
-        let should_burn = (artifact.artifact_type == 6) | (artifact.artifact_type == 7);
+        let should_burn = (artifact.artifact_type == ArtifactType::PlanetaryShield())
+            | (artifact.artifact_type == ArtifactType::PhotoidCannon());
 
         self.call(artifact_storage.set(artifact_id, new_artifact));
 
