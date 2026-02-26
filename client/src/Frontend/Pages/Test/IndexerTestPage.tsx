@@ -22,6 +22,7 @@ import {
   type IndexerConnectionConfig,
 } from "../../../Session/Indexer/IndexerConnection";
 import type { WorldState } from "../../../Session/Indexer/TableTypes/chain";
+import { TextPreview } from "../../Components/TextPreview";
 
 const NODE_URL =
   typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
@@ -53,9 +54,15 @@ interface BlockHistoryEntry {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function truncate(str: string, head = 8, tail = 6): string {
-  if (str.length <= head + tail) return str;
-  return `${str.slice(0, head)}…${str.slice(-tail)}`;
+/** Convert planet/location ID (decimal or hex string) to 0x-prefixed hex for display. */
+function planetIdToHex(s: string): string {
+  if (s == null || s === "") return s;
+  try {
+    const hex = BigInt(s).toString(16);
+    return "0x" + hex.toLowerCase();
+  } catch {
+    return s;
+  }
 }
 
 const MAX_EVENT_LOG = 50;
@@ -425,11 +432,19 @@ export function IndexerTestPage() {
                     return (
                       <tr key={id}>
                         <td>
-                          <code>{truncate(id)}</code>
+                          <TextPreview
+                            text={id}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>{String(pl.score)}</td>
                         <td>
-                          <code>{truncate(pl.home_planet_id)}</code>
+                          <TextPreview
+                            text={planetIdToHex(pl.home_planet_id)}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>{String(pl.space_junk)}</td>
                       </tr>
@@ -470,10 +485,18 @@ export function IndexerTestPage() {
                     return (
                       <tr key={id}>
                         <td>
-                          <code>{truncate(id)}</code>
+                          <TextPreview
+                            text={planetIdToHex(id)}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>
-                          <code>{truncate(p.owner)}</code>
+                          <TextPreview
+                            text={p.owner}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>{String(p.population)}</td>
                         <td>{String(p.silver)}</td>
@@ -516,13 +539,25 @@ export function IndexerTestPage() {
                     return (
                       <tr key={id}>
                         <td>
-                          <code>{truncate(a.id)}</code>
+                          <TextPreview
+                            text={a.id}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>
-                          <code>{truncate(a.from_planet)}</code>
+                          <TextPreview
+                            text={planetIdToHex(a.from_planet)}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>
-                          <code>{truncate(a.to_planet)}</code>
+                          <TextPreview
+                            text={planetIdToHex(a.to_planet)}
+                            unFocusedWidth="120px"
+                            focusedWidth="200px"
+                          />
                         </td>
                         <td>{String(a.pop_arriving)}</td>
                         <td>{String(a.arrival_time)}</td>
@@ -562,16 +597,45 @@ export function IndexerTestPage() {
                   <tr key={i}>
                     <td style={{ fontWeight: 600 }}>{e.type}</td>
                     <td>
-                      <code>{e.id ? truncate(e.id) : "—"}</code>
+                      {e.id ? (
+                        <TextPreview
+                          text={planetIdToHex(e.id)}
+                          unFocusedWidth="120px"
+                          focusedWidth="200px"
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td style={{ fontSize: "0.85rem" }}>
-                      {e.from && e.to
-                        ? `${truncate(e.from)} → ${truncate(e.to)}`
-                        : e.revealer
-                          ? `by ${truncate(e.revealer)}`
-                          : e.paused !== undefined
-                            ? `paused=${String(e.paused)}`
-                            : ""}
+                      {e.from && e.to ? (
+                        <>
+                          <TextPreview
+                            text={planetIdToHex(e.from)}
+                            unFocusedWidth="80px"
+                            focusedWidth="160px"
+                          />{" "}
+                          →{" "}
+                          <TextPreview
+                            text={planetIdToHex(e.to)}
+                            unFocusedWidth="80px"
+                            focusedWidth="160px"
+                          />
+                        </>
+                      ) : e.revealer ? (
+                        <>
+                          by{" "}
+                          <TextPreview
+                            text={e.revealer}
+                            unFocusedWidth="80px"
+                            focusedWidth="160px"
+                          />
+                        </>
+                      ) : e.paused !== undefined ? (
+                        `paused=${String(e.paused)}`
+                      ) : (
+                        ""
+                      )}
                     </td>
                     <td>#{e.block}</td>
                     <td style={{ fontSize: "0.8rem" }}>

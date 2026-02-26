@@ -17,6 +17,7 @@ import {
   createWalletManager,
   type WalletManagerConfig,
 } from "../../../Session/WalletManager";
+import { TextPreview } from "../../Components/TextPreview";
 
 const NODE_URL =
   typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
@@ -273,7 +274,15 @@ export function WalletManagerTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Active address</div>
             <div className="test-page__stat-value">
-              <code>{activeAddress ? truncate(activeAddress) : "—"}</code>
+              {activeAddress ? (
+                <TextPreview
+                  text={activeAddress}
+                  unFocusedWidth="120px"
+                  focusedWidth="200px"
+                />
+              ) : (
+                "—"
+              )}
             </div>
           </div>
           <div className="test-page__stat">
@@ -394,7 +403,11 @@ export function WalletManagerTestPage() {
                 {accounts.map((acc) => (
                   <tr key={acc.address}>
                     <td>
-                      <code>{truncate(acc.address)}</code>
+                      <TextPreview
+                        text={acc.address}
+                        unFocusedWidth="120px"
+                        focusedWidth="200px"
+                      />
                       {acc.address === activeAddress && (
                         <span
                           className="test-page__badge test-page__badge--active"

@@ -343,19 +343,20 @@ export class IndexerConnection {
     return this.indexer.getPlanetRevealedCoords(id);
   }
 
-  /** All arrivals targeting or originating from the given planet ids. */
-  public getArrivalsForPlanets(planetIds: string[]): ArrivalState[] {
-    const planetSet = new Set(planetIds);
+  /**
+   * Pending arrivals for a single planet, resolved via the planet_events table.
+   * Mirrors Solidity DFGetterFacet.getPlanetArrivals(location).
+   */
+  public getArrivalsForPlanet(planetId: string): ArrivalState[] {
+    const pe = this.indexer.getPlanetEvents(planetId);
+    if (!pe) return [];
     const result: ArrivalState[] = [];
-    const allArrivals = this.indexer.getArrivalMap();
-    allArrivals.forEach((arrival) => {
-      if (
-        planetSet.has(arrival.from_planet) ||
-        planetSet.has(arrival.to_planet)
-      ) {
-        result.push(arrival);
-      }
-    });
+    for (let i = 0; i < pe.count; i++) {
+      const evtId = pe.events[i]?.id;
+      if (!evtId || evtId === "0") continue;
+      const arrival = this.indexer.getArrival(evtId);
+      if (arrival) result.push(arrival);
+    }
     return result;
   }
 

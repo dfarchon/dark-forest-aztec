@@ -514,11 +514,9 @@ class GameManager extends EventEmitter {
     }, 5000);
 
     this.contractsAPI.indexerConnection.blockNumber$.subscribe(() => {
-      this.chainClock
-        .resync(() => this.contractsAPI.getChainTimestamp())
-        .then(() => {
-          this.entityStore.flushMaturedArrivals();
-        });
+      this.chainClock.resync().then(() => {
+        this.entityStore.flushMaturedArrivals();
+      });
     });
 
     this.hashRate = 0;
@@ -606,10 +604,12 @@ class GameManager extends EventEmitter {
     contractsAPI,
     terminal,
     contractAddress,
+    chainClock,
   }: {
     contractsAPI: ContractsAPI;
     terminal: React.MutableRefObject<TerminalHandle | undefined>;
     contractAddress: EthAddress;
+    chainClock: ChainClock;
   }): Promise<GameManager> {
     if (!terminal.current) {
       throw new Error("you must pass in a handle to a terminal");
@@ -700,18 +700,6 @@ class GameManager extends EventEmitter {
     };
 
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
-
-    // Sync chain clock so game-time calculations use L2 block time
-    const chainClock = new ChainClock();
-    try {
-      const chainTs = await contractsAPI.getChainTimestamp();
-      chainClock.sync(chainTs);
-      terminal.current?.println(
-        `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
-      );
-    } catch {
-      terminal.current?.println("Chain clock sync failed, using system clock");
-    }
 
     const gameManager = new GameManager(
       terminal,
@@ -954,8 +942,7 @@ class GameManager extends EventEmitter {
       return;
     }
 
-    const allArrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
-    const arrivals = allArrivals.filter((a) => a.toPlanet === planetId);
+    const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
     const artifactsOnPlanets =
       await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
     const artifactsOnPlanet = artifactsOnPlanets[0];
@@ -1498,6 +1485,191 @@ class GameManager extends EventEmitter {
 
   getStalePlanetWithId(planetId: LocationId): Planet | undefined {
     return this.entityStore.getPlanetWithId(planetId, false);
+  }
+
+  async debugPlanet(planetId: LocationId): Promise<void> {
+    const stalePlanet = this.entityStore.getPlanetWithId(planetId, false);
+    if (!stalePlanet) {
+      console.warn(`[debugPlanet] Planet not found: ${planetId}`);
+      return;
+    }
+
+    const decId = locationIdToDecStr(planetId);
+    const allArrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+    const nowSec = Math.floor(this.chainClock.nowSec());
+
+    const chainRaw = this.contractsAPI.indexerConnection.getPlanet(decId);
+    const precision = CONTRACT_PRECISION;
+    const chainCreatedAt = chainRaw ? Number(chainRaw.created_at) : 0;
+    const chainLastUpdated = chainRaw ? Number(chainRaw.last_updated) : 0;
+    const chainEnergy = chainRaw ? Number(chainRaw.population) / precision : 0;
+    const isHome = chainRaw?.is_home_planet ?? stalePlanet.isHomePlanet;
+
+    const planetEvents =
+      this.contractsAPI.indexerConnection.getPlanetEvents(decId);
+    const pendingIds = new Set<string>();
+    if (planetEvents) {
+      for (let i = 0; i < planetEvents.count; i++) {
+        pendingIds.add(planetEvents.events[i].id);
+      }
+    }
+
+    // Initial energy at creation
+    const initialEnergy = isHome ? 50000 / precision : stalePlanet.energy;
+    // For non-home planets the default barbarian energy is baked into the
+    // decoded stalePlanet.energy when the planet hasn't been touched yet.
+    // If the planet HAS been touched, we recalculate from contract defaults.
+    const defaultInitialEnergy = isHome
+      ? 50000 / precision
+      : (() => {
+          const lvl = stalePlanet.planetLevel;
+          const cc = this.contractConstants;
+          let cap = cc.defaultPopulationCap[lvl];
+          const st = stalePlanet.spaceType;
+          if (st === SpaceType.DEAD_SPACE) cap *= 20;
+          else if (st === SpaceType.DEEP_SPACE) cap *= 10;
+          else if (st === SpaceType.SPACE) cap *= 4;
+          let pirates = (cap * cc.defaultBarbarianPercentage[lvl]) / 100;
+          if (stalePlanet.planetType === PlanetType.SILVER_BANK) pirates /= 2;
+          return pirates;
+        })();
+
+    // Arrivals targeting this planet, sorted by arrivalTime
+    const inbound = allArrivals
+      .filter((a) => a.toPlanet === planetId)
+      .sort((a, b) => a.arrivalTime - b.arrivalTime);
+
+    // Build timeline
+    type TimelineRow = {
+      time: number;
+      dt: string;
+      event: string;
+      detail: string;
+      energyBefore: string;
+      energyAfter: string;
+      owner: string;
+    };
+
+    const rows: TimelineRow[] = [];
+    let simEnergy = defaultInitialEnergy;
+    let simLastUpdated = chainCreatedAt;
+    let simOwner = isHome ? (stalePlanet.owner ?? "player") : "(nobody)";
+    const { energyCap, energyGrowth, defense } = stalePlanet;
+
+    const grow = (toSec: number) => {
+      if (stalePlanet.pausers > 0) return;
+      const dt = toSec - simLastUpdated;
+      if (dt > 0 && simOwner !== "(nobody)") {
+        simEnergy = Math.min(simEnergy + energyGrowth * dt, energyCap);
+      }
+      simLastUpdated = toSec;
+    };
+
+    // 1) Planet creation
+    rows.push({
+      time: chainCreatedAt,
+      dt: "—",
+      event: "CREATED",
+      detail: isHome ? "home planet" : "initialized by first move",
+      energyBefore: "—",
+      energyAfter: simEnergy.toFixed(1),
+      owner: simOwner,
+    });
+
+    // 2) All inbound arrivals
+    for (const a of inbound) {
+      const isPending = pendingIds.has(a.eventId);
+      const energyBefore = simEnergy;
+      grow(a.arrivalTime);
+      const energyAfterGrowth = simEnergy;
+
+      const isFriendly = a.player === simOwner;
+      if (isFriendly) {
+        simEnergy = Math.min(simEnergy + a.energyArriving, energyCap);
+      } else {
+        const effectiveAttack = (a.energyArriving * 100) / defense;
+        if (simEnergy > effectiveAttack) {
+          simEnergy -= effectiveAttack;
+        } else {
+          simOwner = a.player;
+          simEnergy = a.energyArriving - (energyAfterGrowth * defense) / 100;
+          if (simEnergy <= 0) simEnergy = 1;
+        }
+      }
+
+      const delta = a.arrivalTime - nowSec;
+      const tag = isPending
+        ? delta > 0
+          ? `PENDING (in ${delta}s)`
+          : "PENDING (matured)"
+        : "SETTLED";
+
+      rows.push({
+        time: a.arrivalTime,
+        dt: `+${a.arrivalTime - chainCreatedAt}s`,
+        event: `${tag} | ${isFriendly ? "friendly" : "hostile"}`,
+        detail:
+          `e=${a.energyArriving.toFixed(1)} s=${a.silverMoved.toFixed(1)}` +
+          ` from=${a.fromPlanet.slice(0, 8)}… [${a.eventId}]`,
+        energyBefore: energyBefore.toFixed(1),
+        energyAfter: simEnergy.toFixed(1),
+        owner: simOwner.slice(0, 10) + "…",
+      });
+    }
+
+    // 3) NOW marker
+    grow(nowSec);
+    rows.push({
+      time: nowSec,
+      dt: `+${nowSec - chainCreatedAt}s`,
+      event: ">>> NOW <<<",
+      detail: "",
+      energyBefore: "—",
+      energyAfter: simEnergy.toFixed(1),
+      owner: simOwner.slice(0, 10) + "…",
+    });
+
+    console.group(`[debugPlanet] ${planetId}`);
+
+    console.group("Planet Info");
+    console.log("planetLevel:", stalePlanet.planetLevel);
+    console.log("planetType:", stalePlanet.planetType);
+    console.log("spaceType:", stalePlanet.spaceType);
+    console.log("isHomePlanet:", isHome);
+    console.log("energyCap:", energyCap, "energyGrowth:", energyGrowth);
+    console.log("defense:", defense);
+    console.log("chain created_at:", chainCreatedAt);
+    console.log("chain last_updated:", chainLastUpdated);
+    console.log("chain energy:", chainEnergy);
+    console.log("client lastUpdated:", stalePlanet.lastUpdated);
+    console.log("client energy:", stalePlanet.energy);
+    console.log("simulated initial energy:", defaultInitialEnergy);
+    console.groupEnd();
+
+    console.group("Arrivals Summary");
+    console.log("total arrivals in indexer:", allArrivals.length);
+    console.log("inbound (toPlanet):", inbound.length);
+    console.log("pending (in PlanetEvents):", pendingIds.size);
+    console.log(
+      "settled:",
+      inbound.filter((a) => !pendingIds.has(a.eventId)).length
+    );
+    console.groupEnd();
+
+    console.group(`Timeline (${rows.length} events)`);
+    console.table(rows);
+    console.groupEnd();
+
+    console.group("Verification");
+    console.log("simulated energy at NOW:", simEnergy.toFixed(1));
+    console.log("chain energy at last_updated:", chainEnergy.toFixed(1));
+    console.log(
+      "match?",
+      Math.abs(simEnergy - chainEnergy) < 1 ? "YES" : "NO (drift)"
+    );
+    console.groupEnd();
+
+    console.groupEnd();
   }
 
   /**

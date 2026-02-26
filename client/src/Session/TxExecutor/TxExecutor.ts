@@ -24,13 +24,13 @@ import type {
   TxIntent,
 } from "@dfpunk/types";
 
+import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
 import { StateResolver } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
-import { TimestampProvider } from "./TimestampProvider";
 import type {
   AfterTransaction,
   BeforeQueued,
@@ -105,6 +105,7 @@ export class TxExecutor {
     indexer: IndexerConnection,
     node: AztecNode,
     configContract: import("@aztec/aztec.js/contracts").ContractBase,
+    chainClock: ChainClock,
     beforeQueued?: BeforeQueued,
     beforeTransaction?: BeforeTransaction,
     afterTransaction?: AfterTransaction,
@@ -127,12 +128,11 @@ export class TxExecutor {
       configContract,
       walletManager.getActiveAddress()!
     );
-    const timestampProvider = new TimestampProvider(node);
 
     this.stateResolver = new StateResolver(
       indexer,
       configCache,
-      timestampProvider,
+      chainClock,
       () => walletManager.getActiveAddress()!.toString()
     );
   }
@@ -437,12 +437,6 @@ export class TxExecutor {
 
   getQueueSize(): number {
     return this.queue.size();
-  }
-
-  /** Get the latest L2 block timestamp (seconds). */
-  async getChainTimestamp(): Promise<number> {
-    const ts = await new TimestampProvider(this.node).getTimestamp();
-    return Number(ts);
   }
 
   destroy(): void {

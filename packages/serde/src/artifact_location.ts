@@ -36,7 +36,7 @@ export function decodeArtifactLocation(
     voyageId: isZeroId(state.voyage_id)
       ? undefined
       : (state.voyage_id as VoyageId),
-    lastUpdated: state.last_updated,
+    lastUpdated: Number(state.last_updated),
   };
 }
 

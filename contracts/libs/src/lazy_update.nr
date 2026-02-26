@@ -235,7 +235,11 @@ pub fn apply_pending_events(
                         artifacts_to_add.ids[artifacts_to_add.count] = new_artifact_id;
                         artifacts_to_add.count = artifacts_to_add.count + 1;
                     }
+                } else {
+                    should_continue = false;
                 }
+            } else {
+                should_continue = false;
             }
         }
     }

@@ -225,6 +225,7 @@ export function ArtifactDetailsBody({
           contractConstants.PHOTOID_ACTIVATION_DELAY * 1000
         }
         ifPassed={"now!"}
+        getNow={() => uiManager.getChainTimeMs()}
       />
     );
   }

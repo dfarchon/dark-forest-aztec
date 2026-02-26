@@ -81,7 +81,8 @@ export function BroadcastPane({
   const [account, setAccount] = useState<EthAddress | undefined>(undefined); // consider moving this one to parent
   const isRevealed = planet?.coordsRevealed;
   const broadcastCooldownPassed =
-    uiManager.getNextBroadcastAvailableTimestamp() <= Date.now();
+    uiManager.getNextBroadcastAvailableTimestamp() <=
+    uiManager.getChainTimeMs();
   const currentlyBroadcastingAnyPlanet = uiManager.isCurrentlyRevealing();
 
   useEffect(() => {
@@ -134,6 +135,7 @@ export function BroadcastPane({
           <TimeUntil
             timestamp={uiManager.getNextBroadcastAvailableTimestamp()}
             ifPassed={"now!"}
+            getNow={() => uiManager.getChainTimeMs()}
           />{" "}
           to reveal another planet.
         </p>

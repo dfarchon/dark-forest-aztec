@@ -557,13 +557,20 @@ contract Move {
             let mut arrivals_from_owner: u8 = 0;
             let mut arrivals_from_others: u8 = 0;
 
-            // Count arrivals from owner vs others
-            // Use fixed array size 20 as compile-time constant for loop bound
+            // After refresh_planet, event indices may have been rearranged via
+            // swap-and-pop. Look up each remaining event's arrival by matching
+            // event id against the arrivals array instead of using index directly.
             for i in 0..20 {
                 if i < new_target_planet_events.count {
-                    let arrival = target_arrivals[i];
+                    let event_id = new_target_planet_events.events[i].id;
+                    let mut arrival_player = AztecAddress::zero();
+                    for j in 0..20 {
+                        if target_arrivals[j].id == event_id {
+                            arrival_player = target_arrivals[j].player;
+                        }
+                    }
 
-                    if arrival.player == new_target_planet.owner {
+                    if arrival_player == new_target_planet.owner {
                         arrivals_from_owner += 1;
                     } else {
                         arrivals_from_others += 1;
@@ -703,7 +710,7 @@ contract Move {
             let remaining_ratio = 100 - distance_ratio; // percentage remaining (0-100)
             let pop_after_distance_decay = (pop_moved * remaining_ratio) / 100;
 
-            // Apply big planet debuff (5% of target planet's population cap)
+            // Apply big planet debuff (5% of source planet's population cap)
             let big_planet_debuff = new_source_planet.population_cap / 20;
 
             if pop_after_distance_decay > big_planet_debuff {

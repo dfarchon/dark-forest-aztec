@@ -575,6 +575,17 @@ class GameUIManager extends EventEmitter {
           if (forces < 1) return;
         }
 
+        console.log("[UI Move]", {
+          planetId: from.locationId,
+          energy: from.energy,
+          energyCap: from.energyCap,
+          lastUpdated: from.lastUpdated,
+          effectiveEnergy,
+          effPercent,
+          forces,
+          chainClockNowSec: this.gameManager.getChainTimeMs() / 1000,
+        });
+
         const dist = this.gameManager.getDist(from.locationId, to.locationId);
 
         const myAtk: number = this.gameManager.getEnergyArrivingForMove(

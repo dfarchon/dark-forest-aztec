@@ -52,6 +52,54 @@ import { gameConfigToContractConstants } from "./gameConfigToContractConstants";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ---------------------------------------------------------------------------
+// Async chunked iteration helpers — yield to the event loop every CHUNK items
+// so React can repaint progress bars between batches.
+// ---------------------------------------------------------------------------
+
+const CHUNK = 64;
+const yieldTick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+async function mapWithProgress<T, R>(
+  items: T[],
+  fn: (item: T, index: number) => R,
+  onProgress?: (fraction: number) => void
+): Promise<R[]> {
+  const total = items.length;
+  if (total === 0) {
+    onProgress?.(1);
+    return [];
+  }
+  const results: R[] = new Array(total);
+  for (let i = 0; i < total; i++) {
+    results[i] = fn(items[i], i);
+    if ((i + 1) % CHUNK === 0 || i === total - 1) {
+      onProgress?.((i + 1) / total);
+      await yieldTick();
+    }
+  }
+  return results;
+}
+
+async function forEachWithProgress<T>(
+  items: T[],
+  fn: (item: T, index: number) => void,
+  onProgress?: (fraction: number) => void
+): Promise<void> {
+  const total = items.length;
+  if (total === 0) {
+    onProgress?.(1);
+    return;
+  }
+  for (let i = 0; i < total; i++) {
+    fn(items[i], i);
+    if ((i + 1) % CHUNK === 0 || i === total - 1) {
+      onProgress?.((i + 1) / total);
+      await yieldTick();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ContractsAPI
 // ---------------------------------------------------------------------------
 
@@ -82,11 +130,6 @@ export class ContractsAPI extends EventEmitter {
 
   public destroy(): void {
     this.removeEventListeners();
-  }
-
-  /** Get the latest L2 block timestamp (seconds). */
-  public async getChainTimestamp(): Promise<number> {
-    return this.txExecutor.getChainTimestamp();
   }
 
   // =========================================================================
@@ -238,12 +281,11 @@ export class ContractsAPI extends EventEmitter {
     const rawMap = this.indexerConnection.getPlayers();
     const result = new Map<string, Player>();
     const entries = Array.from(rawMap.entries());
-    const total = entries.length;
-    entries.forEach(([key, state], i) => {
-      result.set(key, decodePlayer(key, state as any));
-      onProgress?.((i + 1) / total);
-    });
-    if (total === 0) onProgress?.(1);
+    await forEachWithProgress(
+      entries,
+      ([key, state]) => result.set(key, decodePlayer(key, state)),
+      onProgress
+    );
     return result;
   }
 
@@ -252,7 +294,7 @@ export class ContractsAPI extends EventEmitter {
   ): Promise<Player | undefined> {
     const state = this.indexerConnection.getPlayer(playerId);
     if (!state) return undefined;
-    return decodePlayer(playerId, state as any);
+    return decodePlayer(playerId, state);
   }
 
   // =========================================================================
@@ -281,13 +323,11 @@ export class ContractsAPI extends EventEmitter {
     onProgress?: (fractionCompleted: number) => void
   ): Promise<LocationId[]> {
     const decIds = this.indexerConnection.getPlanetIds();
-    const total = decIds.length;
-    const hexIds = decIds.map((decId, i) => {
-      onProgress?.((i + 1) / total);
-      return locationIdFromDecStr(decId);
-    });
-    if (total === 0) onProgress?.(1);
-    return hexIds;
+    return mapWithProgress(
+      decIds,
+      (decId) => locationIdFromDecStr(decId),
+      onProgress
+    );
   }
 
   public async bulkGetPlanets(
@@ -295,17 +335,18 @@ export class ContractsAPI extends EventEmitter {
     onProgressPlanet?: (fractionCompleted: number) => void
   ): Promise<Map<LocationId, Planet>> {
     const planets = new Map<LocationId, Planet>();
-    const total = toLoadPlanets.length;
-    toLoadPlanets.forEach((locId, i) => {
-      const decId = locationIdToDecStr(locId);
-      const raw = this.indexerConnection.getPlanet(decId);
-      if (raw) {
-        const planet = decodePlanet(decId, raw as any);
-        planets.set(planet.locationId, planet);
-      }
-      onProgressPlanet?.((i + 1) / total);
-    });
-    if (total === 0) onProgressPlanet?.(1);
+    await forEachWithProgress(
+      toLoadPlanets,
+      (locId) => {
+        const decId = locationIdToDecStr(locId);
+        const raw = this.indexerConnection.getPlanet(decId);
+        if (raw) {
+          const planet = decodePlanet(decId, raw);
+          planets.set(planet.locationId, planet);
+        }
+      },
+      onProgressPlanet
+    );
     return planets;
   }
 
@@ -317,7 +358,7 @@ export class ContractsAPI extends EventEmitter {
     if (!raw) {
       return undefined;
     }
-    const planet = decodePlanet(decId, raw as any);
+    const planet = decodePlanet(decId, raw);
 
     return planet;
   }
@@ -331,30 +372,33 @@ export class ContractsAPI extends EventEmitter {
   ): Promise<QueuedArrival | undefined> {
     const raw = this.indexerConnection.getArrival(String(arrivalId));
     if (!raw) return undefined;
-    return decodeArrival(String(arrivalId), raw as any);
+    return decodeArrival(String(arrivalId), raw);
   }
 
   public async getArrivalsForPlanet(
     planetId: LocationId
   ): Promise<QueuedArrival[]> {
     const decId = locationIdToDecStr(planetId);
-    const arrivals = this.indexerConnection.getArrivalsForPlanets([decId]);
-    return arrivals.map((a) => decodeArrival(a.id ?? "", a as any));
+    const arrivals = this.indexerConnection.getArrivalsForPlanet(decId);
+    return arrivals.map((a) => decodeArrival(a.id ?? "", a));
   }
 
   public async getAllArrivals(
     planetsToLoad: LocationId[],
     onProgress?: (fractionCompleted: number) => void
   ): Promise<QueuedArrival[]> {
-    const decIds = planetsToLoad.map(locationIdToDecStr);
-    const arrivals = this.indexerConnection.getArrivalsForPlanets(decIds);
-    const total = arrivals.length;
-    const result = arrivals.map((a, i) => {
-      const decoded = decodeArrival(a.id ?? "", a as any);
-      onProgress?.((i + 1) / total);
-      return decoded;
-    });
-    if (total === 0) onProgress?.(1);
+    const result: QueuedArrival[] = [];
+    await forEachWithProgress(
+      planetsToLoad,
+      (locId) => {
+        const decId = locationIdToDecStr(locId);
+        const arrivals = this.indexerConnection.getArrivalsForPlanet(decId);
+        for (const a of arrivals) {
+          result.push(decodeArrival(a.id ?? "", a));
+        }
+      },
+      onProgress
+    );
     return result;
   }
 
@@ -368,7 +412,7 @@ export class ContractsAPI extends EventEmitter {
     const decId = locationIdToDecStr(planetId);
     const raw = this.indexerConnection.getRevealedCoordsById(decId);
     if (!raw) return undefined;
-    const ret = decodePlanetRevealedCoords(planetId, raw as any);
+    const ret = decodePlanetRevealedCoords(planetId, raw);
     if (ret.hash === EMPTY_LOCATION_ID) return undefined;
     return ret;
   }
@@ -380,15 +424,13 @@ export class ContractsAPI extends EventEmitter {
   ): Promise<RevealedCoords[]> {
     const allCoords = this.indexerConnection.getRevealedCoords();
     onProgressIds?.(1);
+    await yieldTick();
     const entries = Array.from(allCoords.entries());
-    const total = entries.length;
-    const result: RevealedCoords[] = [];
-    entries.forEach(([key, state], i) => {
-      result.push(decodePlanetRevealedCoords(key, state as any));
-      onProgressCoords?.((i + 1) / total);
-    });
-    if (total === 0) onProgressCoords?.(1);
-    return result;
+    return mapWithProgress(
+      entries,
+      ([key, state]) => decodePlanetRevealedCoords(key, state),
+      onProgressCoords
+    );
   }
 
   // =========================================================================
@@ -401,43 +443,32 @@ export class ContractsAPI extends EventEmitter {
     const state = this.indexerConnection.getArtifact(artifactId);
     if (!state) return undefined;
     const location = this.indexerConnection.getArtifactLocation(artifactId);
-    return decodeArtifact(
-      artifactId,
-      state as any,
-      undefined,
-      location ? (location as any) : undefined
-    );
+    return decodeArtifact(artifactId, state, undefined, location ?? undefined);
   }
 
   public async bulkGetArtifactsOnPlanets(
     locationIds: LocationId[],
     onProgress?: (fractionCompleted: number) => void
   ): Promise<Artifact[][]> {
-    const result: Artifact[][] = [];
-    const total = locationIds.length;
-    locationIds.forEach((locId, locIdx) => {
-      const decId = locationIdToDecStr(locId);
-      const artIds = this.indexerConnection.getArtifactsOnPlanet(decId);
-      const artifacts: Artifact[] = [];
-      for (const artId of artIds) {
-        const state = this.indexerConnection.getArtifact(artId);
-        if (state) {
-          const location = this.indexerConnection.getArtifactLocation(artId);
-          artifacts.push(
-            decodeArtifact(
-              artId,
-              state as any,
-              undefined,
-              location ? (location as any) : undefined
-            )
-          );
+    return mapWithProgress(
+      locationIds,
+      (locId) => {
+        const decId = locationIdToDecStr(locId);
+        const artIds = this.indexerConnection.getArtifactsOnPlanet(decId);
+        const artifacts: Artifact[] = [];
+        for (const artId of artIds) {
+          const state = this.indexerConnection.getArtifact(artId);
+          if (state) {
+            const location = this.indexerConnection.getArtifactLocation(artId);
+            artifacts.push(
+              decodeArtifact(artId, state, undefined, location ?? undefined)
+            );
+          }
         }
-      }
-      result.push(artifacts);
-      onProgress?.((locIdx + 1) / total);
-    });
-    if (total === 0) onProgress?.(1);
-    return result;
+        return artifacts;
+      },
+      onProgress
+    );
   }
 
   public async bulkGetArtifacts(
@@ -445,23 +476,19 @@ export class ContractsAPI extends EventEmitter {
     onProgress?: (fractionCompleted: number) => void
   ): Promise<Artifact[]> {
     const result: Artifact[] = [];
-    const total = artifactIds.length;
-    artifactIds.forEach((artId, i) => {
-      const state = this.indexerConnection.getArtifact(artId);
-      if (state) {
-        const location = this.indexerConnection.getArtifactLocation(artId);
-        result.push(
-          decodeArtifact(
-            artId,
-            state as any,
-            undefined,
-            location ? (location as any) : undefined
-          )
-        );
-      }
-      onProgress?.((i + 1) / total);
-    });
-    if (total === 0) onProgress?.(1);
+    await forEachWithProgress(
+      artifactIds,
+      (artId) => {
+        const state = this.indexerConnection.getArtifact(artId);
+        if (state) {
+          const location = this.indexerConnection.getArtifactLocation(artId);
+          result.push(
+            decodeArtifact(artId, state, undefined, location ?? undefined)
+          );
+        }
+      },
+      onProgress
+    );
     return result;
   }
 
@@ -470,25 +497,21 @@ export class ContractsAPI extends EventEmitter {
     onProgress?: (percent: number) => void
   ): Promise<Artifact[]> {
     if (!playerId) return [];
-    const artIds = Array.from(this.indexerConnection.getArtifactIds());
+    const artIds = this.indexerConnection.getArtifactIds();
     const result: Artifact[] = [];
-    const total = artIds.length;
-    artIds.forEach((artId, i) => {
-      const state = this.indexerConnection.getArtifact(artId);
-      if (state && (state as any).controller === playerId) {
-        const location = this.indexerConnection.getArtifactLocation(artId);
-        result.push(
-          decodeArtifact(
-            artId,
-            state as any,
-            undefined,
-            location ? (location as any) : undefined
-          )
-        );
-      }
-      onProgress?.((i + 1) / total);
-    });
-    if (total === 0) onProgress?.(1);
+    await forEachWithProgress(
+      artIds,
+      (artId) => {
+        const state = this.indexerConnection.getArtifact(artId);
+        if (state && state.controller === playerId) {
+          const location = this.indexerConnection.getArtifactLocation(artId);
+          result.push(
+            decodeArtifact(artId, state, undefined, location ?? undefined)
+          );
+        }
+      },
+      onProgress
+    );
     return result;
   }
 }

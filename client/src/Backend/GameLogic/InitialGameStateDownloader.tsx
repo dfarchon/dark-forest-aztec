@@ -50,12 +50,34 @@ export class InitialGameStateDownloader {
   }
 
   private makeProgressListener(prettyEntityName: string) {
-    const ref = React.createRef<LoadingBarHandle>();
-    this.terminal.printLoadingBar(prettyEntityName, ref);
+    let latestPercent = 0;
+    let handle: LoadingBarHandle | null = null;
+
+    // Custom ref object: when React mounts the TextLoadingBar and sets
+    // ref.current via useImperativeHandle, the setter replays the latest
+    // buffered progress value. This decouples progress updates from React
+    // render timing — callbacks that fire before mount are not lost.
+    const ref = {
+      get current(): LoadingBarHandle | null {
+        return handle;
+      },
+      set current(h: LoadingBarHandle | null) {
+        handle = h;
+        if (h != null && latestPercent > 0) {
+          h.setFractionCompleted(latestPercent);
+        }
+      },
+    };
+
+    this.terminal.printLoadingBar(
+      prettyEntityName,
+      ref as React.RefObject<LoadingBarHandle>
+    );
     this.terminal.newline();
 
     return (percent: number) => {
-      ref.current?.setFractionCompleted(percent);
+      latestPercent = percent;
+      handle?.setFractionCompleted(percent);
     };
   }
 

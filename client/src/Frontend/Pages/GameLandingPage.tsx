@@ -18,6 +18,7 @@ import GameUIManager from "../../Backend/GameLogic/GameUIManager";
 import TutorialManager, {
   TutorialState,
 } from "../../Backend/GameLogic/TutorialManager";
+import { ChainClock } from "../../Backend/Utils/ChainClock";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
@@ -514,11 +515,19 @@ export function GameLandingPage() {
           AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
           wallet
         );
+
+        const chainClock = new ChainClock(node);
+        await chainClock.syncFromNode();
+        terminal.current?.println(
+          `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
+        );
+
         const txExecutor = new TxExecutor(
           walletManager,
           indexerConnection,
           node,
-          configContract
+          configContract,
+          chainClock
         );
         const configCache = new ConfigCache(
           configContract,
@@ -536,6 +545,7 @@ export function GameLandingPage() {
           contractsAPI,
           terminal,
           contractAddress,
+          chainClock,
         });
       } catch (e) {
         console.error(e);

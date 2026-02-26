@@ -116,20 +116,6 @@ export class ConfigCache {
       )
     ).then((vals) => vals.map((v) => Number(v ?? 0)));
 
-    // Debug: log shape of get_planet_default_stats return (snake_case vs camelCase, undefined?)
-    const level0 = planetDefaultStats[0] as Record<string, unknown> | undefined;
-    console.log("[ConfigCache] get_planet_default_stats(0) raw:", level0);
-    if (level0) {
-      console.log(
-        "[ConfigCache] keys:",
-        Object.keys(level0),
-        "| population_cap:",
-        level0.population_cap,
-        "| populationCap:",
-        level0.populationCap
-      );
-    }
-
     return {
       admin: admin != null ? String(admin) : "",
       snarkConfig,

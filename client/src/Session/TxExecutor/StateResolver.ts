@@ -1,5 +1,5 @@
 /**
- * StateResolver: reads IndexerConnection state + ConfigCache + TimestampProvider
+ * StateResolver: reads IndexerConnection state + ConfigCache + ChainClock
  * and assembles the full contract argument arrays for each transaction method.
  *
  * The TxIntent.args contains snark proof outputs (computed by upper layer).
@@ -11,8 +11,14 @@ import { CONTRACT_PRECISION } from "@dfpunk/constants";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type { TxIntent, UnconfirmedInit, UnconfirmedMove } from "@dfpunk/types";
 
+import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { ConfigCache } from "./ConfigCache";
+import {
+  clampMoveForSubmit,
+  getRefreshedPopulationAndSilver,
+  validateMoveForSubmit,
+} from "./MoveSimulation";
 import {
   arrivalToContract,
   artifactLocationToContract,
@@ -33,7 +39,6 @@ import {
   playerZero,
   worldInitial,
 } from "./stateZeros";
-import type { TimestampProvider } from "./TimestampProvider";
 
 // BN254 scalar field modulus (Fr order).
 // Negative coordinates are mapped to field elements: -n → p - n.
@@ -59,7 +64,7 @@ function hexIdToField(v: unknown): bigint {
 export class StateResolver {
   private readonly indexer: IndexerConnection;
   private readonly configCache: ConfigCache;
-  private readonly timestampProvider: TimestampProvider;
+  private readonly chainClock: ChainClock;
   private readonly getPlayerAddress: () => string;
 
   /** Last chain block we know a tx was confirmed in; resolve() waits for indexer to sync to this before reading state. */
@@ -68,12 +73,12 @@ export class StateResolver {
   constructor(
     indexer: IndexerConnection,
     configCache: ConfigCache,
-    timestampProvider: TimestampProvider,
+    chainClock: ChainClock,
     getPlayerAddress: () => string
   ) {
     this.indexer = indexer;
     this.configCache = configCache;
-    this.timestampProvider = timestampProvider;
+    this.chainClock = chainClock;
     this.getPlayerAddress = getPlayerAddress;
   }
 
@@ -120,10 +125,8 @@ export class StateResolver {
     const y = signedCoordToField(rawY as number | bigint);
     const locationId = hexIdToField(rawLocationId);
 
-    const [config, timestamp] = await Promise.all([
-      this.configCache.getConfig(),
-      this.timestampProvider.getTimestamp(),
-    ]);
+    const timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    const config = await this.configCache.getConfig();
 
     // Read current state from indexer (or zeros if not yet on-chain)
     // Indexer stores by decimal string key; rawLocationId is hex LocationId
@@ -210,16 +213,15 @@ export class StateResolver {
 
     // Frontend energy/silver values are divided by CONTRACT_PRECISION (1000).
     // Contract expects raw u128 values, so multiply back.
-    const popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
-    const silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
+    let popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
+    let silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
     const movedArtifactId = intent.artifact ? BigInt(intent.artifact) : 0n;
     const activatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
 
-    const [config, timestamp] = await Promise.all([
-      this.configCache.getConfig(),
-      this.timestampProvider.getTimestamp(),
-    ]);
+    // Resync clock before computing timestamp to minimize drift
+    await this.chainClock.resync();
+    const config = await this.configCache.getConfig();
 
     // Indexer stores by decimal string key; rawSourceLoc/rawTargetLoc are hex LocationIds
     const sourceLocDec = locationIdToDecStr(
@@ -293,6 +295,98 @@ export class StateResolver {
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, Number(targetLevel)));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
+
+    // Compute timestamp AFTER loading state so we can ensure it satisfies the
+    // contract's assert(timestamp >= last_updated) for all loaded entities.
+    // The contract rejects if the timestamp is behind any entity's last_updated.
+    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    {
+      const entityTimes: bigint[] = [];
+      if (sourcePlanetRaw) entityTimes.push(sourcePlanetRaw.last_updated);
+      if (sourcePlanetEventsRaw)
+        entityTimes.push(sourcePlanetEventsRaw.last_updated);
+      if (sourcePlanetArtifactsRaw)
+        entityTimes.push(sourcePlanetArtifactsRaw.last_updated);
+      if (targetPlanetRaw) entityTimes.push(targetPlanetRaw.last_updated);
+      if (targetPlanetEventsRaw)
+        entityTimes.push(targetPlanetEventsRaw.last_updated);
+      if (targetPlanetArtifactsRaw)
+        entityTimes.push(targetPlanetArtifactsRaw.last_updated);
+      // Arrival departure_times (contract asserts timestamp >= departure_time)
+      for (const arr of sourceArrivalData.arrivals) {
+        const dt = (arr as Record<string, unknown>).departure_time;
+        if (dt != null && dt !== 0) entityTimes.push(BigInt(dt as number));
+      }
+      for (const arr of targetArrivalData.arrivals) {
+        const dt = (arr as Record<string, unknown>).departure_time;
+        if (dt != null && dt !== 0) entityTimes.push(BigInt(dt as number));
+      }
+      let maxEntityTime = 0n;
+      for (const t of entityTimes) {
+        if (t > maxEntityTime) maxEntityTime = t;
+      }
+      if (maxEntityTime > timestamp) {
+        console.warn(
+          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
+        );
+        timestamp = maxEntityTime;
+      }
+    }
+
+    // Client-side simulation: clamp population/silver to contract-safe ranges
+    if (sourcePlanetRaw) {
+      const timestampSec = Number(timestamp);
+      const planetEventsForSim: import("../Indexer/TableTypes/chain").PlanetEventsState =
+        sourcePlanetEventsRaw ?? {
+          events: Array.from({ length: 20 }, () => ({ id: "0" })),
+          count: 0,
+          last_updated: 0n,
+        };
+      const refreshed = getRefreshedPopulationAndSilver(
+        timestampSec,
+        sourcePlanetRaw,
+        planetEventsForSim,
+        sourceArrivalData.arrivals,
+        sourceArrivalData.artifacts
+      );
+      console.log("[StateResolver Move]", {
+        intentForces: intent.forces,
+        intentSilver: intent.silver,
+        popMoved,
+        silverMoved,
+        timestamp: Number(timestamp),
+        indexerPopulation: sourcePlanetRaw.population,
+        indexerLastUpdated: Number(sourcePlanetRaw.last_updated),
+        refreshedPopulation: refreshed.population,
+        refreshedSilver: refreshed.silver,
+      });
+
+      const movedArtifactType = Number(
+        (movedArtifact as Record<string, unknown>)?.artifact_type ?? 0
+      );
+      const isSpaceshipMove =
+        movedArtifactId !== 0n &&
+        [3, 10, 11, 12, 13, 14].includes(movedArtifactType);
+
+      // Non-clampable preconditions (owner, destroyed) — still throw
+      validateMoveForSubmit({
+        isSpaceshipMove,
+        sender: this.getPlayerAddress(),
+        sourceOwner: refreshed.owner,
+        sourceDestroyed: sourcePlanetRaw.destroyed,
+      });
+
+      // Clamp popMoved/silverMoved to contract-safe ranges
+      const clamped = clampMoveForSubmit({
+        refreshedPopulation: refreshed.population,
+        refreshedSilver: refreshed.silver,
+        popMoved,
+        silverMoved,
+        isSpaceshipMove,
+      });
+      popMoved = clamped.popMoved;
+      silverMoved = clamped.silverMoved;
+    }
 
     return [
       sourceLoc,

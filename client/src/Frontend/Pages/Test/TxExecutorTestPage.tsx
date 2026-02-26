@@ -19,6 +19,7 @@ import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
 import * as React from "react";
 
+import { ChainClock } from "../../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
 import {
   createIndexerConnection,
@@ -34,6 +35,7 @@ import {
   createWalletManager,
   type WalletManager,
 } from "../../../Session/WalletManager";
+import { TextPreview } from "../../Components/TextPreview";
 
 const NODE_URL =
   typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
@@ -59,11 +61,6 @@ interface TxLogEntry {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function truncate(str: string, head = 8, tail = 6): string {
-  if (str.length <= head + tail) return str;
-  return `${str.slice(0, head)}…${str.slice(-tail)}`;
-}
 
 function txStateBadgeClass(state: ClientTxStatus): string {
   const map: Record<ClientTxStatus, string> = {
@@ -256,11 +253,15 @@ export function TxExecutorTestPage() {
         );
       };
 
+      const chainClock = new ChainClock(node);
+      await chainClock.syncFromNode();
+
       const executor = new TxExecutor(
         walletMgr,
         connection,
         node,
         configContract,
+        chainClock,
         beforeQueued,
         undefined,
         afterTransaction
@@ -499,7 +500,15 @@ export function TxExecutorTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Active address</div>
             <div className="test-page__stat-value">
-              <code>{activeAddress ? truncate(activeAddress) : "—"}</code>
+              {activeAddress ? (
+                <TextPreview
+                  text={activeAddress}
+                  unFocusedWidth="120px"
+                  focusedWidth="200px"
+                />
+              ) : (
+                "—"
+              )}
             </div>
           </div>
         </div>
@@ -809,7 +818,15 @@ export function TxExecutorTestPage() {
                       </span>
                     </td>
                     <td>
-                      <code>{entry.hash ? truncate(entry.hash) : "—"}</code>
+                      {entry.hash ? (
+                        <TextPreview
+                          text={entry.hash}
+                          unFocusedWidth="120px"
+                          focusedWidth="200px"
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>{new Date(entry.queuedAt).toLocaleTimeString()}</td>
                     <td
