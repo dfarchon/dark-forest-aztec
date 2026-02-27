@@ -7,7 +7,27 @@
  * the complete argument array matching the Noir contract function signature.
  */
 
+import { AztecAddress } from "@aztec/aztec.js/addresses";
+import type { Wallet } from "@aztec/aztec.js/wallet";
 import { CONTRACT_PRECISION } from "@dfpunk/constants";
+import {
+  ARRIVAL_STORAGE_CONTRACT_ADDRESS,
+  ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
+  ARTIFACT_STORAGE_CONTRACT_ADDRESS,
+  PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_STORAGE_CONTRACT_ADDRESS,
+  PLAYER_STORAGE_CONTRACT_ADDRESS,
+  WORLD_STORAGE_CONTRACT_ADDRESS,
+} from "@dfpunk/contracts";
+import { ArrivalStorageContract } from "@dfpunk/contracts/artifacts/ArrivalStorage";
+import { ArtifactLocationStorageContract } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
+import { ArtifactStorageContract } from "@dfpunk/contracts/artifacts/ArtifactStorage";
+import { PlanetArtifactsStorageContract } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
+import { PlanetEventsStorageContract } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage";
+import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
+import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type { TxIntent, UnconfirmedInit, UnconfirmedMove } from "@dfpunk/types";
 
@@ -29,6 +49,16 @@ import {
   playerToContract,
   worldToContract,
 } from "./stateConvert";
+import {
+  computeArrivalHash,
+  computeArtifactHash,
+  computeArtifactLocationHash,
+  computePlanetArtifactsHash,
+  computePlanetEventsHash,
+  computePlanetHash,
+  computePlayerHash,
+  computeWorldHash,
+} from "./stateHash";
 import {
   arrivalZero,
   artifactLocationZero,
@@ -61,11 +91,28 @@ function hexIdToField(v: unknown): bigint {
 // StateResolver
 // ---------------------------------------------------------------------------
 
+export interface StateResolverOptions {
+  /** When true, every resolve*() call computes local Poseidon2 hashes and
+   *  compares them against on-chain state roots before submitting.
+   *  Useful for debugging indexer staleness. Defaults to false. */
+  enableHashPreflight?: boolean;
+}
+
 export class StateResolver {
   private readonly indexer: IndexerConnection;
   private readonly configCache: ConfigCache;
   private readonly chainClock: ChainClock;
   private readonly getPlayerAddress: () => string;
+  private readonly enableHashPreflight: boolean;
+
+  private readonly planetStorage: PlanetStorageContract;
+  private readonly planetEventsStorage: PlanetEventsStorageContract;
+  private readonly planetArtifactsStorage: PlanetArtifactsStorageContract;
+  private readonly arrivalStorage: ArrivalStorageContract;
+  private readonly artifactStorage: ArtifactStorageContract;
+  private readonly artifactLocationStorage: ArtifactLocationStorageContract;
+  private readonly playerStorage: PlayerStorageContract;
+  private readonly worldStorage: WorldStorageContract;
 
   /** Last chain block we know a tx was confirmed in; resolve() waits for indexer to sync to this before reading state. */
   private lastConfirmedBlock = 0;
@@ -74,12 +121,48 @@ export class StateResolver {
     indexer: IndexerConnection,
     configCache: ConfigCache,
     chainClock: ChainClock,
-    getPlayerAddress: () => string
+    getPlayerAddress: () => string,
+    wallet: Wallet,
+    options?: StateResolverOptions
   ) {
     this.indexer = indexer;
     this.configCache = configCache;
     this.chainClock = chainClock;
     this.getPlayerAddress = getPlayerAddress;
+    this.enableHashPreflight = options?.enableHashPreflight ?? false;
+
+    this.planetStorage = PlanetStorageContract.at(
+      AztecAddress.fromString(PLANET_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.planetEventsStorage = PlanetEventsStorageContract.at(
+      AztecAddress.fromString(PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.planetArtifactsStorage = PlanetArtifactsStorageContract.at(
+      AztecAddress.fromString(PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.arrivalStorage = ArrivalStorageContract.at(
+      AztecAddress.fromString(ARRIVAL_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.artifactStorage = ArtifactStorageContract.at(
+      AztecAddress.fromString(ARTIFACT_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.artifactLocationStorage = ArtifactLocationStorageContract.at(
+      AztecAddress.fromString(ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.playerStorage = PlayerStorageContract.at(
+      AztecAddress.fromString(PLAYER_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.worldStorage = WorldStorageContract.at(
+      AztecAddress.fromString(WORLD_STORAGE_CONTRACT_ADDRESS),
+      wallet
+    );
   }
 
   /** Called by TxExecutor after a tx confirms so the next resolve() waits for indexer to sync to that block. */
@@ -125,7 +208,6 @@ export class StateResolver {
     const y = signedCoordToField(rawY as number | bigint);
     const locationId = hexIdToField(rawLocationId);
 
-    const timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
     const config = await this.configCache.getConfig();
 
     // Read current state from indexer (or zeros if not yet on-chain)
@@ -144,9 +226,31 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
+    let timestamp = intent.uiTimestamp
+      ? BigInt(Math.floor(intent.uiTimestamp))
+      : BigInt(Math.floor(this.chainClock.nowSec()));
+    if (planetRaw) {
+      const planetLastUpdated = BigInt(planetRaw.last_updated);
+      if (planetLastUpdated > timestamp) {
+        console.warn(
+          `[StateResolver] chainClock ${timestamp} behind planet last_updated=${planetLastUpdated}, advancing timestamp`
+        );
+        timestamp = planetLastUpdated;
+      }
+    }
+
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, Number(level)));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
+
+    if (this.enableHashPreflight) {
+      await this.verifyInitStateHashes(
+        locationId,
+        planetState,
+        playerState,
+        world
+      );
+    }
 
     return [
       x,
@@ -296,10 +400,33 @@ export class StateResolver {
     const levelIndex = Math.min(9, Math.max(0, Number(targetLevel)));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-    // Compute timestamp AFTER loading state so we can ensure it satisfies the
-    // contract's assert(timestamp >= last_updated) for all loaded entities.
-    // The contract rejects if the timestamp is behind any entity's last_updated.
-    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    if (this.enableHashPreflight) {
+      await this.verifyMoveStateHashes(
+        sourceLoc,
+        targetLoc,
+        sourcePlanet,
+        sourcePlanetEvents,
+        sourcePlanetArtifacts,
+        sourceArrivalData,
+        targetPlanet,
+        targetPlanetEvents,
+        targetPlanetArtifacts,
+        targetArrivalData,
+        world,
+        movedArtifactId,
+        movedArtifact,
+        movedArtifactLocation,
+        activatedArtifactId,
+        activatedArtifact
+      );
+    }
+
+    // Use UI-provided timestamp when available so the refreshed population
+    // matches the energy the user saw at move time.  Fall back to the
+    // chain-clock for backward compatibility.
+    let timestamp = intent.uiTimestamp
+      ? BigInt(Math.floor(intent.uiTimestamp))
+      : BigInt(Math.floor(this.chainClock.nowSec()));
     {
       const entityTimes: bigint[] = [];
       if (sourcePlanetRaw) entityTimes.push(sourcePlanetRaw.last_updated);
@@ -500,5 +627,303 @@ export class StateResolver {
   private loadArtifactLocationOrZero(id: string): Record<string, unknown> {
     const raw = this.indexer.getArtifactLocation(id);
     return raw ? artifactLocationToContract(raw) : artifactLocationZero();
+  }
+
+  // -------------------------------------------------------------------------
+  // Hash preflight verification
+  // -------------------------------------------------------------------------
+
+  /**
+   * Compute local Poseidon2 hashes for every entity involved in a move and
+   * compare them against the on-chain state roots via unconstrained reads.
+   * Throws if any mismatch is detected (indexer state is stale).
+   */
+  private async verifyMoveStateHashes(
+    sourceLoc: bigint,
+    targetLoc: bigint,
+    sourcePlanet: Record<string, unknown>,
+    sourcePlanetEvents: Record<string, unknown>,
+    sourcePlanetArtifacts: Record<string, unknown>,
+    sourceArrivalData: {
+      arrivals: Record<string, unknown>[];
+      artifacts: Record<string, unknown>[];
+      artifactLocations: Record<string, unknown>[];
+    },
+    targetPlanet: Record<string, unknown>,
+    targetPlanetEvents: Record<string, unknown>,
+    targetPlanetArtifacts: Record<string, unknown>,
+    targetArrivalData: {
+      arrivals: Record<string, unknown>[];
+      artifacts: Record<string, unknown>[];
+      artifactLocations: Record<string, unknown>[];
+    },
+    world: Record<string, unknown>,
+    movedArtifactId: bigint,
+    movedArtifact: Record<string, unknown>,
+    movedArtifactLocation: Record<string, unknown>,
+    activatedArtifactId: bigint,
+    activatedArtifact: Record<string, unknown>
+  ): Promise<void> {
+    const ps = this.planetStorage;
+    const pes = this.planetEventsStorage;
+    const pas = this.planetArtifactsStorage;
+    const arrs = this.arrivalStorage;
+    const arts = this.artifactStorage;
+    const als = this.artifactLocationStorage;
+    const ws = this.worldStorage;
+    const from = AztecAddress.fromString(this.getPlayerAddress());
+
+    const mismatches: string[] = [];
+
+    const check = async (
+      label: string,
+      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      onChainHashPromise: Promise<unknown>
+    ) => {
+      const [localHash, onChainHash] = await Promise.all([
+        localHashPromise,
+        onChainHashPromise,
+      ]);
+      const localBigInt = localHash.toBigInt();
+      const onChainBigInt = BigInt(String(onChainHash));
+      if (localBigInt !== onChainBigInt) {
+        mismatches.push(
+          `${label}: local=${localBigInt} onchain=${onChainBigInt}`
+        );
+      }
+    };
+
+    const checks: Promise<void>[] = [];
+
+    // Source entity hashes
+    checks.push(
+      check(
+        "source planet",
+        computePlanetHash(sourcePlanet),
+        ps.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
+      )
+    );
+    checks.push(
+      check(
+        "source planet_events",
+        computePlanetEventsHash(sourcePlanetEvents),
+        pes.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
+      )
+    );
+    checks.push(
+      check(
+        "source planet_artifacts",
+        computePlanetArtifactsHash(sourcePlanetArtifacts),
+        pas.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
+      )
+    );
+
+    // Source arrivals batch
+    for (let i = 0; i < 20; i++) {
+      const arrival = sourceArrivalData.arrivals[i];
+      const arrId = BigInt(Number(arrival["id"] ?? 0));
+      if (arrId === 0n) continue;
+      checks.push(
+        check(
+          `source arrival[${i}]`,
+          computeArrivalHash(arrival),
+          arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
+        )
+      );
+      const art = sourceArrivalData.artifacts[i];
+      const artCarried = BigInt(String(arrival["carried_artifact_id"] ?? 0));
+      if (artCarried !== 0n) {
+        checks.push(
+          check(
+            `source artifact[${i}]`,
+            computeArtifactHash(art),
+            arts.methods
+              .get_state_root_unconstrained(artCarried)
+              .simulate({ from })
+          )
+        );
+        checks.push(
+          check(
+            `source artifact_location[${i}]`,
+            computeArtifactLocationHash(sourceArrivalData.artifactLocations[i]),
+            als.methods
+              .get_state_root_unconstrained(artCarried)
+              .simulate({ from })
+          )
+        );
+      }
+    }
+
+    // Target entity hashes
+    checks.push(
+      check(
+        "target planet",
+        computePlanetHash(targetPlanet),
+        ps.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
+      )
+    );
+    checks.push(
+      check(
+        "target planet_events",
+        computePlanetEventsHash(targetPlanetEvents),
+        pes.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
+      )
+    );
+    checks.push(
+      check(
+        "target planet_artifacts",
+        computePlanetArtifactsHash(targetPlanetArtifacts),
+        pas.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
+      )
+    );
+
+    // Target arrivals batch
+    for (let i = 0; i < 20; i++) {
+      const arrival = targetArrivalData.arrivals[i];
+      const arrId = BigInt(Number(arrival["id"] ?? 0));
+      if (arrId === 0n) continue;
+      checks.push(
+        check(
+          `target arrival[${i}]`,
+          computeArrivalHash(arrival),
+          arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
+        )
+      );
+      const art = targetArrivalData.artifacts[i];
+      const artCarried = BigInt(String(arrival["carried_artifact_id"] ?? 0));
+      if (artCarried !== 0n) {
+        checks.push(
+          check(
+            `target artifact[${i}]`,
+            computeArtifactHash(art),
+            arts.methods
+              .get_state_root_unconstrained(artCarried)
+              .simulate({ from })
+          )
+        );
+        checks.push(
+          check(
+            `target artifact_location[${i}]`,
+            computeArtifactLocationHash(targetArrivalData.artifactLocations[i]),
+            als.methods
+              .get_state_root_unconstrained(artCarried)
+              .simulate({ from })
+          )
+        );
+      }
+    }
+
+    // World hash
+    checks.push(
+      check(
+        "world",
+        computeWorldHash(world),
+        ws.methods.get_state_root_unconstrained(0).simulate({ from })
+      )
+    );
+
+    // Moved artifact
+    if (movedArtifactId !== 0n) {
+      checks.push(
+        check(
+          "moved artifact",
+          computeArtifactHash(movedArtifact),
+          arts.methods
+            .get_state_root_unconstrained(movedArtifactId)
+            .simulate({ from })
+        )
+      );
+      checks.push(
+        check(
+          "moved artifact_location",
+          computeArtifactLocationHash(movedArtifactLocation),
+          als.methods
+            .get_state_root_unconstrained(movedArtifactId)
+            .simulate({ from })
+        )
+      );
+    }
+
+    // Activated artifact
+    if (activatedArtifactId !== 0n) {
+      checks.push(
+        check(
+          "activated artifact",
+          computeArtifactHash(activatedArtifact),
+          arts.methods
+            .get_state_root_unconstrained(activatedArtifactId)
+            .simulate({ from })
+        )
+      );
+    }
+
+    await Promise.all(checks);
+
+    if (mismatches.length > 0) {
+      const msg = `[StateResolver] Hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
+  /**
+   * Hash preflight for initializePlayer: planet, player, and world.
+   */
+  private async verifyInitStateHashes(
+    locationId: bigint,
+    planetState: Record<string, unknown>,
+    playerState: Record<string, unknown>,
+    world: Record<string, unknown>
+  ): Promise<void> {
+    const from = AztecAddress.fromString(this.getPlayerAddress());
+    const mismatches: string[] = [];
+
+    const check = async (
+      label: string,
+      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      onChainHashPromise: Promise<unknown>
+    ) => {
+      const [localHash, onChainHash] = await Promise.all([
+        localHashPromise,
+        onChainHashPromise,
+      ]);
+      const localBigInt = localHash.toBigInt();
+      const onChainBigInt = BigInt(String(onChainHash));
+      if (localBigInt !== onChainBigInt) {
+        mismatches.push(
+          `${label}: local=${localBigInt} onchain=${onChainBigInt}`
+        );
+      }
+    };
+
+    await Promise.all([
+      check(
+        "planet",
+        computePlanetHash(planetState),
+        this.planetStorage.methods
+          .get_state_root_unconstrained(locationId)
+          .simulate({ from })
+      ),
+      check(
+        "player",
+        computePlayerHash(playerState),
+        this.playerStorage.methods
+          .get_state_root_unconstrained(from)
+          .simulate({ from })
+      ),
+      check(
+        "world",
+        computeWorldHash(world),
+        this.worldStorage.methods
+          .get_state_root_unconstrained(0)
+          .simulate({ from })
+      ),
+    ]);
+
+    if (mismatches.length > 0) {
+      const msg = `[StateResolver] Init hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
   }
 }

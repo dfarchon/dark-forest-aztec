@@ -29,7 +29,7 @@ import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
-import { StateResolver } from "./StateResolver";
+import { StateResolver, type StateResolverOptions } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
 import type {
   AfterTransaction,
@@ -109,7 +109,8 @@ export class TxExecutor {
     beforeQueued?: BeforeQueued,
     beforeTransaction?: BeforeTransaction,
     afterTransaction?: AfterTransaction,
-    queueConfiguration?: ConcurrentQueueConfiguration
+    queueConfiguration?: ConcurrentQueueConfiguration,
+    stateResolverOptions?: StateResolverOptions
   ) {
     this.node = node;
     this.walletManager = walletManager;
@@ -133,7 +134,9 @@ export class TxExecutor {
       indexer,
       configCache,
       chainClock,
-      () => walletManager.getActiveAddress()!.toString()
+      () => walletManager.getActiveAddress()!.toString(),
+      wallet,
+      stateResolverOptions
     );
   }
 

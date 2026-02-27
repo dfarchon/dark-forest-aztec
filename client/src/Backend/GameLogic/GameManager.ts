@@ -2122,6 +2122,7 @@ class GameManager extends EventEmitter {
         locationId: planet.location.hash,
         location: planet.location,
         args: getArgs(),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       this.terminal.current?.println(
@@ -2918,7 +2919,8 @@ class GameManager extends EventEmitter {
     silver: number,
     artifactMoved?: ArtifactId,
     abandoning = false,
-    bypassChecks = false
+    bypassChecks = false,
+    uiTimestamp?: number
   ): Promise<Transaction<UnconfirmedMove>> {
     localStorage.setItem(
       `${this.getAccount()?.toLowerCase()}-fromPlanet`,
@@ -3017,6 +3019,7 @@ class GameManager extends EventEmitter {
         silver: silverMoved,
         artifact: artifactMoved,
         abandoning,
+        uiTimestamp,
       };
 
       if (artifactMoved) {

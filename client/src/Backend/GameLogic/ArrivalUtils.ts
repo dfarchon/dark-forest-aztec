@@ -66,7 +66,8 @@ const getSilverOverTime = (
   if (planet.silver > planet.silverCap) {
     return planet.silverCap;
   }
-  const timeElapsed = endTimeMillis / 1000 - startTimeMillis / 1000;
+  const timeElapsed =
+    Math.floor(endTimeMillis / 1000) - Math.floor(startTimeMillis / 1000);
 
   return Math.min(
     timeElapsed * planet.silverGrowth + planet.silver,
@@ -89,7 +90,7 @@ const getEnergyAtTime = (planet: Planet, atTimeMillis: number): number => {
 
   let energy = planet.energy;
   if (planet.pausers === 0 && energy < planet.energyCap) {
-    const timeElapsed = atTimeMillis / 1000 - planet.lastUpdated;
+    const timeElapsed = Math.floor(atTimeMillis / 1000) - planet.lastUpdated;
     const energyGained = planet.energyGrowth * timeElapsed;
     energy = Math.min(energy + energyGained, planet.energyCap);
   }
@@ -124,7 +125,7 @@ export const updatePlanetToTime = (
     planet.energy = getEnergyAtTime(planet, atTimeMillis);
   }
 
-  planet.lastUpdated = atTimeMillis / 1000;
+  planet.lastUpdated = Math.floor(atTimeMillis / 1000);
 
   const photoidActivationTime =
     contractConstants.PHOTOID_ACTIVATION_DELAY * 1000;

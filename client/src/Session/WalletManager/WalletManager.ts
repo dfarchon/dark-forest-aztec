@@ -20,14 +20,38 @@ import {
   ACCOUNT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
   ADMIN_DEPLOYMENT_SALT,
+  ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
+  ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
+  ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
+  ARTIFACT_STORAGE_DEPLOYMENT_SALT,
   CORE_DEPLOYER_ADDRESS,
   CORE_DEPLOYMENT_SALT,
   MOVE_DEPLOYER_ADDRESS,
   MOVE_DEPLOYMENT_SALT,
+  PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_STORAGE_DEPLOYMENT_SALT,
+  PLAYER_STORAGE_DEPLOYER_ADDRESS,
+  PLAYER_STORAGE_DEPLOYMENT_SALT,
+  WORLD_STORAGE_DEPLOYER_ADDRESS,
+  WORLD_STORAGE_DEPLOYMENT_SALT,
 } from "@dfpunk/contracts";
 import { AdminContractArtifact } from "@dfpunk/contracts/artifacts/Admin";
+import { ArrivalStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArrivalStorage";
+import { ArtifactLocationStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
+import { ArtifactStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactStorage";
 import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
+import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
+import { PlanetEventsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetStorage";
+import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlayerStorage";
+import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
@@ -40,7 +64,7 @@ const DEPLOY_TIMEOUT_MS = 120_000;
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
 
 /**
- * Register Core, Move, Admin with the wallet's PXE so simulate() and send() can run.
+ * Register game contracts (system + storage) with the wallet's PXE so simulate() and send() can run.
  * Requires deployer + salt from @dfpunk/contracts (run sync-env-and-artifacts after deploy).
  */
 async function registerGameContractsWithPxe(
@@ -70,6 +94,54 @@ async function registerGameContractsWithPxe(
       salt: ADMIN_DEPLOYMENT_SALT,
       artifact: AdminContractArtifact,
       name: "Admin",
+    },
+    {
+      deployer: PLANET_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetStorageContractArtifact,
+      name: "PlanetStorage",
+    },
+    {
+      deployer: PLAYER_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLAYER_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlayerStorageContractArtifact,
+      name: "PlayerStorage",
+    },
+    {
+      deployer: PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetEventsStorageContractArtifact,
+      name: "PlanetEventsStorage",
+    },
+    {
+      deployer: PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetArtifactsStorageContractArtifact,
+      name: "PlanetArtifactsStorage",
+    },
+    {
+      deployer: ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArrivalStorageContractArtifact,
+      name: "ArrivalStorage",
+    },
+    {
+      deployer: ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArtifactStorageContractArtifact,
+      name: "ArtifactStorage",
+    },
+    {
+      deployer: ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArtifactLocationStorageContractArtifact,
+      name: "ArtifactLocationStorage",
+    },
+    {
+      deployer: WORLD_STORAGE_DEPLOYER_ADDRESS,
+      salt: WORLD_STORAGE_DEPLOYMENT_SALT,
+      artifact: WorldStorageContractArtifact,
+      name: "WorldStorage",
     },
   ];
   for (const { deployer, salt, artifact, name } of specs) {

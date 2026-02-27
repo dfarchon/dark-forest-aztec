@@ -623,7 +623,9 @@ class GameUIManager extends EventEmitter {
             forces,
             silver,
             artifact?.id,
-            abandoning
+            abandoning,
+            false,
+            from.lastUpdated
           );
           tutorialManager.acceptInput(TutorialState.SendFleet);
         }
