@@ -401,6 +401,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
         } else if artifact.planet_biome == Biome::Forest() {
             upgrade.def_multiplier += 5;
             upgrade.pop_cap_multiplier += 5;
+            upgrade.pop_gro_multiplier += 5;
         } else if artifact.planet_biome == Biome::Grassland() {
             upgrade.pop_cap_multiplier += 5;
             upgrade.pop_gro_multiplier += 5;

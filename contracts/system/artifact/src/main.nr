@@ -874,6 +874,7 @@ contract ArtifactSystem {
             "spacetime rip not high enough level to deposit this artifact",
         );
         assert(!artifact_utils::is_spaceship(artifact.artifact_type), "cannot deposit spaceships");
+        assert(new_planet_artifacts.count < 5, "too many artifacts on this planet");
 
         let updated_artifacts =
             game_utils::add_artifact_id_to_planet_artifacts(artifact_id, new_planet_artifacts);
