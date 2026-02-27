@@ -470,26 +470,45 @@ async function main() {
     }
 
     const maxDist = 50n; // distance between source and target planets (see x1,y1,x2,y2 below)
-    const distanceRatioPct = range > 0n ? (maxDist * 100n) / range : 100n;
-    const remainingRatio =
-        distanceRatioPct >= 100n ? 0n : 100n - distanceRatioPct;
-    const debuff = populationCap / 20n;
-    const minPopForArrival =
-        remainingRatio > 0n ? (debuff * 100n) / remainingRatio + 1n : 0n;
+
+    // Piecewise linear decay estimation (matches contract move/src/main.nr)
+    function estimatePopArriving(popMoved: bigint): bigint {
+        const percent =
+            populationCap > 0n ? (popMoved * 100n) / populationCap : 0n;
+        const dMaxPercent =
+            percent <= 25n
+                ? percent * 2n
+                : percent <= 50n
+                  ? 25n + percent
+                  : (100n + percent) / 2n;
+        // d_factor = range * 432 * dMaxPercent, dist_scaled = dist * 100 * 100
+        const dFactor = range * 432n * dMaxPercent;
+        const distScaled = maxDist * 100n * 100n;
+        if (dFactor === 0n || distScaled >= dFactor) return 0n;
+        return (popMoved * (dFactor - distScaled)) / dFactor;
+    }
 
     console.log('\n📊 Move parameters:');
     console.log(`   maxDist=${maxDist}, range=${range}`);
-    console.log(
-        `   distanceRatio=${distanceRatioPct}%, remainingRatio=${remainingRatio}%`
-    );
-    console.log(
-        `   debuff (cap/20)=${debuff}, minPopForArrival=${minPopForArrival}`
-    );
 
     // Check #1: target_radius <= world.radius
     console.log(
         `   worldRadius=${worldRadius}, targetRadius will be=${worldRadius} (same) ✓`
     );
+
+    // Find minimum popMoved that yields pop_arriving > 0 (binary search)
+    let minPopForArrival = 1n;
+    {
+        let lo = 1n;
+        let hi = populationCap;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2n;
+            if (estimatePopArriving(mid) > 0n) hi = mid;
+            else lo = mid + 1n;
+        }
+        minPopForArrival = lo;
+    }
+    console.log(`   minPopForArrival=${minPopForArrival}`);
 
     const popMoved =
         population > minPopForArrival
@@ -505,16 +524,12 @@ async function main() {
         );
     if (population < minPopForArrival)
         throw new Error(
-            `Source planet population ${population} is below minimum for arrival after debuff (need > ${minPopForArrival}). Wait for population growth or use a planet with smaller cap.`
+            `Source planet population ${population} is below minimum for arrival (need > ${minPopForArrival}). Wait for population growth or use a planet with smaller cap.`
         );
 
     // Estimate pop_arriving for diagnostic
-    const estPopAfterDecay = (popMoved * remainingRatio) / 100n;
-    const estPopArriving =
-        estPopAfterDecay > debuff ? estPopAfterDecay - debuff : 0n;
-    console.log(
-        `   popMoved=${popMoved}, estPopAfterDecay=${estPopAfterDecay}, estPopArriving=${estPopArriving}`
-    );
+    const estPopArriving = estimatePopArriving(popMoved);
+    console.log(`   popMoved=${popMoved}, estPopArriving=${estPopArriving}`);
     if (estPopArriving === 0n) {
         console.error(
             '   ⚠️  pop_arriving will be 0! "Not enough forces to make move" will fail.'

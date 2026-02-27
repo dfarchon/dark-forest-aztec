@@ -8,11 +8,12 @@ import {
 } from "@dfpunk/constants";
 import { Monomitter, monomitter, Subscription } from "@dfpunk/events";
 import {
-  DECAY_SCALE_OVER_RANGE,
+  getDMaxFraction,
   getRange,
   isActivated,
   isLocatable,
   isSpaceShip,
+  L_OVER_RANGE,
   timeUntilNextBroadcastAvailable,
 } from "@dfpunk/gamelogic";
 import { fakeHash, perlin } from "@dfpunk/hashing";
@@ -3340,14 +3341,32 @@ class GameManager extends EventEmitter {
     const from = this.getPlanetWithId(fromId);
     if (!from) throw new Error("origin planet unknown");
     const dist = this.getDist(fromId, toId);
-    const decayScale =
-      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
+    const rangeBuff = this.getRangeBuff(abandoning);
+    const L = from.range * rangeBuff * L_OVER_RANGE;
 
-    // Linear decay matching contract: popArriving = popMoved * (1 - dist/L) - energyCap/20, L = range*4.55
-    const remainingRatio = 1 - dist / decayScale;
-    if (remainingRatio <= 0) return Infinity;
-
-    return (arrivingEnergy + from.energyCap / 20) / remainingRatio;
+    // Piecewise linear decay: popArriving = sentEnergy * (dMax - dist) / dMax
+    // where dMax = L * getDMaxFraction(sentEnergy / energyCap * 100).
+    // Binary search for the sentEnergy that yields arrivingEnergy.
+    let lo = arrivingEnergy;
+    let hi = from.energyCap * 2;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      const p = (mid / from.energyCap) * 100;
+      const dMax = L * getDMaxFraction(p);
+      const arriving =
+        dMax > 0 && dist < dMax ? (mid * (dMax - dist)) / dMax : 0;
+      if (arriving < arrivingEnergy) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    const result = hi;
+    // Verify the result actually arrives with positive energy
+    const pCheck = (result / from.energyCap) * 100;
+    const dMaxCheck = L * getDMaxFraction(pCheck);
+    if (dMaxCheck <= 0 || dist >= dMaxCheck) return Infinity;
+    return result;
   }
 
   /**
@@ -3380,18 +3399,14 @@ class GameManager extends EventEmitter {
       }
     }
 
-    const decayScale =
-      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
+    // Piecewise linear decay matching contract (move/src/main.nr)
+    const percent = (sentEnergy / from.energyCap) * 100;
+    const rangeBuff = this.getRangeBuff(abandoning);
+    const dMax =
+      from.range * rangeBuff * L_OVER_RANGE * getDMaxFraction(percent);
 
-    // Linear decay matching contract (move/src/main.nr): popArriving = popMoved * (1 - dist/L) - populationCap/20, L = range*4.55
-    if (dist >= decayScale) return 0;
-
-    const remainingRatio = 1 - dist / decayScale;
-    const popAfterDecay = sentEnergy * remainingRatio;
-    const debuff = from.energyCap / 20;
-    const ret = popAfterDecay - debuff;
-
-    return ret > 0 ? ret : 0;
+    if (dist >= dMax || dMax <= 0) return 0;
+    return (sentEnergy * (dMax - dist)) / dMax;
   }
 
   /**

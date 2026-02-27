@@ -691,32 +691,29 @@ contract Move {
 
         // _createArrival - Enter the arrival data for event id
 
-        // Calculate decayed population that will arrive
-        // Linear decay: remaining = popMoved * (1 - distance/L) with L chosen so max reachable
-        // distance matches Solidity (range * log2(20) ~= 4.32*range). L = range * 455/100.
+        // Piecewise linear decay: max reachable distance D_max depends on energy percentage.
+        // Constraint points: (0%,0L) (25%,0.5L) (50%,0.75L) (100%,L) where L = range * 432/100.
+        // Within D_max, arriving pop decays linearly: popMoved * (D_max - dist) / D_max.
         let pop_arriving = if is_spaceship_move {
-            0 // Spaceship moves are 0-energy moves
+            0
         } else {
-            // Decay scale L = range * 91/20 so that at d = range*log2(20) we get pop_after_decay = cap/20
-            let decay_range_times_hundred = new_source_planet.range * 455u128;
+            let percent = pop_moved * 100 / new_source_planet.population_cap;
 
-            // Linear decay: distance_ratio = (distance/L)*100 (0-100), remaining = 1 - distance_ratio/100
-            let distance_ratio = if effectiveDistTimesHundred >= decay_range_times_hundred {
-                100u128 // Distance >= L, 100% decay (0% remaining)
+            let d_max_percent = if percent <= 25 {
+                percent * 2
+            } else if percent <= 50 {
+                25 + percent
             } else {
-                (effectiveDistTimesHundred * 100) / decay_range_times_hundred
+                (100 + percent) / 2
             };
 
-            let remaining_ratio = 100 - distance_ratio; // percentage remaining (0-100)
-            let pop_after_distance_decay = (pop_moved * remaining_ratio) / 100;
+            let d_factor = new_source_planet.range * 432 * d_max_percent;
+            let dist_scaled = effectiveDistTimesHundred * 100;
 
-            // Apply big planet debuff (5% of source planet's population cap)
-            let big_planet_debuff = new_source_planet.population_cap / 20;
-
-            if pop_after_distance_decay > big_planet_debuff {
-                pop_after_distance_decay - big_planet_debuff
+            if (dist_scaled >= d_factor) | (d_factor == 0) {
+                0
             } else {
-                0 // Not enough forces after decay and debuff
+                pop_moved * (d_factor - dist_scaled) / d_factor
             }
         };
 
