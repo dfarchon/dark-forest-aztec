@@ -9,10 +9,11 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { Fr } from "@aztec/aztec.js/fields";
+import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
+import type { AccountManager } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -62,6 +63,56 @@ const DEFAULT_BALANCE_POLL_MS = 15_000;
 const DEPLOY_TIMEOUT_MS = 120_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
+const GENESIS_PENDING_SENTINEL = "genesis-pending";
+
+/**
+ * Compute a fingerprint for the current network instance by hashing block 1's header.
+ * Returns a sentinel value when the network has not yet produced block 1.
+ */
+async function getNetworkFingerprint(node: AztecNode): Promise<string> {
+  const blockNumber = await node.getBlockNumber();
+  if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
+  const block = await node.getBlock(BlockNumber(1));
+  if (!block) return GENESIS_PENDING_SENTINEL;
+  return block.hash().toString();
+}
+
+/**
+ * Best-effort deletion of PXE and wallet IndexedDB databases from previous network instances.
+ * Skips the database matching `currentPrefix` (belonging to the active network).
+ * Uses the non-standard `indexedDB.databases()` API available in modern browsers.
+ */
+async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
+  if (
+    typeof indexedDB === "undefined" ||
+    typeof indexedDB.databases !== "function"
+  ) {
+    return;
+  }
+  try {
+    const databases = await indexedDB.databases();
+    const stalePatterns = [/^pxe_data_/, /^wallet_data_/];
+    const deletions = databases
+      .filter(
+        (db) =>
+          db.name &&
+          stalePatterns.some((p) => p.test(db.name!)) &&
+          (!currentPrefix || !db.name!.startsWith(currentPrefix))
+      )
+      .map(
+        (db) =>
+          new Promise<void>((resolve) => {
+            const req = indexedDB.deleteDatabase(db.name!);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+            req.onblocked = () => resolve();
+          })
+      );
+    await Promise.all(deletions);
+  } catch {
+    /* best-effort cleanup */
+  }
+}
 
 /**
  * Register game contracts (system + storage) with the wallet's PXE so simulate() and send() can run.
@@ -199,8 +250,38 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
+    const keyStore = new KeyStore(config.storagePrefix);
+
+    const fingerprint = await getNetworkFingerprint(node);
+    const storedFingerprint = keyStore.getNetworkFingerprint();
+    const networkChanged = storedFingerprint !== fingerprint;
+
+    const l1Addresses = await node.getL1ContractAddresses();
+    const rollupAddr = l1Addresses.rollupAddress.toString();
+    const fpSuffix =
+      fingerprint === GENESIS_PENDING_SENTINEL
+        ? "genesis"
+        : fingerprint.slice(2, 10);
+    const pxeDataDir = `pxe_data_${rollupAddr}_${fpSuffix}`;
+
+    if (networkChanged) {
+      if (storedFingerprint) {
+        console.warn(
+          "[WalletManager] Network change detected, clearing stale PXE data"
+        );
+      } else {
+        console.info(
+          "[WalletManager] No stored fingerprint, clearing PXE data to avoid stale state"
+        );
+      }
+      await clearStaleIndexedDBs(pxeDataDir);
+      keyStore.clearActiveAddress();
+      keyStore.setNetworkFingerprint(fingerprint);
+    }
+
     const wallet = await EmbeddedWallet.create(node, {
       pxeConfig: {
+        dataDirectory: pxeDataDir,
         dataStoreMapSizeKb:
           config.pxeConfig?.dataStoreMapSizeKb ??
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
@@ -216,8 +297,6 @@ export class WalletManager {
 
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
     await registerGameContractsWithPxe(wallet, admin);
-
-    const keyStore = new KeyStore(config.storagePrefix);
 
     const mgr = new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
 
@@ -253,17 +332,7 @@ export class WalletManager {
       Buffer.from(signingKeyBuf)
     );
 
-    const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts = {
-      from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
-      },
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { timeout: DEPLOY_TIMEOUT_MS },
-    };
-    await deployMethod.send(deployOpts);
+    await this.deployAccountIfNeeded(accountManager);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -280,36 +349,48 @@ export class WalletManager {
     return record;
   }
 
-  async restoreAccount(address: string): Promise<void> {
+  async restoreAccount(
+    address: string,
+    onStatus?: (msg: string) => void
+  ): Promise<{ deployed: boolean }> {
     const record = this.keyStore.getAccount(address);
     if (!record) {
       throw new Error(`KeyStore: no account found for ${address}`);
     }
 
-    await this.wallet.createECDSARAccount(
+    const accountManager = await this.wallet.createECDSARAccount(
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       Buffer.from(record.signingKey, "hex")
     );
 
+    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
+
     this.setActive(AztecAddress.fromString(address), address);
+    return { deployed };
   }
 
-  async switchAccount(address: string): Promise<void> {
-    await this.restoreAccount(address);
+  async switchAccount(
+    address: string,
+    onStatus?: (msg: string) => void
+  ): Promise<{ deployed: boolean }> {
+    return this.restoreAccount(address, onStatus);
   }
 
   async importAccount(
     secretKey: string,
     salt: string,
     signingKey: string,
-    label?: string
-  ): Promise<AccountRecord> {
+    label?: string,
+    onStatus?: (msg: string) => void
+  ): Promise<AccountRecord & { deployed: boolean }> {
     const accountManager = await this.wallet.createECDSARAccount(
       Fr.fromString(secretKey),
       Fr.fromString(salt),
       Buffer.from(signingKey, "hex")
     );
+
+    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -323,7 +404,7 @@ export class WalletManager {
     this.keyStore.saveAccount(record);
     this.setActive(accountManager.address, record.address);
 
-    return record;
+    return { ...record, deployed };
   }
 
   removeAccount(address: string): void {
@@ -392,6 +473,37 @@ export class WalletManager {
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
+
+  /**
+   * Deploy the account contract on-chain if it is not already deployed.
+   * Queries the node for the contract instance; if absent, sends a deploy tx.
+   * @returns `true` if a deployment was performed, `false` if already deployed.
+   */
+  private async deployAccountIfNeeded(
+    accountManager: AccountManager,
+    onStatus?: (msg: string) => void
+  ): Promise<boolean> {
+    onStatus?.("Checking deployment status...");
+    const existing = await this.node.getContract(accountManager.address);
+    if (existing) return false;
+
+    onStatus?.("Account not deployed on current network. Deploying...");
+    console.info(
+      `[WalletManager] Account ${accountManager.address} not deployed on-chain, deploying...`
+    );
+    const deployMethod = await accountManager.getDeployMethod();
+    onStatus?.("Waiting for deploy transaction...");
+    await deployMethod.send({
+      from: AztecAddress.ZERO,
+      fee: {
+        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
+      },
+      skipClassPublication: true,
+      skipInstancePublication: true,
+      wait: { timeout: DEPLOY_TIMEOUT_MS },
+    });
+    return true;
+  }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {
     this.activeAddress = aztecAddr;

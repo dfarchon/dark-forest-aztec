@@ -344,7 +344,19 @@ export function GameLandingPage() {
         }
 
         try {
-          await walletManager?.switchAccount(account.address);
+          terminal.current?.println("Restoring account...");
+          const result = await walletManager?.switchAccount(
+            account.address,
+            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+          );
+          if (result?.deployed) {
+            terminal.current?.println(
+              "Deployed to new network.",
+              TerminalTextStyle.Green
+            );
+          } else {
+            terminal.current?.println("Done.", TerminalTextStyle.Green);
+          }
           setStep(TerminalPromptStep.ACCOUNT_SET);
         } catch (e) {
           terminal.current?.println(
@@ -387,7 +399,19 @@ export function GameLandingPage() {
       } else {
         const account = accounts[selection - 1];
         try {
-          await walletManager?.switchAccount(account.address);
+          terminal.current?.println("Restoring account...");
+          const result = await walletManager?.switchAccount(
+            account.address,
+            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+          );
+          if (result?.deployed) {
+            terminal.current?.println(
+              "Deployed to new network.",
+              TerminalTextStyle.Green
+            );
+          } else {
+            terminal.current?.println("Done.", TerminalTextStyle.Green);
+          }
           setStep(TerminalPromptStep.ACCOUNT_SET);
         } catch (e) {
           terminal.current?.println(
@@ -460,11 +484,22 @@ export function GameLandingPage() {
       );
       const signingKey = (await terminal.current?.getInput()) || "";
       try {
+        terminal.current?.println("Importing account...");
         const record = await walletManager!.importAccount(
           secretKey,
           salt,
-          signingKey
+          signingKey,
+          undefined,
+          (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
         );
+        if (record.deployed) {
+          terminal.current?.println(
+            "Deployed to network.",
+            TerminalTextStyle.Green
+          );
+        } else {
+          terminal.current?.println("Done.", TerminalTextStyle.Green);
+        }
         terminal.current?.println(
           `Imported account with address ${record.address}.`
         );
