@@ -39,6 +39,11 @@ import type {
   UnconfirmedUpgrade,
   UnconfirmedWithdrawSilver,
 } from "@dfpunk/types";
+import {
+  buildMoveProofInputs,
+  computeMoveProofOutputs,
+  validateMoveProofOutputs,
+} from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
@@ -318,7 +323,7 @@ export class StateResolver {
     const [
       rawSourceLoc,
       rawTargetLoc,
-      targetPerlin,
+      targetPerlinFromIntent,
       targetLevel,
       targetRadius,
       maxDist,
@@ -327,6 +332,8 @@ export class StateResolver {
       rawX2,
       rawY2,
     ] = intentArgs;
+    // When ZK checks are on, we use Poseidon2 perlin; intent may have MiMC perlin from entity store.
+    let targetPerlin = Number(targetPerlinFromIntent);
     const sourceLoc = hexIdToField(rawSourceLoc);
     const targetLoc = hexIdToField(rawTargetLoc);
     const x1 = signedCoordToField(rawX1 as number | bigint);
@@ -440,6 +447,85 @@ export class StateResolver {
       );
     }
 
+    // Move proof validation: when ZK checks are enabled, verify (x1,y1),(x2,y2) produce sourceLoc, targetLoc, targetPerlin
+    const snark = config.snarkConfig as Record<string, unknown> | undefined;
+    if (snark && !snark.disable_zk_checks) {
+      const r = BigInt(String(world.radius ?? 0));
+      const distMax = BigInt(String(maxDist));
+      const coord = (v: unknown) =>
+        typeof v === "number" ? v : Number(BigInt(String(v ?? 0)));
+      const inputs = buildMoveProofInputs(
+        {
+          planethash_key: BigInt(String(snark.planethash_key ?? 0)),
+          spacetype_key: BigInt(String(snark.spacetype_key ?? 0)),
+          perlin_length_scale: BigInt(String(snark.perlin_length_scale ?? 0)),
+          perlin_mirror_x: Boolean(snark.perlin_mirror_x),
+          perlin_mirror_y: Boolean(snark.perlin_mirror_y),
+        },
+        r,
+        distMax,
+        coord(rawX1),
+        coord(rawY1),
+        coord(rawX2),
+        coord(rawY2)
+      );
+      const outputs = await computeMoveProofOutputs(inputs);
+      // Use Poseidon2-computed perlin so contract and validation agree (intent may have MiMC perlin).
+      targetPerlin = Math.floor(outputs.perlin);
+      // Log simulation perlin so we can compare with contract expected_perlin when debugging mismatch
+      console.log("[Move proof] simulation.perlin (client):", {
+        perlinRaw: outputs.perlin,
+        targetPerlinSent: targetPerlin,
+        coordsForPerlin: { x2: inputs.x2, y2: inputs.y2 },
+        scale: inputs.scale.toString(),
+        spaceTypeKey: inputs.spaceTypeKey.toString(),
+        xMirror: inputs.xMirror,
+        yMirror: inputs.yMirror,
+      });
+      const validation = validateMoveProofOutputs(
+        sourceLoc,
+        targetLoc,
+        targetPerlin,
+        outputs
+      );
+      if (!validation.valid) {
+        console.debug("[Move proof] inputs:", {
+          x1: inputs.x1,
+          y1: inputs.y1,
+          x2: inputs.x2,
+          y2: inputs.y2,
+          scale: inputs.scale.toString(),
+          spaceTypeKey: inputs.spaceTypeKey.toString(),
+          xMirror: inputs.xMirror,
+          yMirror: inputs.yMirror,
+        });
+        console.debug("[Move proof] outputs (client):", {
+          sourceHash: outputs.sourceHash.toString(),
+          targetHash: outputs.targetHash.toString(),
+          perlin: outputs.perlin,
+          perlinFloored: Math.floor(outputs.perlin),
+        });
+        console.debug("[Move proof] expected (for contract):", {
+          sourceLoc: sourceLoc.toString(),
+          targetLoc: targetLoc.toString(),
+          targetPerlin,
+        });
+        console.debug(
+          "[Move proof] validation mismatches:",
+          validation.mismatches
+        );
+        throw new Error(
+          `Move proof validation failed: ${validation.mismatches.join("; ")}`
+        );
+      }
+      console.debug("[Move proof] OK", {
+        x2: inputs.x2,
+        y2: inputs.y2,
+        targetPerlin,
+        perlinRaw: outputs.perlin,
+      });
+    }
+
     // Use UI-provided timestamp when available so the refreshed population
     // matches the energy the user saw at move time.  Fall back to the
     // chain-clock for backward compatibility.
@@ -533,6 +619,58 @@ export class StateResolver {
       popMoved = clamped.popMoved;
       silverMoved = clamped.silverMoved;
     }
+
+    // Log full move contract args so failures (e.g. perlin mismatch) can be debugged
+    const snarkCfg = config.snarkConfig as Record<string, unknown> | undefined;
+    const rawX1N =
+      typeof rawX1 === "bigint"
+        ? Number(rawX1)
+        : Number(BigInt(String(rawX1 ?? 0)));
+    const rawY1N =
+      typeof rawY1 === "bigint"
+        ? Number(rawY1)
+        : Number(BigInt(String(rawY1 ?? 0)));
+    const rawX2N =
+      typeof rawX2 === "bigint"
+        ? Number(rawX2)
+        : Number(BigInt(String(rawX2 ?? 0)));
+    const rawY2N =
+      typeof rawY2 === "bigint"
+        ? Number(rawY2)
+        : Number(BigInt(String(rawY2 ?? 0)));
+    console.log("[Move contract] args (full):", {
+      sourceLoc: sourceLoc.toString(),
+      targetLoc: targetLoc.toString(),
+      targetPerlin,
+      simulationPerlinNote:
+        "targetPerlin above = client Poseidon2 perlin at (x2,y2); contract compares to circuit expected_perlin",
+      rawCoords: { x1: rawX1N, y1: rawY1N, x2: rawX2N, y2: rawY2N },
+      coordsAsField: {
+        x1: x1.toString(),
+        y1: y1.toString(),
+        x2: x2.toString(),
+        y2: y2.toString(),
+      },
+      targetLevel,
+      targetRadius,
+      maxDist,
+      popMoved: popMoved.toString(),
+      silverMoved: silverMoved.toString(),
+      movedArtifactId: movedArtifactId.toString(),
+      activatedArtifactId: activatedArtifactId.toString(),
+      isAbandoning,
+      timestamp: timestamp.toString(),
+      snarkConfig: snarkCfg
+        ? {
+            planethash_key: String(snarkCfg.planethash_key ?? ""),
+            spacetype_key: String(snarkCfg.spacetype_key ?? ""),
+            perlin_length_scale: String(snarkCfg.perlin_length_scale ?? ""),
+            perlin_mirror_x: Boolean(snarkCfg.perlin_mirror_x),
+            perlin_mirror_y: Boolean(snarkCfg.perlin_mirror_y),
+            disable_zk_checks: Boolean(snarkCfg.disable_zk_checks),
+          }
+        : null,
+    });
 
     return [
       sourceLoc,

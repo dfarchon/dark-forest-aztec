@@ -4,21 +4,12 @@
 
 use crate::circuits::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
-use ::types::config::{GameConfig, GameConfigCore, SnarkConstants};
+use ::types::config::game::{GameConfig, GameConfigCore};
+use ::types::config::snark::SnarkConfig;
 
 // ============================================================================
 // Biome Types (matching Dark Forest v0.6)
 // ============================================================================
-// SpaceType determines the base biome category:
-//   - NEBULA (0)     -> Ocean, Forest, Grassland
-//   - SPACE (1)      -> Tundra, Swamp, Desert
-//   - DEEP_SPACE (2) -> Ice, Wasteland, Lava
-//   - DEAD_SPACE (3) -> Corrupted (always)
-//
-// Within each space type, biomebase thresholds determine the specific biome:
-//   - biomebase < threshold_1       -> first biome of category
-//   - threshold_1 <= biomebase < threshold_2 -> second biome
-//   - biomebase >= threshold_2      -> third biome
 
 /// Biome enum values (matching Dark Forest v0.6 Biome enum)
 pub mod Biome {
@@ -43,26 +34,16 @@ pub mod SpaceType {
     pub global DEAD_SPACE: u8 = 3;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 fn coord_offset() -> u128 {
     2147483648 // 2^31
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Detect if a coordinate is negative based on offset representation
 fn is_coord_negative(coord: Field) -> bool {
     let offset = coord_offset();
     let coord_with_offset = (coord + (offset as Field)) as u128;
     coord_with_offset < offset
 }
 
-/// Get absolute value of coordinate for perlin calculation
 fn get_abs_coord(coord: Field, is_negative: bool) -> Field {
     if is_negative {
         coord * (0 - 1)
@@ -71,12 +52,6 @@ fn get_abs_coord(coord: Field, is_negative: bool) -> Field {
     }
 }
 
-// ============================================================================
-// Biome Determination (matching DFInitialize.sol logic)
-// ============================================================================
-
-/// Determine the biome from space_type and biomebase value
-/// This matches the logic in Dark Forest v0.6 contracts
 pub fn get_biome(
     space_type: u8,
     biomebase: u8,
@@ -84,12 +59,9 @@ pub fn get_biome(
     biome_threshold_2: u128,
 ) -> u8 {
     let biomebase_u128 = biomebase as u128;
-
     if space_type == SpaceType::DEAD_SPACE {
-        // Dead space is always corrupted
         Biome::CORRUPTED
     } else if space_type == SpaceType::DEEP_SPACE {
-        // Deep space: Ice, Wasteland, Lava
         if biomebase_u128 < biome_threshold_1 {
             Biome::ICE
         } else if biomebase_u128 < biome_threshold_2 {
@@ -98,7 +70,6 @@ pub fn get_biome(
             Biome::LAVA
         }
     } else if space_type == SpaceType::SPACE {
-        // Space: Tundra, Swamp, Desert
         if biomebase_u128 < biome_threshold_1 {
             Biome::TUNDRA
         } else if biomebase_u128 < biome_threshold_2 {
@@ -107,7 +78,6 @@ pub fn get_biome(
             Biome::DESERT
         }
     } else {
-        // Nebula (default): Ocean, Forest, Grassland
         if biomebase_u128 < biome_threshold_1 {
             Biome::OCEAN
         } else if biomebase_u128 < biome_threshold_2 {
@@ -118,15 +88,10 @@ pub fn get_biome(
     }
 }
 
-/// Convenience function using default Dark Forest thresholds
 pub fn get_biome_default(space_type: u8, biomebase: u8) -> u8 {
-    // Default thresholds from Dark Forest v0.6
-    let biome_threshold_1: u128 = 15;
-    let biome_threshold_2: u128 = 17;
-    get_biome(space_type, biomebase, biome_threshold_1, biome_threshold_2)
+    get_biome(space_type, biomebase, 15, 17)
 }
 
-/// Get biome using GameConfigCore thresholds (u8 cast to u128)
 pub fn get_biome_with_config(space_type: u8, biomebase: u8, config: GameConfigCore) -> u8 {
     get_biome(
         space_type,
@@ -136,31 +101,21 @@ pub fn get_biome_with_config(space_type: u8, biomebase: u8, config: GameConfigCo
     )
 }
 
-// ============================================================================
-// Biomebase Circuit Proof Functions
-// ============================================================================
-
-/// Biomebase circuit proof function (full parameters)
-/// Returns (planet_hash, biomebase_value)
+/// Planet hash: Poseidon2(planet_hash_key, x, y) - matches client
 pub fn biomebase_proof(
     planet_hash_key: Field,
     biomebase_key: Field,
     scale: u128,
     x_mirror: bool,
     y_mirror: bool,
-    x: Field, // private
-    y: Field, // private
+    x: Field,
+    y: Field,
 ) -> (Field, u8) {
-    // 1. Planet hash: Poseidon2(x, y, planet_hash_key)
-    let hash = poseidon2_hash([x, y, planet_hash_key]);
-
-    // 2. Determine coordinate signs and get absolute values
+    let hash = poseidon2_hash([planet_hash_key, x, y]);
     let x_negative = is_coord_negative(x);
     let y_negative = is_coord_negative(y);
     let abs_x = get_abs_coord(x, x_negative);
     let abs_y = get_abs_coord(y, y_negative);
-
-    // 3. Biomebase perlin: multi_scale_perlin(abs_x, abs_y, x_neg, y_neg, biomebase_key, scale, x_mirror, y_mirror)
     let biome_base = multi_scale_perlin(
         abs_x,
         abs_y,
@@ -171,13 +126,10 @@ pub fn biomebase_proof(
         x_mirror,
         y_mirror,
     );
-
     (hash, biome_base)
 }
 
-/// Biomebase circuit proof using SnarkConstants (convenience function)
-/// Returns (planet_hash, biomebase_value)
-pub fn biomebase_proof_with_config(snark: SnarkConstants, x: Field, y: Field) -> (Field, u8) {
+pub fn biomebase_proof_with_config(snark: SnarkConfig, x: Field, y: Field) -> (Field, u8) {
     biomebase_proof(
         snark.planethash_key as Field,
         snark.biomebase_key as Field,
@@ -189,21 +141,13 @@ pub fn biomebase_proof_with_config(snark: SnarkConstants, x: Field, y: Field) ->
     )
 }
 
-/// Biomebase circuit proof using default Dark Forest constants
-/// Returns (planet_hash, biomebase_value)
 pub fn biomebase_proof_default(x: Field, y: Field) -> (Field, u8) {
-    let snark = SnarkConstants::default_dark_forest();
+    let snark = SnarkConfig::zero();
     biomebase_proof_with_config(snark, x, y)
 }
 
-// ============================================================================
-// Full Biome Proof (combines biomebase + biome determination)
-// ============================================================================
-
-/// Complete biome proof: computes planet_hash, biomebase, and final biome
-/// Returns (planet_hash, biomebase, biome)
 pub fn biome_proof(
-    snark: SnarkConstants,
+    snark: SnarkConfig,
     game_config: GameConfigCore,
     space_type: u8,
     x: Field,
@@ -214,10 +158,8 @@ pub fn biome_proof(
     (planet_hash, biomebase, biome)
 }
 
-/// Complete biome proof using default Dark Forest constants
-/// Returns (planet_hash, biomebase, biome)
 pub fn biome_proof_default(space_type: u8, x: Field, y: Field) -> (Field, u8, u8) {
-    let snark = SnarkConstants::default_dark_forest();
-    let game_config = GameConfig::default_dark_forest_core();
+    let snark = SnarkConfig::zero();
+    let game_config = GameConfigCore::zero();
     biome_proof(snark, game_config, space_type, x, y)
 }

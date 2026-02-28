@@ -38,6 +38,7 @@
     "lint-staged": "15.2.11",
     "prettier": "3.7.4",
     "sort-package-json": "2.10.1",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.28.0",

@@ -31,16 +31,16 @@ importers:
         version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/pxe':
         specifier: 4.0.0-devnet.2-patch.1
-        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
+        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
       '@aztec/stdlib':
         specifier: 4.0.0-devnet.2-patch.1
         version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/wallet-sdk':
         specifier: 4.0.0-devnet.2-patch.1
-        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
+        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
       '@aztec/wallets':
         specifier: 4.0.0-devnet.2-patch.1
-        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
+        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
     devDependencies:
       '@commitlint/cli':
         specifier: 19.6.0
@@ -69,6 +69,9 @@ importers:
       sort-package-json:
         specifier: 2.10.1
         version: 2.10.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -123,6 +126,9 @@ importers:
       '@dfpunk/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      '@dfpunk/utils':
+        specifier: workspace:*
+        version: link:../packages/utils
       '@lit/react':
         specifier: 1.0.8
         version: 1.0.8(@types/react@19.2.8)
@@ -231,7 +237,7 @@ importers:
         version: 5.1.34
       '@vitejs/plugin-react':
         specifier: 5.1.2
-        version: 5.1.2(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1))
+        version: 5.1.2(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1))
       eslint:
         specifier: 9.39.2
         version: 9.39.2(jiti@2.6.1)
@@ -258,12 +264,16 @@ importers:
         version: 8.53.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
       vite:
         specifier: 7.3.1
-        version: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1)
+        version: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1)
       vite-plugin-node-polyfills:
         specifier: 0.25.0
-        version: 0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1))
+        version: 0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1))
 
   contracts:
+    dependencies:
+      '@dfpunk/utils':
+        specifier: workspace:*
+        version: link:../packages/utils
     devDependencies:
       '@eslint/js':
         specifier: 9.39.2
@@ -489,6 +499,25 @@ importers:
       '@types/color':
         specifier: 3.0.2
         version: 3.0.2
+      prettier:
+        specifier: 3.7.4
+        version: 3.7.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/utils:
+    dependencies:
+      '@aztec/aztec.js':
+        specifier: 4.0.0-devnet.2-patch.1
+        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)
+      '@aztec/foundation':
+        specifier: 4.0.0-devnet.2-patch.1
+        version: 4.0.0-devnet.2-patch.1
+      '@dfpunk/hashing':
+        specifier: workspace:*
+        version: link:../hashing
+    devDependencies:
       prettier:
         specifier: 3.7.4
         version: 3.7.4
@@ -3064,6 +3093,9 @@ packages:
     resolution: {integrity: sha512-VaUJspBffn/LMCJVoMvSAdmscJyS1auj5Zulnn5UoYcY531UWmdwhRWkcGKnGU93m5HSXP9LP2usOryrBtQowA==}
     engines: {node: '>=16'}
 
+  get-tsconfig@4.13.6:
+    resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
+
   git-hooks-list@3.2.0:
     resolution: {integrity: sha512-ZHG9a1gEhUMX1TvGrLdyWb9kDopCBbTnI8z4JgRMYxsijWipgjSEYoPWqBuIB0DnRnvqlQSEeVmzpeuPm7NdFQ==}
 
@@ -4187,6 +4219,9 @@ packages:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
     engines: {node: '>=8'}
 
+  resolve-pkg-maps@1.0.0:
+    resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
+
   resolve@1.22.11:
     resolution: {integrity: sha512-RfqAvLnMl313r7c9oclB1HhUEAezcpLjz95wFH4LVuhk9JF/r22qmVP9AMmOU4vMX7Q8pN8jwNg/CSpdFnMjTQ==}
     engines: {node: '>= 0.4'}
@@ -4525,6 +4560,11 @@ packages:
     resolution: {integrity: sha512-LxhtAkPDTkVCMQjt2h6eBVY28KCjikZqZfMcC15YBeNjkgUpdCfBu5HoiOTDu86v6smE8yOjyEktJ8hlbANHQA==}
     engines: {node: '>=0.6.x'}
 
+  tsx@4.21.0:
+    resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   tty-browserify@0.0.1:
     resolution: {integrity: sha512-C3TaO7K81YvjCgQH9Q1S3R3P3BtN3RIM8n+OvX4il1K1zgE8ZhI0op7kClgkxtutIE8hQrcrHBXvIheqKUUCxw==}
 
@@ -4761,9 +4801,6 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
 
@@ -5325,34 +5362,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@aztec/bb-prover@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/bb.js': 4.0.0-devnet.2-patch.1
-      '@aztec/constants': 4.0.0-devnet.2-patch.1
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/noir-noirc_abi': 4.0.0-devnet.2-patch.1
-      '@aztec/noir-protocol-circuits-types': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/noir-types': 4.0.0-devnet.2-patch.1
-      '@aztec/simulator': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/telemetry-client': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
-      '@aztec/world-state': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      commander: 12.1.0
-      pako: 2.1.0
-      source-map-support: 0.5.21
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/bb.js@4.0.0-devnet.2-patch.1':
     dependencies:
       comlink: 4.4.2
@@ -5635,39 +5644,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@aztec/pxe@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/bb-prover': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
-      '@aztec/bb.js': 4.0.0-devnet.2-patch.1
-      '@aztec/builder': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/constants': 4.0.0-devnet.2-patch.1
-      '@aztec/ethereum': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/key-store': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/kv-store': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/noir-protocol-circuits-types': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/noir-types': 4.0.0-devnet.2-patch.1
-      '@aztec/protocol-contracts': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/simulator': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      koa: 2.16.3
-      koa-router: 13.1.1
-      lodash.omit: 4.5.0
-      sha3: 2.1.4
-      tslib: 2.8.1
-      viem: '@aztec/viem@2.38.2(typescript@5.9.3)(zod@4.3.6)'
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/simulator@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@aztec/constants': 4.0.0-devnet.2-patch.1
@@ -5680,34 +5656,6 @@ snapshots:
       '@aztec/protocol-contracts': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/telemetry-client': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/world-state': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      lodash.clonedeep: 4.5.0
-      lodash.merge: 4.6.2
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@aztec/simulator@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/constants': 4.0.0-devnet.2-patch.1
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/native': 4.0.0-devnet.2-patch.1
-      '@aztec/noir-acvm_js': 4.0.0-devnet.2-patch.1
-      '@aztec/noir-noirc_abi': 4.0.0-devnet.2-patch.1
-      '@aztec/noir-protocol-circuits-types': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/noir-types': 4.0.0-devnet.2-patch.1
-      '@aztec/protocol-contracts': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/telemetry-client': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
       '@aztec/world-state': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       lodash.clonedeep: 4.5.0
       lodash.merge: 4.6.2
@@ -5790,38 +5738,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@aztec/telemetry-client@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@opentelemetry/api': 1.9.0
-      '@opentelemetry/api-logs': 0.55.0
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/exporter-logs-otlp-http': 0.55.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/exporter-metrics-otlp-http': 0.55.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/exporter-trace-otlp-http': 0.55.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/host-metrics': 0.36.2(@opentelemetry/api@1.9.0)
-      '@opentelemetry/otlp-exporter-base': 0.55.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resource-detector-gcp': 0.32.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-logs': 0.55.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions': 1.39.0
-      prom-client: 15.1.3
-      viem: '@aztec/viem@2.38.2(typescript@5.9.3)(zod@4.3.6)'
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/validator-ha-signer@4.0.0-devnet.2-patch.1(typescript@5.9.3)':
     dependencies:
       '@aztec/ethereum': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
@@ -5856,23 +5772,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@aztec/viem@2.38.2(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.1.0(typescript@5.9.3)(zod@4.3.6)
-      isows: 1.0.7(ws@8.18.3)
-      ox: 0.9.6(typescript@5.9.3)(zod@4.3.6)
-      ws: 8.18.3
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-      - zod
-
   '@aztec/wallet-sdk@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@aztec/aztec.js': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
@@ -5880,26 +5779,6 @@ snapshots:
       '@aztec/entrypoints': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/foundation': 4.0.0-devnet.2-patch.1
       '@aztec/pxe': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@aztec/wallet-sdk@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/aztec.js': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/constants': 4.0.0-devnet.2-patch.1
-      '@aztec/entrypoints': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/pxe': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
       '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
     transitivePeerDependencies:
       - '@types/pg'
@@ -5924,29 +5803,6 @@ snapshots:
       '@aztec/pxe': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
       '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
       '@aztec/wallet-sdk': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@3.25.76)
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@aztec/wallets@4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/accounts': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/aztec.js': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/entrypoints': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/foundation': 4.0.0-devnet.2-patch.1
-      '@aztec/kv-store': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/protocol-contracts': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/pxe': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
-      '@aztec/stdlib': 4.0.0-devnet.2-patch.1(typescript@5.9.3)
-      '@aztec/wallet-sdk': 4.0.0-devnet.2-patch.1(typescript@5.9.3)(zod@4.3.6)
     transitivePeerDependencies:
       - '@types/pg'
       - aws-crt
@@ -7488,7 +7344,7 @@ snapshots:
       - debug
       - utf-8-validate
 
-  '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1))':
+  '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
@@ -7496,7 +7352,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.53
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1)
+      vite: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7509,11 +7365,6 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
       zod: 3.25.76
-
-  abitype@1.1.0(typescript@5.9.3)(zod@4.3.6):
-    optionalDependencies:
-      typescript: 5.9.3
-      zod: 4.3.6
 
   abort-controller@3.0.0:
     dependencies:
@@ -8493,6 +8344,10 @@ snapshots:
 
   get-stream@8.0.1: {}
 
+  get-tsconfig@4.13.6:
+    dependencies:
+      resolve-pkg-maps: 1.0.0
+
   git-hooks-list@3.2.0: {}
 
   git-raw-commits@4.0.0:
@@ -9293,21 +9148,6 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.9.6(typescript@5.9.3)(zod@4.3.6):
-    dependencies:
-      '@adraffy/ens-normalize': 1.11.1
-      '@noble/ciphers': 1.3.0
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.1.0(typescript@5.9.3)(zod@4.3.6)
-      eventemitter3: 5.0.1
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - zod
-
   p-defer@4.0.1: {}
 
   p-limit@3.1.0:
@@ -9656,6 +9496,8 @@ snapshots:
   resolve-from@4.0.0: {}
 
   resolve-from@5.0.0: {}
+
+  resolve-pkg-maps@1.0.0: {}
 
   resolve@1.22.11:
     dependencies:
@@ -10031,6 +9873,13 @@ snapshots:
 
   tsscmp@1.0.6: {}
 
+  tsx@4.21.0:
+    dependencies:
+      esbuild: 0.27.3
+      get-tsconfig: 4.13.6
+    optionalDependencies:
+      fsevents: 2.3.3
+
   tty-browserify@0.0.1: {}
 
   type-check@0.4.0:
@@ -10110,15 +9959,15 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite-plugin-node-polyfills@0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1)):
+  vite-plugin-node-polyfills@0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1)):
     dependencies:
       '@rollup/plugin-inject': 5.0.5(rollup@4.57.1)
       node-stdlib-browser: 1.3.1
-      vite: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1)
+      vite: 7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1)
     transitivePeerDependencies:
       - rollup
 
-  vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(yaml@2.6.1):
+  vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.6.1):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
@@ -10130,6 +9979,7 @@ snapshots:
       '@types/node': 24.10.7
       fsevents: 2.3.3
       jiti: 2.6.1
+      tsx: 4.21.0
       yaml: 2.6.1
 
   vm-browserify@1.1.2: {}
@@ -10209,6 +10059,3 @@ snapshots:
   yocto-queue@1.2.2: {}
 
   zod@3.25.76: {}
-
-  zod@4.3.6:
-    optional: true

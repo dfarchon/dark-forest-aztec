@@ -1,5 +1,8 @@
 // Perlin Noise implementation matching the TypeScript client exactly
 // Uses Signed struct for proper signed integer arithmetic
+// Gradient index from Poseidon2([key, corner_x, corner_y, scale]) % 16 to match client
+
+use ::aztec::protocol::hash::poseidon2_hash;
 
 // ========== Signed Integer Struct ==========
 pub struct Signed {
@@ -114,27 +117,17 @@ impl Coords {
 global PERLIN_MAX: u128 = 32;
 
 // ========== Hash Function ==========
-// Proper hash that works for grid-aligned coordinates
-// Takes grid indices (not full coordinates) for better distribution
-fn random(grid_x: u128, grid_y: u128, seed: u128, x_neg: bool, y_neg: bool) -> u8 {
-    // Primes for mixing
-    let P1: u128 = 73856093;
-    let P2: u128 = 19349663;
-    let P3: u128 = 48611;
-
-    // Convert signs to numeric values
-    let sign_x: u128 = if x_neg { 1 } else { 0 };
-    let sign_y: u128 = if y_neg { 1 } else { 0 };
-
-    // Hash the grid indices
-    let mut hash = grid_x * P1 + grid_y * P2 + seed * P3 + sign_x * 7 + sign_y * 13;
-
-    // Additional mixing to break patterns
-    hash = hash ^ (hash >> 8);
-    hash = hash * 31;
-    hash = hash ^ (hash >> 4);
-
-    (hash % 16) as u8
+// Match client: Poseidon2([key, corner_x, corner_y, scale]) % 16 for gradient index 0-15.
+// Corner coordinates are signed (client passes actual coords; we use signed Field).
+fn random(corner_x: u128, corner_y: u128, scale: u128, seed: u128, x_neg: bool, y_neg: bool) -> u8 {
+    let seed_f = seed as Field;
+    let cx_f = corner_x as Field;
+    let cy_f = corner_y as Field;
+    let scale_f = scale as Field;
+    let cx_signed = if x_neg { -cx_f } else { cx_f };
+    let cy_signed = if y_neg { -cy_f } else { cy_f };
+    let h = poseidon2_hash([seed_f, cx_signed, cy_signed, scale_f]);
+    ((h as u128) % 16) as u8
 }
 
 // ========== Gradient Vectors ==========
@@ -178,12 +171,15 @@ fn get_gradient(index: u8) -> (Signed, Signed) {
 
 // ========== Random Gradient ==========
 fn random_gradient_at(point: Coords, scale: u128, seed: u128) -> (Signed, Signed) {
-    // Convert corner coordinates to grid indices by dividing by scale
-    // This gives us small integers that hash well
-    let grid_x = point.x.absi() / scale;
-    let grid_y = point.y.absi() / scale;
-
-    let rand_idx = random(grid_x, grid_y, seed, point.x.is_neg, point.y.is_neg);
+    // Use corner coordinates (matches client: hash(corner.x, corner.y, scale))
+    let rand_idx = random(
+        point.x.absi(),
+        point.y.absi(),
+        scale,
+        seed,
+        point.x.is_neg,
+        point.y.is_neg,
+    );
     get_gradient(rand_idx)
 }
 
@@ -219,8 +215,11 @@ fn dot(offset: Coords, gradient: (Signed, Signed)) -> Signed {
     dotx.add(doty)
 }
 
-// ========== Single Scale Perlin ==========
-fn single_scale_perlin(point: Coords, scale: u128, seed: u128) -> Signed {
+// ========== Single Scale Perlin (raw numerator, no division) ==========
+// Returns the raw weighted-dot-product sum. The caller divides once at the end
+// to avoid intermediate integer truncation that desynchronises with the
+// client's exact-rational (Fraction) arithmetic.
+fn single_scale_perlin_numerator(point: Coords, scale: u128, seed: u128) -> Signed {
     let corners = get_corners(point, scale);
 
     let mut numerator = Signed::zero();
@@ -233,31 +232,38 @@ fn single_scale_perlin(point: Coords, scale: u128, seed: u128) -> Signed {
         let t = d.muli(weight);
         numerator = numerator.add(t);
     }
-
-    numerator.div(Signed::from(1000 * scale * scale))
+    numerator
 }
 
 // ========== Multi-Scale Perlin ==========
+// Matches client: floor((2*v0 + v1 + v2) / 4 * 16) + 16
+// where v_i = N_i / (1000 * s_i^3) is exact rational.
+//
+// Putting everything over a common denominator (64000 * s^3):
+//   2 * N0/(1000*s^3) = 128*N0 / (64000*s^3)
+//   N1/(1000*(2s)^3)  =   8*N1 / (64000*s^3)
+//   N2/(1000*(4s)^3)  =     N2 / (64000*s^3)
+//
+// Multiplied by 16/4 = 4:
+//   (128*N0 + 8*N1 + N2) / (16000 * s^3)
+//
+// result = floor_div(above) + 16
 fn compute_perlin(point: Coords, scale: u128, seed: u128) -> u128 {
-    let mut perlin_val = Signed::zero();
+    let n0 = single_scale_perlin_numerator(point, scale, seed);
+    let n1 = single_scale_perlin_numerator(point, scale * 2, seed);
+    let n2 = single_scale_perlin_numerator(point, scale * 4, seed);
 
-    // Combine 4 scales (matches client exactly)
-    perlin_val = perlin_val.add(single_scale_perlin(point, scale, seed).muli(2));
-    perlin_val = perlin_val.add(single_scale_perlin(point, scale * 2, seed));
-    perlin_val = perlin_val.add(single_scale_perlin(point, scale * 4, seed));
-    perlin_val = perlin_val.add(single_scale_perlin(point, scale * 8, seed));
+    let combined = n0.muli(128).add(n1.muli(8)).add(n2);
+    let divisor = Signed::from(16000 * scale * scale * scale);
+    let floored = combined.floor_div(divisor);
+    let result = floored.add(Signed::from(PERLIN_MAX / 2));
 
-    // Average and normalize to [0, 32]
-    perlin_val = perlin_val.div(Signed::from(4));
-    perlin_val = perlin_val.muli(PERLIN_MAX / 2);
-
-    let result = perlin_val.div(Signed::from(scale)).add(Signed::from(PERLIN_MAX / 2)).absi();
-
-    // Clamp to valid range
-    if result > PERLIN_MAX {
+    if result.is_neg {
+        0
+    } else if result.x > PERLIN_MAX {
         PERLIN_MAX
     } else {
-        result
+        result.x
     }
 }
 

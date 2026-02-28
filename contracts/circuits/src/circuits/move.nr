@@ -87,11 +87,11 @@ pub fn move_proof(
     let dist_max_sq_u128 = dist_max_sq as u128;
     assert(dist_sq_u128 <= dist_max_sq_u128);
 
-    // 4. Source planet hash: Poseidon2(x1, y1, planet_hash_key)
-    let pub1 = poseidon2_hash([x1, y1, planet_hash_key]);
+    // 4. Source planet hash: Poseidon2(planet_hash_key, x1, y1) - matches client poseidon2Hash([planetHashKey, x, y])
+    let pub1 = poseidon2_hash([planet_hash_key, x1, y1]);
 
-    // 5. Destination planet hash: Poseidon2(x2, y2, planet_hash_key)
-    let pub2 = poseidon2_hash([x2, y2, planet_hash_key]);
+    // 5. Destination planet hash: Poseidon2(planet_hash_key, x2, y2) - matches client poseidon2Hash([planetHashKey, x, y])
+    let pub2 = poseidon2_hash([planet_hash_key, x2, y2]);
 
     // 6. Determine coordinate signs for destination and get absolute values
     let x2_negative = is_coord_negative(x2);

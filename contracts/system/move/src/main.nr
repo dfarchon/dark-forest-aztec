@@ -229,7 +229,30 @@ contract Move {
         activated_artifact: Artifact,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            // todo: implement zk checks
+            // Verify move proof: coords (x1,y1)->(x2,y2) produce source_loc, target_loc, target_perlin
+            let r = world.radius as Field;
+            let dist_max = max_dist as Field;
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            // So: x_mirror = perlin_mirror_y, y_mirror = perlin_mirror_x
+            let (expected_source, expected_target, expected_perlin) = circuits::circuits::move::move_proof(
+                r,
+                dist_max,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+                x1,
+                y1,
+                x2,
+                y2,
+            );
+            assert(expected_source == source_loc, "Move proof: source location hash mismatch");
+            assert(expected_target == target_loc, "Move proof: target location hash mismatch");
+            assert(expected_perlin == target_perlin, "Move proof: target perlin mismatch");
         }
 
         let sender = self.msg_sender();
