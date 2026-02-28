@@ -484,8 +484,10 @@ export class WalletManager {
     onStatus?: (msg: string) => void
   ): Promise<boolean> {
     onStatus?.("Checking deployment status...");
-    const existing = await this.node.getContract(accountManager.address);
-    if (existing) return false;
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    if (metadata.isContractInitialized) return false;
 
     onStatus?.("Account not deployed on current network. Deploying...");
     console.info(
@@ -493,30 +495,16 @@ export class WalletManager {
     );
     const deployMethod = await accountManager.getDeployMethod();
     onStatus?.("Waiting for deploy transaction...");
-    try {
-      await deployMethod.send({
-        from: AztecAddress.ZERO,
-        fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(
-            this.sponsoredFpcAddress
-          ),
-        },
-        skipClassPublication: true,
-        skipInstancePublication: true,
-        wait: { timeout: DEPLOY_TIMEOUT_MS },
-      });
-      return true;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("Existing nullifier")) {
-        console.warn(
-          `[WalletManager] Account ${accountManager.address} already deployed (nullifier exists), skipping.`
-        );
-        onStatus?.("Account already deployed.");
-        return false;
-      }
-      throw err;
-    }
+    await deployMethod.send({
+      from: AztecAddress.ZERO,
+      fee: {
+        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
+      },
+      skipClassPublication: true,
+      skipInstancePublication: true,
+      wait: { timeout: DEPLOY_TIMEOUT_MS },
+    });
+    return true;
   }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {
