@@ -104,7 +104,7 @@ export class TxExecutor {
     walletManager: WalletManager,
     indexer: IndexerConnection,
     node: AztecNode,
-    configContract: import("@aztec/aztec.js/contracts").ContractBase,
+    configCache: ConfigCache,
     chainClock: ChainClock,
     beforeQueued?: BeforeQueued,
     beforeTransaction?: BeforeTransaction,
@@ -124,11 +124,6 @@ export class TxExecutor {
 
     const wallet = walletManager.getWallet();
     this.contractResolver = new ContractResolver(wallet);
-
-    const configCache = new ConfigCache(
-      configContract,
-      walletManager.getActiveAddress()!
-    );
 
     this.stateResolver = new StateResolver(
       indexer,

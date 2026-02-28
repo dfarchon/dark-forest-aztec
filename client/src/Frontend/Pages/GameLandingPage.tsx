@@ -557,16 +557,16 @@ export function GameLandingPage() {
           `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
         );
 
+        const configCache = new ConfigCache(
+          configContract,
+          walletManager.getActiveAddress()!
+        );
         const txExecutor = new TxExecutor(
           walletManager,
           indexerConnection,
           node,
-          configContract,
+          configCache,
           chainClock
-        );
-        const configCache = new ConfigCache(
-          configContract,
-          walletManager.getActiveAddress()!
         );
         const contractsAPI = await makeContractsAPI({
           indexerConnection,

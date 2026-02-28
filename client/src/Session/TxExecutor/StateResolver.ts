@@ -29,7 +29,16 @@ import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage
 import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 import { locationIdToDecStr } from "@dfpunk/serde";
-import type { TxIntent, UnconfirmedInit, UnconfirmedMove } from "@dfpunk/types";
+import type {
+  TxIntent,
+  UnconfirmedInit,
+  UnconfirmedMove,
+  UnconfirmedPauseGame,
+  UnconfirmedSetWorldConfig,
+  UnconfirmedUnpauseGame,
+  UnconfirmedUpgrade,
+  UnconfirmedWithdrawSilver,
+} from "@dfpunk/types";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
@@ -183,6 +192,16 @@ export class StateResolver {
         return this.resolveInitializePlayer(intent as UnconfirmedInit);
       case "move":
         return this.resolveMove(intent as UnconfirmedMove);
+      case "upgradePlanet":
+        return this.resolveUpgradePlanet(intent as UnconfirmedUpgrade);
+      case "withdrawSilver":
+        return this.resolveWithdrawSilver(intent as UnconfirmedWithdrawSilver);
+      case "setWorldConfig":
+        return this.resolveSetWorldConfig(intent as UnconfirmedSetWorldConfig);
+      case "pauseGame":
+        return this.resolvePauseGame(intent as UnconfirmedPauseGame);
+      case "unpauseGame":
+        return this.resolveUnpauseGame(intent as UnconfirmedUnpauseGame);
       default:
         throw new Error(
           `StateResolver: method "${intent.methodName}" not implemented`
@@ -559,6 +578,181 @@ export class StateResolver {
       movedArtifactLocation,
       activatedArtifact,
     ];
+  }
+
+  private async resolveUpgradePlanet(
+    intent: UnconfirmedUpgrade
+  ): Promise<unknown[]> {
+    const intentArgs = await intent.args;
+    const [locationIdDec, branchStr] = intentArgs;
+
+    const location = BigInt(String(locationIdDec));
+    const branch = Number(branchStr);
+    if (!Number.isInteger(branch) || branch < 0 || branch >= 3) {
+      throw new Error(
+        `StateResolver.upgradePlanet: invalid branch "${String(branchStr)}"`
+      );
+    }
+
+    await this.chainClock.resync();
+    const config = await this.configCache.getConfig();
+
+    const planetRaw = this.indexer.getPlanet(String(locationIdDec));
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(String(locationIdDec));
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(
+      String(locationIdDec)
+    );
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    let currentLevel = 0;
+    if (branch === 0) currentLevel = planetRaw?.upgrade_state_0 ?? 0;
+    else if (branch === 1) currentLevel = planetRaw?.upgrade_state_1 ?? 0;
+    else currentLevel = planetRaw?.upgrade_state_2 ?? 0;
+    const upgrade = config.upgrades[branch]?.[currentLevel];
+    if (!upgrade) {
+      throw new Error(
+        `StateResolver.upgradePlanet: missing upgrade for branch=${branch} level=${currentLevel}`
+      );
+    }
+
+    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    {
+      const entityTimes: bigint[] = [];
+      if (planetRaw) entityTimes.push(planetRaw.last_updated);
+      if (planetEventsRaw) entityTimes.push(planetEventsRaw.last_updated);
+      if (planetArtifactsRaw) entityTimes.push(planetArtifactsRaw.last_updated);
+      for (const arr of arrivalData.arrivals) {
+        const dt = (arr as Record<string, unknown>).departure_time;
+        if (dt != null && dt !== 0) entityTimes.push(BigInt(String(dt)));
+      }
+      let maxEntityTime = 0n;
+      for (const t of entityTimes) {
+        if (t > maxEntityTime) maxEntityTime = t;
+      }
+      if (maxEntityTime > timestamp) {
+        console.warn(
+          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
+        );
+        timestamp = maxEntityTime;
+      }
+    }
+
+    return [
+      location,
+      branch,
+      timestamp,
+      config.upgradeConfig,
+      upgrade,
+      planet,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      planetArtifacts,
+    ];
+  }
+
+  private async resolveWithdrawSilver(
+    intent: UnconfirmedWithdrawSilver
+  ): Promise<unknown[]> {
+    const intentArgs = await intent.args;
+    const [locationIdDec, amount] = intentArgs;
+
+    const location = BigInt(String(locationIdDec));
+    const silverToWithdraw = BigInt(String(amount));
+
+    await this.chainClock.resync();
+    const config = await this.configCache.getConfig();
+
+    const planetRaw = this.indexer.getPlanet(String(locationIdDec));
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(String(locationIdDec));
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(
+      String(locationIdDec)
+    );
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const playerAddr = this.getPlayerAddress();
+    const playerRaw = this.indexer.getPlayer(playerAddr);
+    const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
+
+    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    {
+      const entityTimes: bigint[] = [];
+      if (planetRaw) entityTimes.push(planetRaw.last_updated);
+      if (planetEventsRaw) entityTimes.push(planetEventsRaw.last_updated);
+      if (planetArtifactsRaw) entityTimes.push(planetArtifactsRaw.last_updated);
+      if (playerRaw) entityTimes.push(playerRaw.last_updated);
+      for (const arr of arrivalData.arrivals) {
+        const dt = (arr as Record<string, unknown>).departure_time;
+        if (dt != null && dt !== 0) entityTimes.push(BigInt(String(dt)));
+      }
+      let maxEntityTime = 0n;
+      for (const t of entityTimes) {
+        if (t > maxEntityTime) maxEntityTime = t;
+      }
+      if (maxEntityTime > timestamp) {
+        console.warn(
+          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
+        );
+        timestamp = maxEntityTime;
+      }
+    }
+
+    return [
+      location,
+      silverToWithdraw,
+      timestamp,
+      config.worldConfig,
+      planet,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      planetArtifacts,
+      playerState,
+    ];
+  }
+
+  private async resolveSetWorldConfig(
+    intent: UnconfirmedSetWorldConfig
+  ): Promise<unknown[]> {
+    return intent.args instanceof Promise ? await intent.args : intent.args;
+  }
+
+  private async resolvePauseGame(
+    _intent: UnconfirmedPauseGame
+  ): Promise<unknown[]> {
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+    return [world];
+  }
+
+  private async resolveUnpauseGame(
+    _intent: UnconfirmedUnpauseGame
+  ): Promise<unknown[]> {
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+    return [world];
   }
 
   // -------------------------------------------------------------------------

@@ -38,7 +38,10 @@ import type {
 import { EventEmitter } from "events";
 
 import type { IndexerConnection } from "../Session/Indexer/IndexerConnection";
-import type { ConfigCache } from "../Session/TxExecutor/ConfigCache";
+import type {
+  ConfigCache,
+  GameConfig,
+} from "../Session/TxExecutor/ConfigCache";
 import type { TxExecutor } from "../Session/TxExecutor/TxExecutor";
 import type { DiagnosticUpdater } from "../Session/TxExecutor/types";
 import type { WalletManager } from "../Session/WalletManager/WalletManager";
@@ -269,6 +272,14 @@ export class ContractsAPI extends EventEmitter {
   public async getConstants(): Promise<ContractConstants> {
     const config = await this.configCache.getConfig();
     return gameConfigToContractConstants(config);
+  }
+
+  public invalidateConfigCache(): void {
+    this.configCache.invalidate();
+  }
+
+  public async getConfig(): Promise<GameConfig> {
+    return this.configCache.getConfig();
   }
 
   // =========================================================================

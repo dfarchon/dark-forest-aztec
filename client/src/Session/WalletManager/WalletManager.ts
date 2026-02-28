@@ -493,16 +493,30 @@ export class WalletManager {
     );
     const deployMethod = await accountManager.getDeployMethod();
     onStatus?.("Waiting for deploy transaction...");
-    await deployMethod.send({
-      from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
-      },
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { timeout: DEPLOY_TIMEOUT_MS },
-    });
-    return true;
+    try {
+      await deployMethod.send({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(
+            this.sponsoredFpcAddress
+          ),
+        },
+        skipClassPublication: true,
+        skipInstancePublication: true,
+        wait: { timeout: DEPLOY_TIMEOUT_MS },
+      });
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Existing nullifier")) {
+        console.warn(
+          `[WalletManager] Account ${accountManager.address} already deployed (nullifier exists), skipping.`
+        );
+        onStatus?.("Account already deployed.");
+        return false;
+      }
+      throw err;
+    }
   }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {

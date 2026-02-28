@@ -59,7 +59,7 @@ import UIEmitter, { UIEmitterEvent } from "../../Frontend/Utils/UIEmitter";
 import { TerminalHandle } from "../../Frontend/Views/Terminal";
 import { MiningPattern } from "../Miner/MiningPatterns";
 import { coordsEqual } from "../Utils/Coordinates";
-import GameManager, { GameManagerEvent } from "./GameManager";
+import GameManager, { GameManagerEvent, type WorldConfig } from "./GameManager";
 import { GameObjects } from "./GameObjects";
 import { PluginManager } from "./PluginManager";
 import TutorialManager, { TutorialState } from "./TutorialManager";
@@ -749,6 +749,22 @@ class GameUIManager extends EventEmitter {
 
   public isAdmin(): boolean {
     return this.gameManager.isAdmin();
+  }
+
+  public setWorldConfig(worldConfig: WorldConfig) {
+    return this.gameManager.setWorldConfig(worldConfig);
+  }
+
+  public pauseGame() {
+    return this.gameManager.pauseGame();
+  }
+
+  public unpauseGame() {
+    return this.gameManager.unpauseGame();
+  }
+
+  public getWorldConfig(): Promise<WorldConfig> {
+    return this.gameManager.getWorldConfig();
   }
 
   // public getTwitter(address: EthAddress | undefined): string | undefined {

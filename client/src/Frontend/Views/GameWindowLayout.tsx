@@ -2,6 +2,7 @@ import { ModalId, ModalName, Setting } from "@dfpunk/types";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 
+import type { Hook } from "../../_types/global/GlobalTypes";
 import { BorderlessPane } from "../Components/CoreUI";
 import {
   CanvasContainer,
@@ -11,6 +12,7 @@ import {
   WindowWrapper,
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
+import { AdminControlsPane } from "../Panes/AdminControlsPane";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
 import { CoordsPane } from "../Panes/CoordsPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
@@ -91,24 +93,31 @@ export function GameWindowLayout({
   const [diagnosticsVisible, setDiagnosticsVisible] = useState<boolean>(
     isModalOpen(ModalName.Diagnostics)
   );
+  const [adminControlsVisible, setAdminControlsVisible] = useState<boolean>(
+    isModalOpen(ModalName.AdminControls)
+  );
 
   const [modalsContainer, setModalsContainer] = useState<
     HTMLDivElement | undefined
   >();
-  const modalsContainerCB = useCallback((node) => {
-    setModalsContainer(node);
+  const modalsContainerCB = useCallback((node: HTMLDivElement | null) => {
+    setModalsContainer(node ?? undefined);
   }, []);
   const [onboardingVisible, setOnboardingVisible] = useBooleanSetting(
     uiManager,
     Setting.NewPlayer
   );
-  const tutorialHook = useBooleanSetting(uiManager, Setting.TutorialOpen);
+  const tutorialHook = useBooleanSetting(
+    uiManager,
+    Setting.TutorialOpen
+  ) as Hook<boolean>;
   const selected = useSelectedPlanet(uiManager).value;
   const [selectedPlanetVisible, setSelectedPlanetVisible] =
     useState<boolean>(!!selected);
 
   const [userTerminalVisibleSetting, setTerminalVisibleSetting] =
     useBooleanSetting(uiManager, Setting.TerminalVisible);
+  const isAdmin = uiManager.isAdmin();
 
   useEffect(() => {
     uiManager.setOverlayContainer(modalsContainer);
@@ -185,6 +194,12 @@ export function GameWindowLayout({
           visible={diagnosticsVisible}
           onClose={() => setDiagnosticsVisible(false)}
         />
+        {isAdmin && (
+          <AdminControlsPane
+            visible={adminControlsVisible}
+            onClose={() => setAdminControlsVisible(false)}
+          />
+        )}
         {modalsContainer && (
           <PluginLibraryPane
             modalsContainer={modalsContainer}
@@ -218,6 +233,11 @@ export function GameWindowLayout({
               setPlayerArtifactsVisible,
             ]}
             planetdexHook={[planetdexVisible, setPlanetdexVisible]}
+            adminControlsHook={
+              isAdmin
+                ? [adminControlsVisible, setAdminControlsVisible]
+                : undefined
+            }
           />
           <CanvasWrapper>
             <ControllableCanvas />

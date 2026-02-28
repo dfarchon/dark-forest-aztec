@@ -11,6 +11,9 @@ export type ContractMethodName =
   | "initializePlayer"
   | "move"
   | "upgradePlanet"
+  | "setWorldConfig"
+  | "pauseGame"
+  | "unpauseGame"
   | "buyHat"
   | "transferPlanet"
   | "findArtifact"
@@ -98,6 +101,18 @@ export type UnconfirmedUpgrade = TxIntent & {
   methodName: "upgradePlanet";
   locationId: LocationId;
   upgradeBranch: number;
+};
+
+export type UnconfirmedSetWorldConfig = TxIntent & {
+  methodName: "setWorldConfig";
+};
+
+export type UnconfirmedPauseGame = TxIntent & {
+  methodName: "pauseGame";
+};
+
+export type UnconfirmedUnpauseGame = TxIntent & {
+  methodName: "unpauseGame";
 };
 
 export type UnconfirmedBuyHat = TxIntent & {
