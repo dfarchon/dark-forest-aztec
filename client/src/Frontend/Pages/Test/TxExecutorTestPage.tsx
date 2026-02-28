@@ -3,6 +3,7 @@
  *
  * Demonstrates the full lifecycle:
  *  1. Initializes WalletManager + IndexerConnection + AztecNode + ConfigContract
+ *     and creates a shared ConfigCache
  *  2. Creates TxExecutor with lifecycle hooks
  *  3. Submit transactions (initializePlayer, move, raw JSON)
  *  4. Track transaction state transitions in real-time
@@ -28,6 +29,7 @@ import {
 import {
   type AfterTransaction,
   type BeforeQueued,
+  ConfigCache,
   type Diagnostics,
   TxExecutor,
 } from "../../../Session/TxExecutor";
@@ -256,11 +258,15 @@ export function TxExecutorTestPage() {
       const chainClock = new ChainClock(node);
       await chainClock.syncFromNode();
 
+      const configCache = new ConfigCache(
+        configContract,
+        walletMgr.getActiveAddress()!
+      );
       const executor = new TxExecutor(
         walletMgr,
         connection,
         node,
-        configContract,
+        configCache,
         chainClock,
         beforeQueued,
         undefined,

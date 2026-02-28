@@ -5,6 +5,7 @@ import { planetHasBonus } from "@dfpunk/hexgen";
 // import { EthConnection } from '@dfpunk/network';
 import { GameGLManager, Renderer } from "@dfpunk/renderer";
 import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -749,6 +750,22 @@ class GameUIManager extends EventEmitter {
 
   public isAdmin(): boolean {
     return this.gameManager.isAdmin();
+  }
+
+  public setWorldConfig(worldConfig: WorldConfig) {
+    return this.gameManager.setWorldConfig(worldConfig);
+  }
+
+  public pauseGame() {
+    return this.gameManager.pauseGame();
+  }
+
+  public unpauseGame() {
+    return this.gameManager.unpauseGame();
+  }
+
+  public getWorldConfig(): Promise<WorldConfig> {
+    return this.gameManager.getWorldConfig();
   }
 
   // public getTwitter(address: EthAddress | undefined): string | undefined {

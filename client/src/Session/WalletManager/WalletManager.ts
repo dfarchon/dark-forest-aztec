@@ -484,8 +484,10 @@ export class WalletManager {
     onStatus?: (msg: string) => void
   ): Promise<boolean> {
     onStatus?.("Checking deployment status...");
-    const existing = await this.node.getContract(accountManager.address);
-    if (existing) return false;
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    if (metadata.isContractInitialized) return false;
 
     onStatus?.("Account not deployed on current network. Deploying...");
     console.info(

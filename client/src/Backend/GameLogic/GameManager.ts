@@ -37,6 +37,7 @@ import {
   locationIdFromBigInt,
   locationIdToDecStr,
 } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -76,9 +77,12 @@ import {
   UnconfirmedInit,
   UnconfirmedInvadePlanet,
   UnconfirmedMove,
+  UnconfirmedPauseGame,
   UnconfirmedPlanetTransfer,
   UnconfirmedProspectPlanet,
   UnconfirmedReveal,
+  UnconfirmedSetWorldConfig,
+  UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
   UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
@@ -153,7 +157,6 @@ function toFr(n: number): Fr {
   const v = BigInt(n);
   return new Fr(v < 0n ? v + Fr.MODULUS : v);
 }
-
 class GameManager extends EventEmitter {
   /**
    * This variable contains the internal state of objects that live in the game world.
@@ -3190,6 +3193,55 @@ class GameManager extends EventEmitter {
       this.getNotificationsManager().txInitError("transferPlanet", e.message);
       throw e;
     }
+  }
+
+  public async setWorldConfig(
+    worldConfig: WorldConfig
+  ): Promise<Transaction<UnconfirmedSetWorldConfig>> {
+    try {
+      const txIntent: UnconfirmedSetWorldConfig = {
+        methodName: "setWorldConfig",
+        args: Promise.resolve([worldConfig]),
+      };
+
+      const tx = await this.contractsAPI.submitTransaction(txIntent);
+
+      return tx;
+    } catch (e) {
+      this.getNotificationsManager().txInitError("setWorldConfig", e.message);
+      throw e;
+    }
+  }
+
+  public async pauseGame(): Promise<Transaction<UnconfirmedPauseGame>> {
+    try {
+      const txIntent: UnconfirmedPauseGame = {
+        methodName: "pauseGame",
+        args: [],
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("pauseGame", e.message);
+      throw e;
+    }
+  }
+
+  public async unpauseGame(): Promise<Transaction<UnconfirmedUnpauseGame>> {
+    try {
+      const txIntent: UnconfirmedUnpauseGame = {
+        methodName: "unpauseGame",
+        args: [],
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("unpauseGame", e.message);
+      throw e;
+    }
+  }
+
+  public async getWorldConfig(): Promise<WorldConfig> {
+    const config = await this.contractsAPI.getConfig();
+    return config.worldConfig as WorldConfig;
   }
 
   /**

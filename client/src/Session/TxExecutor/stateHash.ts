@@ -14,7 +14,7 @@
  *   AztecAddress → bigint  (the inner Field)
  */
 
-import type { Fr } from "@aztec/aztec.js/fields";
+import { Fr } from "@aztec/aztec.js/fields";
 import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import type { Fieldable } from "@aztec/foundation/serialize";
 
@@ -201,9 +201,8 @@ async function computeHash(
   obj: Record<string, unknown>,
   serializeFn: SerializeFn
 ): Promise<Fr> {
-  const { Fr: FrClass } = await import("@aztec/aztec.js/fields");
   const fields = serializeFn(obj);
-  if (isAllZero(fields)) return FrClass.ZERO;
+  if (isAllZero(fields)) return Fr.ZERO;
   return poseidon2Hash(fields);
 }
 

@@ -21,6 +21,7 @@ export interface GameConfig {
   planetDefaultStats: unknown[];
   worldConfig: unknown;
   gameConfigCore: unknown;
+  upgradeConfig: unknown;
   planetLevelThresholds: unknown;
   spaceJunkConfig: unknown;
   planetTypeWeightsTiers: [unknown, unknown, unknown, unknown];
@@ -67,6 +68,7 @@ export class ConfigCache {
       snarkConfig,
       worldConfig,
       gameConfigCore,
+      upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
       tier0,
@@ -78,6 +80,7 @@ export class ConfigCache {
       c.methods.get_snark_config().simulate({ from }),
       c.methods.get_world_config().simulate({ from }),
       c.methods.get_game_config_core().simulate({ from }),
+      c.methods.get_upgrade_config().simulate({ from }),
       c.methods.get_planet_level_thresholds().simulate({ from }),
       c.methods.get_space_junk_config().simulate({ from }),
       c.methods.get_planet_type_weights_tier(0).simulate({ from }),
@@ -122,6 +125,7 @@ export class ConfigCache {
       planetDefaultStats,
       worldConfig,
       gameConfigCore,
+      upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
       planetTypeWeightsTiers: [tier0, tier1, tier2, tier3],

@@ -40,6 +40,18 @@ export default defineConfig({
     esbuildOptions: {
       target: "esnext",
     },
+    include: [
+      "@aztec/aztec.js/fields",
+      "@aztec/aztec.js/addresses",
+      "@aztec/aztec.js/abi",
+      "@aztec/aztec.js/contracts",
+      "@aztec/aztec.js/wallet",
+      "@aztec/foundation/crypto/poseidon",
+      "@aztec/accounts/ecdsa/lazy",
+      "@aztec/accounts/schnorr/lazy",
+      "@aztec/accounts/stub/lazy",
+      "@aztec/protocol-contracts/multi-call-entrypoint/lazy",
+    ],
     exclude: ["@aztec/bb.js", "@aztec/noir-acvm_js", "@aztec/noir-noirc_abi"],
   },
 });

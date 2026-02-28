@@ -6,3 +6,4 @@ export * from "./settings";
 export * from "./tx";
 export * from "./ui";
 export * from "./world";
+export * from "./config";

@@ -18,6 +18,7 @@ export const ModalName = {
   Broadcast: "Broadcast" as ModalName,
   Hats: "Hats" as ModalName,
   Settings: "Settings" as ModalName,
+  AdminControls: "AdminControls" as ModalName,
   YourArtifacts: "YourArtifacts" as ModalName,
   ManageArtifacts: "ManageArtifacts" as ModalName,
   Plugins: "Plugins" as ModalName,
