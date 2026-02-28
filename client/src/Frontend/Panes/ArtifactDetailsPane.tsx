@@ -184,7 +184,7 @@ export function ArtifactDetailsBody({
   }
 
   const account = (addr: EthAddress) => {
-    const twitter = uiManager?.getTwitter(addr);
+    const twitter = uiManager?.getPlayer(addr)?.twitter;
     if (twitter) {
       return "@" + twitter;
     }
@@ -225,7 +225,6 @@ export function ArtifactDetailsBody({
           contractConstants.PHOTOID_ACTIVATION_DELAY * 1000
         }
         ifPassed={"now!"}
-        getNow={() => uiManager.getChainTimeMs()}
       />
     );
   }

@@ -5,7 +5,7 @@ import styled from "styled-components";
 import TutorialManager from "../../Backend/GameLogic/TutorialManager";
 import { Btn } from "../Components/Btn";
 import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
-import { DarkForestTextInput, TextInput } from "../Components/Input";
+import { TextInput } from "../Components/Input";
 import { Slider } from "../Components/Slider";
 import { Green, Red } from "../Components/Text";
 import Viewport, { getDefaultScroll } from "../Game/Viewport";
@@ -145,8 +145,8 @@ export function SettingsPane({
   };
 
   const [scrollSpeed, setScrollSpeed] = useState<number>(DEFAULT_SCROLL);
-  const onScrollChange = (e: Event & React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(e.target.value);
+  const onScrollChange = (e: Event) => {
+    const value = parseFloat((e.target as HTMLInputElement).value);
     if (!isNaN(value)) setScrollSpeed(value);
   };
 
@@ -231,8 +231,8 @@ export function SettingsPane({
           <TextInput
             value={importMapByTextBoxValue}
             placeholder={"Paste map contents here"}
-            onChange={(e: Event & React.ChangeEvent<DarkForestTextInput>) =>
-              setImportMapByTextBoxValue(e.target.value)
+            onChange={(e: Event) =>
+              setImportMapByTextBoxValue((e.target as HTMLInputElement).value)
             }
           />
           <Spacer height={8} />

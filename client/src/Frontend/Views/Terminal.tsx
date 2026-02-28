@@ -58,10 +58,9 @@ export interface TerminalProps {
   promptCharacter: string;
 }
 
-export const Terminal = React.forwardRef<
-  TerminalHandle | undefined,
-  TerminalProps
->(TerminalImpl);
+export const Terminal = React.forwardRef<TerminalHandle, TerminalProps>(
+  TerminalImpl
+);
 
 let terminalLineKey = 0;
 
@@ -111,8 +110,8 @@ function TerminalImpl(
       style = TerminalTextStyle.Sub,
       onClick: (() => void) | undefined = undefined
     ) => {
-      let fragment: JSX.Element;
-      let innerFragment: JSX.Element = <span>{str}</span>;
+      let fragment: React.JSX.Element;
+      let innerFragment: React.JSX.Element = <span>{str}</span>;
 
       if (onClick !== undefined) {
         innerFragment = <Link onClick={onClick}>{innerFragment}</Link>;

@@ -807,7 +807,9 @@ export function GameLandingPage() {
       let res = "";
       try {
         // indrect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
-        res = (1, eval)(input);
+        // Indirect eval for global scope (avoids comma-operator lint)
+        const indirectEval = globalThis.eval;
+        res = indirectEval(input) as string;
         if (res !== undefined) {
           terminal.current?.println(res.toString(), TerminalTextStyle.Text);
         }
@@ -920,7 +922,10 @@ export function GameLandingPage() {
         initRender={initRenderState}
         terminalEnabled={terminalVisible}
       >
-        <Terminal ref={terminalHandle} promptCharacter={"$"} />
+        <Terminal
+          ref={terminalHandle as React.Ref<TerminalHandle>}
+          promptCharacter={"$"}
+        />
       </TerminalWrapper>
       <div ref={topLevelContainer}></div>
     </Wrapper>

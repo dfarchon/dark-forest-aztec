@@ -1,9 +1,8 @@
 import { RECOMMENDED_MODAL_WIDTH } from "@dfpunk/constants";
-import { ModalName } from "@dfpunk/types";
+import { ModalName, type WorldConfig } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
-import type { WorldConfig } from "../../Backend/GameLogic/GameManager";
 import { Btn } from "../Components/Btn";
 import {
   Section,
@@ -200,7 +199,7 @@ export function AdminControlsPane({
           <SectionHeader>Pause / Unpause</SectionHeader>
           <Row>
             <span>Current state</span>
-            <PauseState paused={paused}>
+            <PauseState paused={paused ?? false}>
               {paused ? "PAUSED" : "RUNNING"}
             </PauseState>
           </Row>

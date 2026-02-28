@@ -65,7 +65,7 @@ export function Table<T>({
       <TableElement>
         <thead style={headerStyle}>
           <tr>
-            {headers.map((h: string, colIdx: number) => (
+            {headers.map((h: React.ReactNode, colIdx: number) => (
               <th
                 key={colIdx}
                 style={

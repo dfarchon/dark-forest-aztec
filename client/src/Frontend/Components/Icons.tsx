@@ -1,25 +1,19 @@
 // should be able to be treated as a text element
 import { Planet, UpgradeBranchName } from "@dfpunk/types";
 import { DarkForestIcon, IconType } from "@dfpunk/ui";
-import { createComponent } from "@lit-labs/react";
+import { createComponent } from "@lit/react";
 import React from "react";
 
 import { StatIdx } from "../../_types/global/GlobalTypes";
 import { getPlanetRank, isFullRank } from "../../Backend/Utils/Utils";
 
-// TODO: Decide if this is the best place to register the custom elements
 customElements.define(DarkForestIcon.tagName, DarkForestIcon);
 
-// This wraps the customElement in a React wrapper to make it behave exactly like a React component
-export const Icon = createComponent(
-  React,
-  DarkForestIcon.tagName,
-  DarkForestIcon,
-  {
-    // If we had any, we would map DOM events to React handlers passed in as props. For example:
-    // onClick: 'click'
-  }
-);
+export const Icon = createComponent({
+  react: React,
+  tagName: DarkForestIcon.tagName,
+  elementClass: DarkForestIcon,
+});
 
 // Re-export the IconType abstract type & the "enum" object for easier access
 export { IconType } from "@dfpunk/ui";

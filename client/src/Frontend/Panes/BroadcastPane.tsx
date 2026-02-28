@@ -135,7 +135,6 @@ export function BroadcastPane({
           <TimeUntil
             timestamp={uiManager.getNextBroadcastAvailableTimestamp()}
             ifPassed={"now!"}
-            getNow={() => uiManager.getChainTimeMs()}
           />{" "}
           to reveal another planet.
         </p>

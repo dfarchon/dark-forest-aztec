@@ -38,6 +38,7 @@ export function CapturePlanetButton({
     undefined
   );
   const owned = planetWrapper.value?.owner === account;
+  // @ts-expect-error TODO: getCaptureZoneGenerator not implemented yet (capture feature)
   const captureZoneGenerator = uiManager.getCaptureZoneGenerator();
 
   const canGiveScore = useMemo(() => {
@@ -90,6 +91,7 @@ export function CapturePlanetButton({
 
   const invade = useCallback(() => {
     if (!planetWrapper.value) return;
+    // @ts-expect-error TODO: invadePlanet not implemented yet (capture feature)
     gameManager.invadePlanet(planetWrapper.value.locationId);
   }, [gameManager, planetWrapper]);
 
@@ -138,6 +140,7 @@ export function CapturePlanetButton({
 
   const capture = useCallback(() => {
     if (!planetWrapper.value) return;
+    // @ts-expect-error TODO: capturePlanet not implemented yet (capture feature)
     gameManager.capturePlanet(planetWrapper.value.locationId);
   }, [gameManager, planetWrapper]);
 

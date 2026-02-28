@@ -2495,10 +2495,7 @@ class GameManager extends EventEmitter {
       const txIntent: UnconfirmedFindArtifact = {
         methodName: "findArtifact",
         planetId: planet.locationId,
-        args: this.snarkHelper.getFindArtifactArgs(
-          planet.location.coords.x,
-          planet.location.coords.y
-        ),
+        args: Promise.resolve([]), // TODO: implement findArtifact args
       };
 
       const tx =
@@ -2514,7 +2511,8 @@ class GameManager extends EventEmitter {
               return current.heldArtifactIds
                 .map(this.getArtifactWithId.bind(this))
                 .find(
-                  (a: Artifact) => a?.planetDiscoveredOn === planet.locationId
+                  (a: Artifact | undefined) =>
+                    a?.planetDiscoveredOn === planet.locationId
                 ) as Artifact;
             }
           ).then((foundArtifact) => {
@@ -3132,12 +3130,7 @@ class GameManager extends EventEmitter {
       };
 
       // Always await the submitTransaction so we can catch rejections
-      const tx = await this.contractsAPI.submitTransaction(txIntent, {
-        gasLimit: 500000,
-        value: bigInt(1000000000000000000)
-          .multiply(2 ** planet.hatLevel)
-          .toString(),
-      });
+      const tx = await this.contractsAPI.submitTransaction(txIntent);
 
       return tx;
     } catch (e) {
@@ -3744,7 +3737,9 @@ class GameManager extends EventEmitter {
     );
     const diffEmitter = generateDiffEmitter(disposableEmitter);
     return new Promise((resolve, reject) => {
-      diffEmitter.subscribe(({ current, previous }: Diff<Planet>) => {
+      diffEmitter.subscribe((diff) => {
+        if (!diff) return;
+        const { current, previous } = diff;
         try {
           const predicateResults = predicate({ current, previous });
           if (predicateResults) {

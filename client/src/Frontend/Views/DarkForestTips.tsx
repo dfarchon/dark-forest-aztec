@@ -17,7 +17,7 @@ export function DarkForestTips({
   tips,
   title,
 }: {
-  tips: (JSX.Element | string)[];
+  tips: (React.JSX.Element | string)[];
   title?: string;
 }) {
   const [tipIndex, setTipIndex] = useState(0);

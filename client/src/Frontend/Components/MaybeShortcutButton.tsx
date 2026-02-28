@@ -22,8 +22,10 @@ export function MaybeShortcutButton(
   );
 
   if (disableDefaultShortcuts) {
-    return <Btn {...props} />;
+    return <Btn {...(props as React.ComponentProps<typeof Btn>)} />;
   } else {
-    return <ShortcutBtn {...props} />;
+    return (
+      <ShortcutBtn {...(props as React.ComponentProps<typeof ShortcutBtn>)} />
+    );
   }
 }

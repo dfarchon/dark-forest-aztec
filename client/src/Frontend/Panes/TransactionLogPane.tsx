@@ -349,11 +349,7 @@ function QueuedTransactionsTable({
       <Sub style={{ display: "block", minWidth: "80px" }}>
         <TimeAgo
           date={tx.lastUpdatedAt}
-          formatter={(
-            value: number,
-            unit: TimeAgo.Unit,
-            suffix: TimeAgo.Suffix
-          ) => {
+          formatter={(value: number, unit: string, suffix: string) => {
             let newUnit = unit as string;
 
             if (unit === "second" && value === 0) return "just now";
