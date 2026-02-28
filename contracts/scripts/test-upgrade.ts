@@ -88,6 +88,7 @@ async function loadWorldFromEvents(
         const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
             fromBlock: BlockNumber(from),
             toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['WorldStorage']?.address,
         });
         const events = raw.map((e) => e.event) as {
             id: unknown;
@@ -669,10 +670,7 @@ async function main() {
     console.log('\n🚚 Moving silver from SilverMine -> target planet...');
     const sourceState = await loadPlanetCoreInputs(ctx, silverMineLocation);
     const targetState = await loadPlanetCoreInputs(ctx, location);
-    const worldForMove = await loadWorldFromEvents(ctx);
-    if (!worldForMove) {
-        throw new Error('Could not load latest world state before move');
-    }
+    const worldForMove = (await loadWorldFromEvents(ctx)) ?? world;
 
     const population = toBigint(sourceState.planet.population);
     const populationGrowth = toBigint(sourceState.planet.population_growth);

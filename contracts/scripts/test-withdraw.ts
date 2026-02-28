@@ -82,6 +82,7 @@ async function loadWorldFromEvents(
         const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
             fromBlock: BlockNumber(from),
             toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['WorldStorage']?.address,
         });
         const events = raw.map((e) => e.event) as {
             id: unknown;
@@ -468,7 +469,7 @@ async function main() {
     console.log('   silver_mine_location:', String(silverMineLocation));
     console.log('   location:', String(location));
 
-    let world = (await loadWorldFromEvents(ctx)) ?? {
+    const world = (await loadWorldFromEvents(ctx)) ?? {
         paused: false,
         planet_events_count: 0n,
         radius: 53_000n,
@@ -478,16 +479,6 @@ async function main() {
         player_ids_count: 0n,
         next_change_block: 0,
     };
-    const worldRadiusBeforeInit = toBigint(world.radius);
-    if (worldRadiusBeforeInit === 53_000n) {
-        console.log(
-            '   world is default radius 53000; calling Admin.admin_set_world_radius(53001)...'
-        );
-        await Admin.methods
-            .admin_set_world_radius(53_001n, world)
-            .send(sendOpts(admin));
-        world = { ...world, radius: 53_001n };
-    }
     const worldRadius = toBigint(world.radius);
     console.log(
         `   world radius=${worldRadius}, paused=${Boolean(world.paused)}`
@@ -679,10 +670,7 @@ async function main() {
     console.log('\n🚚 Moving silver from SilverMine -> trading post...');
     const sourceState = await loadPlanetCoreInputs(ctx, silverMineLocation);
     const targetState = await loadPlanetCoreInputs(ctx, location);
-    const worldForMove = await loadWorldFromEvents(ctx);
-    if (!worldForMove) {
-        throw new Error('Could not load latest world state before move');
-    }
+    const worldForMove = (await loadWorldFromEvents(ctx)) ?? world;
 
     const population = toBigint(sourceState.planet.population);
     const populationGrowth = toBigint(sourceState.planet.population_growth);
@@ -876,7 +864,40 @@ async function main() {
     );
 
     const postMovePlanetState = await loadPlanetCoreInputs(ctx, location);
-    const silverAvailable = toBigint(postMovePlanetState.planet.silver);
+    const currentTimestamp = await getL2BlockTimestamp(ctx);
+
+    // Calculate refreshed silver including pending arrivals (lazy update)
+    const calculateRefreshedSilver = (
+        timestamp: bigint,
+        planet: Record<string, unknown>,
+        planetEvents: Record<string, unknown>,
+        arrivals: Record<string, unknown>[]
+    ): bigint => {
+        let silver = toBigint(planet.silver);
+        const silverCap = toBigint(planet.silver_cap);
+        const eventCount = Number(planetEvents.count ?? 0);
+
+        for (let i = 0; i < eventCount && i < arrivals.length; i++) {
+            const arrival = arrivals[i];
+            const arrivalTime = toBigint(arrival.arrival_time);
+            if (arrivalTime > 0n && arrivalTime <= timestamp) {
+                const silverMoved = toBigint(arrival.silver_moved);
+                silver = silver + silverMoved;
+                if (silver > silverCap) silver = silverCap;
+            }
+        }
+        return silver;
+    };
+
+    const silverAvailable = calculateRefreshedSilver(
+        currentTimestamp,
+        postMovePlanetState.planet,
+        postMovePlanetState.planetEvents,
+        postMovePlanetState.arrivals
+    );
+    console.log(
+        `   planet.silver=${toBigint(postMovePlanetState.planet.silver)}, refreshed silver (with arrivals)=${silverAvailable}`
+    );
     if (silverAvailable <= 0n) {
         throw new Error('No silver available to withdraw');
     }

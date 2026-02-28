@@ -97,6 +97,7 @@ async function loadWorldFromEvents(
         const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
             fromBlock: BlockNumber(from),
             toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['WorldStorage']?.address,
         });
         const events = raw.map((e) => e.event) as {
             id: unknown;
