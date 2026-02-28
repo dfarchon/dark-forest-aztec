@@ -13,7 +13,8 @@
     "format": "pnpm -r run format",
     "prepare": "husky",
     "reinstall": "pnpm store prune && pnpm install --force",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:moveProof": "pnpm --filter contracts run test:moveProof"
   },
   "dependencies": {
     "@aztec/accounts": "4.0.0-devnet.2-patch.1",

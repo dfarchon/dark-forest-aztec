@@ -1,17 +1,39 @@
 /**
- * Test script for move proof validation.
+ * Test script for move proof and location proof validation.
  *
- * Computes move circuit outputs (source_hash, target_hash, perlin) using client
- * logic (Poseidon2 + perlin) and validates consistency. Prepares for contract
- * proof verification when ZK checks are enabled.
+ * - Move proof: (x1,y1)->(x2,y2) → sourceHash, targetHash, perlin (matches move_proof circuit).
+ * - Location proof: (x,y) → locationHash, perlin (matches reveal_proof / init_proof for
+ *   reveal_location and initialize_player).
  *
- * Usage:
- *   node --experimental-transform-types scripts/test-moveProof.ts [x1] [y1] [x2] [y2]
- *
- * Default coords: (0, 0) -> (50, 0) (same as test-move)
+ * Usage (from repo root recommended so workspace deps resolve):
+ *   pnpm run test:moveProof              — multiple move + reveal/init location proof tests
+ *   pnpm run test:moveProof [x1] [y1] [x2] [y2]  — single move test + reveal/init tests
  *
  * With --from-chain: loads SnarkConfig from Config contract (requires deploy + configure).
  */
+
+/** [x1, y1, x2, y2] — all valid for r=100, distMax=50 (dest in radius, dist² ≤ distMax²). */
+const MULTI_TEST_CASES: [number, number, number, number][] = [
+    [0, 0, 50, 0],
+    [0, 0, 0, 50],
+    [0, 0, 30, 40],
+    [10, 10, 40, 40],
+    [-10, -10, 20, 20],
+    [50, 0, 0, 0],
+    [5, -5, -5, 5],
+    [-20, 0, 20, 0],
+];
+
+/** [x, y] — coords for reveal_location / initialize_player location-proof tests. */
+const LOCATION_PROOF_COORDS: [number, number][] = [
+    [0, 0],
+    [50, 0],
+    [0, 50],
+    [30, 40],
+    [-10, -10],
+    [99, 0],
+    [0, -70],
+];
 
 import * as dotenv from 'dotenv';
 import path from 'path';
@@ -36,26 +58,154 @@ function toBigint(v: unknown): bigint {
     return BigInt(String(v ?? 0));
 }
 
+type SnarkConfig = {
+    planethash_key: bigint | number;
+    spacetype_key: bigint | number;
+    perlin_length_scale: bigint | number;
+    perlin_mirror_x: boolean;
+    perlin_mirror_y: boolean;
+};
+
+const r = 100n;
+const distMax = 50n;
+
+function checkConstraints(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+): string | null {
+    const distSq = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+    const distMaxSq = Number(distMax) ** 2;
+    const rSq = Number(r) ** 2;
+    const destDistSq = x2 * x2 + y2 * y2;
+    if (destDistSq >= rSq)
+        return `Destination radius check FAIL: (${x2},${y2}) x2²+y2² >= r²`;
+    if (distSq > distMaxSq)
+        return `Distance check FAIL: dist² ${distSq} > distMax² ${distMaxSq}`;
+    return null;
+}
+
+async function runOneMoveProofTest(
+    snarkConfig: SnarkConfig,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    verbose: boolean
+): Promise<string | null> {
+    const fail = checkConstraints(x1, y1, x2, y2);
+    if (fail) return fail;
+
+    const inputs = buildMoveProofInputs(
+        snarkConfig,
+        r,
+        distMax,
+        x1,
+        y1,
+        x2,
+        y2
+    );
+    const outputs = await computeMoveProofOutputs(inputs);
+
+    const validation = validateMoveProofOutputs(
+        outputs.sourceHash,
+        outputs.targetHash,
+        outputs.perlin,
+        outputs
+    );
+    if (!validation.valid)
+        return `Move proof validation: ${validation.mismatches.join('; ')}`;
+
+    const locInputs = buildLocationProofInputs(snarkConfig, x2, y2);
+    const locOutputs = await computeLocationProofOutputs(locInputs);
+    if (locOutputs.locationHash !== outputs.targetHash)
+        return 'Location hash != move targetHash for same coords';
+    if (Math.floor(locOutputs.perlin) !== Math.floor(outputs.perlin))
+        return 'Location perlin != move targetPerlin for same coords';
+
+    const locValidation = validateLocationProofOutputs(
+        locOutputs.locationHash,
+        locOutputs.perlin,
+        locOutputs
+    );
+    if (!locValidation.valid)
+        return `Location proof: ${locValidation.mismatches.join('; ')}`;
+
+    const srcLocOutputs = await computeLocationProofOutputs(
+        buildLocationProofInputs(snarkConfig, x1, y1)
+    );
+    if (srcLocOutputs.locationHash !== outputs.sourceHash)
+        return 'Source locationHash != move sourceHash for same coords';
+
+    if (verbose) {
+        console.log('   sourceHash:', outputs.sourceHash.toString());
+        console.log('   targetHash:', outputs.targetHash.toString());
+        console.log('   perlin:', outputs.perlin);
+    }
+    return null;
+}
+
+/** Single location proof (reveal_location / initialize_player). Returns error string or null. */
+async function runOneLocationProofTest(
+    snarkConfig: SnarkConfig,
+    x: number,
+    y: number
+): Promise<string | null> {
+    const inputs = buildLocationProofInputs(snarkConfig, x, y);
+    const outputs = await computeLocationProofOutputs(inputs);
+    const validation = validateLocationProofOutputs(
+        outputs.locationHash,
+        outputs.perlin,
+        outputs
+    );
+    if (!validation.valid)
+        return `Location proof: ${validation.mismatches.join('; ')}`;
+    return null;
+}
+
+/** Run reveal_location / initialize_player location-proof tests. Returns number of failures. */
+async function runRevealInitLocationProofTests(
+    snarkConfig: SnarkConfig
+): Promise<number> {
+    console.log('\n' + '='.repeat(60));
+    console.log('Reveal location / Init player (location proof) tests');
+    console.log('='.repeat(60));
+    console.log(
+        '   %d coords (locationHash + perlin)',
+        LOCATION_PROOF_COORDS.length
+    );
+    let failed = 0;
+    for (let i = 0; i < LOCATION_PROOF_COORDS.length; i++) {
+        const [x, y] = LOCATION_PROOF_COORDS[i];
+        const err = await runOneLocationProofTest(snarkConfig, x, y);
+        if (err) {
+            console.error('   ❌ (%d,%d): %s', x, y, err);
+            failed++;
+        } else {
+            console.log('   ✓ (%d,%d)', x, y);
+        }
+    }
+    return failed;
+}
+
 async function main() {
     const args = process.argv.slice(2);
     const fromChain = args.includes('--from-chain');
     const rest = args.filter((a) => a !== '--from-chain');
 
-    const x1 = rest[0] != null ? Number(rest[0]) : 0;
-    const y1 = rest[1] != null ? Number(rest[1]) : 0;
-    const x2 = rest[2] != null ? Number(rest[2]) : 50;
-    const y2 = rest[3] != null ? Number(rest[3]) : 0;
+    const singleCoords =
+        rest.length >= 4 &&
+        rest.every((a) => a !== '' && !Number.isNaN(Number(a)))
+            ? ([
+                  Number(rest[0]),
+                  Number(rest[1]),
+                  Number(rest[2]),
+                  Number(rest[3]),
+              ] as [number, number, number, number])
+            : null;
 
-    const r = 100n; // spawn radius
-    const distMax = 50n;
-
-    let snarkConfig: {
-        planethash_key: bigint | number;
-        spacetype_key: bigint | number;
-        perlin_length_scale: bigint | number;
-        perlin_mirror_x: boolean;
-        perlin_mirror_y: boolean;
-    };
+    let snarkConfig: SnarkConfig;
 
     if (fromChain) {
         console.log('📥 Loading SnarkConfig from chain...');
@@ -67,9 +217,15 @@ async function main() {
                 'Config or user not loaded. Run deploy + configure first.'
             );
         }
-        const raw = await Config.methods
+        const raw = (await Config.methods
             .get_snark_config()
-            .simulate({ from: user });
+            .simulate({ from: user })) as {
+            planethash_key: unknown;
+            spacetype_key: unknown;
+            perlin_length_scale: unknown;
+            perlin_mirror_x: unknown;
+            perlin_mirror_y: unknown;
+        };
         snarkConfig = {
             planethash_key: toBigint(raw.planethash_key),
             spacetype_key: toBigint(raw.spacetype_key),
@@ -92,131 +248,99 @@ async function main() {
         console.log('📋 Using default SnarkConfig (SnarkConfig::zero())');
     }
 
-    const inputs = buildMoveProofInputs(
-        snarkConfig,
-        r,
-        distMax,
-        x1,
-        y1,
-        x2,
-        y2
-    );
-
-    console.log('\n📊 Move proof inputs:');
-    console.log('   (x1, y1):', x1, y1, '(source)');
-    console.log('   (x2, y2):', x2, y2, '(destination)');
-    console.log('   r:', r, ', distMax:', distMax);
-
-    // Circuit constraints (same as move.nr)
-    const distSq = (x2 - x1) ** 2 + (y2 - y1) ** 2;
-    const distMaxSq = Number(distMax) ** 2;
-    const rSq = Number(r) ** 2;
-    const destDistSq = x2 * x2 + y2 * y2;
-
-    if (destDistSq >= rSq) {
-        console.error(
-            '\n❌ Destination radius check FAIL: x2²+y2² >= r². Move would be invalid.'
+    if (singleCoords) {
+        const [x1, y1, x2, y2] = singleCoords;
+        console.log(
+            '\n📊 Single move proof test: (%d, %d) -> (%d, %d)',
+            x1,
+            y1,
+            x2,
+            y2
         );
-        process.exit(1);
-    }
-    if (distSq > distMaxSq) {
-        console.error(
-            '\n❌ Distance check FAIL: (x1-x2)²+(y1-y2)² > distMax². Move would be invalid.'
+        console.log('   r:', r, ', distMax:', distMax);
+        const err = await runOneMoveProofTest(
+            snarkConfig,
+            x1,
+            y1,
+            x2,
+            y2,
+            true
         );
-        process.exit(1);
-    }
-    console.log('   ✓ Radius check: x2²+y2² < r²');
-    console.log('   ✓ Distance check: (x1-x2)²+(y1-y2)² <= distMax²');
-
-    console.log('\n🔄 Computing move proof outputs...');
-    const outputs = await computeMoveProofOutputs(inputs);
-
-    console.log('\n📤 Move proof outputs (match circuit move_proof return):');
-    console.log('   sourceHash (sourceLoc):', outputs.sourceHash.toString());
-    console.log('   targetHash (targetLoc):', outputs.targetHash.toString());
-    console.log('   perlin (destination):', outputs.perlin);
-
-    // Self-consistency: validate outputs against themselves
-    const validation = validateMoveProofOutputs(
-        outputs.sourceHash,
-        outputs.targetHash,
-        outputs.perlin,
-        outputs
-    );
-
-    if (validation.valid) {
+        if (err) {
+            console.error('\n❌', err);
+            process.exit(1);
+        }
         console.log('\n✅ Move proof validation PASSED');
-    } else {
-        console.error('\n❌ Move proof validation FAILED:');
-        validation.mismatches.forEach((m) => console.error('   -', m));
-        process.exit(1);
-    }
-
-    console.log('\n💡 Use these values for Move.move() args:');
-    console.log('   sourceLoc:', outputs.sourceHash.toString());
-    console.log('   targetLoc:', outputs.targetHash.toString());
-    console.log('   targetPerlin:', Math.floor(outputs.perlin));
-
-    // -----------------------------------------------------------------------
-    // Location proof (single-location: init / reveal / safe_set_owner)
-    // -----------------------------------------------------------------------
-    console.log('\n' + '='.repeat(60));
-    console.log('Location proof (single-location) tests');
-    console.log('='.repeat(60));
-
-    const locInputs = buildLocationProofInputs(snarkConfig, x2, y2);
-    console.log('\n🔄 Computing location proof for (%d, %d)...', x2, y2);
-    const locOutputs = await computeLocationProofOutputs(locInputs);
-
-    console.log('   locationHash:', locOutputs.locationHash.toString());
-    console.log('   perlin:', locOutputs.perlin);
-
-    // The location hash should match the move proof's target hash (same coords)
-    if (locOutputs.locationHash !== outputs.targetHash) {
-        console.error(
-            '\n❌ Location hash != move target hash for same coords!'
+        console.log(
+            '\n💡 Use sourceLoc / targetLoc / targetPerlin for Move.move() args.'
         );
-        process.exit(1);
+        const singleLocFailed =
+            await runRevealInitLocationProofTests(snarkConfig);
+        if (singleLocFailed > 0) {
+            console.error(
+                '\n❌ %d reveal/init location proof tests FAILED',
+                singleLocFailed
+            );
+            process.exit(1);
+        }
+        console.log('\n✅ All reveal/init location proof tests PASSED');
+        return;
     }
-    console.log('   ✓ locationHash matches move targetHash for same coords');
 
-    if (Math.floor(locOutputs.perlin) !== Math.floor(outputs.perlin)) {
-        console.error(
-            '\n❌ Location perlin != move target perlin for same coords!'
-        );
-        process.exit(1);
-    }
-    console.log('   ✓ perlin matches move targetPerlin for same coords');
-
-    const locValidation = validateLocationProofOutputs(
-        locOutputs.locationHash,
-        locOutputs.perlin,
-        locOutputs
+    console.log(
+        '\n📊 Multiple move proof tests (%d cases)',
+        MULTI_TEST_CASES.length
     );
-    if (locValidation.valid) {
-        console.log('\n✅ Location proof validation PASSED');
-    } else {
-        console.error('\n❌ Location proof validation FAILED:');
-        locValidation.mismatches.forEach((m) => console.error('   -', m));
+    console.log('   r:', r, ', distMax:', distMax);
+    let failed = 0;
+    for (let i = 0; i < MULTI_TEST_CASES.length; i++) {
+        const [x1, y1, x2, y2] = MULTI_TEST_CASES[i];
+        const err = await runOneMoveProofTest(
+            snarkConfig,
+            x1,
+            y1,
+            x2,
+            y2,
+            false
+        );
+        if (err) {
+            console.error(
+                '   ❌ Case %d (%d,%d)->(%d,%d): %s',
+                i + 1,
+                x1,
+                y1,
+                x2,
+                y2,
+                err
+            );
+            failed++;
+        } else {
+            console.log('   ✓ Case %d (%d,%d)->(%d,%d)', i + 1, x1, y1, x2, y2);
+        }
+    }
+    if (failed > 0) {
+        console.error(
+            '\n❌ %d of %d move proof tests FAILED',
+            failed,
+            MULTI_TEST_CASES.length
+        );
         process.exit(1);
     }
+    console.log('\n✅ All %d move proof tests PASSED', MULTI_TEST_CASES.length);
 
-    // Test source coords too
-    const srcLocInputs = buildLocationProofInputs(snarkConfig, x1, y1);
-    const srcLocOutputs = await computeLocationProofOutputs(srcLocInputs);
-    if (srcLocOutputs.locationHash !== outputs.sourceHash) {
+    const locFailed = await runRevealInitLocationProofTests(snarkConfig);
+    if (locFailed > 0) {
         console.error(
-            '\n❌ Source location hash != move source hash for same coords!'
+            '\n❌ %d of %d reveal/init location proof tests FAILED',
+            locFailed,
+            LOCATION_PROOF_COORDS.length
         );
         process.exit(1);
     }
     console.log(
-        '   ✓ source locationHash matches move sourceHash for (%d, %d)',
-        x1,
-        y1
+        '\n✅ All %d reveal/init location proof tests PASSED',
+        LOCATION_PROOF_COORDS.length
     );
-
-    console.log('\n✅ All proof tests PASSED');
 }
 
 main().catch((e) => {
