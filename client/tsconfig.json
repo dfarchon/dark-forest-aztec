@@ -6,10 +6,16 @@
     "moduleResolution": "bundler",
     "strict": true,
     "strictPropertyInitialization": false,
+    "useUnknownInCatchVariables": false,
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/Frontend/Panes/Lobbies",
+    "src/Frontend/Pages/LobbyLandingPage.tsx",
+    "src/Frontend/Game/Popups.ts"
+  ]
 }

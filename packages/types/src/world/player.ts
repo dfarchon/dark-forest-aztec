@@ -14,4 +14,5 @@ export type Player = {
   spaceJunk: number;
   spaceJunkLimit: number;
   claimedShips: boolean;
+  twitter?: string;
 };

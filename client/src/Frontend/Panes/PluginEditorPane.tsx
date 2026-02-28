@@ -11,7 +11,7 @@ import { PluginManager } from "../../Backend/GameLogic/PluginManager";
 import { PLUGIN_TEMPLATE } from "../../Backend/Plugins/PluginTemplate";
 import { Btn } from "../Components/Btn";
 import { Spacer } from "../Components/CoreUI";
-import { DarkForestTextInput, TextInput } from "../Components/Input";
+import { TextInput } from "../Components/Input";
 import dfstyles from "../Styles/dfstyles";
 
 /**
@@ -63,10 +63,8 @@ export function PluginEditorPane({
     setIsOpen(false);
   }
 
-  function onNameInputChange(
-    e: Event & React.ChangeEvent<DarkForestTextInput>
-  ) {
-    setName(e.target.value);
+  function onNameInputChange(e: Event) {
+    setName((e.target as HTMLInputElement).value);
   }
 
   return (

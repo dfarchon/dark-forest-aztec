@@ -13,7 +13,7 @@ interface LoadingBarProps {
 }
 
 export const TextLoadingBar = React.forwardRef<
-  LoadingBarHandle | undefined,
+  LoadingBarHandle,
   LoadingBarProps
 >(TextLoadingBarImpl);
 

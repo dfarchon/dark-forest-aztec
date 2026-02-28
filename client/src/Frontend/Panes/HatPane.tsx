@@ -50,7 +50,7 @@ export function HatPane({
   const planetWrapper = usePlanet(uiManager, planetId);
   const planet = planetWrapper.value;
   const balanceEth = weiToEth(
-    useEmitterValue(uiManager.getEthConnection().myBalance$, 0n)
+    useEmitterValue(uiManager.getEthConnection().myBalance$, 0n) ?? 0n
   );
   const enabled = (planet: Planet): boolean =>
     !planet.transactions?.hasTransaction(isUnconfirmedBuyHatTx) &&

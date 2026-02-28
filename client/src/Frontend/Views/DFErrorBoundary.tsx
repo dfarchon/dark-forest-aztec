@@ -5,10 +5,10 @@ import { Spacer, Underline } from "../Components/CoreUI";
 import { Red } from "../Components/Text";
 
 export class DFErrorBoundary extends React.Component<
-  unknown,
+  React.PropsWithChildren,
   { hasError: boolean }
 > {
-  constructor(props: unknown) {
+  constructor(props: React.PropsWithChildren) {
     super(props);
     this.state = { hasError: false };
   }

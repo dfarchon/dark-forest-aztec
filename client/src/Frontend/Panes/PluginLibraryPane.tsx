@@ -197,11 +197,12 @@ export function PluginLibraryPane({
    * The Dark Forest process list.
    */
   function renderPluginsList() {
-    if (plugins.length === 0) {
+    if (!plugins || plugins.length === 0) {
       return "you have no plugins!";
     }
 
     return (
+      // @ts-expect-error ReactSortable types omit children but component accepts them
       <ReactSortable list={plugins} setList={onPluginReorder}>
         {plugins.map((plugin) => (
           <div key={plugin.id}>
@@ -247,7 +248,7 @@ export function PluginLibraryPane({
     pluginManager.render(pluginId, el);
   }
 
-  const pluginModals = plugins.map((plugin) => {
+  const pluginModals = (plugins ?? []).map((plugin) => {
     return (
       <PluginModal
         key={plugin.id}

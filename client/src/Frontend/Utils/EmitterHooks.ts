@@ -32,8 +32,11 @@ export function useEmitterSubscribe<T>(
  * @param emitter `Monomitter` to subscribe to
  * @param initialVal initial state value
  */
-export function useEmitterValue<T>(emitter: Monomitter<T>, initialVal: T) {
-  const [val, setVal] = useState<T>(initialVal);
+export function useEmitterValue<T>(
+  emitter: Monomitter<T>,
+  initialVal: T | undefined
+): T | undefined {
+  const [val, setVal] = useState<T | undefined>(initialVal);
 
   useEffect(() => {
     const sub = emitter.subscribe((v) => setVal(v));

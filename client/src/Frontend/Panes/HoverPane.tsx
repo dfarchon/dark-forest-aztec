@@ -25,7 +25,7 @@ export function HoverPane({
 }: {
   style?: React.CSSProperties;
   visible: boolean;
-  element: React.ReactChild;
+  element: React.ReactNode;
 }) {
   const paneRef = useRef<HTMLDivElement>(null);
 

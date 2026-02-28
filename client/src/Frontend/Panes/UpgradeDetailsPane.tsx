@@ -107,12 +107,14 @@ export function UpgradeDetailsPane({
       return (
         <TabbedView
           tabTitles={["Defense", "Range", "Speed"]}
-          tabContents={(branch: UpgradeBranchName) => {
-            const currentLevel = planet.upgradeState[branch];
-            const branchAtMaxRank = !planet || planet.upgradeState[branch] >= 4;
+          tabContents={(branch: number) => {
+            const currentLevel =
+              planet.upgradeState[branch as UpgradeBranchName];
+            const branchAtMaxRank =
+              !planet || planet.upgradeState[branch as UpgradeBranchName] >= 4;
             const upgrade = branchAtMaxRank
               ? undefined
-              : uiManager.getUpgrade(branch, currentLevel);
+              : uiManager.getUpgrade(branch as UpgradeBranchName, currentLevel);
 
             const totalLevel = planet.upgradeState.reduce((a, b) => a + b);
             const silverNeeded = Math.floor(
@@ -140,7 +142,7 @@ export function UpgradeDetailsPane({
                   <UpgradePreview
                     upgrade={upgrade}
                     planet={planet}
-                    branchName={branch}
+                    branchName={branch as UpgradeBranchName}
                     cantUpgrade={planetAtMaxRank || branchAtMaxRank}
                   />
                 </SectionPreview>
@@ -160,7 +162,7 @@ export function UpgradeDetailsPane({
                     ) : (
                       <>
                         <Btn
-                          onClick={() => doUpgrade(branch)}
+                          onClick={() => doUpgrade(branch as UpgradeBranchName)}
                           disabled={!canUpgrade}
                         >
                           {"Upgrade"}
@@ -168,7 +170,10 @@ export function UpgradeDetailsPane({
                         {planetAtMaxRank ? (
                           <Red>Planet at Max Rank</Red>
                         ) : branchAtMaxRank ? (
-                          <Red>{upgradeName(branch)} at Max Rank</Red>
+                          <Red>
+                            {upgradeName(branch as UpgradeBranchName)} at Max
+                            Rank
+                          </Red>
                         ) : !enoughSilver ? (
                           <Red>Not Enough Silver</Red>
                         ) : undefined}

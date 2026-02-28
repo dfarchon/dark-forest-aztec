@@ -45,7 +45,7 @@ export class SpaceRenderer
   extends GenericRenderer<typeof SPACE_PROGRAM_DEFINITION>
   implements SpaceRendererType
 {
-  manager: GameGLManager;
+  declare manager: GameGLManager;
   config: PerlinConfig;
 
   posBuffer: number[];

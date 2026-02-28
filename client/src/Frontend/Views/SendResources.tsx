@@ -125,8 +125,8 @@ function ResourceBar({
         value={value}
         step={1}
         disabled={disabled}
-        onChange={(e: Event & React.ChangeEvent<HTMLInputElement>) => {
-          setValue(parseInt(e.target.value, 10));
+        onChange={(e: Event) => {
+          setValue(parseInt((e.target as HTMLInputElement).value, 10));
         }}
       />
     </>
@@ -234,7 +234,7 @@ export function SendResources({
   const disableSliders = isSendingShip || isAbandoning;
 
   const updateEnergySending = useCallback(
-    (energyPercent) => {
+    (energyPercent: number) => {
       if (!locationId) return;
       uiManager.setForcesSending(locationId, energyPercent);
     },
@@ -242,7 +242,7 @@ export function SendResources({
   );
 
   const updateSilverSending = useCallback(
-    (silverPercent) => {
+    (silverPercent: number) => {
       if (!locationId) return;
       uiManager.setSilverSending(locationId, silverPercent);
     },
@@ -250,9 +250,9 @@ export function SendResources({
   );
 
   const updateArtifactSending = useCallback(
-    (sendArtifact) => {
+    (artifact: Artifact | undefined) => {
       if (!locationId) return;
-      uiManager.setArtifactSending(locationId, sendArtifact);
+      uiManager.setArtifactSending(locationId, artifact);
     },
     [uiManager, locationId]
   );
@@ -323,7 +323,7 @@ export function SendResources({
     abandonRow = (
       <AbandonButton
         planet={p.value}
-        abandoning={isAbandoning && !isSendingShip}
+        abandoning={(isAbandoning ?? false) && !isSendingShip}
         toggleAbandoning={onToggleAbandon}
         disabled={isSendingShip}
       />
@@ -345,7 +345,7 @@ export function SendResources({
       <SendRow
         artifact={artifactSending}
         toggleSending={onToggleSendForces}
-        sending={isSendingForces}
+        sending={isSendingForces ?? false}
         disabled={isDisabled}
       />
     );

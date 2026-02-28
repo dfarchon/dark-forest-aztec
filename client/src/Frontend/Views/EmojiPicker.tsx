@@ -21,9 +21,9 @@ export function EmojiPicker({
       {pickerOpen && (
         <EmojiPickerElementContainer>
           <Picker
-            disableSearchBar={true}
-            onEmojiClick={(event, emojiObject) => {
-              setEmoji(emojiObject.emoji);
+            searchDisabled={true}
+            onEmojiClick={(emojiData) => {
+              setEmoji(emojiData.emoji);
               setPickerOpen(false);
             }}
           />

@@ -26,7 +26,7 @@ export class PerlinRenderer
   extends GenericRenderer<typeof PERLIN_PROGRAM_DEFINITION>
   implements PerlinRendererType
 {
-  manager: GameGLManager;
+  declare manager: GameGLManager;
   config: PerlinConfig;
 
   posBuffer: number[];

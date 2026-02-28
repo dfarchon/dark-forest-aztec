@@ -4,7 +4,7 @@ import React, { useState } from "react";
 
 import { Btn } from "../Components/Btn";
 import { Expand, Spacer } from "../Components/CoreUI";
-import { DarkForestTextInput, TextInput } from "../Components/Input";
+import { TextInput } from "../Components/Input";
 import { TwitterLink } from "../Components/Labels/Labels";
 import { LoadingSpinner } from "../Components/LoadingSpinner";
 import { Red } from "../Components/Text";
@@ -55,6 +55,7 @@ export function TwitterVerifyPane({
   const onVerifyClick = async () => {
     try {
       setVerifying(true);
+      // @ts-expect-error TODO: verifyTwitter not implemented yet
       await uiManager?.verifyTwitter(twitterHandleInputValue);
     } catch (e) {
       setError(true);
@@ -88,7 +89,7 @@ export function TwitterVerifyPane({
       initialPosition={{ y: 100, x: window.innerWidth / 2 - 300 }}
       width={RECOMMENDED_MODAL_WIDTH}
     >
-      {user.value !== undefined && user.value.twitter === undefined && (
+      {user.value !== undefined && user.value?.twitter === undefined && (
         <TabbedView
           tabTitles={["Tweet Proof", "Verify Tweet"]}
           tabContents={(i: number) => {
@@ -100,9 +101,9 @@ export function TwitterVerifyPane({
                   <TextInput
                     placeholder="Your Twitter handle"
                     value={twitterHandleInputValue}
-                    onChange={(
-                      e: Event & React.ChangeEvent<DarkForestTextInput>
-                    ) => onTwitterInputChange(e.target.value)}
+                    onChange={(e: Event) =>
+                      onTwitterInputChange((e.target as HTMLInputElement).value)
+                    }
                   />
                   <Spacer height={8} />
                   <Expand />
@@ -120,9 +121,9 @@ export function TwitterVerifyPane({
                   <TextInput
                     placeholder="Your Twitter handle"
                     value={twitterHandleInputValue}
-                    onChange={(
-                      e: Event & React.ChangeEvent<DarkForestTextInput>
-                    ) => onTwitterInputChange(e.target.value)}
+                    onChange={(e: Event) =>
+                      onTwitterInputChange((e.target as HTMLInputElement).value)
+                    }
                   />
                   <Spacer height={8} />
                   <Expand />
@@ -150,9 +151,9 @@ export function TwitterVerifyPane({
         />
       )}
 
-      {user.value !== undefined && user.value.twitter && (
+      {user.value !== undefined && user.value?.twitter && (
         <>
-          You are connected, <TwitterLink twitter={user.value.twitter} />. You
+          You are connected, <TwitterLink twitter={user.value?.twitter} />. You
           can disconnect from twitter anytime by clicking the button below.
           <Spacer height={16} />
           <Btn

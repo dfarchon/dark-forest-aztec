@@ -3,7 +3,7 @@ import {
   DarkForestShortcutButton,
   ShortcutPressedEvent,
 } from "@dfpunk/ui";
-import { createComponent } from "@lit-labs/react";
+import { createComponent } from "@lit/react";
 import React from "react";
 
 customElements.define(DarkForestButton.tagName, DarkForestButton);
@@ -14,23 +14,21 @@ customElements.define(
 
 export { DarkForestButton, DarkForestShortcutButton, ShortcutPressedEvent };
 
-// This wraps the customElement in a React wrapper to make it behave exactly like a React component
-export const Btn = createComponent<
-  DarkForestButton,
-  {
-    onClick: (evt: Event & React.MouseEvent<DarkForestButton>) => void;
-  }
->(React, DarkForestButton.tagName, DarkForestButton, {
-  onClick: "click",
+export const Btn = createComponent({
+  react: React,
+  tagName: DarkForestButton.tagName,
+  elementClass: DarkForestButton,
+  events: {
+    onClick: "click",
+  },
 });
 
-export const ShortcutBtn = createComponent<
-  DarkForestShortcutButton,
-  {
-    onClick: (evt: Event & React.MouseEvent<DarkForestShortcutButton>) => void;
-    onShortcutPressed: (evt: ShortcutPressedEvent) => void;
-  }
->(React, DarkForestShortcutButton.tagName, DarkForestShortcutButton, {
-  onClick: "click",
-  onShortcutPressed: "shortcut-pressed",
+export const ShortcutBtn = createComponent({
+  react: React,
+  tagName: DarkForestShortcutButton.tagName,
+  elementClass: DarkForestShortcutButton,
+  events: {
+    onClick: "click",
+    onShortcutPressed: "shortcut-pressed",
+  },
 });

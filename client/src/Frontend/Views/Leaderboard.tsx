@@ -107,7 +107,7 @@ function LeaderboardTable({
         ]}
         rows={rows}
         columns={[
-          (row: [string, number], i) => (
+          (row: [string, number | undefined], i) => (
             <Cell style={{ color: getRankColor([i, row[1]]) }}>
               {row[1] === undefined || row[1] === null
                 ? "unranked"
@@ -120,7 +120,7 @@ function LeaderboardTable({
               <Cell style={{ color }}>{playerToEntry(row[0], color)}</Cell>
             );
           },
-          (row: [string, number], i) => {
+          (row: [string, number | undefined], i) => {
             return (
               <Cell style={{ color: getRankColor([i, row[1]]) }}>
                 {scoreToString(row[1])}
@@ -185,7 +185,7 @@ function LeaderboardBody({ leaderboard }: { leaderboard: Leaderboard }) {
         return [entry.twitter, entry.score];
       }
 
-      return [entry.ethAddress, entry.score];
+      return [entry.aztecAddr, entry.score];
     }
   );
 

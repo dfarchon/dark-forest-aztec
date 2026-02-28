@@ -82,7 +82,7 @@ export function TxLink({ tx }: { tx: Transaction }) {
       <>
         <u>
           <Link onClick={() => window.open(`${BLOCK_EXPLORER_URL}/${tx.hash}`)}>
-            {tx.hash.substring(0, 7)}
+            {tx.hash.toString().substring(0, 7)}
           </Link>
         </u>
       </>

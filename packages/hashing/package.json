@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@dfpunk/types": "workspace:*",
-    "big-integer": "^1.6.48"
+    "big-integer": "1.6.52"
   },
   "devDependencies": {
     "prettier": "3.7.4",

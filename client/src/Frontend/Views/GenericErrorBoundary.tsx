@@ -3,7 +3,7 @@ import styled from "styled-components";
 
 import { Red } from "../Components/Text";
 
-interface GenericErrorBoundaryProps {
+interface GenericErrorBoundaryProps extends React.PropsWithChildren {
   errorMessage: string;
 }
 
