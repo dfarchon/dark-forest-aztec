@@ -81,8 +81,8 @@ pub fn init_proof(
     let lower_bound_u128 = lower_bound as u128;
     assert(dist_sq_100_u128 > lower_bound_u128);
 
-    // 4. Planet hash: Poseidon2(x, y, planet_hash_key)
-    let planet_hash = poseidon2_hash([x, y, planet_hash_key]);
+    // 4. Planet hash: Poseidon2(planet_hash_key, x, y) - matches client & move circuit
+    let planet_hash = poseidon2_hash([planet_hash_key, x, y]);
 
     // 5. Determine coordinate signs and get absolute values
     let x_negative = is_coord_negative(x);

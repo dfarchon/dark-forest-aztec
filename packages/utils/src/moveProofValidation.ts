@@ -135,6 +135,98 @@ export async function computeMoveProofOutputs(
   return { sourceHash, targetHash, perlin: perlinVal };
 }
 
+// ============================================================================
+// Single-location proof (init / reveal / safe_set_owner)
+// ============================================================================
+
+export interface LocationProofInputs {
+  planetHashKey: bigint;
+  spaceTypeKey: bigint;
+  scale: bigint;
+  xMirror: boolean;
+  yMirror: boolean;
+  x: number;
+  y: number;
+}
+
+export interface LocationProofOutputs {
+  locationHash: bigint;
+  perlin: number;
+}
+
+/**
+ * Build LocationProofInputs from SnarkConfig and coordinates.
+ */
+export function buildLocationProofInputs(
+  snarkConfig: SnarkConfigLike,
+  x: number,
+  y: number,
+): LocationProofInputs {
+  return {
+    planetHashKey: BigInt(snarkConfig.planethash_key),
+    spaceTypeKey: BigInt(snarkConfig.spacetype_key),
+    scale: BigInt(snarkConfig.perlin_length_scale),
+    xMirror: snarkConfig.perlin_mirror_x,
+    yMirror: snarkConfig.perlin_mirror_y,
+    x,
+    y,
+  };
+}
+
+/**
+ * Compute single-location proof outputs (locationHash, perlin).
+ * Matches init_proof / reveal_proof / safe_set_owner ZK checks in Noir.
+ */
+export async function computeLocationProofOutputs(
+  inputs: LocationProofInputs,
+): Promise<LocationProofOutputs> {
+  const locationHash = await computePlanetHash(
+    inputs.planetHashKey,
+    inputs.x,
+    inputs.y,
+  );
+  const perlinVal = await computeSpaceTypePerlin(
+    inputs.x,
+    inputs.y,
+    Number(inputs.spaceTypeKey),
+    Number(inputs.scale),
+    inputs.xMirror,
+    inputs.yMirror,
+  );
+  return { locationHash, perlin: perlinVal };
+}
+
+/**
+ * Validate that computed location proof outputs match expected locationId and perlin.
+ */
+export function validateLocationProofOutputs(
+  expectedLocationId: bigint,
+  expectedPerlin: number,
+  outputs: LocationProofOutputs,
+): { valid: boolean; mismatches: string[] } {
+  const mismatches: string[] = [];
+  if (outputs.locationHash !== expectedLocationId) {
+    mismatches.push(
+      `locationHash mismatch: expected ${expectedLocationId}, got ${outputs.locationHash}`,
+    );
+  }
+  const perlinExpected = Math.floor(expectedPerlin);
+  const perlinGot = Math.floor(outputs.perlin);
+  if (perlinGot !== perlinExpected) {
+    mismatches.push(
+      `perlin mismatch: expected ${perlinExpected}, got ${perlinGot} (raw: ${outputs.perlin})`,
+    );
+  }
+  return {
+    valid: mismatches.length === 0,
+    mismatches,
+  };
+}
+
+// ============================================================================
+// Move proof
+// ============================================================================
+
 /**
  * Build MoveProofInputs from SnarkConfig and move parameters.
  */

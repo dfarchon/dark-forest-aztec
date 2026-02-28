@@ -1048,7 +1048,21 @@ contract Core {
         world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            // todo: implement zk checks
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            let (expected_hash, expected_perlin) = circuits::circuits::reveal::reveal_proof(
+                x,
+                y,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+            );
+            assert(expected_hash == location, "Reveal proof: location hash mismatch");
+            assert(expected_perlin == perlin, "Reveal proof: perlin mismatch");
         }
 
         let sender = self.msg_sender();
@@ -1365,7 +1379,22 @@ contract Core {
         world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            //todo: implement zk checks
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            let (expected_hash, expected_perlin) = circuits::circuits::init::init_proof(
+                radius as Field,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+                x,
+                y,
+            );
+            assert(expected_hash == location_id, "Init proof: location hash mismatch");
+            assert(expected_perlin == perlin, "Init proof: perlin mismatch");
         }
 
         let sender = self.msg_sender();

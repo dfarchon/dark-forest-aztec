@@ -60,8 +60,8 @@ pub fn reveal_proof(
     check_coordinate_range(x);
     check_coordinate_range(y);
 
-    // 2. Planet hash: Poseidon2(x, y, planet_hash_key)
-    let planet_hash = poseidon2_hash([x, y, planet_hash_key]);
+    // 2. Planet hash: Poseidon2(planet_hash_key, x, y) - matches client & move circuit
+    let planet_hash = poseidon2_hash([planet_hash_key, x, y]);
 
     // 3. Determine coordinate signs and get absolute values
     let x_negative = is_coord_negative(x);

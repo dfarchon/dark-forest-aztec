@@ -19,8 +19,11 @@ import { fileURLToPath } from 'url';
 
 import { getTestContext } from './test-setup.ts';
 import {
+    buildLocationProofInputs,
     buildMoveProofInputs,
+    computeLocationProofOutputs,
     computeMoveProofOutputs,
+    validateLocationProofOutputs,
     validateMoveProofOutputs,
 } from './utils/moveProofValidation.ts';
 
@@ -153,6 +156,67 @@ async function main() {
     console.log('   sourceLoc:', outputs.sourceHash.toString());
     console.log('   targetLoc:', outputs.targetHash.toString());
     console.log('   targetPerlin:', Math.floor(outputs.perlin));
+
+    // -----------------------------------------------------------------------
+    // Location proof (single-location: init / reveal / safe_set_owner)
+    // -----------------------------------------------------------------------
+    console.log('\n' + '='.repeat(60));
+    console.log('Location proof (single-location) tests');
+    console.log('='.repeat(60));
+
+    const locInputs = buildLocationProofInputs(snarkConfig, x2, y2);
+    console.log('\n🔄 Computing location proof for (%d, %d)...', x2, y2);
+    const locOutputs = await computeLocationProofOutputs(locInputs);
+
+    console.log('   locationHash:', locOutputs.locationHash.toString());
+    console.log('   perlin:', locOutputs.perlin);
+
+    // The location hash should match the move proof's target hash (same coords)
+    if (locOutputs.locationHash !== outputs.targetHash) {
+        console.error(
+            '\n❌ Location hash != move target hash for same coords!'
+        );
+        process.exit(1);
+    }
+    console.log('   ✓ locationHash matches move targetHash for same coords');
+
+    if (Math.floor(locOutputs.perlin) !== Math.floor(outputs.perlin)) {
+        console.error(
+            '\n❌ Location perlin != move target perlin for same coords!'
+        );
+        process.exit(1);
+    }
+    console.log('   ✓ perlin matches move targetPerlin for same coords');
+
+    const locValidation = validateLocationProofOutputs(
+        locOutputs.locationHash,
+        locOutputs.perlin,
+        locOutputs
+    );
+    if (locValidation.valid) {
+        console.log('\n✅ Location proof validation PASSED');
+    } else {
+        console.error('\n❌ Location proof validation FAILED:');
+        locValidation.mismatches.forEach((m) => console.error('   -', m));
+        process.exit(1);
+    }
+
+    // Test source coords too
+    const srcLocInputs = buildLocationProofInputs(snarkConfig, x1, y1);
+    const srcLocOutputs = await computeLocationProofOutputs(srcLocInputs);
+    if (srcLocOutputs.locationHash !== outputs.sourceHash) {
+        console.error(
+            '\n❌ Source location hash != move source hash for same coords!'
+        );
+        process.exit(1);
+    }
+    console.log(
+        '   ✓ source locationHash matches move sourceHash for (%d, %d)',
+        x1,
+        y1
+    );
+
+    console.log('\n✅ All proof tests PASSED');
 }
 
 main().catch((e) => {

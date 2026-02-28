@@ -124,6 +124,16 @@ export function artifactZero(): Record<string, unknown> {
   };
 }
 
+export function planetRevealedCoordsZero(): Record<string, unknown> {
+  return {
+    location_id: 0n,
+    x: 0n,
+    y: 0n,
+    revealer:
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+  };
+}
+
 export function artifactLocationZero(): Record<string, unknown> {
   return {
     planet_id: 0n,

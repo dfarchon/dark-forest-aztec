@@ -100,6 +100,17 @@ export function serializePlanet(p: Record<string, unknown>): Fieldable[] {
   ];
 }
 
+export function serializePlanetRevealedCoords(
+  prc: Record<string, unknown>
+): Fieldable[] {
+  return [
+    big(prc.location_id),
+    big(prc.x),
+    big(prc.y),
+    addressToField(prc.revealer),
+  ];
+}
+
 export function serializePlanetEvents(
   pe: Record<string, unknown>
 ): Fieldable[] {
@@ -208,6 +219,9 @@ async function computeHash(
 
 export const computePlanetHash = (p: Record<string, unknown>) =>
   computeHash(p, serializePlanet);
+
+export const computePlanetRevealedCoordsHash = (prc: Record<string, unknown>) =>
+  computeHash(prc, serializePlanetRevealedCoords);
 
 export const computePlanetEventsHash = (pe: Record<string, unknown>) =>
   computeHash(pe, serializePlanetEvents);
