@@ -9,7 +9,6 @@
  *   node --experimental-transform-types contracts/scripts/test-upgrade.ts [userIndex]
  * userIndex: 0 = user1, 1 = user2 (default 0)
  */
-import type { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getGasLimits } from '@aztec/aztec.js/contracts';
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
@@ -80,7 +79,7 @@ async function loadWorldFromEvents(
     ctx: TestContext
 ): Promise<Record<string, unknown> | null> {
     const latestBlock = Number(await ctx.node.getBlockNumber());
-    const from = Math.max(0, latestBlock - 200);
+    const from = 0;
     const limit = latestBlock - from + 1;
     try {
         const mod = await import('./artifacts/WorldStorage.ts');
@@ -89,6 +88,7 @@ async function loadWorldFromEvents(
         const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
             fromBlock: BlockNumber(from),
             toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['WorldStorage']?.address,
         });
         const events = raw.map((e) => e.event) as {
             id: unknown;
@@ -124,6 +124,38 @@ async function loadPlanetFromEvents(
         }[];
         const ev = events
             .filter((e) => String(e?.id) === String(locationId))
+            .pop();
+        return ev?.state ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Load latest Player state for playerAddress from PlayerStorage.PlayerUpdate events. */
+async function loadPlayerFromEvents(
+    ctx: TestContext,
+    playerAddress: string
+): Promise<Record<string, unknown> | null> {
+    const latestBlock = Number(await ctx.node.getBlockNumber());
+    const from = 0;
+    const limit = latestBlock - from + 1;
+    const normalized = playerAddress.toLowerCase();
+
+    try {
+        const mod = await import('./artifacts/PlayerStorage.ts');
+        const P = mod.PlayerStorageContract;
+        if (!P?.events?.PlayerUpdate) return null;
+        const raw = await getPublicEvents(ctx.node, P.events.PlayerUpdate, {
+            fromBlock: BlockNumber(from),
+            toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['PlayerStorage']?.address,
+        });
+        const events = raw.map((e) => e.event) as {
+            id: unknown;
+            state?: Record<string, unknown>;
+        }[];
+        const ev = events
+            .filter((e) => String(e?.id).toLowerCase() === normalized)
             .pop();
         return ev?.state ?? null;
     } catch {
@@ -352,6 +384,19 @@ function planetZero(): Record<string, unknown> {
     };
 }
 
+function playerZero(): Record<string, unknown> {
+    return {
+        init_timestamp: 0,
+        home_planet_id: 0n,
+        last_reveal_timestamp: 0,
+        score: 0n,
+        space_junk: 0n,
+        space_junk_limit: 0n,
+        claimed_ships: false,
+        last_updated: 0,
+    };
+}
+
 async function loadPlanetCoreInputs(
     ctx: TestContext,
     location: bigint
@@ -395,38 +440,6 @@ async function advanceChainTime(
     );
 }
 
-async function refreshPlanetPrivateOnce(
-    ctx: TestContext,
-    location: bigint,
-    user: AztecAddress
-): Promise<Record<string, unknown>> {
-    const Core = ctx.contracts['Core'];
-    if (!Core) throw new Error('Core contract not loaded');
-
-    const state = await loadPlanetCoreInputs(ctx, location);
-    await sendTimestampRefreshTx(ctx);
-    const timestamp = await getL2BlockTimestamp(ctx);
-
-    await Core.methods
-        .refresh_planet_private(
-            location,
-            state.planet,
-            state.planetEvents,
-            state.arrivals,
-            state.artifacts,
-            state.artifactLocations,
-            state.planetArtifacts,
-            timestamp
-        )
-        .send(ctx.sendOpts(user));
-
-    const updated = await loadPlanetFromEvents(ctx, location);
-    if (!updated) {
-        throw new Error('Could not reload planet state after refresh_planet');
-    }
-    return updated;
-}
-
 async function main() {
     const userIndex = process.argv[2] === '1' ? 1 : 0;
     const userLabel = userIndex === 0 ? 'user1' : 'user2';
@@ -435,31 +448,191 @@ async function main() {
     const ctx = await getTestContext();
 
     const Core = ctx.contracts['Core'];
+    const Move = ctx.contracts['Move'];
     const Config = ctx.contracts['Config'];
     const Admin = ctx.contracts['Admin'];
-    if (!Core || !Config || !Admin) {
-        throw new Error('Core, Config, or Admin contract not loaded');
+    if (!Core || !Move || !Config || !Admin) {
+        throw new Error('Core, Move, Config, or Admin contract not loaded');
     }
 
     const { admin, users } = ctx.accounts;
     const user = users[userIndex];
     const sendOpts = ctx.sendOpts;
+    const runTag = BigInt(Number(await ctx.node.getBlockNumber()) % 1_000_000);
 
-    const location = (20_000_000n << 216n) | (255n << 64n);
+    const silverMineLocation =
+        ((40_000_000n + BigInt(userIndex) * 1_000_000n + runTag) << 216n) |
+        (255n << 64n);
+    const location =
+        ((20_000_000n + BigInt(userIndex) * 1_000_000n + runTag) << 216n) |
+        (255n << 64n);
     const branch = 0; // Defense
 
     console.log('✅ Core at:', Core.address.toString());
+    console.log('✅ Move at:', Move.address.toString());
     console.log('✅ Config at:', Config.address.toString());
     console.log('✅ Admin at:', Admin.address.toString());
     console.log('✅ Player (' + userLabel + '):', user.toString());
+    console.log('   silver_mine_location:', String(silverMineLocation));
     console.log('   location:', String(location));
 
-    const world = await loadWorldFromEvents(ctx);
-    if (world != null) {
+    let world = (await loadWorldFromEvents(ctx)) ?? {
+        paused: false,
+        planet_events_count: 0n,
+        radius: 53_000n,
+        misc_nonce: 0n,
+        planet_ids_count: 0n,
+        revealed_planet_ids_count: 0n,
+        player_ids_count: 0n,
+        next_change_block: 0,
+    };
+    const worldRadiusBeforeInit = toBigint(world.radius);
+    if (worldRadiusBeforeInit === 53_000n) {
         console.log(
-            `   world radius=${toBigint(world.radius)}, paused=${Boolean(world.paused)}`
+            '   world is default radius 53000; calling Admin.admin_set_world_radius(53001)...'
+        );
+        await Admin.methods
+            .admin_set_world_radius(53_001n, world)
+            .send(sendOpts(admin));
+        world = { ...world, radius: 53_001n };
+    }
+    const worldRadius = toBigint(world.radius);
+    console.log(
+        `   world radius=${worldRadius}, paused=${Boolean(world.paused)}`
+    );
+
+    console.log('\n📥 Loading move configs...');
+    const snarkConfig = await Config.methods
+        .get_snark_config()
+        .simulate({ from: user });
+    const planetDefaultStats = await Config.methods
+        .get_planet_default_stats(1)
+        .simulate({ from: user });
+    const planetDefaultStatsLevel0 = await Config.methods
+        .get_planet_default_stats(0)
+        .simulate({ from: user });
+    const worldConfig = await Config.methods
+        .get_world_config()
+        .simulate({ from: user });
+    const gameConfigCore = await Config.methods
+        .get_game_config_core()
+        .simulate({ from: user });
+    const planetLevelThresholds = await Config.methods
+        .get_planet_level_thresholds()
+        .simulate({ from: user });
+    const spaceJunkConfig = await Config.methods
+        .get_space_junk_config()
+        .simulate({ from: user });
+    const tier0 = await Config.methods
+        .get_planet_type_weights_tier(0)
+        .simulate({ from: user });
+    const tier1 = await Config.methods
+        .get_planet_type_weights_tier(1)
+        .simulate({ from: user });
+    const tier2 = await Config.methods
+        .get_planet_type_weights_tier(2)
+        .simulate({ from: user });
+    const tier3 = await Config.methods
+        .get_planet_type_weights_tier(3)
+        .simulate({ from: user });
+
+    let playerState = await loadPlayerFromEvents(ctx, user.toString());
+    if (!playerState || toBigint(playerState.init_timestamp) === 0n) {
+        console.log('\n🧭 Initializing player state for this user...');
+        const level = 0;
+        const radius = 0n;
+        const locationId =
+            ((10_000_000n + BigInt(userIndex)) << 216n) | (255n << 64n);
+        const perlin = 13;
+        const x = 0n;
+        const y = 0n;
+        const initPlanetState = planetZero();
+        const initPlayerState = playerZero();
+
+        await sendTimestampRefreshTx(ctx);
+        const initTimestamp = await getL2BlockTimestamp(ctx);
+
+        const initArgs = [
+            x,
+            y,
+            radius,
+            locationId,
+            perlin,
+            level,
+            initTimestamp,
+            snarkConfig,
+            planetDefaultStatsLevel0,
+            worldConfig,
+            gameConfigCore,
+            planetLevelThresholds,
+            spaceJunkConfig,
+            tier0,
+            tier1,
+            tier2,
+            tier3,
+            initPlanetState,
+            initPlayerState,
+            world,
+        ] as const;
+
+        try {
+            await Core.methods
+                .initialize_player(...initArgs)
+                .simulate(sendOpts(user));
+            await Core.methods
+                .initialize_player(...initArgs)
+                .send(sendOpts(user));
+            playerState = await loadPlayerFromEvents(ctx, user.toString());
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (
+                msg.includes('already initialized') ||
+                msg.includes('init_timestamp')
+            ) {
+                playerState = await loadPlayerFromEvents(ctx, user.toString());
+            } else {
+                throw e;
+            }
+        }
+    }
+    if (!playerState || toBigint(playerState.init_timestamp) === 0n) {
+        throw new Error(
+            `Player state for ${user.toString()} is still uninitialized after auto-initialize`
         );
     }
+    console.log(
+        `   player init_timestamp=${toBigint(playerState.init_timestamp)}`
+    );
+
+    console.log('\n⛏️ Creating level 1 SilverMine (planet_type=1)...');
+    await Admin.methods
+        .create_planet({
+            location: silverMineLocation,
+            perlin: 13,
+            level: 1,
+            planet_type: 1,
+            require_valid_location_id: false,
+        })
+        .send(sendOpts(admin));
+
+    let silverMine = await loadPlanetFromEvents(ctx, silverMineLocation);
+    if (!silverMine) {
+        throw new Error('Could not load created SilverMine from events');
+    }
+    console.log(
+        `   owner(before set_owner)=${String(silverMine.owner)} silver=${toBigint(silverMine.silver)}`
+    );
+
+    console.log('\n👤 Setting SilverMine owner to test user...');
+    await Admin.methods
+        .set_owner(silverMineLocation, silverMine, user)
+        .send(sendOpts(admin));
+
+    silverMine = await loadPlanetFromEvents(ctx, silverMineLocation);
+    if (!silverMine) {
+        throw new Error('Could not load SilverMine after set_owner');
+    }
+    console.log(`   owner(after set_owner)=${String(silverMine.owner)}`);
 
     console.log('\n🪐 Creating level 1 regular planet (planet_type=0)...');
     await Admin.methods
@@ -474,44 +647,210 @@ async function main() {
 
     let planet = await loadPlanetFromEvents(ctx, location);
     if (!planet) {
-        throw new Error('Could not load created planet from events');
+        throw new Error('Could not load created target planet from events');
     }
     console.log(
         `   owner(before set_owner)=${String(planet.owner)} silver=${toBigint(planet.silver)}`
     );
 
-    console.log('\n👤 Setting planet owner to test user...');
+    console.log('\n👤 Setting target planet owner to test user...');
     await Admin.methods.set_owner(location, planet, user).send(sendOpts(admin));
 
     planet = await loadPlanetFromEvents(ctx, location);
     if (!planet) {
-        throw new Error('Could not load planet after set_owner');
+        throw new Error('Could not load target planet after set_owner');
     }
     console.log(`   owner(after set_owner)=${String(planet.owner)}`);
 
-    console.log('\n⏱️ Advancing chain time to accumulate silver...');
-    await advanceChainTime(ctx, 5n);
+    console.log('\n⏱️ Advancing chain time so SilverMine can grow...');
+    await advanceChainTime(ctx, 30n);
 
-    console.log('🔄 Calling Core.refresh_planet_private...');
-    planet = await refreshPlanetPrivateOnce(ctx, location, user);
-    let silver = toBigint(planet.silver);
-    console.log(`   silver(after refresh #1)=${silver}`);
+    console.log('📥 Loading current SilverMine + target states...');
 
-    if (silver === 0n) {
+    console.log('\n🚚 Moving silver from SilverMine -> target planet...');
+    const sourceState = await loadPlanetCoreInputs(ctx, silverMineLocation);
+    const targetState = await loadPlanetCoreInputs(ctx, location);
+    const worldForMove = (await loadWorldFromEvents(ctx)) ?? world;
+
+    const population = toBigint(sourceState.planet.population);
+    const populationGrowth = toBigint(sourceState.planet.population_growth);
+    const populationCap = toBigint(sourceState.planet.population_cap);
+    const silver = toBigint(sourceState.planet.silver);
+    const silverGrowth = toBigint(sourceState.planet.silver_growth);
+    const silverCap = toBigint(sourceState.planet.silver_cap);
+    const sourceLastUpdated = toBigint(sourceState.planet.last_updated);
+    const range = toBigint(sourceState.planet.range);
+    const maxDist = 1n;
+    const effectiveDistTimesHundred = maxDist * 100n;
+    const decayRangeTimesHundred = range * 455n;
+    const distanceRatio =
+        decayRangeTimesHundred === 0n ||
+        effectiveDistTimesHundred >= decayRangeTimesHundred
+            ? 100n
+            : (effectiveDistTimesHundred * 100n) / decayRangeTimesHundred;
+    const remainingRatio = distanceRatio >= 100n ? 0n : 100n - distanceRatio;
+    const debuff = populationCap / 20n;
+    const minPopForArrival =
+        remainingRatio > 0n ? (debuff * 100n) / remainingRatio + 1n : 0n;
+
+    await sendTimestampRefreshTx(ctx);
+    let moveTimestamp = await getL2BlockTimestamp(ctx);
+    let elapsedSeconds =
+        moveTimestamp > sourceLastUpdated
+            ? moveTimestamp - sourceLastUpdated
+            : 0n;
+    let projectedPopulation =
+        population + populationGrowth * elapsedSeconds > populationCap
+            ? populationCap
+            : population + populationGrowth * elapsedSeconds;
+    let projectedSilver =
+        silver + silverGrowth * elapsedSeconds > silverCap
+            ? silverCap
+            : silver + silverGrowth * elapsedSeconds;
+
+    if (projectedPopulation <= minPopForArrival) {
+        if (populationGrowth === 0n) {
+            throw new Error(
+                `SilverMine population ${projectedPopulation} is below minimum required ${minPopForArrival} and cannot grow`
+            );
+        }
+        const neededGrowth = minPopForArrival + 1n - projectedPopulation;
+        const extraSeconds =
+            (neededGrowth + populationGrowth - 1n) / populationGrowth;
         console.log(
-            '   silver is still 0; advancing more time and refreshing again...'
+            `   population too low (${projectedPopulation}); advancing +${extraSeconds + 1n}s to reach move threshold`
         );
-        await advanceChainTime(ctx, 20n);
-        planet = await refreshPlanetPrivateOnce(ctx, location, user);
-        silver = toBigint(planet.silver);
-        console.log(`   silver(after refresh #2)=${silver}`);
+        await advanceChainTime(ctx, extraSeconds + 1n);
+        await sendTimestampRefreshTx(ctx);
+        moveTimestamp = await getL2BlockTimestamp(ctx);
+        elapsedSeconds =
+            moveTimestamp > sourceLastUpdated
+                ? moveTimestamp - sourceLastUpdated
+                : 0n;
+        projectedPopulation =
+            population + populationGrowth * elapsedSeconds > populationCap
+                ? populationCap
+                : population + populationGrowth * elapsedSeconds;
+        projectedSilver =
+            silver + silverGrowth * elapsedSeconds > silverCap
+                ? silverCap
+                : silver + silverGrowth * elapsedSeconds;
     }
 
-    if (silver <= 0n) {
+    if (projectedPopulation <= minPopForArrival) {
         throw new Error(
-            'Planet silver is still 0 after refresh attempts. Cannot test upgrade_planet.'
+            `SilverMine population ${projectedPopulation} is below minimum required ${minPopForArrival} for a successful move`
         );
     }
+
+    const popMoved =
+        projectedPopulation > minPopForArrival
+            ? projectedPopulation > minPopForArrival + 10_000n
+                ? minPopForArrival + 10_000n
+                : projectedPopulation - 1n
+            : 0n;
+    if (popMoved === 0n) {
+        throw new Error('SilverMine has no population to move');
+    }
+
+    const silverMoved = projectedSilver;
+    if (silverMoved === 0n) {
+        throw new Error('SilverMine has no silver to move');
+    }
+    console.log(`   pop_moved=${popMoved}, silver_moved=${silverMoved}`);
+
+    const targetPerlin = 13;
+    const targetLevel = 1;
+    const targetRadius = toBigint(worldForMove.radius);
+    const x1 = 0n;
+    const y1 = 0n;
+    const x2 = maxDist;
+    const y2 = 0n;
+    const movedArtifactId = 0n;
+    const activatedArtifactId = 0n;
+    const isAbandoning = false;
+    const movedArtifact = artifactZero();
+    const movedArtifactLocation = artifactLocationZero();
+    const activatedArtifact = artifactZero();
+
+    const buildMoveArgs = (timestamp: bigint) =>
+        [
+            silverMineLocation,
+            location,
+            targetPerlin,
+            targetLevel,
+            targetRadius,
+            maxDist,
+            x1,
+            y1,
+            x2,
+            y2,
+            popMoved,
+            silverMoved,
+            movedArtifactId,
+            activatedArtifactId,
+            isAbandoning,
+            timestamp,
+            snarkConfig,
+            planetDefaultStats,
+            worldConfig,
+            gameConfigCore,
+            planetLevelThresholds,
+            spaceJunkConfig,
+            tier0,
+            tier1,
+            tier2,
+            tier3,
+            sourceState.planet,
+            sourceState.planetEvents,
+            sourceState.arrivals,
+            sourceState.artifacts,
+            sourceState.artifactLocations,
+            sourceState.planetArtifacts,
+            targetState.planet,
+            targetState.planetEvents,
+            targetState.arrivals,
+            targetState.artifacts,
+            targetState.artifactLocations,
+            targetState.planetArtifacts,
+            worldForMove,
+            movedArtifact,
+            movedArtifactLocation,
+            activatedArtifact,
+        ] as const;
+
+    let moveCompleted = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        const moveArgs = buildMoveArgs(moveTimestamp);
+        try {
+            const movePayload = await Move.methods
+                .move(...moveArgs)
+                .request(sendOpts(user));
+            await Move.wallet.simulateTx(movePayload, { from: user });
+            console.log(`   ✅ Move.simulate passed (attempt ${attempt}).`);
+            await Move.methods.move(...moveArgs).send(sendOpts(user));
+            moveCompleted = true;
+            break;
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes('Timestamp too old') && attempt < 3) {
+                console.warn(
+                    `   ⚠️ Move failed with stale timestamp — retrying (attempt ${attempt + 1})...`
+                );
+                await sendTimestampRefreshTx(ctx);
+                moveTimestamp = await getL2BlockTimestamp(ctx);
+                continue;
+            }
+            console.error('   ❌ Move failed:', msg);
+            process.exit(1);
+        }
+    }
+    if (!moveCompleted) {
+        throw new Error('Failed to execute move after retries');
+    }
+
+    console.log('⏱️ Advancing chain time past arrival...');
+    await advanceChainTime(ctx, 2n);
 
     console.log('\n📥 Loading upgrade config...');
     const upgradeConfig = await Config.methods
@@ -524,75 +863,92 @@ async function main() {
         `   max_branch_level=${toBigint(upgradeConfig.max_branch_level)}, silver_cost_percent=${toBigint(upgradeConfig.silver_cost_percent)}`
     );
 
-    const state = await loadPlanetCoreInputs(ctx, location);
-
-    console.log('\n🔄 Refreshing timestamp before upgrade...');
-    await sendTimestampRefreshTx(ctx);
-    const timestamp = await getL2BlockTimestamp(ctx);
-
-    const upgradeArgs = [
-        location,
-        branch,
-        timestamp,
-        upgradeConfig,
-        upgrade,
-        state.planet,
-        state.planetEvents,
-        state.arrivals,
-        state.artifacts,
-        state.artifactLocations,
-        state.planetArtifacts,
-    ] as const;
-
     console.log('\n🎮 Calling Core.upgrade_planet() (private)...');
-    console.log(`   branch=${branch}, timestamp=${timestamp}`);
 
-    try {
-        const payload = await Core.methods
-            .upgrade_planet(...upgradeArgs)
-            .request(sendOpts(user));
-        const txSimResult = await Core.wallet.simulateTx(payload, {
-            from: user,
-        });
-        console.log('   ✅ Simulate passed.');
+    let state: Awaited<ReturnType<typeof loadPlanetCoreInputs>> | null = null;
+    let txSimResult: Awaited<ReturnType<typeof Core.wallet.simulateTx>> | null =
+        null;
+    let receipt: unknown = null;
 
-        const gasUsed = txSimResult.gasUsed;
-        const suggestedLimits = getGasLimits(txSimResult, 0.1);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        state = await loadPlanetCoreInputs(ctx, location);
 
-        console.log('\n⛽ Gas used:');
+        console.log('\n🔄 Refreshing timestamp before upgrade...');
+        await sendTimestampRefreshTx(ctx);
+        const timestamp = await getL2BlockTimestamp(ctx);
+
+        const upgradeArgs = [
+            location,
+            branch,
+            timestamp,
+            upgradeConfig,
+            upgrade,
+            state.planet,
+            state.planetEvents,
+            state.arrivals,
+            state.artifacts,
+            state.artifactLocations,
+            state.planetArtifacts,
+        ] as const;
+
         console.log(
-            `   totalGas:  DA=${gasUsed.totalGas.daGas}  L2=${gasUsed.totalGas.l2Gas}`
+            `   branch=${branch}, timestamp=${timestamp}, attempt=${attempt}`
         );
-        console.log(
-            `   teardown:  DA=${gasUsed.teardownGas.daGas}  L2=${gasUsed.teardownGas.l2Gas}`
-        );
-        console.log(
-            `   publicGas: DA=${gasUsed.publicGas.daGas}  L2=${gasUsed.publicGas.l2Gas}`
-        );
-        console.log(
-            `   billedGas: DA=${gasUsed.billedGas.daGas}  L2=${gasUsed.billedGas.l2Gas}`
-        );
-        console.log('\n⛽ Suggested gas limits (10% pad):');
-        console.log(
-            `   gasLimits:         DA=${suggestedLimits.gasLimits.daGas}  L2=${suggestedLimits.gasLimits.l2Gas}`
-        );
-        console.log(
-            `   teardownGasLimits: DA=${suggestedLimits.teardownGasLimits.daGas}  L2=${suggestedLimits.teardownGasLimits.l2Gas}`
-        );
-    } catch (e: unknown) {
-        console.error(
-            '   ❌ Simulate failed:',
-            e instanceof Error ? e.message : e
-        );
-        process.exit(1);
+
+        try {
+            const payload = await Core.methods
+                .upgrade_planet(...upgradeArgs)
+                .request(sendOpts(user));
+            txSimResult = await Core.wallet.simulateTx(payload, {
+                from: user,
+            });
+            console.log('   ✅ Simulate passed.');
+
+            receipt = await Core.methods
+                .upgrade_planet(...upgradeArgs)
+                .send(sendOpts(user));
+            break;
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes('Timestamp too old') && attempt < 3) {
+                console.warn(`   ⚠️ ${msg} — retrying with fresh timestamp...`);
+                continue;
+            }
+            console.error('   ❌ upgrade_planet failed:', msg);
+            process.exit(1);
+        }
     }
+
+    if (!state || !txSimResult || !receipt) {
+        throw new Error('Failed to execute upgrade_planet after retries');
+    }
+
+    const gasUsed = txSimResult.gasUsed;
+    const suggestedLimits = getGasLimits(txSimResult, 0.1);
+
+    console.log('\n⛽ Gas used:');
+    console.log(
+        `   totalGas:  DA=${gasUsed.totalGas.daGas}  L2=${gasUsed.totalGas.l2Gas}`
+    );
+    console.log(
+        `   teardown:  DA=${gasUsed.teardownGas.daGas}  L2=${gasUsed.teardownGas.l2Gas}`
+    );
+    console.log(
+        `   publicGas: DA=${gasUsed.publicGas.daGas}  L2=${gasUsed.publicGas.l2Gas}`
+    );
+    console.log(
+        `   billedGas: DA=${gasUsed.billedGas.daGas}  L2=${gasUsed.billedGas.l2Gas}`
+    );
+    console.log('\n⛽ Suggested gas limits (10% pad):');
+    console.log(
+        `   gasLimits:         DA=${suggestedLimits.gasLimits.daGas}  L2=${suggestedLimits.gasLimits.l2Gas}`
+    );
+    console.log(
+        `   teardownGasLimits: DA=${suggestedLimits.teardownGasLimits.daGas}  L2=${suggestedLimits.teardownGasLimits.l2Gas}`
+    );
 
     const beforeSilver = toBigint(state.planet.silver);
     const beforeUpgrade0 = toBigint(state.planet.upgrade_state_0);
-
-    const receipt = await Core.methods
-        .upgrade_planet(...upgradeArgs)
-        .send(sendOpts(user));
 
     const blockNumber =
         receipt &&

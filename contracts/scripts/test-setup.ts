@@ -335,7 +335,7 @@ export async function getTestContext(): Promise<TestContext> {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    const admin = await loadAccountFromEnv(wallet);
+    const admin = await loadAccountFromEnv(wallet, aztecNode);
 
     let user1: AztecAddress;
     let user2: AztecAddress;
@@ -343,8 +343,16 @@ export async function getTestContext(): Promise<TestContext> {
         const saved = JSON.parse(
             fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')
         ) as TestAccountsFile;
-        user1 = await loadAccountFromCredentials(wallet, saved.user1);
-        user2 = await loadAccountFromCredentials(wallet, saved.user2);
+        user1 = await loadAccountFromCredentials(
+            wallet,
+            saved.user1,
+            aztecNode
+        );
+        user2 = await loadAccountFromCredentials(
+            wallet,
+            saved.user2,
+            aztecNode
+        );
     } else {
         const cred1 = await createAccountWithCredentials(wallet);
         user1 = AztecAddress.fromString(cred1.address);
@@ -361,6 +369,24 @@ export async function getTestContext(): Promise<TestContext> {
             JSON.stringify({ user1: cred1, user2: cred2 }, null, 2),
             'utf-8'
         );
+    }
+
+    // Ensure account contracts are known senders so account-auth notes can be discovered
+    // even when using a fresh local PXE store.
+    try {
+        await wallet.registerSender(admin, 'admin-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user1, 'user1-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user2, 'user2-self');
+    } catch {
+        /* ignore */
     }
 
     const contracts = await getContractInstances(

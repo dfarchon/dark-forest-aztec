@@ -211,7 +211,7 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Getting or creating deployer account...');
-    const deployer = await getOrCreateAccount(wallet);
+    const deployer = await getOrCreateAccount(wallet, aztecNode);
     console.log(`✅ Deployer: ${deployer.toString()}\n`);
 
     const scriptDir = path.dirname(new URL(import.meta.url).pathname);

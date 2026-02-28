@@ -57,7 +57,7 @@ async function main() {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    const admin = await loadAccountFromEnv(wallet);
+    const admin = await loadAccountFromEnv(wallet, aztecNode);
     const contracts = await getContractInstances(
         wallet,
         { Admin: adminAddr },

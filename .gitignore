@@ -119,3 +119,5 @@ docs/
 contracts-v1/
 contracts-v2/
 packages/network/
+
+wallet_data*

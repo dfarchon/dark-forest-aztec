@@ -144,6 +144,7 @@ async function loadWorldFromEvents(
         {
             fromBlock: BlockNumber(from),
             toBlock: BlockNumber(from + limit),
+            contractAddress: ctx.contracts['WorldStorage']?.address,
         }
     );
     const events = raw.map((e) => e.event) as {

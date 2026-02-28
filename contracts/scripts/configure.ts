@@ -182,7 +182,7 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Loading account from .env...');
-    const deployer = await loadAccountFromEnv(wallet);
+    const deployer = await loadAccountFromEnv(wallet, aztecNode);
     console.log(`✅ Account loaded: ${deployer.toString()}\n`);
 
     console.log('📄 Connecting to contracts...');
