@@ -37,6 +37,7 @@ import {
   locationIdFromBigInt,
   locationIdToDecStr,
 } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -156,11 +157,6 @@ function toFr(n: number): Fr {
   const v = BigInt(n);
   return new Fr(v < 0n ? v + Fr.MODULUS : v);
 }
-
-export type WorldConfig = Record<string, unknown> & {
-  time_factor_hundredths: number | bigint;
-};
-
 class GameManager extends EventEmitter {
   /**
    * This variable contains the internal state of objects that live in the game world.
@@ -3209,11 +3205,7 @@ class GameManager extends EventEmitter {
       };
 
       const tx = await this.contractsAPI.submitTransaction(txIntent);
-      void tx.confirmedPromise
-        // TODO(review-2): Cache invalidation alone does not refresh runtime
-        // contractConstants; reload and propagate updated constants after confirm.
-        .then(() => this.contractsAPI.invalidateConfigCache())
-        .catch(() => undefined);
+
       return tx;
     } catch (e) {
       this.getNotificationsManager().txInitError("setWorldConfig", e.message);

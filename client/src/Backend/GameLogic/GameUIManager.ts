@@ -5,6 +5,7 @@ import { planetHasBonus } from "@dfpunk/hexgen";
 // import { EthConnection } from '@dfpunk/network';
 import { GameGLManager, Renderer } from "@dfpunk/renderer";
 import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -59,7 +60,7 @@ import UIEmitter, { UIEmitterEvent } from "../../Frontend/Utils/UIEmitter";
 import { TerminalHandle } from "../../Frontend/Views/Terminal";
 import { MiningPattern } from "../Miner/MiningPatterns";
 import { coordsEqual } from "../Utils/Coordinates";
-import GameManager, { GameManagerEvent, type WorldConfig } from "./GameManager";
+import GameManager, { GameManagerEvent } from "./GameManager";
 import { GameObjects } from "./GameObjects";
 import { PluginManager } from "./PluginManager";
 import TutorialManager, { TutorialState } from "./TutorialManager";
