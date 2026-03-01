@@ -66,6 +66,11 @@ interface GradientAtPoint {
 }
 
 type HashFn = (...inputs: number[]) => number;
+export type AsyncHashFn = (
+  x: number,
+  y: number,
+  scale: number,
+) => Promise<number>;
 
 /*
 const generateVecs = () => {
@@ -120,6 +125,19 @@ export const getRandomGradientAt = (
   const val =
     vecs[randFn(point.x.valueOf(), point.y.valueOf(), scale.valueOf())];
   return val;
+};
+
+export const getRandomGradientAtAsync = async (
+  point: Vector,
+  scale: IFraction,
+  randFn: AsyncHashFn,
+): Promise<Vector> => {
+  const index = await randFn(
+    point.x.valueOf(),
+    point.y.valueOf(),
+    scale.valueOf(),
+  );
+  return vecs[Math.floor(index) % 16];
 };
 
 const minus: (a: Vector, b: Vector) => Vector = (a, b) => {
@@ -241,6 +259,51 @@ const valueAt = (
   return out;
 };
 
+const valueAtAsync = async (
+  p: Vector,
+  scale: IFraction,
+  randFn: AsyncHashFn,
+): Promise<IFraction> => {
+  const bottomLeftCoords = {
+    x: p.x.sub(realMod(p.x, scale)),
+    y: p.y.sub(realMod(p.y, scale)),
+  };
+  const bottomRightCoords = {
+    x: bottomLeftCoords.x.add(scale),
+    y: bottomLeftCoords.y,
+  };
+  const topLeftCoords = {
+    x: bottomLeftCoords.x,
+    y: bottomLeftCoords.y.add(scale),
+  };
+  const topRightCoords = {
+    x: bottomLeftCoords.x.add(scale),
+    y: bottomLeftCoords.y.add(scale),
+  };
+
+  const [bottomLeftGrad, bottomRightGrad, topLeftGrad, topRightGrad] =
+    await Promise.all([
+      getRandomGradientAtAsync(bottomLeftCoords, scale, randFn),
+      getRandomGradientAtAsync(bottomRightCoords, scale, randFn),
+      getRandomGradientAtAsync(topLeftCoords, scale, randFn),
+      getRandomGradientAtAsync(topRightCoords, scale, randFn),
+    ]);
+
+  const corners: [
+    GradientAtPoint,
+    GradientAtPoint,
+    GradientAtPoint,
+    GradientAtPoint,
+  ] = [
+    { coords: bottomLeftCoords, gradient: bottomLeftGrad },
+    { coords: bottomRightCoords, gradient: bottomRightGrad },
+    { coords: topLeftCoords, gradient: topLeftGrad },
+    { coords: topRightCoords, gradient: topRightGrad },
+  ];
+
+  return perlinValue(corners, scale, p);
+};
+
 export const MAX_PERLIN_VALUE = 32;
 
 /**
@@ -275,6 +338,34 @@ export function perlin(coords: IntegerVector, options: PerlinConfig): number {
   if (options.floor) ret = ret.floor();
   ret = ret.add(MAX_PERLIN_VALUE / 2);
 
+  const out = ret.valueOf();
+  return Math.floor(out * 100) / 100;
+}
+
+/**
+ * Async perlin using a custom rand (e.g. Poseidon2) for gradient index.
+ * Use this for move proof so output matches the circuit (Poseidon2).
+ */
+export async function perlinWithRand(
+  coords: IntegerVector,
+  options: PerlinConfig,
+  randFn: AsyncHashFn,
+): Promise<number> {
+  let { x, y } = coords;
+  if (options.mirrorY) x = Math.abs(x);
+  if (options.mirrorX) y = Math.abs(y);
+  const fractionalP = { x: new Fraction(x), y: new Fraction(y) };
+  let ret = new Fraction(0);
+  for (let i = 0; i < 3; i += 1) {
+    const scale = new Fraction(options.scale * 2 ** i);
+    const v = await valueAtAsync(fractionalP, scale, randFn);
+    ret = ret.add(i === 0 ? v.add(v) : v);
+  }
+  ret = ret.div(4);
+  runningLCM = updateLCM(runningLCM, BigInt(ret.d));
+  ret = ret.mul(MAX_PERLIN_VALUE / 2);
+  if (options.floor) ret = ret.floor();
+  ret = ret.add(MAX_PERLIN_VALUE / 2);
   const out = ret.valueOf();
   return Math.floor(out * 100) / 100;
 }

@@ -227,7 +227,7 @@ export const PLAYER_STORAGE_DEPLOYMENT_SALT =
 /**
  * Block number at deployment start (from deploy script).
  */
-export const START_BLOCK = 5;
+export const START_BLOCK = 563;
 
 /**
  * The address for the WorldStorage contract.
