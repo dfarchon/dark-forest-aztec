@@ -50,7 +50,7 @@ export class HomePlanetMinerChunkStore implements ChunkStore {
     this.minedChunkKeys.add(getChunkKey(exploredChunk.chunkFootprint));
   }
 
-  hasMinedChunk(chunkFootprint: Rectangle) {
+  hasMinedChunk(chunkFootprint: Rectangle): boolean {
     // return true if this chunk mined, or if perlin value >= threshold
     if (this.minedChunkKeys.has(getChunkKey(chunkFootprint))) return true;
     const center = {
@@ -193,7 +193,7 @@ class MinerManager extends EventEmitter {
   }
 
   private exploreNext(fromChunk: Rectangle, jobId: number) {
-    this.nextValidExploreTarget(fromChunk, jobId).then(
+    void this.nextValidExploreTarget(fromChunk, jobId).then(
       (nextChunk: Rectangle | undefined) => {
         if (nextChunk) {
           const nextChunkKey = this.chunkLocationToKey(nextChunk, jobId);
@@ -274,7 +274,7 @@ class MinerManager extends EventEmitter {
     this.worldRadius = radius;
   }
 
-  private async nextValidExploreTarget(
+  private nextValidExploreTarget(
     chunkLocation: Rectangle,
     jobId: number
   ): Promise<Rectangle | undefined> {
@@ -293,14 +293,14 @@ class MinerManager extends EventEmitter {
     }
     // since user might have switched jobs or stopped exploring during the above loop
     if (!this.isExploring && jobId !== this.currentJobId) {
-      return undefined;
+      return Promise.resolve(undefined);
     }
     if (this.isValidExploreTarget(candidateChunk)) {
-      return candidateChunk;
+      return Promise.resolve(candidateChunk);
     }
     return new Promise((resolve) => {
-      setTimeout(async () => {
-        const nextNextChunk = await this.nextValidExploreTarget(
+      setTimeout(() => {
+        const nextNextChunk = this.nextValidExploreTarget(
           candidateChunk,
           jobId
         );
@@ -317,10 +317,9 @@ class MinerManager extends EventEmitter {
     const yMinAbs = Math.abs(yCenter) - sideLength / 2;
     const squareDist = xMinAbs ** 2 + yMinAbs ** 2;
     // should be inbounds, and unexplored
-    return (
-      squareDist < this.worldRadius ** 2 &&
-      !this.minedChunksStore.hasMinedChunk(chunkLocation)
-    );
+    const inBounds = squareDist < this.worldRadius ** 2;
+    const notMined = !this.minedChunksStore.hasMinedChunk(chunkLocation);
+    return inBounds && notMined;
   }
 
   private sendMessageToWorkers(chunkToExplore: Rectangle, jobId: number): void {

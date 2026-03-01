@@ -26,7 +26,7 @@ export const DEFAULT_MAX_CALL_RETRIES = 12 as const;
 /**
  * The upper-bounds of a LocationID.
  *
- * Represents the maximum possible value that the MiMC hash function (used for IDing locations in the universe) can output.
+ * Represents the maximum possible value that the hash function (Poseidon2, used for IDing locations in the universe) can output.
  * A LocationID must be less than `LOCATION_ID_UB / PLANET_RARITY` in order to be considered a valid planet.
  */
 export const LOCATION_ID_UB: bigint = BigInt(

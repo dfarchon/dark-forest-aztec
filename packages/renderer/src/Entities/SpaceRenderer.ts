@@ -180,12 +180,16 @@ export class SpaceRenderer
     this.verts += 6;
   }
 
-  public queueChunk(chunk: Chunk) {
+  public queueChunk(chunk: Chunk): void {
     // calculate gradients
     if (chunk.chunkFootprint.sideLength > this.config.scale) {
       const rects = getPerlinChunks(chunk.chunkFootprint, this.config.scale);
-      for (const rect of rects) this.queueRect(rect);
-    } else this.queueRect(chunk.chunkFootprint);
+      for (const rect of [...rects]) {
+        this.queueRect(rect);
+      }
+    } else {
+      this.queueRect(chunk.chunkFootprint);
+    }
   }
 
   public setColorConfiguration(

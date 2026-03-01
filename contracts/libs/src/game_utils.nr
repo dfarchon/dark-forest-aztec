@@ -79,17 +79,17 @@ pub fn revert_if_bad_snark_perlin_flags(
 ) {
     assert(
         provided_snark_config.planethash_key == expected_snark_config.planethash_key,
-        "bad planethash mimc key",
+        "bad planethash key",
     );
 
     assert(
         provided_snark_config.spacetype_key == expected_snark_config.spacetype_key,
-        "bad spacetype mimc key",
+        "bad spacetype key",
     );
 
     assert(
         provided_snark_config.biomebase_key == expected_snark_config.biomebase_key,
-        "bad biomebase mimc key",
+        "bad biomebase key",
     );
 
     assert(

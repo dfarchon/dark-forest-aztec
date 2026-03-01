@@ -721,7 +721,7 @@ class GameUIManager extends EventEmitter {
     return planet.owner === this.gameManager.getAccount();
   }
 
-  public addNewChunk(chunk: Chunk) {
+  public addNewChunk(chunk: Chunk): void {
     this.gameManager.addNewChunk(chunk);
   }
 

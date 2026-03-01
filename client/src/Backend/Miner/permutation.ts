@@ -74,7 +74,7 @@ export const getPlanetLocations =
     perlinMirrorX: boolean,
     perlinMirrorY: boolean
   ) =>
-  (chunkFootprint: Rectangle, planetRarity: number) => {
+  (chunkFootprint: Rectangle, planetRarity: number): WorldLocation[] => {
     // assume that the chunkFootprint is entirely contained within a 256x256 grid square
     const { bottomLeft, sideLength } = chunkFootprint;
     const { x, y } = bottomLeft;
@@ -98,34 +98,33 @@ export const getPlanetLocations =
       y: n * 256 + preImage[1],
     }));
 
-    const locs: WorldLocation[] = coords
-      .filter(
-        (coords) =>
-          coords.x - bottomLeft.x < sideLength &&
-          coords.x >= bottomLeft.x &&
-          coords.y - bottomLeft.y < sideLength &&
-          coords.y >= bottomLeft.y
-      )
-      .map((coords) => ({
-        coords,
-        hash: locationIdFromBigInt(
-          BigInt(fakeHash(planetRarity)(coords.x, coords.y).toString())
-        ),
-        perlin: perlin(coords, {
-          key: spaceTypeKey,
-          scale: perlinLengthScale,
-          mirrorX: perlinMirrorX,
-          mirrorY: perlinMirrorY,
-          floor: true,
-        }),
-        biomebase: perlin(coords, {
-          key: biomebaseKey,
-          scale: perlinLengthScale,
-          mirrorX: perlinMirrorX,
-          mirrorY: perlinMirrorY,
-          floor: true,
-        }),
-      }));
+    const filtered = coords.filter(
+      (c) =>
+        c.x - bottomLeft.x < sideLength &&
+        c.x >= bottomLeft.x &&
+        c.y - bottomLeft.y < sideLength &&
+        c.y >= bottomLeft.y
+    );
+    const locs: WorldLocation[] = filtered.map((coords) => ({
+      coords,
+      hash: locationIdFromBigInt(
+        BigInt(fakeHash(planetRarity)(coords.x, coords.y).toString())
+      ),
+      perlin: perlin(coords, {
+        key: spaceTypeKey,
+        scale: perlinLengthScale,
+        mirrorX: perlinMirrorX,
+        mirrorY: perlinMirrorY,
+        floor: true,
+      }),
+      biomebase: perlin(coords, {
+        key: biomebaseKey,
+        scale: perlinLengthScale,
+        mirrorX: perlinMirrorX,
+        mirrorY: perlinMirrorY,
+        floor: true,
+      }),
+    }));
 
     return locs;
   };
