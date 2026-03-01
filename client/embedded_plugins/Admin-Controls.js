@@ -301,10 +301,17 @@ function App() {
     return () => sub?.unsubscribe?.();
   }, []);
 
+  // Keep pause state in sync: initial read, stream subscription, and polling fallback
+  // (stream may not fire in all contexts; polling ensures state updates after pause/unpause)
   useEffect(() => {
-    setPaused(df.getPaused?.() ?? false);
-    const sub = df.getPaused$?.subscribe?.(setPaused);
-    return () => sub?.unsubscribe?.();
+    const syncPaused = () => setPaused(!!df.getPaused?.());
+    syncPaused();
+    const sub = df.getPaused$?.subscribe?.(syncPaused);
+    const interval = setInterval(syncPaused, 2000);
+    return () => {
+      sub?.unsubscribe?.();
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {

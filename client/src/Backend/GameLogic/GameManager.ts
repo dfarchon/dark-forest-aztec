@@ -882,6 +882,12 @@ class GameManager extends EventEmitter {
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
           ]);
+        } else if (tx.intent.methodName === "pauseGame") {
+          gameManager.paused = true;
+          gameManager.paused$.publish(true);
+        } else if (tx.intent.methodName === "unpauseGame") {
+          gameManager.paused = false;
+          gameManager.paused$.publish(false);
         } else if (isUnconfirmedCreatePlanetTx(tx)) {
           const receipt = await tx.confirmedPromise;
           if (receipt.blockNumber != null) {
