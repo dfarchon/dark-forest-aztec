@@ -74,7 +74,7 @@ async function getNetworkFingerprint(node: AztecNode): Promise<string> {
   if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
   const block = await node.getBlock(BlockNumber(1));
   if (!block) return GENESIS_PENDING_SENTINEL;
-  return block.hash().toString();
+  return (await block.hash()).toString();
 }
 
 /**
@@ -250,6 +250,55 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
+    const mgr = await WalletManager._initWallet(node, config);
+
+    const savedAddr = mgr.keyStore.getActiveAddress();
+    if (savedAddr) {
+      try {
+        await mgr.restoreAccount(savedAddr);
+      } catch (err) {
+        console.warn("[WalletManager] Failed to restore saved account:", err);
+        console.warn("[WalletManager] Clearing stale PXE data and retrying...");
+        mgr.destroy();
+        await clearStaleIndexedDBs();
+        mgr.keyStore.clearActiveAddress();
+
+        const retryMgr = await WalletManager._initWallet(node, config);
+        retryMgr.startBalancePolling(
+          config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
+        );
+        return retryMgr;
+      }
+    }
+
+    mgr.startBalancePolling(
+      config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
+    );
+
+    return mgr;
+  }
+
+  /**
+   * Force-clear all PXE IndexedDB databases and reset the active account pointer,
+   * then create a fresh WalletManager. Account records are preserved so they can
+   * be re-deployed on the new network. Useful as a manual "reset wallet cache" action in UI.
+   */
+  static async resetAndCreate(
+    config: WalletManagerConfig
+  ): Promise<WalletManager> {
+    await clearStaleIndexedDBs();
+    new KeyStore(config.storagePrefix).clearActiveAddress();
+    return WalletManager.create(config);
+  }
+
+  /**
+   * Core wallet initialisation: fingerprint check, PXE creation, contract registration.
+   * Extracted so `create()` can retry with a clean slate on stale-data errors.
+   */
+  private static async _initWallet(
+    node: AztecNode,
+    config: WalletManagerConfig
+  ): Promise<WalletManager> {
     const keyStore = new KeyStore(config.storagePrefix);
 
     const fingerprint = await getNetworkFingerprint(node);
@@ -298,23 +347,7 @@ export class WalletManager {
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
     await registerGameContractsWithPxe(wallet, admin);
 
-    const mgr = new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
-
-    const savedAddr = keyStore.getActiveAddress();
-    if (savedAddr) {
-      try {
-        await mgr.restoreAccount(savedAddr);
-      } catch (err) {
-        console.warn("[WalletManager] Failed to restore saved account:", err);
-        keyStore.clearActiveAddress();
-      }
-    }
-
-    mgr.startBalancePolling(
-      config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
-    );
-
-    return mgr;
+    return new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
   }
 
   // ---------------------------------------------------------------------------
@@ -437,6 +470,12 @@ export class WalletManager {
 
   getAccounts(): AccountRecord[] {
     return this.keyStore.listAccounts();
+  }
+
+  getActiveAccountRecord(): AccountRecord | null {
+    const addr = this.activeAddress?.toString();
+    if (!addr) return null;
+    return this.keyStore.getAccount(addr);
   }
 
   /** Last known balance (synchronous). Updated by getBalance() and polling. */
