@@ -140,35 +140,55 @@ function OnboardStorage({ advance }: { advance: () => void }) {
 }
 function OnboardKeys({ advance }: { advance: () => void }) {
   const uiManager = useUIManager();
-  const [sKey, setSKey] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (!uiManager) return;
-    setSKey(uiManager.getPrivateKey());
-  }, [uiManager]);
+  const [credentials, setCredentials] = useState<{
+    secretKey: string;
+    salt: string;
+    signingKey: string;
+  }>();
 
   const [home, setHome] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!uiManager) return;
+    setCredentials(uiManager.getAccountCredentials());
     const coords = uiManager.getHomeCoords();
     setHome(coords ? `(${coords.x}, ${coords.y})` : "");
   }, [uiManager]);
 
   return (
     <StyledOnboardingContent>
-      <p>
-        Your private key is: <br />
+      <div>
+        Your secret key is:
         <TextPreview
-          text={sKey}
+          text={credentials?.secretKey}
           focusedWidth={"150px"}
           unFocusedWidth={"150px"}
         />
-      </p>
+      </div>
+      <div>
+        Your salt is:
+        <TextPreview
+          text={credentials?.salt}
+          focusedWidth={"150px"}
+          unFocusedWidth={"150px"}
+        />
+      </div>
+      <div>
+        Your signing key is:
+        <TextPreview
+          text={credentials?.signingKey}
+          focusedWidth={"150px"}
+          unFocusedWidth={"150px"}
+        />
+      </div>
       <p>
         Your home coordinates are: <br />
         <White>{home}</White>
       </p>
 
-      <p>When you have backed up your key and coordinates, please proceed.</p>
+      <p>
+        When you have backed up your credentials and coordinates, please
+        proceed.
+      </p>
 
       <div>
         <span></span>

@@ -1803,11 +1803,29 @@ class GameManager extends EventEmitter {
   }
 
   /**
-   * Gets the private key of the burner wallet used by this account.
-   * Aztec wallet does not expose private key; return undefined.
+   * Gets the secret key of the active Aztec ECDSAR account.
    */
   getPrivateKey(): string | undefined {
-    return undefined;
+    return this.contractsAPI.getWalletManager().getActiveAccountRecord()
+      ?.secretKey;
+  }
+
+  /**
+   * Returns the full credential triple (secretKey, salt, signingKey) needed
+   * to recover/import the active Aztec ECDSAR account.
+   */
+  getAccountCredentials():
+    | { secretKey: string; salt: string; signingKey: string }
+    | undefined {
+    const record = this.contractsAPI
+      .getWalletManager()
+      .getActiveAccountRecord();
+    if (!record) return undefined;
+    return {
+      secretKey: record.secretKey,
+      salt: record.salt,
+      signingKey: record.signingKey,
+    };
   }
 
   /**

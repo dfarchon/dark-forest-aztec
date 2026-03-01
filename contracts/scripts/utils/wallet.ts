@@ -1,7 +1,7 @@
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { Fr } from '@aztec/aztec.js/fields';
+import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import type { AccountManager } from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
@@ -17,6 +17,19 @@ const DEFAULT_PXE_STORE_DIR = path.join(
     '.store'
 );
 const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
+const FINGERPRINT_FILENAME = '.network-fingerprint';
+
+/**
+ * Compute a fingerprint for the current network instance by hashing block 1's header.
+ * Returns a sentinel value when the network has not yet produced block 1.
+ */
+async function getNetworkFingerprint(node: AztecNode): Promise<string> {
+    const blockNumber = await node.getBlockNumber();
+    if (blockNumber < 1) return 'genesis-pending';
+    const block = await node.getBlock(BlockNumber(1));
+    if (!block) return 'genesis-pending';
+    return (await block.hash()).toString();
+}
 
 export type SetupWalletOptions = {
     /** If true, remove existing PXE store before creating wallet (default: false) */
@@ -28,8 +41,9 @@ export type SetupWalletOptions = {
 };
 
 /**
- * Create a EmbeddedWallet connected to the given Aztec node.
- * Other scripts can use this for deploy or interaction.
+ * Create an EmbeddedWallet connected to the given Aztec node.
+ * Automatically detects network changes via block-1 fingerprint and clears
+ * the stale PXE store when necessary (without touching .env or account files).
  */
 export async function setupWallet(
     aztecNode: AztecNode,
@@ -41,9 +55,28 @@ export async function setupWallet(
         storeDir = DEFAULT_PXE_STORE_DIR,
     } = options;
 
-    if (clearStore && fs.existsSync(storeDir)) {
-        fs.rmSync(storeDir, { recursive: true, force: true });
+    const fingerprintPath = path.join(storeDir, FINGERPRINT_FILENAME);
+    const fingerprint = await getNetworkFingerprint(aztecNode);
+    const storedFingerprint = fs.existsSync(fingerprintPath)
+        ? fs.readFileSync(fingerprintPath, 'utf-8').trim()
+        : null;
+
+    const networkChanged =
+        storedFingerprint !== null && storedFingerprint !== fingerprint;
+
+    if (clearStore || networkChanged) {
+        if (networkChanged) {
+            console.warn(
+                '[setupWallet] Network change detected, clearing stale PXE store'
+            );
+        }
+        if (fs.existsSync(storeDir)) {
+            fs.rmSync(storeDir, { recursive: true, force: true });
+        }
     }
+
+    fs.mkdirSync(storeDir, { recursive: true });
+    fs.writeFileSync(fingerprintPath, fingerprint, 'utf-8');
 
     return await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {

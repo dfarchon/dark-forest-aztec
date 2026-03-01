@@ -359,6 +359,12 @@ class GameUIManager extends EventEmitter {
     return this.gameManager.getPrivateKey();
   }
 
+  public getAccountCredentials():
+    | { secretKey: string; salt: string; signingKey: string }
+    | undefined {
+    return this.gameManager.getAccountCredentials();
+  }
+
   public getMyBalance(): number {
     return this.gameManager.getMyBalanceEth();
   }
