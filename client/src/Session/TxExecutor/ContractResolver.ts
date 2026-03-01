@@ -8,11 +8,13 @@ import type { ContractBase } from "@aztec/aztec.js/contracts";
 import type { Wallet } from "@aztec/aztec.js/wallet";
 import {
   ADMIN_CONTRACT_ADDRESS,
+  ARTIFACT_SYSTEM_CONTRACT_ADDRESS,
   CONFIG_CONTRACT_ADDRESS,
   CORE_CONTRACT_ADDRESS,
   MOVE_CONTRACT_ADDRESS,
 } from "@dfpunk/contracts";
 import { AdminContract } from "@dfpunk/contracts/artifacts/Admin";
+import { ArtifactSystemContract } from "@dfpunk/contracts/artifacts/ArtifactSystem";
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { CoreContract } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContract } from "@dfpunk/contracts/artifacts/Move";
@@ -27,6 +29,7 @@ export class ContractResolver {
   private move: ContractBase;
   private admin: ContractBase;
   private config: ContractBase;
+  private artifactSystem: ContractBase;
 
   constructor(wallet: Wallet) {
     this.core = CoreContract.at(
@@ -43,6 +46,10 @@ export class ContractResolver {
     );
     this.config = ConfigContract.at(
       AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
+      wallet
+    );
+    this.artifactSystem = ArtifactSystemContract.at(
+      AztecAddress.fromString(ARTIFACT_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
   }
@@ -67,6 +74,33 @@ export class ContractResolver {
         return { contract: this.admin, method: "unpause" };
       case "transferPlanet":
         return { contract: this.admin, method: "set_owner" };
+      case "prospectPlanet":
+        return {
+          contract: this.artifactSystem,
+          method: "prospect_planet",
+        };
+      case "findArtifact":
+        return { contract: this.artifactSystem, method: "find_artifact" };
+      case "depositArtifact":
+        return {
+          contract: this.artifactSystem,
+          method: "deposit_or_withdraw_artifact",
+        };
+      case "withdrawArtifact":
+        return {
+          contract: this.artifactSystem,
+          method: "deposit_or_withdraw_artifact",
+        };
+      case "activateArtifact":
+        return {
+          contract: this.artifactSystem,
+          method: "activate_artifact",
+        };
+      case "deactivateArtifact":
+        return {
+          contract: this.artifactSystem,
+          method: "deactivate_artifact",
+        };
       default:
         throw new Error(`ContractResolver: unsupported method "${methodName}"`);
     }

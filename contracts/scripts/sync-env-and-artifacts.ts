@@ -76,6 +76,9 @@ const KEY_COMMENTS: Record<string, string> = {
     ADMIN_DEPLOYER_ADDRESS:
         'Deployer address for Admin (for PXE registration).',
     ADMIN_DEPLOYMENT_SALT: 'Deployment salt for Admin (for PXE registration).',
+    ARTIFACT_SYSTEM_CONTRACT_ADDRESS:
+        'The address for the ArtifactSystem contract.',
+    ARTIFACT_EXT_CONTRACT_ADDRESS: 'The address for the ArtifactExt contract.',
 };
 
 function commentForKey(key: string): string {

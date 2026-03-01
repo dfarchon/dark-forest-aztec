@@ -33,13 +33,19 @@ import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type {
   TxIntent,
+  UnconfirmedActivateArtifact,
+  UnconfirmedDeactivateArtifact,
+  UnconfirmedDepositArtifact,
+  UnconfirmedFindArtifact,
   UnconfirmedInit,
   UnconfirmedMove,
   UnconfirmedPauseGame,
+  UnconfirmedProspectPlanet,
   UnconfirmedReveal,
   UnconfirmedSetWorldConfig,
   UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
+  UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
 } from "@dfpunk/types";
 import {
@@ -272,6 +278,26 @@ export class StateResolver {
         return this.resolvePauseGame(intent as UnconfirmedPauseGame);
       case "unpauseGame":
         return this.resolveUnpauseGame(intent as UnconfirmedUnpauseGame);
+      case "prospectPlanet":
+        return this.resolveProspectPlanet(intent as UnconfirmedProspectPlanet);
+      case "findArtifact":
+        return this.resolveFindArtifact(intent as UnconfirmedFindArtifact);
+      case "depositArtifact":
+        return this.resolveDepositArtifact(
+          intent as UnconfirmedDepositArtifact
+        );
+      case "withdrawArtifact":
+        return this.resolveWithdrawArtifact(
+          intent as UnconfirmedWithdrawArtifact
+        );
+      case "activateArtifact":
+        return this.resolveActivateArtifact(
+          intent as UnconfirmedActivateArtifact
+        );
+      case "deactivateArtifact":
+        return this.resolveDeactivateArtifact(
+          intent as UnconfirmedDeactivateArtifact
+        );
       default:
         throw new Error(
           `StateResolver: method "${intent.methodName}" not implemented`
@@ -1148,6 +1174,498 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
+  // prospectPlanet — 10 args
+  // [location_id, planet, planet_artifacts, planet_events_state,
+  //  arrivals[20], artifacts[20], artifact_locations[20],
+  //  planet_artifacts_artifacts[20], timestamp, world]
+  // -------------------------------------------------------------------------
+
+  private async resolveProspectPlanet(
+    intent: UnconfirmedProspectPlanet
+  ): Promise<unknown[]> {
+    const intentArgs = await intent.args;
+    const [rawLocationId] = intentArgs;
+    const locationId = BigInt(String(rawLocationId));
+    const locationIdDec = String(rawLocationId);
+
+    await this.chainClock.resync();
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const planetArtifactsArtifacts =
+      this.loadPlanetArtifactsArtifacts(planetArtifactsRaw);
+
+    // Contract assert_refresh_timestamp_monotonicity requires timestamp >= planet, planet_events,
+    // planet_artifacts last_updated, and for each event slot: arrival.departure_time and
+    // (if carried_artifact_id != 0) artifact.last_updated, artifact_location.last_updated.
+    const eventCount = planetEventsRaw?.count ?? 0;
+    const entityTimes: (bigint | undefined)[] = [
+      planetRaw?.last_updated,
+      planetEventsRaw?.last_updated,
+      planetArtifactsRaw?.last_updated,
+    ];
+    for (let i = 0; i < 20 && i < eventCount; i++) {
+      const arr = arrivalData.arrivals[i] as
+        | Record<string, unknown>
+        | undefined;
+      if (arr?.departure_time != null) {
+        entityTimes.push(
+          typeof arr.departure_time === "bigint"
+            ? arr.departure_time
+            : BigInt(Number(arr.departure_time))
+        );
+      }
+      const carriedId = arr?.carried_artifact_id;
+      const hasArtifact =
+        carriedId != null && carriedId !== 0 && String(carriedId) !== "0";
+      if (hasArtifact) {
+        const art = arrivalData.artifacts[i] as
+          | Record<string, unknown>
+          | undefined;
+        const loc = arrivalData.artifactLocations[i] as
+          | Record<string, unknown>
+          | undefined;
+        if (art?.last_updated != null)
+          entityTimes.push(
+            typeof art.last_updated === "bigint"
+              ? art.last_updated
+              : BigInt(Number(art.last_updated))
+          );
+        if (loc?.last_updated != null)
+          entityTimes.push(
+            typeof loc.last_updated === "bigint"
+              ? loc.last_updated
+              : BigInt(Number(loc.last_updated))
+          );
+      }
+    }
+    const timestamp = this.computeTimestamp(...entityTimes);
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    if (this.enableHashPreflight) {
+      await this.verifyProspectStateHashes(
+        locationId,
+        planet as Record<string, unknown>,
+        planetArtifacts as Record<string, unknown>,
+        planetEvents as Record<string, unknown>
+      );
+    }
+
+    // Debug: log prospect inputs and validate against contract assertions
+    const chainNowSec = this.chainClock.nowSec();
+    const planetType = Number(
+      (planet as Record<string, unknown>).planet_type ?? -1
+    );
+    const prospectedBlock = Number(
+      (planet as Record<string, unknown>).prospected_block_number ?? -1
+    );
+    const destroyed = Boolean((planet as Record<string, unknown>).destroyed);
+    const planetOwner = String((planet as Record<string, unknown>).owner ?? "");
+    const playerAddr = this.getPlayerAddress();
+    const worldPaused = Boolean((world as Record<string, unknown>).paused);
+    const tsNum = Number(timestamp);
+    const tsDiff =
+      chainNowSec !== undefined ? Number(chainNowSec) - tsNum : null;
+
+    console.log("[ProspectPlanet] resolve input:", {
+      locationId: locationId.toString(),
+      timestamp: tsNum,
+      chainNowSec: chainNowSec != null ? Number(chainNowSec) : null,
+      tsDiffSeconds: tsDiff,
+      planet_type: planetType,
+      planet_type_expected: 2,
+      planet_type_ok: planetType === 2,
+      prospected_block_number: prospectedBlock,
+      prospected_ok: prospectedBlock === 0,
+      destroyed,
+      owner_match: planetOwner.toLowerCase() === playerAddr.toLowerCase(),
+      playerAddr: playerAddr.slice(0, 10) + "...",
+      world_paused: worldPaused,
+      planet_events_count: (planetEvents as Record<string, unknown>).count,
+      arrivals_count: (arrivalData.arrivals as unknown[]).filter(
+        (a) => a != null && (a as Record<string, unknown>).id !== 0
+      ).length,
+    });
+
+    // Contract assertion checklist (matches artifact/main.nr + artifact_utils.prospect_planet_logic)
+    // Contract: timestamp <= ts ("tf"), ts - timestamp <= 600 ("ts old")
+    const checks = {
+      notPaused: !worldPaused,
+      timestampNotFuture:
+        chainNowSec != null ? tsNum <= Number(chainNowSec) : null,
+      timestampNotOld: tsDiff != null ? tsDiff >= 0 && tsDiff <= 600 : null,
+      planetNotDestroyed: !destroyed,
+      planetIsRuins: planetType === 2,
+      ownerIsSender: planetOwner.toLowerCase() === playerAddr.toLowerCase(),
+      notAlreadyProspected: prospectedBlock === 0,
+    };
+    const allOk = Object.entries(checks).every(([, v]) => v === true);
+    if (!allOk) {
+      console.warn(
+        "[ProspectPlanet] contract pre-check (client-side):",
+        checks
+      );
+    }
+
+    return [
+      locationId,
+      planet,
+      planetArtifacts,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      planetArtifactsArtifacts,
+      timestamp,
+      world,
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // findArtifact — private function requiring ZK proofs
+  // [args, planet, planet_artifacts, planet_events_state,
+  //  arrivals[20], artifacts[20], artifact_locations[20],
+  //  player, game_config_core, expected_snark_config,
+  //  current_block_number, spaceships_config,
+  //  planet_artifacts_artifacts[20], timestamp, world]
+  // -------------------------------------------------------------------------
+
+  private async resolveFindArtifact(
+    intent: UnconfirmedFindArtifact
+  ): Promise<unknown[]> {
+    const locationIdDec = locationIdToDecStr(intent.planetId);
+    const locationId = hexIdToField(intent.planetId);
+
+    await this.chainClock.resync();
+    const config = await this.configCache.getConfig();
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const playerAddr = this.getPlayerAddress();
+    const playerRaw = this.indexer.getPlayer(playerAddr);
+    const player = playerRaw ? playerToContract(playerRaw) : playerZero();
+
+    const planetArtifactsArtifacts =
+      this.loadPlanetArtifactsArtifacts(planetArtifactsRaw);
+
+    const timestamp = this.computeTimestamp(
+      planetRaw?.last_updated,
+      planetEventsRaw?.last_updated,
+      planetArtifactsRaw?.last_updated
+    );
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    const currentBlockNumber = this.indexer.getCurrentBlockNumber();
+
+    // DFPFindArtifactArgs: snark fields + planet_id + biomebase
+    // biomebase is derived from perlin computation (not stored on planet directly).
+    const snark = config.snarkConfig as Record<string, unknown> | undefined;
+    const findArgs = {
+      planet_id: locationId,
+      biomebase: 0,
+      snark_perlin_planethash_key: BigInt(String(snark?.planethash_key ?? 0)),
+      snark_perlin_biomebase_key: BigInt(
+        String(snark?.biomebase_key ?? snark?.spacetype_key ?? 0)
+      ),
+      snark_perlin_length_scale: BigInt(
+        String(snark?.perlin_length_scale ?? 0)
+      ),
+      snark_perlin_mirror_x: snark?.perlin_mirror_x ? 1 : 0,
+      snark_perlin_mirror_y: snark?.perlin_mirror_y ? 1 : 0,
+    };
+
+    return [
+      findArgs,
+      planet,
+      planetArtifacts,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      player,
+      config.gameConfigCore,
+      config.snarkConfig,
+      currentBlockNumber,
+      config.spaceshipsConfig,
+      planetArtifactsArtifacts,
+      timestamp,
+      world,
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // depositArtifact → deposit_or_withdraw_artifact(is_deposit=true)
+  // [is_deposit, location_id, artifact_id,
+  //  planet, artifact, artifact_location, planet_artifacts,
+  //  planet_events_state, arrivals[20], artifacts[20],
+  //  artifact_locations[20], timestamp, world]
+  // -------------------------------------------------------------------------
+
+  private async resolveDepositArtifact(
+    intent: UnconfirmedDepositArtifact
+  ): Promise<unknown[]> {
+    return this.resolveDepositOrWithdraw(
+      true,
+      intent.locationId,
+      intent.artifactId
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // withdrawArtifact → deposit_or_withdraw_artifact(is_deposit=false)
+  // -------------------------------------------------------------------------
+
+  private async resolveWithdrawArtifact(
+    intent: UnconfirmedWithdrawArtifact
+  ): Promise<unknown[]> {
+    return this.resolveDepositOrWithdraw(
+      false,
+      intent.locationId,
+      intent.artifactId
+    );
+  }
+
+  private async resolveDepositOrWithdraw(
+    isDeposit: boolean,
+    locationId: import("@dfpunk/types").LocationId,
+    artifactId: import("@dfpunk/types").ArtifactId
+  ): Promise<unknown[]> {
+    const locationIdDec = locationIdToDecStr(locationId);
+    const locationField = hexIdToField(locationId);
+    const artifactField = BigInt(
+      String(artifactId).startsWith("0x") ? artifactId : `0x${artifactId}`
+    );
+
+    await this.chainClock.resync();
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const artifact = this.loadArtifactOrZero(String(artifactField));
+    const artifactLocation = this.loadArtifactLocationOrZero(
+      String(artifactField)
+    );
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const timestamp = this.computeTimestamp(
+      planetRaw?.last_updated,
+      planetEventsRaw?.last_updated,
+      planetArtifactsRaw?.last_updated
+    );
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    return [
+      isDeposit,
+      locationField,
+      artifactField,
+      planet,
+      artifact,
+      artifactLocation,
+      planetArtifacts,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      timestamp,
+      world,
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // activateArtifact — 16 args
+  // [location_id, artifact_id, wormhole_to,
+  //  planet, artifact, artifact_location, planet_artifacts,
+  //  active_artifacts[20], wormhole_planet, wormhole_planet_id,
+  //  planet_events_state, arrivals[20], artifacts[20],
+  //  artifact_locations[20], timestamp, world]
+  // -------------------------------------------------------------------------
+
+  private async resolveActivateArtifact(
+    intent: UnconfirmedActivateArtifact
+  ): Promise<unknown[]> {
+    const locationIdDec = locationIdToDecStr(intent.locationId);
+    const locationField = hexIdToField(intent.locationId);
+    const artifactField = BigInt(
+      String(intent.artifactId).startsWith("0x")
+        ? intent.artifactId
+        : `0x${intent.artifactId}`
+    );
+    const wormholeTo = intent.wormholeTo ? hexIdToField(intent.wormholeTo) : 0n;
+    const wormholePlanetId = wormholeTo;
+
+    await this.chainClock.resync();
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const artifact = this.loadArtifactOrZero(String(artifactField));
+    const artifactLocation = this.loadArtifactLocationOrZero(
+      String(artifactField)
+    );
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const activeArtifacts =
+      this.loadPlanetArtifactsArtifacts(planetArtifactsRaw);
+
+    const wormholePlanet =
+      wormholeTo !== 0n
+        ? (() => {
+            const wpDec = String(wormholeTo);
+            const wpRaw = this.indexer.getPlanet(wpDec);
+            return wpRaw ? planetToContract(wpRaw) : planetZero();
+          })()
+        : planetZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const timestamp = this.computeTimestamp(
+      planetRaw?.last_updated,
+      planetEventsRaw?.last_updated,
+      planetArtifactsRaw?.last_updated
+    );
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    return [
+      locationField,
+      artifactField,
+      wormholeTo,
+      planet,
+      artifact,
+      artifactLocation,
+      planetArtifacts,
+      activeArtifacts,
+      wormholePlanet,
+      wormholePlanetId,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      timestamp,
+      world,
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // deactivateArtifact — 12 args
+  // [location_id, artifact_id,
+  //  planet, artifact, artifact_location, planet_artifacts,
+  //  planet_events_state, arrivals[20], artifacts[20],
+  //  artifact_locations[20], timestamp, world]
+  // -------------------------------------------------------------------------
+
+  private async resolveDeactivateArtifact(
+    intent: UnconfirmedDeactivateArtifact
+  ): Promise<unknown[]> {
+    const locationIdDec = locationIdToDecStr(intent.locationId);
+    const locationField = hexIdToField(intent.locationId);
+    const artifactField = BigInt(
+      String(intent.artifactId).startsWith("0x")
+        ? intent.artifactId
+        : `0x${intent.artifactId}`
+    );
+
+    await this.chainClock.resync();
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
+    const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+    const artifact = this.loadArtifactOrZero(String(artifactField));
+    const artifactLocation = this.loadArtifactLocationOrZero(
+      String(artifactField)
+    );
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifacts = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEvents = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const timestamp = this.computeTimestamp(
+      planetRaw?.last_updated,
+      planetEventsRaw?.last_updated,
+      planetArtifactsRaw?.last_updated
+    );
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    return [
+      locationField,
+      artifactField,
+      planet,
+      artifact,
+      artifactLocation,
+      planetArtifacts,
+      planetEvents,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
+      timestamp,
+      world,
+    ];
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 
@@ -1213,6 +1731,47 @@ export class StateResolver {
   private loadArtifactLocationOrZero(id: string): Record<string, unknown> {
     const raw = this.indexer.getArtifactLocation(id);
     return raw ? artifactLocationToContract(raw) : artifactLocationZero();
+  }
+
+  /**
+   * Load the Artifact objects for each artifact id stored in planet_artifacts.
+   * Returns a fixed-length array of 20, padded with zeros.
+   */
+  private loadPlanetArtifactsArtifacts(
+    planetArtifacts:
+      | import("../Indexer/TableTypes/chain").PlanetArtifactsState
+      | undefined
+  ): Record<string, unknown>[] {
+    const ids = planetArtifacts?.ids ?? [];
+    const count = planetArtifacts?.count ?? 0;
+    const result: Record<string, unknown>[] = [];
+    for (let i = 0; i < 20; i++) {
+      if (i < count && ids[i] != null && String(ids[i]) !== "0") {
+        result.push(this.loadArtifactOrZero(String(ids[i])));
+      } else {
+        result.push(artifactZero());
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Compute a timestamp that is >= all entity last_updated values.
+   * Advances past chain clock if any entity state is newer.
+   */
+  private computeTimestamp(...entityTimes: (bigint | undefined)[]): bigint {
+    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    let maxEntityTime = 0n;
+    for (const t of entityTimes) {
+      if (t != null && t > maxEntityTime) maxEntityTime = t;
+    }
+    if (maxEntityTime > timestamp) {
+      console.warn(
+        `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
+      );
+      timestamp = maxEntityTime;
+    }
+    return timestamp;
   }
 
   // -------------------------------------------------------------------------
@@ -1447,6 +2006,68 @@ export class StateResolver {
 
     if (mismatches.length > 0) {
       const msg = `[StateResolver] Hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
+  /**
+   * Hash preflight for prospectPlanet: planet, planet_artifacts, planet_events.
+   * Catches indexer staleness before submit so we fail with a clear message instead of contract revert.
+   */
+  private async verifyProspectStateHashes(
+    locationId: bigint,
+    planet: Record<string, unknown>,
+    planetArtifacts: Record<string, unknown>,
+    planetEvents: Record<string, unknown>
+  ): Promise<void> {
+    const from = AztecAddress.fromString(this.getPlayerAddress());
+    const mismatches: string[] = [];
+
+    const check = async (
+      label: string,
+      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      onChainHashPromise: Promise<unknown>
+    ) => {
+      const [localHash, onChainHash] = await Promise.all([
+        localHashPromise,
+        onChainHashPromise,
+      ]);
+      const localBigInt = localHash.toBigInt();
+      const onChainBigInt = BigInt(String(onChainHash));
+      if (localBigInt !== onChainBigInt) {
+        mismatches.push(
+          `${label}: local=${localBigInt} onchain=${onChainBigInt}`
+        );
+      }
+    };
+
+    await Promise.all([
+      check(
+        "planet",
+        Promise.resolve(computePlanetHash(planet)),
+        this.planetStorage.methods
+          .get_state_root_unconstrained(locationId)
+          .simulate({ from })
+      ),
+      check(
+        "planetArtifacts",
+        Promise.resolve(computePlanetArtifactsHash(planetArtifacts)),
+        this.planetArtifactsStorage.methods
+          .get_state_root_unconstrained(locationId)
+          .simulate({ from })
+      ),
+      check(
+        "planetEvents",
+        Promise.resolve(computePlanetEventsHash(planetEvents)),
+        this.planetEventsStorage.methods
+          .get_state_root_unconstrained(locationId)
+          .simulate({ from })
+      ),
+    ]);
+
+    if (mismatches.length > 0) {
+      const msg = `[StateResolver] Prospect hash preflight failed — indexer state is stale (wait for sync or refresh planet):\n${mismatches.join("\n")}`;
       console.error(msg);
       throw new Error(msg);
     }

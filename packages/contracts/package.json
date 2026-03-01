@@ -76,6 +76,16 @@
       "types": "./src/artifacts/Admin.ts",
       "import": "./src/artifacts/Admin.ts",
       "default": "./src/artifacts/Admin.ts"
+    },
+    "./artifacts/ArtifactSystem": {
+      "types": "./src/artifacts/ArtifactSystem.ts",
+      "import": "./src/artifacts/ArtifactSystem.ts",
+      "default": "./src/artifacts/ArtifactSystem.ts"
+    },
+    "./artifacts/ArtifactExt": {
+      "types": "./src/artifacts/ArtifactExt.ts",
+      "import": "./src/artifacts/ArtifactExt.ts",
+      "default": "./src/artifacts/ArtifactExt.ts"
     }
   },
   "main": "src/index.ts",

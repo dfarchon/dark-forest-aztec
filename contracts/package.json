@@ -32,7 +32,12 @@
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
         "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",
         "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts",
+        "test": "pnpm run test:moveProof && pnpm run test:core-initialize-player && pnpm run test:move && pnpm run test:withdraw && pnpm run test:upgrade",
+        "test:core-initialize-player": "pnpm exec tsx scripts/test-core-initialize-player.ts",
+        "test:move": "pnpm exec tsx scripts/test-move.ts",
         "test:moveProof": "pnpm exec tsx scripts/test-moveProof.ts",
+        "test:upgrade": "pnpm exec tsx scripts/test-upgrade.ts",
+        "test:withdraw": "pnpm exec tsx scripts/test-withdraw.ts",
         "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts"
     },
     "dependencies": {

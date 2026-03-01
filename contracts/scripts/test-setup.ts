@@ -179,12 +179,36 @@ const MOVE_FUNCTIONS = [
     'move_public',
 ] as const;
 
+const ARTIFACT_SYSTEM_FUNCTIONS = [
+    'set_all_storage_addresses',
+    'prospect_planet',
+    'find_artifact', // private
+    'find_artifact_public',
+    'deposit_or_withdraw_artifact',
+    'activate_artifact',
+    'deactivate_artifact',
+] as const;
+
+const ARTIFACT_EXT_FUNCTIONS = [
+    'set_all_storage_addresses',
+    'transfer_admin',
+    'create_artifact',
+    'update_artifact',
+    'does_artifact_exist',
+    'get_artifact_hash',
+    'admin_give_artifact',
+    'give_space_ships',
+    'activate_crescent',
+] as const;
+
 /** All contracts and their public method names (for iteration or assertions). */
 const CONTRACT_FUNCTIONS = {
     Config: CONFIG_FUNCTIONS,
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
     Move: MOVE_FUNCTIONS,
+    ArtifactSystem: ARTIFACT_SYSTEM_FUNCTIONS,
+    ArtifactExt: ARTIFACT_EXT_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
@@ -249,6 +273,16 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactLocationStorageContract',
     },
     {
+        name: 'ArtifactSystem',
+        modulePath: './artifacts/ArtifactSystem.ts',
+        exportName: 'ArtifactSystemContract',
+    },
+    {
+        name: 'ArtifactExt',
+        modulePath: './artifacts/ArtifactExt.ts',
+        exportName: 'ArtifactExtContract',
+    },
+    {
         name: 'Admin',
         modulePath: './artifacts/Admin.ts',
         exportName: 'AdminContract',
@@ -279,6 +313,8 @@ const ENV_KEYS: Array<[string, string]> = [
     ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS'],
+    ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
+    ['ArtifactExt', 'ARTIFACT_EXT_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['Move', 'MOVE_CONTRACT_ADDRESS'],
@@ -288,7 +324,11 @@ function addressesFromEnv(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, key] of ENV_KEYS) {
         const v = process.env[key];
-        if (key === 'MOVE_CONTRACT_ADDRESS') {
+        if (
+            key === 'MOVE_CONTRACT_ADDRESS' ||
+            key === 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS' ||
+            key === 'ARTIFACT_EXT_CONTRACT_ADDRESS'
+        ) {
             if (v) out[name] = v;
             continue;
         }

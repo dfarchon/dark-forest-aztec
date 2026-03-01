@@ -291,6 +291,29 @@ export class TxExecutor {
         // 2. Resolve full contract args from indexer state + config + timestamp
         const contractArgs = await this.stateResolver.resolve(tx.intent);
 
+        // Debug: log prospectPlanet tx input summary for validation
+        if (
+          tx.intent.methodName === "prospectPlanet" &&
+          contractArgs.length >= 10
+        ) {
+          const [locationId, planet, , planetEvents, arrivals] = contractArgs;
+          const planetObj = planet as Record<string, unknown>;
+          console.log("[ProspectPlanet] tx input:", {
+            locationId: String(locationId),
+            planet_type: planetObj?.planet_type,
+            prospected_block_number: planetObj?.prospected_block_number,
+            destroyed: planetObj?.destroyed,
+            owner:
+              typeof planetObj?.owner === "string"
+                ? (planetObj.owner as string).slice(0, 18) + "..."
+                : planetObj?.owner,
+            timestamp: contractArgs[8],
+            planet_events_count: (planetEvents as Record<string, unknown>)
+              ?.count,
+            arrivals_length: Array.isArray(arrivals) ? arrivals.length : 0,
+          });
+        }
+
         // 3. Get contract + method
         const { contract, method } = this.contractResolver.resolve(
           tx.intent.methodName
@@ -349,6 +372,9 @@ export class TxExecutor {
             `[TxExecutor] tx ${tx.id} (${tx.intent.methodName}) reverted:`,
             reason
           );
+          if (receipt.error) {
+            console.error("[TxExecutor] revert reason:", receipt.error);
+          }
           console.error(
             "[TxExecutor] receipt:",
             JSON.stringify({
@@ -357,6 +383,11 @@ export class TxExecutor {
               status: receipt.status,
             })
           );
+          if (tx.intent.methodName === "prospectPlanet") {
+            console.error(
+              "[TxExecutor] prospectPlanet hint: stale indexer (refresh planet), tx delayed >5min (timestamp window), planet already prospected, not Ruins, or not owner"
+            );
+          }
           if (attempt < MAX_RETRIES) {
             const latestBlock = receipt.blockNumber ?? 0;
             if (latestBlock > 0) {

@@ -74,6 +74,14 @@ const ARTIFACT_SPECS: Array<{
     { modulePath: './artifacts/Admin.ts', exportName: 'AdminContract' },
     { modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
     { modulePath: './artifacts/Move.ts', exportName: 'MoveContract' },
+    {
+        modulePath: './artifacts/ArtifactSystem.ts',
+        exportName: 'ArtifactSystemContract',
+    },
+    {
+        modulePath: './artifacts/ArtifactExt.ts',
+        exportName: 'ArtifactExtContract',
+    },
 ];
 
 /** Deployment order and constructor args. name must match a key used in getConstructorArgs (ctx.addresses). */
@@ -148,6 +156,16 @@ const DEPLOY_DEFINITIONS: Array<{
     {
         name: 'Move',
         envPrefix: 'MOVE',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArtifactSystem',
+        envPrefix: 'ARTIFACT_SYSTEM',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArtifactExt',
+        envPrefix: 'ARTIFACT_EXT',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
 ];

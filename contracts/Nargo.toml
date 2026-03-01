@@ -16,6 +16,8 @@ members = [
     "system/admin",
     "system/core",
     "system/move",
+    "system/artifact",
+    "system/artifact_ext",
 ]
 
 # [dependencies]

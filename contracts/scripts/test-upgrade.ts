@@ -552,6 +552,13 @@ async function main() {
         await sendTimestampRefreshTx(ctx);
         const initTimestamp = await getL2BlockTimestamp(ctx);
 
+        // Use snark config with ZK checks disabled so init_proof is skipped (radius=0, x=0, y=0
+        // would otherwise fail the annulus constraint dist_sq < r_sq in the init circuit).
+        const initSnarkConfig = {
+            ...snarkConfig,
+            disable_zk_checks: true,
+        };
+
         const initArgs = [
             x,
             y,
@@ -560,7 +567,7 @@ async function main() {
             perlin,
             level,
             initTimestamp,
-            snarkConfig,
+            initSnarkConfig,
             planetDefaultStatsLevel0,
             worldConfig,
             gameConfigCore,

@@ -222,15 +222,58 @@ pub fn _get_radius(world_config: WorldConfig) -> u128 {
 }
 
 /// Noir port of Solidity `LibGameUtils._randomArtifactTypeAndLevelBonus`.
-/// todo: implement this
+/// lastByteOfSeed = artifactSeed % 0xFF, secondLastByteOfSeed = ((artifactSeed - lastByteOfSeed) / 256) % 0xFF.
 pub fn _random_artifact_type_and_level_bonus(
     artifact_seed: Field,
     biome: u8,
-    space_type: u8,
+    _space_type: u8,
 ) -> (u8, u8) {
-    let artifact_type: u8 = 0;
-    let level_bonus: u8 = 0;
-    (artifact_type, level_bonus)
+    let seed_u128 = artifact_seed as u128;
+    let last_byte_of_seed: u8 = (seed_u128 % 256) as u8;
+    let second_last_byte_of_seed: u8 = ((seed_u128 / 256) % 256) as u8;
+
+    let mut artifact_type: u8 = ArtifactType::Pyramid();
+
+    if last_byte_of_seed < 39 {
+        artifact_type = ArtifactType::Monolith();
+    } else if last_byte_of_seed < 78 {
+        artifact_type = ArtifactType::Colossus();
+    } else if last_byte_of_seed < 156 {
+        artifact_type = ArtifactType::Pyramid();
+    } else if last_byte_of_seed < 171 {
+        artifact_type = ArtifactType::Wormhole();
+    } else if last_byte_of_seed < 186 {
+        artifact_type = ArtifactType::PlanetaryShield();
+    } else if last_byte_of_seed < 201 {
+        artifact_type = ArtifactType::PhotoidCannon();
+    } else if last_byte_of_seed < 216 {
+        artifact_type = ArtifactType::BloomFilter();
+    } else if last_byte_of_seed < 231 {
+        artifact_type = ArtifactType::BlackDomain();
+    } else {
+        if biome == Biome::Ice() {
+            artifact_type = ArtifactType::PlanetaryShield();
+        } else if biome == Biome::Lava() {
+            artifact_type = ArtifactType::PhotoidCannon();
+        } else if biome == Biome::Wasteland() {
+            artifact_type = ArtifactType::BloomFilter();
+        } else if biome == Biome::Corrupted() {
+            artifact_type = ArtifactType::BlackDomain();
+        } else {
+            artifact_type = ArtifactType::Wormhole();
+        }
+        // todo: verify this is correct
+        artifact_type = ArtifactType::PhotoidCannon();
+    }
+
+    let mut bonus: u8 = 0;
+    if second_last_byte_of_seed < 4 {
+        bonus = 2;
+    } else if second_last_byte_of_seed < 16 {
+        bonus = 1;
+    }
+
+    (artifact_type, bonus)
 }
 
 /// Noir port of Solidity `LibGameUtils._getBiome`.
@@ -244,6 +287,25 @@ pub fn _get_biome(space_type: u8, biomebase: u8, game_config_core: GameConfigCor
         if biomebase < game_config_core.biome_threshold_1 {
             biome += 1;
         } else if biomebase < game_config_core.biome_threshold_2 {
+            biome += 2;
+        } else {
+            biome += 3;
+        }
+        biome
+    }
+}
+
+/// Same as _get_biome but accepts biomebase as u128 for Solidity compatibility (proof output).
+pub fn _get_biome_u128(space_type: u8, biomebase: u128, game_config_core: GameConfigCore) -> u8 {
+    let t1: u128 = game_config_core.biome_threshold_1 as u128;
+    let t2: u128 = game_config_core.biome_threshold_2 as u128;
+    if space_type == SpaceType::DeadSpace() {
+        Biome::Corrupted()
+    } else {
+        let mut biome: u8 = 3 * space_type;
+        if biomebase < t1 {
+            biome += 1;
+        } else if biomebase < t2 {
             biome += 2;
         } else {
             biome += 3;
@@ -339,6 +401,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
         } else if artifact.planet_biome == Biome::Forest() {
             upgrade.def_multiplier += 5;
             upgrade.pop_cap_multiplier += 5;
+            upgrade.pop_gro_multiplier += 5;
         } else if artifact.planet_biome == Biome::Grassland() {
             upgrade.pop_cap_multiplier += 5;
             upgrade.pop_gro_multiplier += 5;
@@ -387,6 +450,44 @@ pub fn artifact_rarity_from_planet_level(planet_level: u8) -> u8 {
     } else {
         ArtifactRarity::Mythic()
     }
+}
+
+/// Add an artifact ID to a planet's artifact list (ids + count). PlanetArtifacts-only part of _putArtifactOnPlanet.
+/// Used by _put_artifact_on_planet and by ArtifactSystem deposit/put flows.
+pub fn add_artifact_id_to_planet_artifacts(
+    artifact_id: Field,
+    planet_artifacts: PlanetArtifacts,
+) -> PlanetArtifacts {
+    let mut updated = planet_artifacts;
+    assert(updated.count < 5, "too many artifacts on planet");
+    updated.ids[updated.count] = artifact_id;
+    updated.count += 1;
+    updated
+}
+
+/// Remove an artifact ID from a planet's artifact list. PlanetArtifacts-only part of _takeArtifactOffPlanet.
+/// Used by _take_artifact_off_planet and by ArtifactSystem withdraw/take flows.
+pub fn remove_artifact_id_from_planet_artifacts(
+    artifact_id: Field,
+    planet_artifacts: PlanetArtifacts,
+) -> PlanetArtifacts {
+    let mut updated = planet_artifacts;
+    let mut found = false;
+    let mut found_index: u32 = 0;
+    for i in 0..20 {
+        if (i as u32) < updated.count {
+            if updated.ids[i] == artifact_id {
+                found = true;
+                found_index = i;
+            }
+        }
+    }
+    assert(found, "artifact not on this planet");
+    let last_index = updated.count - 1;
+    updated.ids[found_index] = updated.ids[last_index];
+    updated.ids[last_index] = 0;
+    updated.count -= 1;
+    updated
 }
 
 /// Noir port of Solidity `LibGameUtils._putArtifactOnPlanet`.
@@ -511,10 +612,60 @@ pub fn get_planet_artifact(
     }
 }
 
+/// Noir port of LibArtifactUtils.containsGear. Pure so it can be used in private context.
+pub fn contains_gear_ship(
+    controller: AztecAddress,
+    planet_artifacts: PlanetArtifacts,
+    artifacts: [Artifact; 20],
+) -> bool {
+    let mut found: bool = false;
+    for i in 0..20 {
+        if (i < planet_artifacts.count) & !found {
+            let artifact = artifacts[i as u32];
+            if (artifact.artifact_type == ArtifactType::ShipGear())
+                & (artifact.controller == controller) {
+                found = true;
+            }
+        }
+    }
+    found
+}
+
 /// Noir port of Solidity `LibGameUtils.getActiveArtifact`.
-/// todo: implement this
-pub fn get_active_artifact(location_id: Field, planet_artifacts: PlanetArtifacts) -> Artifact {
-    Artifact::zero()
+/// Returns the first artifact on the planet that is activated; otherwise zero artifact.
+pub fn get_active_artifact(
+    planet_artifacts: PlanetArtifacts,
+    artifacts: [Artifact; 20],
+) -> Artifact {
+    let mut result: Artifact = Artifact::zero();
+    let mut found: bool = false;
+    for i in 0..20 {
+        if (i < planet_artifacts.count) & !found {
+            let a = artifacts[i as u32];
+            if is_activated(a) {
+                result = a;
+                found = true;
+            }
+        }
+    }
+    result
+}
+
+/// Noir port of LibGameUtils.getActiveArtifact (id-only variant). Returns activated artifact id or 0.
+pub fn get_active_artifact_id(
+    planet_artifacts: PlanetArtifacts,
+    artifacts: [Artifact; 20],
+) -> Field {
+    let mut result: Field = 0;
+    for i in 0..20 {
+        if (i < planet_artifacts.count) & (result == 0) {
+            let a = artifacts[i as u32];
+            if is_activated(a) {
+                result = planet_artifacts.ids[i];
+            }
+        }
+    }
+    result
 }
 
 /// Noir port of Solidity `LibGameUtils.getPlanetDefaultSpaceJunk`.
@@ -545,6 +696,20 @@ pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) 
     planet.speed = (planet.speed * 100) / upgrade.speed_multiplier;
     planet.defense = (planet.defense * 100) / upgrade.def_multiplier;
     (location_id, planet)
+}
+
+/// Apply artifact buff to planet (LibGameUtils._buffPlanet). Caller sets last_updated.
+pub fn buff_planet_with_artifact(artifact: Artifact, planet: Planet) -> Planet {
+    let upgrade = _get_upgrade_for_artifact(artifact);
+    let (_, p) = _buff_planet(0, planet, upgrade);
+    p
+}
+
+/// Remove artifact buff from planet (LibGameUtils._debuffPlanet). Caller sets last_updated.
+pub fn debuff_planet_with_artifact(artifact: Artifact, planet: Planet) -> Planet {
+    let upgrade = _get_upgrade_for_artifact(artifact);
+    let (_, p) = _debuff_planet(0, planet, upgrade);
+    p
 }
 
 /// Noir port of Solidity `LibGameUtils.checkPlanetDOS`.

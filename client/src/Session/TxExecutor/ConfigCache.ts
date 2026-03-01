@@ -24,6 +24,7 @@ export interface GameConfig {
   upgradeConfig: unknown;
   planetLevelThresholds: unknown;
   spaceJunkConfig: unknown;
+  spaceshipsConfig: unknown;
   planetTypeWeightsTiers: [unknown, unknown, unknown, unknown];
   /** [branch][level] — 3 branches × 4 levels, from get_upgrade_by_branch_level */
   upgrades: RawUpgrade[][];
@@ -71,6 +72,7 @@ export class ConfigCache {
       upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
+      spaceshipsConfig,
       tier0,
       tier1,
       tier2,
@@ -83,6 +85,7 @@ export class ConfigCache {
       c.methods.get_upgrade_config().simulate({ from }),
       c.methods.get_planet_level_thresholds().simulate({ from }),
       c.methods.get_space_junk_config().simulate({ from }),
+      c.methods.get_spaceships_config().simulate({ from }),
       c.methods.get_planet_type_weights_tier(0).simulate({ from }),
       c.methods.get_planet_type_weights_tier(1).simulate({ from }),
       c.methods.get_planet_type_weights_tier(2).simulate({ from }),
@@ -128,6 +131,7 @@ export class ConfigCache {
       upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
+      spaceshipsConfig,
       planetTypeWeightsTiers: [tier0, tier1, tier2, tier3],
       upgrades,
       planetCumulativeRarities,

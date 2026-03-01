@@ -94,6 +94,16 @@ const CONTRACT_SPECS = [
         modulePath: './artifacts/Move.ts',
         exportName: 'MoveContract',
     },
+    {
+        name: 'ArtifactSystem',
+        modulePath: './artifacts/ArtifactSystem.ts',
+        exportName: 'ArtifactSystemContract',
+    },
+    {
+        name: 'ArtifactExt',
+        modulePath: './artifacts/ArtifactExt.ts',
+        exportName: 'ArtifactExtContract',
+    },
 ];
 
 function addressesFromEnv(): Record<string, string> {
@@ -117,6 +127,8 @@ function addressesFromEnv(): Record<string, string> {
         ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
+        ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactExt', 'ARTIFACT_EXT_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -195,6 +207,8 @@ async function main() {
     const admin = contracts['Admin'];
     const core = contracts['Core'];
     const move = contracts['Move'];
+    const artifactSystem = contracts['ArtifactSystem'];
+    const artifactExt = contracts['ArtifactExt'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -210,6 +224,8 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
+    if (!artifactSystem) throw new Error('ArtifactSystem instance missing');
+    if (!artifactExt) throw new Error('ArtifactExt instance missing');
 
     if (
         !worldStorage ||
@@ -270,7 +286,7 @@ async function main() {
             .send(opts);
     };
 
-    const TOTAL_STEPS = 23;
+    const TOTAL_STEPS = 27;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -286,7 +302,7 @@ async function main() {
         );
     };
 
-    console.log('\n🔍 Configuring contracts (batched: 22 steps)...\n');
+    console.log('\n🔍 Configuring contracts (batched: 27 steps)...\n');
 
     // ---- Phase 1: Config initialization (10 calls) ----
 
@@ -618,6 +634,68 @@ async function main() {
         elapsedMs >= 60000
             ? `${elapsedMin}m ${elapsedSecRem}s`
             : `${elapsedSec}s`;
+    await run('ArtifactSystem.set_all_storage_addresses()', async () => {
+        await artifactSystem.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address
+            )
+            .send(opts);
+    });
+
+    await run('Authorize ArtifactSystem on storage contracts', async () => {
+        for (const storage of [
+            playerStorage,
+            planetStorage,
+            planetArtifactsStorage,
+            planetEventsStorage,
+            artifactStorage,
+            artifactLocationStorage,
+        ]) {
+            await storage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
+        }
+    });
+
+    await run('ArtifactExt.set_all_storage_addresses()', async () => {
+        await artifactExt.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address
+            )
+            .send(opts);
+    });
+
+    await run('Authorize ArtifactExt on storage contracts', async () => {
+        for (const storage of [
+            playerStorage,
+            planetStorage,
+            planetArtifactsStorage,
+            planetEventsStorage,
+            artifactStorage,
+            artifactLocationStorage,
+            arrivalStorage,
+        ]) {
+            await storage.methods
+                .add_authorized_contract(artifactExt.address)
+                .send(opts);
+        }
+    });
 
     console.log('\n✅ Configure done.');
     console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);

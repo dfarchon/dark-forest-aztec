@@ -1,9 +1,7 @@
 {
   "client/**/*.{ts,tsx,js,jsx,json,css,md}": ["pnpm --filter client format"],
   "packages/**/*.{ts,tsx,js,jsx,json}": ["prettier --write"],
-  "contracts/scripts/**/*.{ts,js,json}": [
-    "pnpm --filter contracts scripts:fmt"
-  ],
+  "contracts/scripts/**/*.{ts,js,json}": ["prettier --write"],
   "contracts/**/*.nr": ["pnpm --filter contracts run aztec:fmt:lint-staged"],
   "**/package.json": ["pnpm fix:package-json"]
 }
