@@ -33,9 +33,11 @@ import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type {
   TxIntent,
+  UnconfirmedCreatePlanet,
   UnconfirmedInit,
   UnconfirmedMove,
   UnconfirmedPauseGame,
+  UnconfirmedPlanetTransfer,
   UnconfirmedReveal,
   UnconfirmedSetWorldConfig,
   UnconfirmedUnpauseGame,
@@ -272,6 +274,10 @@ export class StateResolver {
         return this.resolvePauseGame(intent as UnconfirmedPauseGame);
       case "unpauseGame":
         return this.resolveUnpauseGame(intent as UnconfirmedUnpauseGame);
+      case "createPlanet":
+        return this.resolveCreatePlanet(intent as UnconfirmedCreatePlanet);
+      case "transferPlanet":
+        return this.resolveTransferPlanet(intent as UnconfirmedPlanetTransfer);
       default:
         throw new Error(
           `StateResolver: method "${intent.methodName}" not implemented`
@@ -1145,6 +1151,45 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
     return [world];
+  }
+
+  // -------------------------------------------------------------------------
+  // createPlanet — AdminCreatePlanetArgs: location, perlin, level, planet_type, require_valid_location_id
+  // -------------------------------------------------------------------------
+  private async resolveCreatePlanet(
+    intent: UnconfirmedCreatePlanet
+  ): Promise<unknown[]> {
+    const args = await (intent.args instanceof Promise
+      ? intent.args
+      : Promise.resolve(intent.args));
+    const [locationId, perlin, level, planetType, requireValidLocationId] =
+      args as [bigint, number, number, number, boolean];
+    return [
+      {
+        location: locationId,
+        perlin: Number(perlin) & 0xff,
+        level: Number(level) & 0xff,
+        planet_type: Number(planetType) & 0xff,
+        require_valid_location_id: Boolean(requireValidLocationId),
+      },
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // transferPlanet — Admin.set_owner(planet_id, planet_state, new_owner)
+  // -------------------------------------------------------------------------
+  private async resolveTransferPlanet(
+    intent: UnconfirmedPlanetTransfer
+  ): Promise<unknown[]> {
+    const args = await (intent.args instanceof Promise
+      ? intent.args
+      : Promise.resolve(intent.args));
+    const [locationIdDecStr, newOwnerEth] = args as [string, string];
+    const planetId = BigInt(String(locationIdDecStr));
+    const planetRaw = this.indexer.getPlanet(String(locationIdDecStr));
+    const planetState = planetRaw ? planetToContract(planetRaw) : planetZero();
+    const newOwner = AztecAddress.fromString(String(newOwnerEth));
+    return [planetId, planetState, newOwner];
   }
 
   // -------------------------------------------------------------------------

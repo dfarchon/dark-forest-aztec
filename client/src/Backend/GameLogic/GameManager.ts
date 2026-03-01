@@ -23,6 +23,7 @@ import {
   isUnconfirmedActivateArtifactTx,
   isUnconfirmedBuyHatTx,
   isUnconfirmedCapturePlanetTx,
+  isUnconfirmedCreatePlanetTx,
   isUnconfirmedDeactivateArtifactTx,
   isUnconfirmedDepositArtifactTx,
   isUnconfirmedFindArtifactTx,
@@ -71,6 +72,7 @@ import {
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedClaimReward,
+  UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
   UnconfirmedFindArtifact,
@@ -880,6 +882,41 @@ class GameManager extends EventEmitter {
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
           ]);
+        } else if (tx.intent.methodName === "pauseGame") {
+          gameManager.paused = true;
+          gameManager.paused$.publish(true);
+        } else if (tx.intent.methodName === "unpauseGame") {
+          gameManager.paused = false;
+          gameManager.paused$.publish(false);
+        } else if (isUnconfirmedCreatePlanetTx(tx)) {
+          const receipt = await tx.confirmedPromise;
+          if (receipt.blockNumber != null) {
+            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
+          }
+          await gameManager.hardRefreshPlanet(tx.intent.locationId);
+          const planet = gameManager.entityStore.getPlanetWithId(
+            tx.intent.locationId
+          );
+          if (planet && tx.intent.coords) {
+            const intCoords = {
+              x: Math.round(tx.intent.coords.x),
+              y: Math.round(tx.intent.coords.y),
+            };
+            const revealedLocation: RevealedLocation = {
+              coords: intCoords,
+              hash: tx.intent.locationId,
+              perlin: gameManager.spaceTypePerlin(intCoords, true),
+              biomebase: gameManager.biomebasePerlin(intCoords, true),
+              revealer: gameManager.getAccount()!,
+            };
+            gameManager.entityStore.replacePlanetFromContractData(
+              planet,
+              undefined,
+              undefined,
+              revealedLocation
+            );
+          }
+          gameManager.emit(GameManagerEvent.PlanetUpdate);
         }
 
         gameManager.entityStore.clearUnconfirmedTxIntent(tx);
@@ -3211,6 +3248,53 @@ class GameManager extends EventEmitter {
       this.getNotificationsManager().txInitError("transferPlanet", e.message);
       throw e;
     }
+  }
+
+  /**
+   * Admin-only: create a planet at the given coordinates with the given level and type.
+   * Calls Admin.create_planet(AdminCreatePlanetArgs). require_valid_location_id is false.
+   * Coords are rounded to integers (map clicks can yield floats).
+   */
+  public async createPlanet(
+    coords: WorldCoords,
+    level: number,
+    planetType: number
+  ): Promise<Transaction<UnconfirmedCreatePlanet>> {
+    try {
+      const intCoords: WorldCoords = {
+        x: Math.round(Number(coords.x)),
+        y: Math.round(Number(coords.y)),
+      };
+      const locationIdBigInt = await this.locationBigIntFromCoords(intCoords);
+      const perlin = this.spaceTypePerlin(intCoords, false);
+      const locationId = locationIdFromBigInt(locationIdBigInt);
+      const txIntent: UnconfirmedCreatePlanet = {
+        methodName: "createPlanet",
+        args: Promise.resolve([
+          locationIdBigInt,
+          perlin & 0xff,
+          Math.max(0, Math.min(9, Math.floor(level))),
+          Math.max(0, Math.min(4, Math.floor(planetType))),
+          false,
+        ]),
+        locationId,
+        coords: intCoords,
+        level: Math.max(0, Math.min(9, Math.floor(level))),
+        planetType: Math.max(0, Math.min(4, Math.floor(planetType))),
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("createPlanet", e.message);
+      throw e;
+    }
+  }
+
+  /** Alias for plugins: transfer planet ownership (admin). Same as transferOwnership. */
+  public async transferPlanet(
+    planetId: LocationId,
+    newOwner: EthAddress
+  ): Promise<Transaction<UnconfirmedPlanetTransfer>> {
+    return this.transferOwnership(planetId, newOwner);
   }
 
   public async setWorldConfig(

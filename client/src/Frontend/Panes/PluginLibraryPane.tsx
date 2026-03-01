@@ -43,8 +43,25 @@ function HelpContent() {
   );
 }
 
+const PluginRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  min-height: 32px;
+`;
+
+const PluginName = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
 const Actions = styled.div`
-  float: right;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
 
   .blue {
     --df-button-hover-background: ${dfstyles.colors.dfblue};
@@ -205,12 +222,12 @@ export function PluginLibraryPane({
       // @ts-expect-error ReactSortable types omit children but component accepts them
       <ReactSortable list={plugins} setList={onPluginReorder}>
         {plugins.map((plugin) => (
-          <div key={plugin.id}>
-            <Truncate maxWidth={"150px"} style={{ verticalAlign: "unset" }}>
-              <Sub>{plugin.name}</Sub>
-            </Truncate>
-
-            <Spacer width={8} />
+          <PluginRow key={plugin.id}>
+            <PluginName>
+              <Truncate maxWidth={"100%"} style={{ verticalAlign: "unset" }}>
+                <Sub>{plugin.name}</Sub>
+              </Truncate>
+            </PluginName>
             <Actions>
               <Btn
                 className="blue"
@@ -218,14 +235,12 @@ export function PluginLibraryPane({
               >
                 edit
               </Btn>
-              <Spacer width={4} />
               <Btn
                 className="red"
                 onClick={() => deletePluginClicked(plugin.id)}
               >
                 del
               </Btn>
-              <Spacer width={4} />
               <Btn
                 className="green"
                 onClick={() => runPluginClicked(plugin.id)}
@@ -233,7 +248,7 @@ export function PluginLibraryPane({
                 run
               </Btn>
             </Actions>
-          </div>
+          </PluginRow>
         ))}
       </ReactSortable>
     );

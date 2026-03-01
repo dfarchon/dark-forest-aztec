@@ -15,7 +15,7 @@ export interface EmbeddedPlugin {
  * Uses Vite's import.meta.glob (no require.context in ESM).
  */
 const pluginsModules = import.meta.glob<{ default: string }>(
-  "../../../embedded_plugins/*.[jt]sx?",
+  "../../../embedded_plugins/*.{js,jsx,ts,tsx}",
   { query: "?raw", eager: true }
 );
 
