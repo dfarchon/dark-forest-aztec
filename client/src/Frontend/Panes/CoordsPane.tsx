@@ -41,19 +41,25 @@ class CoordsText extends React.Component<
     let spacetypeText = "???";
 
     if (this.props.uiManager) {
-      const per = this.props.uiManager.getSpaceTypePerlin(coords, false);
-      const spaceType = this.props.uiManager.spaceTypeFromPerlin(per);
+      void this.props.uiManager
+        .getSpaceTypePerlin(coords, false)
+        .then((per) => {
+          const spaceType = this.props.uiManager!.spaceTypeFromPerlin(per);
 
-      let suff = "";
-      if (spaceType === SpaceType.NEBULA) suff = "\u00b0 (NEBULA)";
-      else if (spaceType === SpaceType.SPACE) suff = "\u00b0 (SPACE)";
-      else if (spaceType === SpaceType.DEEP_SPACE) suff = "\u00b0 (DEEP SPACE)";
-      else if (spaceType === SpaceType.DEAD_SPACE) suff = "\u00b0 (DEAD SPACE)";
+          let suff = "";
+          if (spaceType === SpaceType.NEBULA) suff = "\u00b0 (NEBULA)";
+          else if (spaceType === SpaceType.SPACE) suff = "\u00b0 (SPACE)";
+          else if (spaceType === SpaceType.DEEP_SPACE)
+            suff = "\u00b0 (DEEP SPACE)";
+          else if (spaceType === SpaceType.DEAD_SPACE)
+            suff = "\u00b0 (DEAD SPACE)";
 
-      spacetypeText = `${Math.floor((16 - per) * 16)}${suff}`;
-    }
-
-    if (this.spacetypeRef.current) {
+          spacetypeText = `${Math.floor((16 - per) * 16)}${suff}`;
+          if (this.spacetypeRef.current) {
+            this.spacetypeRef.current.innerText = "TEMP: " + spacetypeText;
+          }
+        });
+    } else if (this.spacetypeRef.current) {
       this.spacetypeRef.current.innerText = "TEMP: " + spacetypeText;
     }
   }

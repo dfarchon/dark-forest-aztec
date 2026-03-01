@@ -355,6 +355,12 @@ importers:
 
   packages/hashing:
     dependencies:
+      '@aztec/aztec.js':
+        specifier: 4.0.0-devnet.2-patch.1
+        version: 4.0.0-devnet.2-patch.1(typescript@5.9.3)
+      '@aztec/foundation':
+        specifier: 4.0.0-devnet.2-patch.1
+        version: 4.0.0-devnet.2-patch.1
       '@dfpunk/types':
         specifier: workspace:*
         version: link:../types

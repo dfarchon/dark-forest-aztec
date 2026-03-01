@@ -721,8 +721,8 @@ class GameUIManager extends EventEmitter {
     return planet.owner === this.gameManager.getAccount();
   }
 
-  public addNewChunk(chunk: Chunk) {
-    this.gameManager.addNewChunk(chunk);
+  public async addNewChunk(chunk: Chunk): Promise<void> {
+    await this.gameManager.addNewChunk(chunk);
   }
 
   public bulkAddNewChunks(chunks: Chunk[]): Promise<void> {
@@ -902,7 +902,7 @@ class GameUIManager extends EventEmitter {
     this.setAbandoning(false);
   }
 
-  public hasMinedChunk(chunkLocation: Rectangle): boolean {
+  public async hasMinedChunk(chunkLocation: Rectangle): Promise<boolean> {
     return this.gameManager.hasMinedChunk(chunkLocation);
   }
 
@@ -914,11 +914,17 @@ class GameUIManager extends EventEmitter {
     return this.gameManager.spaceTypeFromPerlin(perlin);
   }
 
-  public getSpaceTypePerlin(coords: WorldCoords, floor: boolean): number {
+  public async getSpaceTypePerlin(
+    coords: WorldCoords,
+    floor: boolean
+  ): Promise<number> {
     return this.gameManager.spaceTypePerlin(coords, floor);
   }
 
-  public getBiomePerlin(coords: WorldCoords, floor: boolean): number {
+  public async getBiomePerlin(
+    coords: WorldCoords,
+    floor: boolean
+  ): Promise<number> {
     return this.gameManager.biomebasePerlin(coords, floor);
   }
 

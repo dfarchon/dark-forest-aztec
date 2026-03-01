@@ -1,9 +1,36 @@
+import { Fr } from "@aztec/aztec.js/fields";
+import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import { PerlinConfig } from "@dfpunk/types";
 import BigInt, { BigInteger } from "big-integer";
 import { Fraction, IFraction } from "./fractions/bigFraction";
-import { perlinRandHash } from "./mimc";
 
 const TRACK_LCM = false;
+
+function toFr(n: number): Fr {
+  const v = globalThis.BigInt(n);
+  return new Fr(v < 0n ? v + Fr.MODULUS : v);
+}
+
+/**
+ * Poseidon2-based rand for perlin gradient index. Matches circuit:
+ * poseidon2_hash([key, corner_x, corner_y, scale]) % 16.
+ */
+export function poseidon2RandForPerlin(key: number): AsyncHashFn {
+  return async (x: number, y: number, scale: number) => {
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    const scaleInt = Math.floor(scale);
+    const result = await poseidon2Hash([
+      toFr(key),
+      toFr(cx),
+      toFr(cy),
+      toFr(scaleInt),
+    ]);
+    const hex = result.toString().replace(/^0x/, "");
+    const n = globalThis.BigInt("0x" + hex);
+    return Number(n % 16n);
+  };
+}
 
 /**
  * A object containing a pair of x,y coordinates.
@@ -29,14 +56,6 @@ export type AsyncHashFn = (
   y: number,
   scale: number,
 ) => Promise<number>;
-
-export const rand =
-  (key: number) =>
-  (...args: number[]) => {
-    return perlinRandHash(key)(...args)
-      .remainder(16)
-      .toJSNumber();
-  };
 
 /*
 const generateVecs = () => {
@@ -273,42 +292,16 @@ const valueAtAsync = async (
 export const MAX_PERLIN_VALUE = 32;
 
 /**
- * Calculates the perlin for a location, given the x,y pair and the PerlinConfig for the game.
+ * Calculates the perlin for a location using Poseidon2 for gradient index (matches circuit).
  *
  * @param coords An object of the x,y coordinates for which perlin is being calculated.
  * @param options An object containing the configuration for the perlin algorithm.
  */
-export function perlin(coords: IntegerVector, options: PerlinConfig) {
-  let { x, y } = coords;
-  if (options.mirrorY) x = Math.abs(x); // mirror across the vertical y-axis
-  if (options.mirrorX) y = Math.abs(y); // mirror across the horizontal x-axis
-  const fractionalP = { x: new Fraction(x), y: new Fraction(y) };
-  let ret = new Fraction(0);
-  const pValues: IFraction[] = [];
-  for (let i = 0; i < 3; i += 1) {
-    // scale must be a power of two, up to 8192
-    pValues.push(
-      valueAt(
-        fractionalP,
-        new Fraction(options.scale * 2 ** i),
-        rand(options.key),
-      ),
-    );
-  }
-  ret = ret.add(pValues[0]);
-  ret = ret.add(pValues[0]);
-  ret = ret.add(pValues[1]);
-  ret = ret.add(pValues[2]);
-
-  ret = ret.div(4);
-  runningLCM = updateLCM(runningLCM, BigInt(ret.d));
-
-  ret = ret.mul(MAX_PERLIN_VALUE / 2);
-  if (options.floor) ret = ret.floor();
-  ret = ret.add(MAX_PERLIN_VALUE / 2);
-
-  const out = ret.valueOf();
-  return Math.floor(out * 100) / 100;
+export async function perlin(
+  coords: IntegerVector,
+  options: PerlinConfig,
+): Promise<number> {
+  return perlinWithRand(coords, options, poseidon2RandForPerlin(options.key));
 }
 
 /**

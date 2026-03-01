@@ -43,7 +43,7 @@ export class PerlinRenderer
     this.thresholds = manager.renderer.context.getPerlinThresholds();
   }
 
-  private bufferGradients(
+  private async bufferGradients(
     rect: Rectangle,
     octave: PerlinOctave,
     topGrad: AttribManager,
@@ -61,30 +61,13 @@ export class PerlinRenderer
     const topLeft = up(botLeft, octaveScale);
     const topRight = right(up(botLeft, octaveScale), octaveScale);
 
-    const botLeftGrad = getCachedGradient(
-      quadrant,
-      botLeft,
-      this.config,
-      octave,
-    );
-    const botRightGrad = getCachedGradient(
-      quadrant,
-      botRight,
-      this.config,
-      octave,
-    );
-    const topLeftGrad = getCachedGradient(
-      quadrant,
-      topLeft,
-      this.config,
-      octave,
-    );
-    const topRightGrad = getCachedGradient(
-      quadrant,
-      topRight,
-      this.config,
-      octave,
-    );
+    const [botLeftGrad, botRightGrad, topLeftGrad, topRightGrad] =
+      await Promise.all([
+        getCachedGradient(quadrant, botLeft, this.config, octave),
+        getCachedGradient(quadrant, botRight, this.config, octave),
+        getCachedGradient(quadrant, topLeft, this.config, octave),
+        getCachedGradient(quadrant, topRight, this.config, octave),
+      ]);
 
     // technically we should buffer this
     const topGradVals = [...valueOf(topLeftGrad), ...valueOf(topRightGrad)];
@@ -96,7 +79,7 @@ export class PerlinRenderer
     }
   }
 
-  private queueRect(rect: Rectangle): void {
+  private async queueRect(rect: Rectangle): Promise<void> {
     const { bottomLeft } = rect;
 
     // get info
@@ -139,19 +122,23 @@ export class PerlinRenderer
     );
     worldCoordsA.setVertex(this.coordsBuffer, this.verts);
 
-    this.bufferGradients(rect, PerlinOctave._0, p0topGrad, p0botGrad);
-    this.bufferGradients(rect, PerlinOctave._1, p1topGrad, p1botGrad);
-    this.bufferGradients(rect, PerlinOctave._2, p2topGrad, p2botGrad);
+    await this.bufferGradients(rect, PerlinOctave._0, p0topGrad, p0botGrad);
+    await this.bufferGradients(rect, PerlinOctave._1, p1topGrad, p1botGrad);
+    await this.bufferGradients(rect, PerlinOctave._2, p2topGrad, p2botGrad);
 
     this.verts += 6;
   }
 
-  public queueChunk(chunk: Chunk) {
+  public async queueChunk(chunk: Chunk): Promise<void> {
     // calculate gradients
     if (chunk.chunkFootprint.sideLength > this.config.scale) {
       const rects = getPerlinChunks(chunk.chunkFootprint, this.config.scale);
-      for (const rect of rects) this.queueRect(rect);
-    } else this.queueRect(chunk.chunkFootprint);
+      await Promise.all(
+        [...rects].map((rect: Rectangle) => this.queueRect(rect)),
+      );
+    } else {
+      await this.queueRect(chunk.chunkFootprint);
+    }
   }
 
   public setUniforms() {

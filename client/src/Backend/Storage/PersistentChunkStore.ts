@@ -210,9 +210,9 @@ class PersistentChunkStore implements ChunkStore {
         IDBKeyRange.bound(borders[idx], borders[idx + 1], false, true)
       );
 
-      bucketOfChunks.forEach((chunk: PersistedChunk) => {
-        this.addChunk(toExploredChunk(chunk), false);
-      });
+      for (const chunk of bucketOfChunks) {
+        await this.addChunk(toExploredChunk(chunk), false);
+      }
 
       chunkCount += bucketOfChunks.length;
     }
@@ -345,8 +345,8 @@ class PersistentChunkStore implements ChunkStore {
     return undefined;
   }
 
-  public hasMinedChunk(chunkLoc: Rectangle): boolean {
-    return !!this.getChunkByFootprint(chunkLoc);
+  public hasMinedChunk(chunkLoc: Rectangle): Promise<boolean> {
+    return Promise.resolve(!!this.getChunkByFootprint(chunkLoc));
   }
 
   private getChunkById(chunkId: ChunkId): Chunk | undefined {
@@ -360,8 +360,8 @@ class PersistentChunkStore implements ChunkStore {
    * might not want to persist the chunk is if you are sure that you got it from persistent storage.
    * i.e. it already exists in persistent storage.
    */
-  public addChunk(chunk: Chunk, persistChunk = true): void {
-    if (this.hasMinedChunk(chunk.chunkFootprint)) {
+  public async addChunk(chunk: Chunk, persistChunk = true): Promise<void> {
+    if (await this.hasMinedChunk(chunk.chunkFootprint)) {
       return;
     }
 

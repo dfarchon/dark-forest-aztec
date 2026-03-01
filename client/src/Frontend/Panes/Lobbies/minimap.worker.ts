@@ -5,7 +5,10 @@ import { DrawMessage, MinimapConfig } from "./MinimapUtils";
 
 const ctx = self as unknown as Worker;
 
-function spaceTypePerlin(coords: WorldCoords, config: MinimapConfig): number {
+async function spaceTypePerlin(
+  coords: WorldCoords,
+  config: MinimapConfig
+): Promise<number> {
   return perlin(coords, { ...config, floor: true });
 }
 
@@ -23,7 +26,7 @@ function spaceTypeFromPerlin(perlin: number, config: MinimapConfig): SpaceType {
 
 // Initial implementation by @nicholashc (https://github.com/nicholashc)
 // https://github.com/darkforest-eth/plugins/blob/358a386356b9145005f17045d9f4ce22661d99a1/content/utilities/mini-map/plugin.js
-function generate(config: MinimapConfig): DrawMessage {
+async function generate(config: MinimapConfig): Promise<DrawMessage> {
   const data = [];
   const step = config.worldRadius / 25;
 
@@ -52,13 +55,11 @@ function generate(config: MinimapConfig): DrawMessage {
       // filter points within map circle
       if (checkBounds(0, 0, i, j, radius)) {
         // store coordinate and space type
+        const perlinVal = await spaceTypePerlin({ x: i, y: j }, config);
         data.push({
           x: i,
           y: j,
-          type: spaceTypeFromPerlin(
-            spaceTypePerlin({ x: i, y: j }, config),
-            config
-          ),
+          type: spaceTypeFromPerlin(perlinVal, config),
         });
       }
     }
@@ -67,9 +68,9 @@ function generate(config: MinimapConfig): DrawMessage {
   return { radius, data };
 }
 
-ctx.addEventListener("message", (e: MessageEvent) => {
+ctx.addEventListener("message", async (e: MessageEvent) => {
   if (e.data) {
-    const msg = generate(JSON.parse(e.data));
+    const msg = await generate(JSON.parse(e.data));
     ctx.postMessage(JSON.stringify(msg));
   }
 });

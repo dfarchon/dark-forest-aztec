@@ -61,7 +61,7 @@ const exploreChunk = async (
     planetLocations =
       workerIndex > 0
         ? []
-        : getPlanetLocations(
+        : await getPlanetLocations(
             spaceTypeKey,
             biomebaseKey,
             perlinLengthScale,
@@ -78,11 +78,15 @@ const exploreChunk = async (
         if (count % totalWorkers === workerIndex) {
           const hash = await planetHashFn(x, y);
           if (hash < locationIdUpperBound) {
+            const [perlinVal, biomebaseVal] = await Promise.all([
+              perlin({ x, y }, spaceTypePerlinOpts),
+              perlin({ x, y }, biomebasePerlinOpts),
+            ]);
             planetLocations.push({
               coords: { x, y },
               hash: locationIdFromBigInt(hash),
-              perlin: perlin({ x, y }, spaceTypePerlinOpts),
-              biomebase: perlin({ x, y }, biomebasePerlinOpts),
+              perlin: perlinVal,
+              biomebase: biomebaseVal,
             });
           }
         }
@@ -97,7 +101,10 @@ const exploreChunk = async (
   const chunkData: Chunk = {
     chunkFootprint,
     planetLocations,
-    perlin: perlin(chunkCenter, { ...spaceTypePerlinOpts, floor: false }),
+    perlin: await perlin(chunkCenter, {
+      ...spaceTypePerlinOpts,
+      floor: false,
+    }),
   };
   ctx.postMessage(JSON.stringify([chunkData, jobId]));
 };

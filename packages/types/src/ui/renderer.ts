@@ -577,7 +577,7 @@ export interface BackgroundRendererType {
     spaceColor?: string,
     deepSpaceColor?: string,
     deadSpaceColor?: string,
-  ): void;
+  ): Promise<void>;
 
   /**
    * Draws the background
@@ -595,7 +595,7 @@ export interface SpaceRendererType {
    * Called by the game to draw a chunk of the background. A chunk is a square section of the background.
    * @param chunk a variable that contains information on the chunk being drawn. A chunk is rectangle section of the background
    */
-  queueChunk(chunk: Chunk): void;
+  queueChunk(chunk: Chunk): Promise<void>;
 
   /**
    * In the Darkforest settings players can choose to set their own color configuratio for the background. This is called when the color is changed.
@@ -659,7 +659,7 @@ export interface PerlinRendererType {
    * The implementing renderer should contains its own back buffer.
    * @param chunk - a variable that contains information on the chunk being drawn. A chunk is rectangle section of the background.
    */
-  queueChunk(chunk: Chunk): void;
+  queueChunk(chunk: Chunk): Promise<void>;
 
   /**
    * Draws all discovered space

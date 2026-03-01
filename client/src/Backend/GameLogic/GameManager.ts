@@ -216,7 +216,7 @@ class GameManager extends EventEmitter {
   /**
    * In debug builds of the game, we can connect to a set of contracts deployed to a local
    * blockchain, which are tweaked to not verify planet hashes, meaning we can use a faster hash
-   * function with similar properties to mimc. This allows us to mine the map faster in debug mode.
+   * function with similar properties to Poseidon2. This allows us to mine the map faster in debug mode.
    *
    * @todo move this into a separate `GameConfiguration` class.
    */
@@ -380,8 +380,8 @@ class GameManager extends EventEmitter {
     players: Map<string, Player>,
     touchedPlanets: Map<LocationId, Planet>,
     allTouchedPlanetIds: Set<LocationId>,
-    revealedCoords: Map<LocationId, RevealedCoords>,
-    claimedCoords: Map<LocationId, ClaimedCoords>,
+    revealedLocations: Map<LocationId, RevealedLocation>,
+    claimedLocations: Map<LocationId, ClaimedLocation>,
     worldRadius: number,
     unprocessedArrivals: Map<VoyageId, QueuedArrival>,
     unprocessedPlanetArrivalIds: Map<LocationId, VoyageId[]>,
@@ -439,43 +439,6 @@ class GameManager extends EventEmitter {
 
     this.contractConstants = contractConstants;
     this.homeLocation = homeLocation;
-
-    const revealedLocations = new Map<LocationId, RevealedLocation>();
-    for (const [locationId, coords] of revealedCoords) {
-      const planet = touchedPlanets.get(locationId);
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-        revealedLocations.set(locationId, {
-          ...location,
-          revealer: coords.revealer,
-        });
-      }
-    }
-
-    const claimedLocations = new Map<LocationId, ClaimedLocation>();
-
-    for (const [locationId, coords] of claimedCoords) {
-      const planet = touchedPlanets.get(locationId);
-
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-
-        const revealedLocation = { ...location, revealer: coords.revealer };
-
-        revealedLocations.set(locationId, revealedLocation);
-        claimedLocations.set(locationId, revealedLocation);
-      }
-    }
 
     this.entityStore = new GameObjects(
       account,
@@ -705,16 +668,59 @@ class GameManager extends EventEmitter {
 
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
 
+    const perlinOpts = {
+      scale: initialState.contractConstants.PERLIN_LENGTH_SCALE,
+      mirrorX: initialState.contractConstants.PERLIN_MIRROR_X,
+      mirrorY: initialState.contractConstants.PERLIN_MIRROR_Y,
+      floor: true as const,
+    };
+    const revealedLocations = new Map<LocationId, RevealedLocation>();
+    for (const [locationId, coords] of initialState.revealedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = await perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        revealedLocations.set(locationId, {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        });
+      }
+    }
+    const claimedLocations = new Map<LocationId, ClaimedLocation>();
+    const claimedCoordsMap = initialState.claimedCoordsMap
+      ? initialState.claimedCoordsMap
+      : new Map<LocationId, ClaimedCoords>();
+    for (const [locationId, coords] of claimedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = await perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        const location: ClaimedLocation = {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        };
+        claimedLocations.set(locationId, location);
+      }
+    }
+
     const gameManager = new GameManager(
       terminal,
       account,
       initialState.players,
       initialState.touchedAndLocatedPlanets,
       new Set(Array.from(initialState.allTouchedPlanetIds)),
-      initialState.revealedCoordsMap,
-      initialState.claimedCoordsMap
-        ? initialState.claimedCoordsMap
-        : new Map<LocationId, ClaimedCoords>(),
+      revealedLocations,
+      claimedLocations,
       initialState.worldRadius,
       initialState.arrivals,
       initialState.planetVoyageIdMap,
@@ -1359,7 +1365,7 @@ class GameManager extends EventEmitter {
     this.minerManager.on(
       MinerManagerEvent.DiscoveredNewChunk,
       (chunk: Chunk, miningTimeMillis: number) => {
-        this.addNewChunk(chunk);
+        void this.addNewChunk(chunk);
         this.hashRate =
           chunk.chunkFootprint.sideLength ** 2 / (miningTimeMillis / 1000);
         this.emit(GameManagerEvent.DiscoveredNewChunk, chunk);
@@ -1876,7 +1882,7 @@ class GameManager extends EventEmitter {
   /**
    * Whether or not the given rectangle has been mined.
    */
-  hasMinedChunk(chunkLocation: Rectangle): boolean {
+  async hasMinedChunk(chunkLocation: Rectangle): Promise<boolean> {
     return this.persistentChunkStore.hasMinedChunk(chunkLocation);
   }
 
@@ -2203,11 +2209,15 @@ class GameManager extends EventEmitter {
     coords: WorldCoords
   ): Promise<WorldLocation> {
     const hash = await this.planetHashAt(coords.x, coords.y);
+    const [perlinVal, biomebaseVal] = await Promise.all([
+      this.spaceTypePerlin(coords, true),
+      this.biomebasePerlin(coords, true),
+    ]);
     return {
       coords,
       hash: locationIdFromBigInt(hash),
-      perlin: this.spaceTypePerlin(coords, true),
-      biomebase: this.biomebasePerlin(coords, true),
+      perlin: perlinVal,
+      biomebase: biomebaseVal,
     };
   }
 
@@ -2224,42 +2234,41 @@ class GameManager extends EventEmitter {
   }
 
   private async findRandomHomePlanet(): Promise<LocatablePlanet> {
+    const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
+    const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
+
+    // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
+    // area, distributed evenly in the inner perimeter of the world
+    let spawnInnerRadius = Math.sqrt(
+      Math.max(
+        Math.PI * this.worldRadius ** 2 - this.contractConstants.SPAWN_RIM_AREA,
+        0
+      ) / Math.PI
+    );
+
+    if (this.contractConstants.SPAWN_RIM_AREA === 0) {
+      spawnInnerRadius = 0;
+    }
+
+    let x: number;
+    let y: number;
+    let d: number;
+    let p: number;
+    do {
+      // sample from square
+      x = Math.random() * this.worldRadius * 2 - this.worldRadius;
+      y = Math.random() * this.worldRadius * 2 - this.worldRadius;
+      d = Math.sqrt(x ** 2 + y ** 2);
+      p = await this.spaceTypePerlin({ x, y }, false);
+    } while (
+      p >= initPerlinMax || // keep searching if above or equal to the max
+      p < initPerlinMin || // keep searching if below the minimum
+      d >= this.worldRadius || // can't be out of bound
+      d <= spawnInnerRadius // can't be inside spawn area ring
+    );
+
     return new Promise<LocatablePlanet>((resolve, reject) => {
-      const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
-      const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
       let minedChunksCount = 0;
-
-      let x: number;
-      let y: number;
-      let d: number;
-      let p: number;
-
-      // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
-      // area, distributed evenly in the inner perimeter of the world
-      let spawnInnerRadius = Math.sqrt(
-        Math.max(
-          Math.PI * this.worldRadius ** 2 -
-            this.contractConstants.SPAWN_RIM_AREA,
-          0
-        ) / Math.PI
-      );
-
-      if (this.contractConstants.SPAWN_RIM_AREA === 0) {
-        spawnInnerRadius = 0;
-      }
-
-      do {
-        // sample from square
-        x = Math.random() * this.worldRadius * 2 - this.worldRadius;
-        y = Math.random() * this.worldRadius * 2 - this.worldRadius;
-        d = Math.sqrt(x ** 2 + y ** 2);
-        p = this.spaceTypePerlin({ x, y }, false);
-      } while (
-        p >= initPerlinMax || // keep searching if above or equal to the max
-        p < initPerlinMin || // keep searching if below the minimum
-        d >= this.worldRadius || // can't be out of bound
-        d <= spawnInnerRadius // can't be inside spawn area ring
-      );
 
       // when setting up a new account in development mode, you can tell
       // the game where to start searching for planets using this query
@@ -3242,8 +3251,8 @@ class GameManager extends EventEmitter {
    * as well as all of the planets contained in that chunk. Causes the client to load
    * all of the information about those planets from the blockchain.
    */
-  addNewChunk(chunk: Chunk): GameManager {
-    this.persistentChunkStore.addChunk(chunk, true);
+  async addNewChunk(chunk: Chunk): Promise<GameManager> {
+    await this.persistentChunkStore.addChunk(chunk, true);
     for (const planetLocation of chunk.planetLocations) {
       this.entityStore.addPlanetLocation(planetLocation);
 
@@ -3272,7 +3281,7 @@ class GameManager extends EventEmitter {
     );
     const planetIdsToUpdate: LocationId[] = [];
     for (const chunk of chunks) {
-      this.persistentChunkStore.addChunk(chunk, true);
+      await this.persistentChunkStore.addChunk(chunk, true);
       for (const planetLocation of chunk.planetLocations) {
         this.entityStore.addPlanetLocation(planetLocation);
 
@@ -3532,8 +3541,8 @@ class GameManager extends EventEmitter {
   /**
    * Gets the temperature of a given location.
    */
-  getTemperature(coords: WorldCoords): number {
-    const p = this.spaceTypePerlin(coords, false);
+  async getTemperature(coords: WorldCoords): Promise<number> {
+    const p = await this.spaceTypePerlin(coords, false);
     return (16 - p) * 16;
   }
 
@@ -3576,7 +3585,10 @@ class GameManager extends EventEmitter {
    * Gets the perlin value at the given location in the world. SpaceType is based
    * on this value.
    */
-  public spaceTypePerlin(coords: WorldCoords, floor: boolean): number {
+  public async spaceTypePerlin(
+    coords: WorldCoords,
+    floor: boolean
+  ): Promise<number> {
     return perlin(coords, {
       key: this.hashConfig.spaceTypeKey,
       scale: this.hashConfig.perlinLengthScale,
@@ -3589,7 +3601,10 @@ class GameManager extends EventEmitter {
   /**
    * Gets the biome perlin valie at the given location in the world.
    */
-  public biomebasePerlin(coords: WorldCoords, floor: boolean): number {
+  public async biomebasePerlin(
+    coords: WorldCoords,
+    floor: boolean
+  ): Promise<number> {
     return perlin(coords, {
       key: this.hashConfig.biomebaseKey,
       scale: this.hashConfig.perlinLengthScale,

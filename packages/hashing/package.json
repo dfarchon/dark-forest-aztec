@@ -1,7 +1,7 @@
 {
   "name": "@dfpunk/hashing",
   "version": "0.0.0",
-  "description": "MiMC hashing and Perlin utilities for Dark Forest",
+  "description": "Poseidon2 hashing and Perlin utilities for Dark Forest",
   "keywords": [],
   "license": "",
   "author": "",
@@ -15,6 +15,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
   },
   "dependencies": {
+    "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
+    "@aztec/foundation": "4.0.0-devnet.2-patch.1",
     "@dfpunk/types": "workspace:*",
     "big-integer": "1.6.52"
   },

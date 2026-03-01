@@ -40,5 +40,5 @@ export interface PersistedLocation {
  * writes to IndexedDB, and one that simply throws away the data.
  */
 export interface ChunkStore {
-  hasMinedChunk: (chunkFootprint: Rectangle) => boolean;
+  hasMinedChunk: (chunkFootprint: Rectangle) => boolean | Promise<boolean>;
 }

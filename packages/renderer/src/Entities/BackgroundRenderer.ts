@@ -31,7 +31,7 @@ export class BackgroundRenderer implements BackgroundRendererType {
     this.chunkShadowRenderer = new RectRenderer(manager);
   }
 
-  queueChunks(
+  async queueChunks(
     exploredChunks: Iterable<Chunk>,
     highPerfMode: boolean,
     drawChunkBorders: boolean,
@@ -41,7 +41,7 @@ export class BackgroundRenderer implements BackgroundRendererType {
     spaceColor?: string,
     deepSpaceColor?: string,
     deadSpaceColor?: string,
-  ): void {
+  ): Promise<void> {
     // upload current camera transform to shader
     const { unminedRenderer, spaceRenderer, perlinRenderer } = this.renderer;
     if (highPerfMode) return;
@@ -77,17 +77,18 @@ export class BackgroundRenderer implements BackgroundRendererType {
       );
     }
 
+    const chunkPromises: Promise<void>[] = [];
     for (const exploredChunk of exploredChunks) {
       if (viewport.intersectsViewport(exploredChunk)) {
         // add this chunk to the verts array
         if (this.highQuality) {
-          spaceRenderer.queueChunk(exploredChunk);
+          chunkPromises.push(spaceRenderer.queueChunk(exploredChunk));
           this.chunkShadowRenderer.queueChunkBorderWithPadding(
             exploredChunk,
             1 + 1 * viewport.scale,
           );
         } else {
-          perlinRenderer.queueChunk(exploredChunk);
+          chunkPromises.push(perlinRenderer.queueChunk(exploredChunk));
         }
 
         if (drawChunkBorders) {
@@ -96,9 +97,10 @@ export class BackgroundRenderer implements BackgroundRendererType {
         }
       }
     }
+    await Promise.all(chunkPromises);
   }
 
-  fillPerlin() {
+  async fillPerlin() {
     const {
       canvas: { width, height },
       ctx,
@@ -112,9 +114,8 @@ export class BackgroundRenderer implements BackgroundRendererType {
       for (let y = 0; y < height; y += 100) {
         const worldCoords = viewport.canvasToWorldCoords({ x, y });
 
-        const space = context.spaceTypeFromPerlin(
-          context.getSpaceTypePerlin(worldCoords, false),
-        );
+        const perlinVal = await context.getSpaceTypePerlin(worldCoords, false);
+        const space = context.spaceTypeFromPerlin(perlinVal);
 
         let color: RGBVec = [255, 0, 0];
         // if (space === SpaceType.NEBULA) ctx.fillStyle = '#ff0000';

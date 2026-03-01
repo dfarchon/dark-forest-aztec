@@ -50,14 +50,14 @@ export class HomePlanetMinerChunkStore implements ChunkStore {
     this.minedChunkKeys.add(getChunkKey(exploredChunk.chunkFootprint));
   }
 
-  hasMinedChunk(chunkFootprint: Rectangle) {
+  async hasMinedChunk(chunkFootprint: Rectangle): Promise<boolean> {
     // return true if this chunk mined, or if perlin value >= threshold
     if (this.minedChunkKeys.has(getChunkKey(chunkFootprint))) return true;
     const center = {
       x: chunkFootprint.bottomLeft.x + chunkFootprint.sideLength / 2,
       y: chunkFootprint.bottomLeft.y + chunkFootprint.sideLength / 2,
     };
-    const chunkPerlin = perlin(center, this.perlinOptions);
+    const chunkPerlin = await perlin(center, this.perlinOptions);
     if (chunkPerlin >= this.initPerlinMax || chunkPerlin < this.initPerlinMin)
       return true;
     return false;
@@ -193,15 +193,15 @@ class MinerManager extends EventEmitter {
   }
 
   private exploreNext(fromChunk: Rectangle, jobId: number) {
-    this.nextValidExploreTarget(fromChunk, jobId).then(
-      (nextChunk: Rectangle | undefined) => {
+    void this.nextValidExploreTarget(fromChunk, jobId).then(
+      async (nextChunk: Rectangle | undefined) => {
         if (nextChunk) {
           const nextChunkKey = this.chunkLocationToKey(nextChunk, jobId);
           const center = {
             x: nextChunk.bottomLeft.x + nextChunk.sideLength / 2,
             y: nextChunk.bottomLeft.y + nextChunk.sideLength / 2,
           };
-          const centerPerlin = perlin(center, this.perlinOptions);
+          const centerPerlin = await perlin(center, this.perlinOptions);
           this.exploringChunk[nextChunkKey] = {
             chunkFootprint: nextChunk,
             planetLocations: [],
@@ -287,7 +287,7 @@ class MinerManager extends EventEmitter {
     // so any function calling it should handle the undefined case appropriately
     let candidateChunk = chunkLocation;
     let count = 10000;
-    while (!this.isValidExploreTarget(candidateChunk) && count > 0) {
+    while (!(await this.isValidExploreTarget(candidateChunk)) && count > 0) {
       candidateChunk = this.miningPattern.nextChunk(candidateChunk);
       count -= 1;
     }
@@ -295,7 +295,7 @@ class MinerManager extends EventEmitter {
     if (!this.isExploring && jobId !== this.currentJobId) {
       return undefined;
     }
-    if (this.isValidExploreTarget(candidateChunk)) {
+    if (await this.isValidExploreTarget(candidateChunk)) {
       return candidateChunk;
     }
     return new Promise((resolve) => {
@@ -309,7 +309,9 @@ class MinerManager extends EventEmitter {
     });
   }
 
-  private isValidExploreTarget(chunkLocation: Rectangle): boolean {
+  private async isValidExploreTarget(
+    chunkLocation: Rectangle
+  ): Promise<boolean> {
     const { bottomLeft, sideLength } = chunkLocation;
     const xCenter = bottomLeft.x + sideLength / 2;
     const yCenter = bottomLeft.y + sideLength / 2;
@@ -317,10 +319,10 @@ class MinerManager extends EventEmitter {
     const yMinAbs = Math.abs(yCenter) - sideLength / 2;
     const squareDist = xMinAbs ** 2 + yMinAbs ** 2;
     // should be inbounds, and unexplored
-    return (
-      squareDist < this.worldRadius ** 2 &&
-      !this.minedChunksStore.hasMinedChunk(chunkLocation)
-    );
+    const inBounds = squareDist < this.worldRadius ** 2;
+    const notMined =
+      !(await this.minedChunksStore.hasMinedChunk(chunkLocation));
+    return inBounds && notMined;
   }
 
   private sendMessageToWorkers(chunkToExplore: Rectangle, jobId: number): void {

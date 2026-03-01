@@ -481,7 +481,7 @@ export class StateResolver {
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
     // When ZK checks are enabled, the Poseidon2 locationId has different bytes
-    // than the MiMC hash stored in the indexer, so the contract will derive a
+    // than the hash stored in the indexer, so the contract will derive a
     // different level.  Recompute it client-side to match.
     let level: number;
     if (snark && !snark.disable_zk_checks) {
@@ -578,7 +578,7 @@ export class StateResolver {
       rawX2,
       rawY2,
     ] = intentArgs;
-    // When ZK checks are on, we use Poseidon2 perlin/level; intent may have MiMC values from entity store.
+    // When ZK checks are on, we use Poseidon2 perlin/level; intent may have stale values from entity store.
     let targetPerlin = Number(targetPerlinFromIntent);
     let targetLevelResolved = Number(targetLevel);
     const sourceLoc = hexIdToField(rawSourceLoc);
@@ -717,7 +717,7 @@ export class StateResolver {
         coord(rawY2)
       );
       const outputs = await computeMoveProofOutputs(inputs);
-      // Use Poseidon2-computed perlin so contract and validation agree (intent may have MiMC perlin).
+      // Use Poseidon2-computed perlin so contract and validation agree (intent may have stale perlin).
       targetPerlin = Math.floor(outputs.perlin);
       // Recompute target level from Poseidon2 hash bytes (used by initialize_planet_with_defaults)
       targetLevelResolved = computePlanetLevelFromLocationId(
