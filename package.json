@@ -13,7 +13,8 @@
     "format": "pnpm -r run format",
     "prepare": "husky",
     "reinstall": "pnpm store prune && pnpm install --force",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:moveProof": "pnpm --filter contracts run test:moveProof"
   },
   "dependencies": {
     "@aztec/accounts": "4.0.0-devnet.2-patch.1",
@@ -38,6 +39,7 @@
     "lint-staged": "15.2.11",
     "prettier": "3.7.4",
     "sort-package-json": "2.10.1",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.28.0",

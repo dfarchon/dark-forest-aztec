@@ -31,9 +31,12 @@
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
         "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",
         "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts",
+        "test:moveProof": "pnpm exec tsx scripts/test-moveProof.ts",
         "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@dfpunk/utils": "workspace:*"
+    },
     "devDependencies": {
         "@eslint/js": "9.39.2",
         "@types/node": "24.10.7",

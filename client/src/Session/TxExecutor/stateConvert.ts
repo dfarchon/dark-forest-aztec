@@ -18,6 +18,7 @@ import type {
   ArtifactState,
   PlanetArtifactsState,
   PlanetEventsState,
+  PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
   WorldState,
@@ -82,6 +83,21 @@ export function playerToContract(s: PlayerState): Record<string, unknown> {
     space_junk_limit: toBigint(s.space_junk_limit),
     claimed_ships: s.claimed_ships,
     last_updated: toNumber(s.last_updated),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PlanetRevealedCoords
+// ---------------------------------------------------------------------------
+
+export function planetRevealedCoordsToContract(
+  s: PlanetRevealedCoordsState
+): Record<string, unknown> {
+  return {
+    location_id: toBigint(s.location_id),
+    x: toBigint(s.x),
+    y: toBigint(s.y),
+    revealer: s.revealer,
   };
 }
 

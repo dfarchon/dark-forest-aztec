@@ -2,6 +2,7 @@
 members = [
     "types",
     "config",
+     "circuits",
      "libs",
     "storage/planet",
     "storage/planet_revealed_coords",
