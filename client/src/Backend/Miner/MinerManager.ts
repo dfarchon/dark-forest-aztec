@@ -24,26 +24,10 @@ function defaultWorker() {
 }
 
 export class HomePlanetMinerChunkStore implements ChunkStore {
-  private initPerlinMin: number;
-  private initPerlinMax: number;
   private minedChunkKeys: Set<string>;
-  private perlinOptions: PerlinConfig;
 
-  constructor(
-    initPerlinMin: number,
-    initPerlinMax: number,
-    hashConfig: HashConfig
-  ) {
-    this.initPerlinMin = initPerlinMin;
-    this.initPerlinMax = initPerlinMax;
+  constructor() {
     this.minedChunkKeys = new Set<string>();
-    this.perlinOptions = {
-      key: hashConfig.spaceTypeKey,
-      scale: hashConfig.perlinLengthScale,
-      mirrorX: hashConfig.perlinMirrorX,
-      mirrorY: hashConfig.perlinMirrorY,
-      floor: false,
-    };
   }
 
   addChunk(exploredChunk: Chunk) {
@@ -51,16 +35,7 @@ export class HomePlanetMinerChunkStore implements ChunkStore {
   }
 
   hasMinedChunk(chunkFootprint: Rectangle) {
-    // return true if this chunk mined, or if perlin value >= threshold
-    if (this.minedChunkKeys.has(getChunkKey(chunkFootprint))) return true;
-    const center = {
-      x: chunkFootprint.bottomLeft.x + chunkFootprint.sideLength / 2,
-      y: chunkFootprint.bottomLeft.y + chunkFootprint.sideLength / 2,
-    };
-    const chunkPerlin = perlin(center, this.perlinOptions);
-    if (chunkPerlin >= this.initPerlinMax || chunkPerlin < this.initPerlinMin)
-      return true;
-    return false;
+    return this.minedChunkKeys.has(getChunkKey(chunkFootprint));
   }
 }
 
@@ -192,27 +167,24 @@ class MinerManager extends EventEmitter {
     }
   }
 
-  private exploreNext(fromChunk: Rectangle, jobId: number) {
-    this.nextValidExploreTarget(fromChunk, jobId).then(
-      (nextChunk: Rectangle | undefined) => {
-        if (nextChunk) {
-          const nextChunkKey = this.chunkLocationToKey(nextChunk, jobId);
-          const center = {
-            x: nextChunk.bottomLeft.x + nextChunk.sideLength / 2,
-            y: nextChunk.bottomLeft.y + nextChunk.sideLength / 2,
-          };
-          const centerPerlin = perlin(center, this.perlinOptions);
-          this.exploringChunk[nextChunkKey] = {
-            chunkFootprint: nextChunk,
-            planetLocations: [],
-            perlin: centerPerlin,
-          };
-          this.exploringChunkStart[nextChunkKey] = Date.now();
-          this.minersComplete[nextChunkKey] = 0;
-          this.sendMessageToWorkers(nextChunk, jobId);
-        }
-      }
-    );
+  private async exploreNext(fromChunk: Rectangle, jobId: number) {
+    const nextChunk = await this.nextValidExploreTarget(fromChunk, jobId);
+    if (nextChunk) {
+      const nextChunkKey = this.chunkLocationToKey(nextChunk, jobId);
+      const center = {
+        x: nextChunk.bottomLeft.x + nextChunk.sideLength / 2,
+        y: nextChunk.bottomLeft.y + nextChunk.sideLength / 2,
+      };
+      const centerPerlin = await perlin(center, this.perlinOptions);
+      this.exploringChunk[nextChunkKey] = {
+        chunkFootprint: nextChunk,
+        planetLocations: [],
+        perlin: centerPerlin,
+      };
+      this.exploringChunkStart[nextChunkKey] = Date.now();
+      this.minersComplete[nextChunkKey] = 0;
+      this.sendMessageToWorkers(nextChunk, jobId);
+    }
   }
 
   public setCores(nCores: number): void {

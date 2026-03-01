@@ -74,8 +74,10 @@ export const getPlanetLocations =
     perlinMirrorX: boolean,
     perlinMirrorY: boolean
   ) =>
-  (chunkFootprint: Rectangle, planetRarity: number) => {
-    // assume that the chunkFootprint is entirely contained within a 256x256 grid square
+  async (
+    chunkFootprint: Rectangle,
+    planetRarity: number
+  ): Promise<WorldLocation[]> => {
     const { bottomLeft, sideLength } = chunkFootprint;
     const { x, y } = bottomLeft;
     const m = Math.floor(x / 256);
@@ -93,39 +95,42 @@ export const getPlanetLocations =
         )
       );
     }
-    const coords: WorldCoords[] = preImages.map((preImage) => ({
+    const allCoords: WorldCoords[] = preImages.map((preImage) => ({
       x: m * 256 + preImage[0],
       y: n * 256 + preImage[1],
     }));
 
-    const locs: WorldLocation[] = coords
-      .filter(
-        (coords) =>
-          coords.x - bottomLeft.x < sideLength &&
-          coords.x >= bottomLeft.x &&
-          coords.y - bottomLeft.y < sideLength &&
-          coords.y >= bottomLeft.y
-      )
-      .map((coords) => ({
-        coords,
+    const filtered = allCoords.filter(
+      (c) =>
+        c.x - bottomLeft.x < sideLength &&
+        c.x >= bottomLeft.x &&
+        c.y - bottomLeft.y < sideLength &&
+        c.y >= bottomLeft.y
+    );
+
+    const locs: WorldLocation[] = [];
+    for (const c of filtered) {
+      locs.push({
+        coords: c,
         hash: locationIdFromBigInt(
-          BigInt(fakeHash(planetRarity)(coords.x, coords.y).toString())
+          BigInt(fakeHash(planetRarity)(c.x, c.y).toString())
         ),
-        perlin: perlin(coords, {
+        perlin: await perlin(c, {
           key: spaceTypeKey,
           scale: perlinLengthScale,
           mirrorX: perlinMirrorX,
           mirrorY: perlinMirrorY,
           floor: true,
         }),
-        biomebase: perlin(coords, {
+        biomebase: await perlin(c, {
           key: biomebaseKey,
           scale: perlinLengthScale,
           mirrorX: perlinMirrorX,
           mirrorY: perlinMirrorY,
           floor: true,
         }),
-      }));
+      });
+    }
 
     return locs;
   };

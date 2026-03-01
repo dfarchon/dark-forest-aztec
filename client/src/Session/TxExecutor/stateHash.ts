@@ -15,8 +15,8 @@
  */
 
 import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import type { Fieldable } from "@aztec/foundation/serialize";
+import { poseidon2HashSync } from "@dfpunk/hashing";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -208,38 +208,39 @@ export function serializeWorld(w: Record<string, unknown>): Fieldable[] {
 
 type SerializeFn = (obj: Record<string, unknown>) => Fieldable[];
 
-async function computeHash(
+function computeHash(
   obj: Record<string, unknown>,
   serializeFn: SerializeFn
-): Promise<Fr> {
+): Fr {
   const fields = serializeFn(obj);
   if (isAllZero(fields)) return Fr.ZERO;
-  return poseidon2Hash(fields);
+  return poseidon2HashSync(fields);
 }
 
-export const computePlanetHash = (p: Record<string, unknown>) =>
+export const computePlanetHash = (p: Record<string, unknown>): Fr =>
   computeHash(p, serializePlanet);
 
-export const computePlanetRevealedCoordsHash = (prc: Record<string, unknown>) =>
-  computeHash(prc, serializePlanetRevealedCoords);
+export const computePlanetRevealedCoordsHash = (
+  prc: Record<string, unknown>
+): Fr => computeHash(prc, serializePlanetRevealedCoords);
 
-export const computePlanetEventsHash = (pe: Record<string, unknown>) =>
+export const computePlanetEventsHash = (pe: Record<string, unknown>): Fr =>
   computeHash(pe, serializePlanetEvents);
 
-export const computePlanetArtifactsHash = (pa: Record<string, unknown>) =>
+export const computePlanetArtifactsHash = (pa: Record<string, unknown>): Fr =>
   computeHash(pa, serializePlanetArtifacts);
 
-export const computeArrivalHash = (a: Record<string, unknown>) =>
+export const computeArrivalHash = (a: Record<string, unknown>): Fr =>
   computeHash(a, serializeArrival);
 
-export const computeArtifactHash = (a: Record<string, unknown>) =>
+export const computeArtifactHash = (a: Record<string, unknown>): Fr =>
   computeHash(a, serializeArtifact);
 
-export const computeArtifactLocationHash = (al: Record<string, unknown>) =>
+export const computeArtifactLocationHash = (al: Record<string, unknown>): Fr =>
   computeHash(al, serializeArtifactLocation);
 
-export const computePlayerHash = (p: Record<string, unknown>) =>
+export const computePlayerHash = (p: Record<string, unknown>): Fr =>
   computeHash(p, serializePlayer);
 
-export const computeWorldHash = (w: Record<string, unknown>) =>
+export const computeWorldHash = (w: Record<string, unknown>): Fr =>
   computeHash(w, serializeWorld);

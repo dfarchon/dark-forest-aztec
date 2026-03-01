@@ -5,6 +5,7 @@
  *   {prefix}:accounts             → JSON array of AccountRecord
  *   {prefix}:active               → address hex string of the active account
  *   {prefix}:networkFingerprint   → hash string identifying the current network instance
+ *   {prefix}:chainTip             → last-seen L2 block number (for chain-reset detection)
  */
 
 import type { AccountRecord } from "./types";
@@ -31,12 +32,14 @@ export class KeyStore {
   private readonly accountsKey: string;
   private readonly activeKey: string;
   private readonly fingerprintKey: string;
+  private readonly chainTipKey: string;
 
   constructor(prefix?: string) {
     const p = prefix ?? DEFAULT_PREFIX;
     this.accountsKey = `${p}:accounts`;
     this.activeKey = `${p}:active`;
     this.fingerprintKey = `${p}:networkFingerprint`;
+    this.chainTipKey = `${p}:chainTip`;
   }
 
   // ---------------------------------------------------------------------------
@@ -125,6 +128,46 @@ export class KeyStore {
     }
   }
 
+  /** Clear stored network fingerprint (e.g. after PXE stale-block error so next load re-fingerprints). */
+  clearNetworkFingerprint(): void {
+    try {
+      localStorage.removeItem(this.fingerprintKey);
+    } catch {
+      /* noop */
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chain tip (for chain-reset detection)
+  // ---------------------------------------------------------------------------
+
+  getChainTip(): number | null {
+    try {
+      const raw = localStorage.getItem(this.chainTipKey);
+      if (raw == null) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+
+  setChainTip(tip: number): void {
+    try {
+      localStorage.setItem(this.chainTipKey, String(tip));
+    } catch {
+      /* storage full or unavailable */
+    }
+  }
+
+  clearChainTip(): void {
+    try {
+      localStorage.removeItem(this.chainTipKey);
+    } catch {
+      /* noop */
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Bulk
   // ---------------------------------------------------------------------------
@@ -134,6 +177,7 @@ export class KeyStore {
       localStorage.removeItem(this.accountsKey);
       localStorage.removeItem(this.activeKey);
       localStorage.removeItem(this.fingerprintKey);
+      localStorage.removeItem(this.chainTipKey);
     } catch {
       /* noop */
     }

@@ -1,4 +1,9 @@
-import { Fraction, getRandomGradientAt, rand } from "@dfpunk/hashing";
+import {
+  Fraction,
+  getRandomGradientAt,
+  poseidon2RandSync,
+  type SyncHashFn,
+} from "@dfpunk/hashing";
 import { Abstract, PerlinConfig, Rectangle, WorldCoords } from "@dfpunk/types";
 
 /* types */
@@ -7,8 +12,6 @@ export const valueOf = (v: Vector): [number, number] => [
   v.x.valueOf(),
   v.y.valueOf(),
 ];
-
-export type PerlinRand = ReturnType<typeof rand>;
 
 export type GridPoint = WorldCoords & { __value: never };
 
@@ -87,7 +90,7 @@ function gradientKey(
 
 const gradientCache: Map<string, Vector> = new Map();
 
-const randFns: { [k: number]: PerlinRand } = {};
+const syncRandFns: { [k: number]: SyncHashFn } = {};
 
 export type Quadrant = Abstract<string, "Quadrant">;
 
@@ -111,55 +114,67 @@ export function getQuadrant(bottomLeft: GridPoint): Quadrant {
   return Quadrant.BottomRight;
 }
 
-export function getCachedGradient(
-  quadrant: Quadrant,
-  coords: GridPoint,
+function applyMirror(
+  res: {
+    x: { valueOf(): number; mul(n: number): { valueOf(): number } };
+    y: { valueOf(): number; mul(n: number): { valueOf(): number } };
+  },
   config: PerlinConfig,
-  pow: PerlinOctave,
+  quadrant: Quadrant,
 ): Vector {
-  const { scale, key } = config;
-  const gradKey = gradientKey(quadrant, coords, config, pow);
-
-  let myRand = randFns[key];
-  if (!myRand) {
-    myRand = rand(key);
-    randFns[key] = myRand;
-  }
-
-  const cached = gradientCache.get(gradKey);
-  if (cached) return cached;
-
-  let res = getRandomGradientAt(
-    {
-      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x), // mirror across the vertical y-axis
-      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y), // mirror across the horizontal x-axis
-    },
-    new Fraction(scale * 2 ** pow),
-    myRand,
-  );
+  let rx = res.x.valueOf();
+  let ry = res.y.valueOf();
 
   if (
     config.mirrorY &&
     (quadrant === Quadrant.TopLeft || quadrant === Quadrant.BottomLeft)
   ) {
-    res = {
-      x: res.x.mul(-1),
-      y: res.y,
-    };
+    rx = -rx;
   }
 
   if (
     config.mirrorX &&
     (quadrant === Quadrant.BottomLeft || quadrant === Quadrant.BottomRight)
   ) {
-    res = {
-      x: res.x,
-      y: res.y.mul(-1),
-    };
+    ry = -ry;
   }
 
-  const ret = { x: res.x.valueOf(), y: res.y.valueOf() };
-  gradientCache.set(gradKey, ret);
+  return { x: rx, y: ry };
+}
 
+/**
+ * Synchronous gradient lookup. Computes on cache miss using sync Poseidon2.
+ * Requires initPoseidon2() to have completed before first call.
+ */
+export function getCachedGradient(
+  quadrant: Quadrant,
+  coords: GridPoint,
+  config: PerlinConfig,
+  pow: PerlinOctave,
+): Vector {
+  const gradKey = gradientKey(quadrant, coords, config, pow);
+
+  const cached = gradientCache.get(gradKey);
+  if (cached) return cached;
+
+  const { scale, key } = config;
+
+  let myRand = syncRandFns[key];
+  if (!myRand) {
+    myRand = poseidon2RandSync(key);
+    syncRandFns[key] = myRand;
+  }
+
+  const res = getRandomGradientAt(
+    {
+      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x),
+      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y),
+    },
+    new Fraction(scale * 2 ** pow),
+    myRand,
+  );
+
+  const ret = applyMirror(res, config, quadrant);
+  gradientCache.set(gradKey, ret);
   return ret;
 }

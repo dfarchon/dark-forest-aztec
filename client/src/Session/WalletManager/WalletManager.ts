@@ -64,22 +64,33 @@ const DEPLOY_TIMEOUT_MS = 120_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
 const GENESIS_PENDING_SENTINEL = "genesis-pending";
+/** Anchor block index for fingerprint; chain reset changes this block, chain growth does not. */
+const FINGERPRINT_ANCHOR_BLOCK = 100;
 
 /**
- * Compute a fingerprint for the current network instance by hashing block 1's header.
+ * Compute a fingerprint for the current network instance: block 1 hash + anchor block hash.
+ * Using a fixed anchor (min(tip, 100)) ensures the fingerprint changes on chain reset but
+ * stays stable as the chain grows, so we don't clear PXE on every new block.
  * Returns a sentinel value when the network has not yet produced block 1.
  */
 async function getNetworkFingerprint(node: AztecNode): Promise<string> {
-  const blockNumber = await node.getBlockNumber();
-  if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
-  const block = await node.getBlock(BlockNumber(1));
-  if (!block) return GENESIS_PENDING_SENTINEL;
-  return block.hash().toString();
+  const tip = await node.getBlockNumber();
+  if (tip < 1) return GENESIS_PENDING_SENTINEL;
+  const block1 = await node.getBlock(BlockNumber(1));
+  if (!block1) return GENESIS_PENDING_SENTINEL;
+  const block1Hash = (await block1.hash()).toString();
+
+  const anchorIndex = Math.min(tip, FINGERPRINT_ANCHOR_BLOCK);
+  const anchorBlock = await node.getBlock(BlockNumber(anchorIndex));
+  if (!anchorBlock) return block1Hash;
+
+  return `${block1Hash}_${(await anchorBlock.hash()).toString()}`;
 }
 
 /**
  * Best-effort deletion of PXE and wallet IndexedDB databases from previous network instances.
  * Skips the database matching `currentPrefix` (belonging to the active network).
+ * Call with no args to clear ALL pxe_data_* and wallet_data_* (e.g. on stale block error).
  * Uses the non-standard `indexedDB.databases()` API available in modern browsers.
  */
 async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
@@ -252,6 +263,21 @@ export class WalletManager {
 
     const keyStore = new KeyStore(config.storagePrefix);
 
+    const currentTip = await node.getBlockNumber();
+
+    // Tip regression: if chain tip went backward the chain was reset.
+    const storedTip = keyStore.getChainTip();
+    if (storedTip != null && currentTip > 0 && currentTip < storedTip) {
+      console.warn(
+        `[WalletManager] Chain tip regressed (${storedTip} → ${currentTip}). ` +
+          "Clearing ALL PXE data (chain was reset)."
+      );
+      await clearStaleIndexedDBs();
+      keyStore.clearNetworkFingerprint();
+      keyStore.clearChainTip();
+      keyStore.clearActiveAddress();
+    }
+
     const fingerprint = await getNetworkFingerprint(node);
     const storedFingerprint = keyStore.getNetworkFingerprint();
     const networkChanged = storedFingerprint !== fingerprint;
@@ -261,7 +287,7 @@ export class WalletManager {
     const fpSuffix =
       fingerprint === GENESIS_PENDING_SENTINEL
         ? "genesis"
-        : fingerprint.slice(2, 10);
+        : fingerprint.replace(/0x/g, "").slice(-8);
     const pxeDataDir = `pxe_data_${rollupAddr}_${fpSuffix}`;
 
     if (networkChanged) {
@@ -313,6 +339,8 @@ export class WalletManager {
     mgr.startBalancePolling(
       config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
     );
+
+    keyStore.setChainTip(currentTip);
 
     return mgr;
   }
@@ -495,16 +523,54 @@ export class WalletManager {
     );
     const deployMethod = await accountManager.getDeployMethod();
     onStatus?.("Waiting for deploy transaction...");
-    await deployMethod.send({
-      from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
-      },
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { timeout: DEPLOY_TIMEOUT_MS },
-    });
+    try {
+      await deployMethod.send({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(
+            this.sponsoredFpcAddress
+          ),
+        },
+        skipClassPublication: true,
+        skipInstancePublication: true,
+        wait: { timeout: DEPLOY_TIMEOUT_MS },
+      });
+    } catch (err) {
+      await this.handlePotentialStaleError(err);
+    }
     return true;
+  }
+
+  /**
+   * When a PXE operation fails, check whether the chain was reset (tip regressed).
+   * If so, clear all PXE IndexedDB data and reload the page.
+   * Otherwise re-throw the original error.
+   */
+  private async handlePotentialStaleError(err: unknown): Promise<never> {
+    try {
+      const currentTip = await this.node.getBlockNumber();
+      const storedTip = this.keyStore.getChainTip();
+      if (storedTip != null && currentTip > 0 && currentTip < storedTip) {
+        console.warn(
+          `[WalletManager] Chain tip regressed (${storedTip} → ${currentTip}). ` +
+            "Clearing PXE data and reloading."
+        );
+        await clearStaleIndexedDBs();
+        this.keyStore.clearNetworkFingerprint();
+        this.keyStore.clearChainTip();
+        this.keyStore.clearActiveAddress();
+        if (
+          typeof window !== "undefined" &&
+          typeof window.location !== "undefined"
+        ) {
+          window.location.reload();
+          await new Promise(() => {});
+        }
+      }
+    } catch {
+      /* tip check failed — fall through to re-throw original error */
+    }
+    throw err;
   }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {

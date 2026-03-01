@@ -1,12 +1,17 @@
-import { perlin } from "@dfpunk/hashing";
+import { initPoseidon2, perlinSync } from "@dfpunk/hashing";
 import { SpaceType, WorldCoords } from "@dfpunk/types";
 
 import { DrawMessage, MinimapConfig } from "./MinimapUtils";
 
 const ctx = self as unknown as Worker;
 
+let poseidonReady = false;
+const poseidonInit = initPoseidon2().then(() => {
+  poseidonReady = true;
+});
+
 function spaceTypePerlin(coords: WorldCoords, config: MinimapConfig): number {
-  return perlin(coords, { ...config, floor: true });
+  return perlinSync(coords, { ...config, floor: true });
 }
 
 function spaceTypeFromPerlin(perlin: number, config: MinimapConfig): SpaceType {
@@ -21,15 +26,14 @@ function spaceTypeFromPerlin(perlin: number, config: MinimapConfig): SpaceType {
   }
 }
 
-// Initial implementation by @nicholashc (https://github.com/nicholashc)
-// https://github.com/darkforest-eth/plugins/blob/358a386356b9145005f17045d9f4ce22661d99a1/content/utilities/mini-map/plugin.js
-function generate(config: MinimapConfig): DrawMessage {
+async function generate(config: MinimapConfig): Promise<DrawMessage> {
+  if (!poseidonReady) await poseidonInit;
+
   const data = [];
   const step = config.worldRadius / 25;
 
   const radius = config.worldRadius;
 
-  // utility functions
   const checkBounds = (
     a: number,
     b: number,
@@ -39,26 +43,17 @@ function generate(config: MinimapConfig): DrawMessage {
   ) => {
     const dist = (a - x) * (a - x) + (b - y) * (b - y);
     r *= r;
-    if (dist < r) {
-      return true;
-    }
-    return false;
+    return dist < r;
   };
 
-  // generate x coordinates
   for (let i = radius * -1; i < radius; i += step) {
-    // generate y coordinates
     for (let j = radius * -1; j < radius; j += step) {
-      // filter points within map circle
       if (checkBounds(0, 0, i, j, radius)) {
-        // store coordinate and space type
+        const per = spaceTypePerlin({ x: i, y: j }, config);
         data.push({
           x: i,
           y: j,
-          type: spaceTypeFromPerlin(
-            spaceTypePerlin({ x: i, y: j }, config),
-            config
-          ),
+          type: spaceTypeFromPerlin(per, config),
         });
       }
     }
@@ -69,7 +64,8 @@ function generate(config: MinimapConfig): DrawMessage {
 
 ctx.addEventListener("message", (e: MessageEvent) => {
   if (e.data) {
-    const msg = generate(JSON.parse(e.data));
-    ctx.postMessage(JSON.stringify(msg));
+    void generate(JSON.parse(e.data)).then((msg) => {
+      ctx.postMessage(JSON.stringify(msg));
+    });
   }
 });

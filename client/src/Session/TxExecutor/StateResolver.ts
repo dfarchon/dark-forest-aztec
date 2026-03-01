@@ -321,7 +321,7 @@ export class StateResolver {
         coord(rawX),
         coord(rawY)
       );
-      const outputs = await computeLocationProofOutputs(inputs);
+      const outputs = computeLocationProofOutputs(inputs);
       locationId = outputs.locationHash;
       perlin = Math.floor(outputs.perlin);
       level = computePlanetLevelFromLocationId(
@@ -338,6 +338,18 @@ export class StateResolver {
         level,
         perlinRaw: outputs.perlin,
       });
+
+      const core = config.gameConfigCore as Record<string, unknown> | undefined;
+      if (core) {
+        const pMin = Number(core.init_perlin_min ?? 0);
+        const pMax = Number(core.init_perlin_max ?? 255);
+        if (perlin < pMin || perlin >= pMax) {
+          throw new Error(
+            `Poseidon2 perlin ${perlin} is out of init range [${pMin}, ${pMax}) at (${inputs.x}, ${inputs.y}). ` +
+              `The spawn location is not valid for the circuit. Please retry spawning.`
+          );
+        }
+      }
     }
 
     // Read current state from indexer (or zeros if not yet on-chain)
@@ -446,7 +458,7 @@ export class StateResolver {
         coord(rawX),
         coord(rawY)
       );
-      const outputs = await computeLocationProofOutputs(inputs);
+      const outputs = computeLocationProofOutputs(inputs);
       // Override locationId and perlin with Poseidon2-computed values so
       // they match reveal_proof(x, y, key, ...) in the circuit exactly.
       locationId = outputs.locationHash;
@@ -716,7 +728,7 @@ export class StateResolver {
         coord(rawX2),
         coord(rawY2)
       );
-      const outputs = await computeMoveProofOutputs(inputs);
+      const outputs = computeMoveProofOutputs(inputs);
       // Use Poseidon2-computed perlin so contract and validation agree (intent may have MiMC perlin).
       targetPerlin = Math.floor(outputs.perlin);
       // Recompute target level from Poseidon2 hash bytes (used by initialize_planet_with_defaults)
@@ -1263,13 +1275,10 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHash: import("@aztec/aztec.js/fields").Fr,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const onChainHash = await onChainHashPromise;
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {
@@ -1467,13 +1476,10 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHash: import("@aztec/aztec.js/fields").Fr,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const onChainHash = await onChainHashPromise;
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {
@@ -1535,13 +1541,10 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHash: import("@aztec/aztec.js/fields").Fr,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const onChainHash = await onChainHashPromise;
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {

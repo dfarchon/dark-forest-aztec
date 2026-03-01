@@ -10,8 +10,11 @@
  */
 
 import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
-import { perlinWithRand, type AsyncHashFn } from "@dfpunk/hashing";
+import {
+  perlinWithRandSync,
+  poseidon2HashSync,
+  type SyncHashFn,
+} from "@dfpunk/hashing";
 
 export interface SnarkConfigLike {
   planethash_key: bigint | number;
@@ -49,13 +52,14 @@ function toFr(n: number | bigint): Fr {
 /**
  * Compute planet hash (location ID) at (x, y) using Poseidon2.
  * Order: [planetHashKey, x, y] - matches client poseidon2Hash([planetHashKey, x, y]).
+ * Requires initPoseidon2() to have completed first.
  */
-export async function computePlanetHash(
+export function computePlanetHash(
   planetHashKey: bigint,
   x: number,
   y: number,
-): Promise<bigint> {
-  const result = await poseidon2Hash([new Fr(planetHashKey), toFr(x), toFr(y)]);
+): bigint {
+  const result = poseidon2HashSync([new Fr(planetHashKey), toFr(x), toFr(y)]);
   const hexString = result.toString().replace(/^0x/, "");
   return BigInt("0x" + hexString);
 }
@@ -64,13 +68,12 @@ export async function computePlanetHash(
  * Poseidon2-based rand for perlin gradient index. Matches circuit:
  * poseidon2_hash([key, corner_x, corner_y, scale]) % 16.
  */
-function perlinRandPoseidon2(key: number): AsyncHashFn {
-  return async (x: number, y: number, scale: number) => {
-    // Use integer corners to match circuit (u128 corner coords)
+function perlinRandPoseidon2(key: number): SyncHashFn {
+  return (x: number, y: number, scale: number) => {
     const cx = Math.floor(x);
     const cy = Math.floor(y);
     const scaleInt = Math.floor(scale);
-    const result = await poseidon2Hash([
+    const result = poseidon2HashSync([
       toFr(key),
       toFr(cx),
       toFr(cy),
@@ -86,15 +89,15 @@ function perlinRandPoseidon2(key: number): AsyncHashFn {
  * Compute perlin value at (x, y) for space type using Poseidon2 for gradient index.
  * Matches circuit multi_scale_perlin (poseidon2_hash for rand). Uses floor: true for u8.
  */
-export async function computeSpaceTypePerlin(
+export function computeSpaceTypePerlin(
   x: number,
   y: number,
   spaceTypeKey: number,
   scale: number,
   mirrorX: boolean,
   mirrorY: boolean,
-): Promise<number> {
-  return perlinWithRand(
+): number {
+  return perlinWithRandSync(
     { x, y },
     {
       key: spaceTypeKey,
@@ -108,23 +111,48 @@ export async function computeSpaceTypePerlin(
 }
 
 /**
+ * Compute biomebase perlin value at (x, y) using Poseidon2 for gradient index.
+ * Same algorithm as computeSpaceTypePerlin but keyed with biomebaseKey.
+ */
+export function computeBiomebasePerlin(
+  x: number,
+  y: number,
+  biomebaseKey: number,
+  scale: number,
+  mirrorX: boolean,
+  mirrorY: boolean,
+): number {
+  return perlinWithRandSync(
+    { x, y },
+    {
+      key: biomebaseKey,
+      scale,
+      mirrorX,
+      mirrorY,
+      floor: true,
+    },
+    perlinRandPoseidon2(biomebaseKey),
+  );
+}
+
+/**
  * Compute move proof outputs (source_hash, target_hash, perlin) from coordinates.
  * These match what the Noir move_proof circuit returns.
  */
-export async function computeMoveProofOutputs(
+export function computeMoveProofOutputs(
   inputs: MoveProofInputs,
-): Promise<MoveProofOutputs> {
-  const sourceHash = await computePlanetHash(
+): MoveProofOutputs {
+  const sourceHash = computePlanetHash(
     inputs.planetHashKey,
     inputs.x1,
     inputs.y1,
   );
-  const targetHash = await computePlanetHash(
+  const targetHash = computePlanetHash(
     inputs.planetHashKey,
     inputs.x2,
     inputs.y2,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x2,
     inputs.y2,
     Number(inputs.spaceTypeKey),
@@ -177,15 +205,15 @@ export function buildLocationProofInputs(
  * Compute single-location proof outputs (locationHash, perlin).
  * Matches init_proof / reveal_proof / safe_set_owner ZK checks in Noir.
  */
-export async function computeLocationProofOutputs(
+export function computeLocationProofOutputs(
   inputs: LocationProofInputs,
-): Promise<LocationProofOutputs> {
-  const locationHash = await computePlanetHash(
+): LocationProofOutputs {
+  const locationHash = computePlanetHash(
     inputs.planetHashKey,
     inputs.x,
     inputs.y,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x,
     inputs.y,
     Number(inputs.spaceTypeKey),

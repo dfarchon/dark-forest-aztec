@@ -1,7 +1,6 @@
 import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import { LOCATION_ID_UB } from "@dfpunk/constants";
-import { perlin } from "@dfpunk/hashing";
+import { initPoseidon2, perlinSync, poseidon2HashSync } from "@dfpunk/hashing";
 import { locationIdFromBigInt } from "@dfpunk/serde";
 import { Chunk, PerlinConfig, Rectangle, WorldLocation } from "@dfpunk/types";
 
@@ -15,6 +14,25 @@ const ctx: Worker = self as any;
 const toFr = (n: number): Fr => {
   const v = BigInt(n);
   return new Fr(v < 0n ? v + Fr.MODULUS : v);
+};
+
+let poseidonReady = false;
+const poseidonInit = initPoseidon2().then(() => {
+  poseidonReady = true;
+});
+
+const planetHashFnSync = (
+  planetHashKey: number,
+  x: number,
+  y: number
+): bigint => {
+  const result = poseidon2HashSync([
+    new Fr(BigInt(planetHashKey)),
+    toFr(x),
+    toFr(y),
+  ]);
+  const hexString = result.toString().replace(/^0x/, "");
+  return BigInt("0x" + hexString);
 };
 
 const exploreChunk = async (
@@ -31,15 +49,7 @@ const exploreChunk = async (
   perlinMirrorX: boolean,
   perlinMirrorY: boolean
 ) => {
-  const planetHashFn = async (x: number, y: number): Promise<bigint> => {
-    const result = await poseidon2Hash([
-      new Fr(BigInt(planetHashKey)),
-      toFr(x),
-      toFr(y),
-    ]);
-    const hexString = result.toString().replace(/^0x/, "");
-    return BigInt("0x" + hexString);
-  };
+  if (!poseidonReady) await poseidonInit;
 
   const spaceTypePerlinOpts: PerlinConfig = {
     key: spaceTypeKey,
@@ -61,7 +71,7 @@ const exploreChunk = async (
     planetLocations =
       workerIndex > 0
         ? []
-        : getPlanetLocations(
+        : await getPlanetLocations(
             spaceTypeKey,
             biomebaseKey,
             perlinLengthScale,
@@ -76,13 +86,13 @@ const exploreChunk = async (
     for (let x = bottomLeftX; x < bottomLeftX + sideLength; x++) {
       for (let y = bottomLeftY; y < bottomLeftY + sideLength; y++) {
         if (count % totalWorkers === workerIndex) {
-          const hash = await planetHashFn(x, y);
+          const hash = planetHashFnSync(planetHashKey, x, y);
           if (hash < locationIdUpperBound) {
             planetLocations.push({
               coords: { x, y },
               hash: locationIdFromBigInt(hash),
-              perlin: perlin({ x, y }, spaceTypePerlinOpts),
-              biomebase: perlin({ x, y }, biomebasePerlinOpts),
+              perlin: perlinSync({ x, y }, spaceTypePerlinOpts),
+              biomebase: perlinSync({ x, y }, biomebasePerlinOpts),
             });
           }
         }
@@ -97,7 +107,7 @@ const exploreChunk = async (
   const chunkData: Chunk = {
     chunkFootprint,
     planetLocations,
-    perlin: perlin(chunkCenter, { ...spaceTypePerlinOpts, floor: false }),
+    perlin: perlinSync(chunkCenter, { ...spaceTypePerlinOpts, floor: false }),
   };
   ctx.postMessage(JSON.stringify([chunkData, jobId]));
 };

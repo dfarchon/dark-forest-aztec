@@ -35,6 +35,7 @@ const LOCATION_PROOF_COORDS: [number, number][] = [
     [0, -70],
 ];
 
+import { initPoseidon2 } from '@dfpunk/hashing';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -106,7 +107,7 @@ async function runOneMoveProofTest(
         x2,
         y2
     );
-    const outputs = await computeMoveProofOutputs(inputs);
+    const outputs = computeMoveProofOutputs(inputs);
 
     const validation = validateMoveProofOutputs(
         outputs.sourceHash,
@@ -118,7 +119,7 @@ async function runOneMoveProofTest(
         return `Move proof validation: ${validation.mismatches.join('; ')}`;
 
     const locInputs = buildLocationProofInputs(snarkConfig, x2, y2);
-    const locOutputs = await computeLocationProofOutputs(locInputs);
+    const locOutputs = computeLocationProofOutputs(locInputs);
     if (locOutputs.locationHash !== outputs.targetHash)
         return 'Location hash != move targetHash for same coords';
     if (Math.floor(locOutputs.perlin) !== Math.floor(outputs.perlin))
@@ -132,7 +133,7 @@ async function runOneMoveProofTest(
     if (!locValidation.valid)
         return `Location proof: ${locValidation.mismatches.join('; ')}`;
 
-    const srcLocOutputs = await computeLocationProofOutputs(
+    const srcLocOutputs = computeLocationProofOutputs(
         buildLocationProofInputs(snarkConfig, x1, y1)
     );
     if (srcLocOutputs.locationHash !== outputs.sourceHash)
@@ -153,7 +154,7 @@ async function runOneLocationProofTest(
     y: number
 ): Promise<string | null> {
     const inputs = buildLocationProofInputs(snarkConfig, x, y);
-    const outputs = await computeLocationProofOutputs(inputs);
+    const outputs = computeLocationProofOutputs(inputs);
     const validation = validateLocationProofOutputs(
         outputs.locationHash,
         outputs.perlin,
@@ -190,6 +191,7 @@ async function runRevealInitLocationProofTests(
 }
 
 async function main() {
+    await initPoseidon2();
     const args = process.argv.slice(2);
     const fromChain = args.includes('--from-chain');
     const rest = args.filter((a) => a !== '--from-chain');

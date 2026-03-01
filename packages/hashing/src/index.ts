@@ -1,29 +1,33 @@
 import { fakeHash, seededRandom } from "./fakeHash";
 import { Fraction } from "./fractions/bigFraction";
-import mimcHash, { mimcSponge, modPBigInt, modPBigIntNative } from "./mimc";
 import {
   getRandomGradientAt,
   getRandomGradientAtAsync,
   MAX_PERLIN_VALUE,
   perlin,
+  perlinSync,
   perlinWithRand,
-  rand,
+  perlinWithRandSync,
+  poseidon2Rand,
+  poseidon2RandSync,
 } from "./perlin";
 import type { IntegerVector } from "./perlin";
+import { initPoseidon2, poseidon2HashSync } from "./poseidon";
 
 export {
-  mimcHash,
-  mimcSponge,
+  initPoseidon2,
+  poseidon2HashSync,
   perlin,
+  perlinSync,
   perlinWithRand,
-  rand,
+  perlinWithRandSync,
+  poseidon2Rand,
+  poseidon2RandSync,
   getRandomGradientAt,
   getRandomGradientAtAsync,
-  modPBigInt,
-  modPBigIntNative,
   fakeHash,
   seededRandom,
   Fraction,
   MAX_PERLIN_VALUE,
 };
-export type { IntegerVector, AsyncHashFn } from "./perlin";
+export type { IntegerVector, AsyncHashFn, SyncHashFn } from "./perlin";

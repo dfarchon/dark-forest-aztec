@@ -5,6 +5,7 @@
 export {
   buildLocationProofInputs,
   buildMoveProofInputs,
+  computeBiomebasePerlin,
   computeLocationProofOutputs,
   computeMoveProofOutputs,
   computePlanetHash,
