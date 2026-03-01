@@ -30,6 +30,7 @@ import {
   IndexerConnection,
   type IndexerConnectionConfig,
 } from "../../Session/Indexer/IndexerConnection";
+import type { SnapshotDownloadProgress } from "../../Session/Indexer/OffChainSource";
 import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
@@ -51,6 +52,14 @@ import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
 
 const enum TerminalPromptStep {
   NONE,
@@ -85,6 +94,8 @@ export function GameLandingPage() {
   >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const [step, setStep] = useState(TerminalPromptStep.NONE);
+  const [snapshotProgress, setSnapshotProgress] =
+    useState<SnapshotDownloadProgress | null>(null);
 
   const params = new URLSearchParams(location.search);
   const selectedAddress = params.get("account");
@@ -116,6 +127,10 @@ export function GameLandingPage() {
         };
         const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
         if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+        indexerConfig.onSnapshotProgress = (progress) => {
+          if (destroyed) return;
+          setSnapshotProgress(progress);
+        };
         const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
           connection.destroy();
@@ -837,6 +852,17 @@ export function GameLandingPage() {
   }, [initRenderState]);
 
   useEffect(() => {
+    if (!snapshotProgress || !snapshotProgress.done) return;
+    const timer = window.setTimeout(() => {
+      setSnapshotProgress((prev) => {
+        if (!prev || !prev.done) return prev;
+        return null;
+      });
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [snapshotProgress]);
+
+  useEffect(() => {
     const gameUiManager = gameUIManagerRef.current;
     if (!terminalVisible && gameUiManager) {
       const tutorialManager = TutorialManager.getInstance(gameUiManager);
@@ -883,6 +909,36 @@ export function GameLandingPage() {
           promptCharacter={"$"}
         />
       </TerminalWrapper>
+      {snapshotProgress && (
+        <div
+          style={{
+            position: "fixed",
+            left: "12px",
+            bottom: "12px",
+            zIndex: 1200,
+            padding: "8px 10px",
+            background: "rgba(10, 10, 10, 0.88)",
+            border: "1px solid #4d4d4d",
+            color: "#e6e6e6",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            lineHeight: 1.35,
+          }}
+        >
+          <div>snapshot download</div>
+          <div>
+            {snapshotProgress.percent !== null
+              ? `${snapshotProgress.percent}%`
+              : "downloading"}
+            {" · "}
+            {formatBytes(snapshotProgress.loadedBytes)}
+            {snapshotProgress.totalBytes
+              ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
+              : ""}
+            {snapshotProgress.done ? " · done" : ""}
+          </div>
+        </div>
+      )}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );
