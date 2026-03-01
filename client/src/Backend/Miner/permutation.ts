@@ -74,10 +74,7 @@ export const getPlanetLocations =
     perlinMirrorX: boolean,
     perlinMirrorY: boolean
   ) =>
-  async (
-    chunkFootprint: Rectangle,
-    planetRarity: number
-  ): Promise<WorldLocation[]> => {
+  (chunkFootprint: Rectangle, planetRarity: number): WorldLocation[] => {
     // assume that the chunkFootprint is entirely contained within a 256x256 grid square
     const { bottomLeft, sideLength } = chunkFootprint;
     const { x, y } = bottomLeft;
@@ -108,34 +105,26 @@ export const getPlanetLocations =
         c.y - bottomLeft.y < sideLength &&
         c.y >= bottomLeft.y
     );
-    const locs: WorldLocation[] = await Promise.all(
-      filtered.map(async (coords) => {
-        const [perlinVal, biomebaseVal] = await Promise.all([
-          perlin(coords, {
-            key: spaceTypeKey,
-            scale: perlinLengthScale,
-            mirrorX: perlinMirrorX,
-            mirrorY: perlinMirrorY,
-            floor: true,
-          }),
-          perlin(coords, {
-            key: biomebaseKey,
-            scale: perlinLengthScale,
-            mirrorX: perlinMirrorX,
-            mirrorY: perlinMirrorY,
-            floor: true,
-          }),
-        ]);
-        return {
-          coords,
-          hash: locationIdFromBigInt(
-            BigInt(fakeHash(planetRarity)(coords.x, coords.y).toString())
-          ),
-          perlin: perlinVal,
-          biomebase: biomebaseVal,
-        };
-      })
-    );
+    const locs: WorldLocation[] = filtered.map((coords) => ({
+      coords,
+      hash: locationIdFromBigInt(
+        BigInt(fakeHash(planetRarity)(coords.x, coords.y).toString())
+      ),
+      perlin: perlin(coords, {
+        key: spaceTypeKey,
+        scale: perlinLengthScale,
+        mirrorX: perlinMirrorX,
+        mirrorY: perlinMirrorY,
+        floor: true,
+      }),
+      biomebase: perlin(coords, {
+        key: biomebaseKey,
+        scale: perlinLengthScale,
+        mirrorX: perlinMirrorX,
+        mirrorY: perlinMirrorY,
+        floor: true,
+      }),
+    }));
 
     return locs;
   };

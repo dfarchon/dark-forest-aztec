@@ -1,33 +1,48 @@
+import { BarretenbergSync } from "@aztec/bb.js";
 import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import { PerlinConfig } from "@dfpunk/types";
 import BigInt, { BigInteger } from "big-integer";
 import { Fraction, IFraction } from "./fractions/bigFraction";
 
 const TRACK_LCM = false;
 
-function toFr(n: number): Fr {
+/**
+ * Must be called once (async) before any perlin / poseidon2 hashing.
+ * Typically at app startup or in the web-worker init path.
+ */
+export async function initPoseidon2(): Promise<void> {
+  await BarretenbergSync.initSingleton();
+}
+
+function toFrBuf(n: number): Uint8Array {
   const v = globalThis.BigInt(n);
-  return new Fr(v < 0n ? v + Fr.MODULUS : v);
+  const mod = v < 0n ? v + Fr.MODULUS : v;
+  return new Fr(mod).toBuffer();
+}
+
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
 }
 
 /**
- * Poseidon2-based rand for perlin gradient index. Matches circuit:
+ * Synchronous Poseidon2-based rand for perlin gradient index. Matches circuit:
  * poseidon2_hash([key, corner_x, corner_y, scale]) % 16.
  */
-export function poseidon2RandForPerlin(key: number): AsyncHashFn {
-  return async (x: number, y: number, scale: number) => {
-    const cx = Math.floor(x);
-    const cy = Math.floor(y);
-    const scaleInt = Math.floor(scale);
-    const result = await poseidon2Hash([
-      toFr(key),
-      toFr(cx),
-      toFr(cy),
-      toFr(scaleInt),
-    ]);
-    const hex = result.toString().replace(/^0x/, "");
-    const n = globalThis.BigInt("0x" + hex);
+export function poseidon2RandForPerlin(key: number): HashFn {
+  const keyBuf = toFrBuf(key);
+  return (...args: number[]) => {
+    const cx = Math.floor(args[0]);
+    const cy = Math.floor(args[1]);
+    const scaleInt = Math.floor(args[2]);
+    const api = BarretenbergSync.getSingleton();
+    const response = api.poseidon2Hash({
+      inputs: [keyBuf, toFrBuf(cx), toFrBuf(cy), toFrBuf(scaleInt)],
+    });
+    const n = globalThis.BigInt("0x" + uint8ArrayToHex(response.hash));
     return Number(n % 16n);
   };
 }
@@ -51,11 +66,6 @@ interface GradientAtPoint {
 }
 
 type HashFn = (...inputs: number[]) => number;
-export type AsyncHashFn = (
-  x: number,
-  y: number,
-  scale: number,
-) => Promise<number>;
 
 /*
 const generateVecs = () => {
@@ -110,19 +120,6 @@ export const getRandomGradientAt = (
   const val =
     vecs[randFn(point.x.valueOf(), point.y.valueOf(), scale.valueOf())];
   return val;
-};
-
-export const getRandomGradientAtAsync = async (
-  point: Vector,
-  scale: IFraction,
-  randFn: AsyncHashFn,
-): Promise<Vector> => {
-  const index = await randFn(
-    point.x.valueOf(),
-    point.y.valueOf(),
-    scale.valueOf(),
-  );
-  return vecs[Math.floor(index) % 16];
 };
 
 const minus: (a: Vector, b: Vector) => Vector = (a, b) => {
@@ -244,90 +241,40 @@ const valueAt = (
   return out;
 };
 
-const valueAtAsync = async (
-  p: Vector,
-  scale: IFraction,
-  randFn: AsyncHashFn,
-): Promise<IFraction> => {
-  const bottomLeftCoords = {
-    x: p.x.sub(realMod(p.x, scale)),
-    y: p.y.sub(realMod(p.y, scale)),
-  };
-  const bottomRightCoords = {
-    x: bottomLeftCoords.x.add(scale),
-    y: bottomLeftCoords.y,
-  };
-  const topLeftCoords = {
-    x: bottomLeftCoords.x,
-    y: bottomLeftCoords.y.add(scale),
-  };
-  const topRightCoords = {
-    x: bottomLeftCoords.x.add(scale),
-    y: bottomLeftCoords.y.add(scale),
-  };
-
-  const [bottomLeftGrad, bottomRightGrad, topLeftGrad, topRightGrad] =
-    await Promise.all([
-      getRandomGradientAtAsync(bottomLeftCoords, scale, randFn),
-      getRandomGradientAtAsync(bottomRightCoords, scale, randFn),
-      getRandomGradientAtAsync(topLeftCoords, scale, randFn),
-      getRandomGradientAtAsync(topRightCoords, scale, randFn),
-    ]);
-
-  const corners: [
-    GradientAtPoint,
-    GradientAtPoint,
-    GradientAtPoint,
-    GradientAtPoint,
-  ] = [
-    { coords: bottomLeftCoords, gradient: bottomLeftGrad },
-    { coords: bottomRightCoords, gradient: bottomRightGrad },
-    { coords: topLeftCoords, gradient: topLeftGrad },
-    { coords: topRightCoords, gradient: topRightGrad },
-  ];
-
-  return perlinValue(corners, scale, p);
-};
-
 export const MAX_PERLIN_VALUE = 32;
 
 /**
  * Calculates the perlin for a location using Poseidon2 for gradient index (matches circuit).
+ * Synchronous – requires initPoseidon2() to have been called once beforehand.
  *
  * @param coords An object of the x,y coordinates for which perlin is being calculated.
  * @param options An object containing the configuration for the perlin algorithm.
  */
-export async function perlin(
-  coords: IntegerVector,
-  options: PerlinConfig,
-): Promise<number> {
-  return perlinWithRand(coords, options, poseidon2RandForPerlin(options.key));
-}
-
-/**
- * Async perlin using a custom rand (e.g. Poseidon2) for gradient index.
- * Use this for move proof so output matches the circuit (Poseidon2).
- */
-export async function perlinWithRand(
-  coords: IntegerVector,
-  options: PerlinConfig,
-  randFn: AsyncHashFn,
-): Promise<number> {
+export function perlin(coords: IntegerVector, options: PerlinConfig): number {
   let { x, y } = coords;
   if (options.mirrorY) x = Math.abs(x);
   if (options.mirrorX) y = Math.abs(y);
   const fractionalP = { x: new Fraction(x), y: new Fraction(y) };
+  const randFn = poseidon2RandForPerlin(options.key);
   let ret = new Fraction(0);
+  const pValues: IFraction[] = [];
   for (let i = 0; i < 3; i += 1) {
-    const scale = new Fraction(options.scale * 2 ** i);
-    const v = await valueAtAsync(fractionalP, scale, randFn);
-    ret = ret.add(i === 0 ? v.add(v) : v);
+    pValues.push(
+      valueAt(fractionalP, new Fraction(options.scale * 2 ** i), randFn),
+    );
   }
+  ret = ret.add(pValues[0]);
+  ret = ret.add(pValues[0]);
+  ret = ret.add(pValues[1]);
+  ret = ret.add(pValues[2]);
+
   ret = ret.div(4);
   runningLCM = updateLCM(runningLCM, BigInt(ret.d));
+
   ret = ret.mul(MAX_PERLIN_VALUE / 2);
   if (options.floor) ret = ret.floor();
   ret = ret.add(MAX_PERLIN_VALUE / 2);
+
   const out = ret.valueOf();
   return Math.floor(out * 100) / 100;
 }

@@ -1,7 +1,6 @@
 import {
-  type AsyncHashFn,
   Fraction,
-  getRandomGradientAtAsync,
+  getRandomGradientAt,
   poseidon2RandForPerlin,
 } from "@dfpunk/hashing";
 import { Abstract, PerlinConfig, Rectangle, WorldCoords } from "@dfpunk/types";
@@ -13,7 +12,7 @@ export const valueOf = (v: Vector): [number, number] => [
   v.y.valueOf(),
 ];
 
-export type PerlinRand = AsyncHashFn;
+export type PerlinRand = ReturnType<typeof poseidon2RandForPerlin>;
 
 export type GridPoint = WorldCoords & { __value: never };
 
@@ -116,12 +115,12 @@ export function getQuadrant(bottomLeft: GridPoint): Quadrant {
   return Quadrant.BottomRight;
 }
 
-export async function getCachedGradient(
+export function getCachedGradient(
   quadrant: Quadrant,
   coords: GridPoint,
   config: PerlinConfig,
   pow: PerlinOctave,
-): Promise<Vector> {
+): Vector {
   const { scale, key } = config;
   const gradKey = gradientKey(quadrant, coords, config, pow);
 
@@ -134,10 +133,10 @@ export async function getCachedGradient(
   const cached = gradientCache.get(gradKey);
   if (cached) return cached;
 
-  let res = await getRandomGradientAtAsync(
+  let res = getRandomGradientAt(
     {
-      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x), // mirror across the vertical y-axis
-      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y), // mirror across the horizontal x-axis
+      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x),
+      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y),
     },
     new Fraction(scale * 2 ** pow),
     myRand,

@@ -31,7 +31,7 @@ export class BackgroundRenderer implements BackgroundRendererType {
     this.chunkShadowRenderer = new RectRenderer(manager);
   }
 
-  async queueChunks(
+  queueChunks(
     exploredChunks: Iterable<Chunk>,
     highPerfMode: boolean,
     drawChunkBorders: boolean,
@@ -41,7 +41,7 @@ export class BackgroundRenderer implements BackgroundRendererType {
     spaceColor?: string,
     deepSpaceColor?: string,
     deadSpaceColor?: string,
-  ): Promise<void> {
+  ): void {
     // upload current camera transform to shader
     const { unminedRenderer, spaceRenderer, perlinRenderer } = this.renderer;
     if (highPerfMode) return;
@@ -77,18 +77,17 @@ export class BackgroundRenderer implements BackgroundRendererType {
       );
     }
 
-    const chunkPromises: Promise<void>[] = [];
     for (const exploredChunk of exploredChunks) {
       if (viewport.intersectsViewport(exploredChunk)) {
         // add this chunk to the verts array
         if (this.highQuality) {
-          chunkPromises.push(spaceRenderer.queueChunk(exploredChunk));
+          spaceRenderer.queueChunk(exploredChunk);
           this.chunkShadowRenderer.queueChunkBorderWithPadding(
             exploredChunk,
             1 + 1 * viewport.scale,
           );
         } else {
-          chunkPromises.push(perlinRenderer.queueChunk(exploredChunk));
+          perlinRenderer.queueChunk(exploredChunk);
         }
 
         if (drawChunkBorders) {
@@ -97,10 +96,9 @@ export class BackgroundRenderer implements BackgroundRendererType {
         }
       }
     }
-    await Promise.all(chunkPromises);
   }
 
-  async fillPerlin() {
+  fillPerlin() {
     const {
       canvas: { width, height },
       ctx,
@@ -114,7 +112,7 @@ export class BackgroundRenderer implements BackgroundRendererType {
       for (let y = 0; y < height; y += 100) {
         const worldCoords = viewport.canvasToWorldCoords({ x, y });
 
-        const perlinVal = await context.getSpaceTypePerlin(worldCoords, false);
+        const perlinVal = context.getSpaceTypePerlin(worldCoords, false);
         const space = context.spaceTypeFromPerlin(perlinVal);
 
         let color: RGBVec = [255, 0, 0];

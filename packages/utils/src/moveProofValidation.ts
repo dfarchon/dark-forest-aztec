@@ -11,7 +11,7 @@
 
 import { Fr } from "@aztec/aztec.js/fields";
 import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
-import { perlinWithRand, poseidon2RandForPerlin } from "@dfpunk/hashing";
+import { perlin } from "@dfpunk/hashing";
 
 export interface SnarkConfigLike {
   planethash_key: bigint | number;
@@ -64,15 +64,15 @@ export async function computePlanetHash(
  * Compute perlin value at (x, y) for space type using Poseidon2 for gradient index.
  * Matches circuit multi_scale_perlin (poseidon2_hash for rand). Uses floor: true for u8.
  */
-export async function computeSpaceTypePerlin(
+export function computeSpaceTypePerlin(
   x: number,
   y: number,
   spaceTypeKey: number,
   scale: number,
   mirrorX: boolean,
   mirrorY: boolean,
-): Promise<number> {
-  return perlinWithRand(
+): number {
+  return perlin(
     { x, y },
     {
       key: spaceTypeKey,
@@ -81,7 +81,6 @@ export async function computeSpaceTypePerlin(
       mirrorY,
       floor: true,
     },
-    poseidon2RandForPerlin(spaceTypeKey),
   );
 }
 
@@ -102,7 +101,7 @@ export async function computeMoveProofOutputs(
     inputs.x2,
     inputs.y2,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x2,
     inputs.y2,
     Number(inputs.spaceTypeKey),
@@ -163,7 +162,7 @@ export async function computeLocationProofOutputs(
     inputs.x,
     inputs.y,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x,
     inputs.y,
     Number(inputs.spaceTypeKey),

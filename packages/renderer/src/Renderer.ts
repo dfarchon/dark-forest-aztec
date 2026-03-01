@@ -129,7 +129,7 @@ export interface RendererGameContext extends DiagnosticUpdater {
   spaceTypeFromPerlin(perlin: number): SpaceType;
   getPerlinConfig(isBiome: boolean): PerlinConfig;
   getArtifactWithId(artifactId: ArtifactId | undefined): Artifact | undefined;
-  getSpaceTypePerlin(coords: WorldCoords, floor: boolean): Promise<number>;
+  getSpaceTypePerlin(coords: WorldCoords, floor: boolean): number;
   getPerlinThresholds(): [number, number, number];
   isOwnedByMe(planet: Planet): boolean;
   getArtifactsWithIds(artifactIds: ArtifactId[]): Array<Artifact | undefined>;
@@ -329,10 +329,9 @@ export class Renderer {
   private loop() {
     this.frameCount++;
     this.now = this.context.getChainTimeMs();
-    void this.draw().then(() => {
-      this.recordRender(Date.now());
-      this.frameRequestId = window.requestAnimationFrame(() => this.loop());
-    });
+    this.draw();
+    this.recordRender(Date.now());
+    this.frameRequestId = window.requestAnimationFrame(() => this.loop());
   }
 
   /* one optimization we make is to queue batches of lots of vertices, then flush them all to the GPU in one go.
@@ -340,7 +339,7 @@ export class Renderer {
        so *all lines* will draw before *all planets*. if you want to change the ordering on the layers, you need to add
        an early flush() somewhere. */
 
-  private async draw() {
+  private draw() {
     // write matrix uniform
     this.glManager.setProjectionMatrix();
 
@@ -385,7 +384,7 @@ export class Renderer {
     );
 
     // draw the bg
-    await this.bgRenderer.queueChunks(
+    this.bgRenderer.queueChunks(
       chunks,
       isHighPerfMode,
       drawChunkBorders,
