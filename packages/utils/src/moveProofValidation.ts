@@ -11,7 +11,7 @@
 
 import { Fr } from "@aztec/aztec.js/fields";
 import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
-import { perlinWithRand, type AsyncHashFn } from "@dfpunk/hashing";
+import { perlin } from "@dfpunk/hashing";
 
 export interface SnarkConfigLike {
   planethash_key: bigint | number;
@@ -61,40 +61,18 @@ export async function computePlanetHash(
 }
 
 /**
- * Poseidon2-based rand for perlin gradient index. Matches circuit:
- * poseidon2_hash([key, corner_x, corner_y, scale]) % 16.
- */
-function perlinRandPoseidon2(key: number): AsyncHashFn {
-  return async (x: number, y: number, scale: number) => {
-    // Use integer corners to match circuit (u128 corner coords)
-    const cx = Math.floor(x);
-    const cy = Math.floor(y);
-    const scaleInt = Math.floor(scale);
-    const result = await poseidon2Hash([
-      toFr(key),
-      toFr(cx),
-      toFr(cy),
-      toFr(scaleInt),
-    ]);
-    const hex = result.toString().replace(/^0x/, "");
-    const n = BigInt("0x" + hex);
-    return Number(n % 16n);
-  };
-}
-
-/**
  * Compute perlin value at (x, y) for space type using Poseidon2 for gradient index.
  * Matches circuit multi_scale_perlin (poseidon2_hash for rand). Uses floor: true for u8.
  */
-export async function computeSpaceTypePerlin(
+export function computeSpaceTypePerlin(
   x: number,
   y: number,
   spaceTypeKey: number,
   scale: number,
   mirrorX: boolean,
   mirrorY: boolean,
-): Promise<number> {
-  return perlinWithRand(
+): number {
+  return perlin(
     { x, y },
     {
       key: spaceTypeKey,
@@ -103,7 +81,6 @@ export async function computeSpaceTypePerlin(
       mirrorY,
       floor: true,
     },
-    perlinRandPoseidon2(spaceTypeKey),
   );
 }
 
@@ -124,7 +101,7 @@ export async function computeMoveProofOutputs(
     inputs.x2,
     inputs.y2,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x2,
     inputs.y2,
     Number(inputs.spaceTypeKey),
@@ -185,7 +162,7 @@ export async function computeLocationProofOutputs(
     inputs.x,
     inputs.y,
   );
-  const perlinVal = await computeSpaceTypePerlin(
+  const perlinVal = computeSpaceTypePerlin(
     inputs.x,
     inputs.y,
     Number(inputs.spaceTypeKey),

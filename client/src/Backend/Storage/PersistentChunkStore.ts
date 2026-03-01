@@ -210,7 +210,7 @@ class PersistentChunkStore implements ChunkStore {
         IDBKeyRange.bound(borders[idx], borders[idx + 1], false, true)
       );
 
-      bucketOfChunks.forEach((chunk: PersistedChunk) => {
+      bucketOfChunks.forEach((chunk) => {
         this.addChunk(toExploredChunk(chunk), false);
       });
 

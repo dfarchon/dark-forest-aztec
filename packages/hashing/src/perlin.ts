@@ -1,9 +1,51 @@
+import { BarretenbergSync } from "@aztec/bb.js";
+import { Fr } from "@aztec/aztec.js/fields";
 import { PerlinConfig } from "@dfpunk/types";
 import BigInt, { BigInteger } from "big-integer";
 import { Fraction, IFraction } from "./fractions/bigFraction";
-import { perlinRandHash } from "./mimc";
 
 const TRACK_LCM = false;
+
+/**
+ * Must be called once (async) before any perlin / poseidon2 hashing.
+ * Typically at app startup or in the web-worker init path.
+ */
+export async function initPoseidon2(): Promise<void> {
+  await BarretenbergSync.initSingleton();
+}
+
+function toFrBuf(n: number): Uint8Array {
+  const v = globalThis.BigInt(n);
+  const mod = v < 0n ? v + Fr.MODULUS : v;
+  return new Fr(mod).toBuffer();
+}
+
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+/**
+ * Synchronous Poseidon2-based rand for perlin gradient index. Matches circuit:
+ * poseidon2_hash([key, corner_x, corner_y, scale]) % 16.
+ */
+export function poseidon2RandForPerlin(key: number): HashFn {
+  const keyBuf = toFrBuf(key);
+  return (...args: number[]) => {
+    const cx = Math.floor(args[0]);
+    const cy = Math.floor(args[1]);
+    const scaleInt = Math.floor(args[2]);
+    const api = BarretenbergSync.getSingleton();
+    const response = api.poseidon2Hash({
+      inputs: [keyBuf, toFrBuf(cx), toFrBuf(cy), toFrBuf(scaleInt)],
+    });
+    const n = globalThis.BigInt("0x" + uint8ArrayToHex(response.hash));
+    return Number(n % 16n);
+  };
+}
 
 /**
  * A object containing a pair of x,y coordinates.
@@ -29,14 +71,6 @@ export type AsyncHashFn = (
   y: number,
   scale: number,
 ) => Promise<number>;
-
-export const rand =
-  (key: number) =>
-  (...args: number[]) => {
-    return perlinRandHash(key)(...args)
-      .remainder(16)
-      .toJSNumber();
-  };
 
 /*
 const generateVecs = () => {
@@ -273,26 +307,23 @@ const valueAtAsync = async (
 export const MAX_PERLIN_VALUE = 32;
 
 /**
- * Calculates the perlin for a location, given the x,y pair and the PerlinConfig for the game.
+ * Calculates the perlin for a location using Poseidon2 for gradient index (matches circuit).
+ * Synchronous – requires initPoseidon2() to have been called once beforehand.
  *
  * @param coords An object of the x,y coordinates for which perlin is being calculated.
  * @param options An object containing the configuration for the perlin algorithm.
  */
-export function perlin(coords: IntegerVector, options: PerlinConfig) {
+export function perlin(coords: IntegerVector, options: PerlinConfig): number {
   let { x, y } = coords;
-  if (options.mirrorY) x = Math.abs(x); // mirror across the vertical y-axis
-  if (options.mirrorX) y = Math.abs(y); // mirror across the horizontal x-axis
+  if (options.mirrorY) x = Math.abs(x);
+  if (options.mirrorX) y = Math.abs(y);
   const fractionalP = { x: new Fraction(x), y: new Fraction(y) };
+  const randFn = poseidon2RandForPerlin(options.key);
   let ret = new Fraction(0);
   const pValues: IFraction[] = [];
   for (let i = 0; i < 3; i += 1) {
-    // scale must be a power of two, up to 8192
     pValues.push(
-      valueAt(
-        fractionalP,
-        new Fraction(options.scale * 2 ** i),
-        rand(options.key),
-      ),
+      valueAt(fractionalP, new Fraction(options.scale * 2 ** i), randFn),
     );
   }
   ret = ret.add(pValues[0]);

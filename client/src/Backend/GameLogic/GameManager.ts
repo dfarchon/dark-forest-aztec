@@ -16,7 +16,7 @@ import {
   L_OVER_RANGE,
   timeUntilNextBroadcastAvailable,
 } from "@dfpunk/gamelogic";
-import { fakeHash, perlin } from "@dfpunk/hashing";
+import { fakeHash, initPoseidon2, perlin } from "@dfpunk/hashing";
 import { getPlanetName } from "@dfpunk/procedural";
 import {
   artifactIdToDecStr,
@@ -216,7 +216,7 @@ class GameManager extends EventEmitter {
   /**
    * In debug builds of the game, we can connect to a set of contracts deployed to a local
    * blockchain, which are tweaked to not verify planet hashes, meaning we can use a faster hash
-   * function with similar properties to mimc. This allows us to mine the map faster in debug mode.
+   * function with similar properties to Poseidon2. This allows us to mine the map faster in debug mode.
    *
    * @todo move this into a separate `GameConfiguration` class.
    */
@@ -380,8 +380,8 @@ class GameManager extends EventEmitter {
     players: Map<string, Player>,
     touchedPlanets: Map<LocationId, Planet>,
     allTouchedPlanetIds: Set<LocationId>,
-    revealedCoords: Map<LocationId, RevealedCoords>,
-    claimedCoords: Map<LocationId, ClaimedCoords>,
+    revealedLocations: Map<LocationId, RevealedLocation>,
+    claimedLocations: Map<LocationId, ClaimedLocation>,
     worldRadius: number,
     unprocessedArrivals: Map<VoyageId, QueuedArrival>,
     unprocessedPlanetArrivalIds: Map<LocationId, VoyageId[]>,
@@ -439,43 +439,6 @@ class GameManager extends EventEmitter {
 
     this.contractConstants = contractConstants;
     this.homeLocation = homeLocation;
-
-    const revealedLocations = new Map<LocationId, RevealedLocation>();
-    for (const [locationId, coords] of revealedCoords) {
-      const planet = touchedPlanets.get(locationId);
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-        revealedLocations.set(locationId, {
-          ...location,
-          revealer: coords.revealer,
-        });
-      }
-    }
-
-    const claimedLocations = new Map<LocationId, ClaimedLocation>();
-
-    for (const [locationId, coords] of claimedCoords) {
-      const planet = touchedPlanets.get(locationId);
-
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-
-        const revealedLocation = { ...location, revealer: coords.revealer };
-
-        revealedLocations.set(locationId, revealedLocation);
-        claimedLocations.set(locationId, revealedLocation);
-      }
-    }
 
     this.entityStore = new GameObjects(
       account,
@@ -703,7 +666,54 @@ class GameManager extends EventEmitter {
       planetRarity: initialState.contractConstants.PLANET_RARITY,
     };
 
+    await initPoseidon2();
+
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
+
+    const perlinOpts = {
+      scale: initialState.contractConstants.PERLIN_LENGTH_SCALE,
+      mirrorX: initialState.contractConstants.PERLIN_MIRROR_X,
+      mirrorY: initialState.contractConstants.PERLIN_MIRROR_Y,
+      floor: true as const,
+    };
+    const revealedLocations = new Map<LocationId, RevealedLocation>();
+    for (const [locationId, coords] of initialState.revealedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        revealedLocations.set(locationId, {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        });
+      }
+    }
+    const claimedLocations = new Map<LocationId, ClaimedLocation>();
+    const claimedCoordsMap = initialState.claimedCoordsMap
+      ? initialState.claimedCoordsMap
+      : new Map<LocationId, ClaimedCoords>();
+    for (const [locationId, coords] of claimedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        const location: ClaimedLocation = {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        };
+        claimedLocations.set(locationId, location);
+      }
+    }
 
     const gameManager = new GameManager(
       terminal,
@@ -711,10 +721,8 @@ class GameManager extends EventEmitter {
       initialState.players,
       initialState.touchedAndLocatedPlanets,
       new Set(Array.from(initialState.allTouchedPlanetIds)),
-      initialState.revealedCoordsMap,
-      initialState.claimedCoordsMap
-        ? initialState.claimedCoordsMap
-        : new Map<LocationId, ClaimedCoords>(),
+      revealedLocations,
+      claimedLocations,
       initialState.worldRadius,
       initialState.arrivals,
       initialState.planetVoyageIdMap,
@@ -2241,31 +2249,28 @@ class GameManager extends EventEmitter {
     return true;
   }
 
-  private async findRandomHomePlanet(): Promise<LocatablePlanet> {
-    return new Promise<LocatablePlanet>((resolve, reject) => {
-      const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
-      const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
-      let minedChunksCount = 0;
+  private findRandomHomePlanet(): Promise<LocatablePlanet> {
+    const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
+    const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
 
+    // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
+    // area, distributed evenly in the inner perimeter of the world
+    let spawnInnerRadius = Math.sqrt(
+      Math.max(
+        Math.PI * this.worldRadius ** 2 - this.contractConstants.SPAWN_RIM_AREA,
+        0
+      ) / Math.PI
+    );
+
+    if (this.contractConstants.SPAWN_RIM_AREA === 0) {
+      spawnInnerRadius = 0;
+    }
+
+    return new Promise<LocatablePlanet>((resolve, reject) => {
       let x: number;
       let y: number;
       let d: number;
       let p: number;
-
-      // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
-      // area, distributed evenly in the inner perimeter of the world
-      let spawnInnerRadius = Math.sqrt(
-        Math.max(
-          Math.PI * this.worldRadius ** 2 -
-            this.contractConstants.SPAWN_RIM_AREA,
-          0
-        ) / Math.PI
-      );
-
-      if (this.contractConstants.SPAWN_RIM_AREA === 0) {
-        spawnInnerRadius = 0;
-      }
-
       do {
         // sample from square
         x = Math.random() * this.worldRadius * 2 - this.worldRadius;
@@ -2278,6 +2283,8 @@ class GameManager extends EventEmitter {
         d >= this.worldRadius || // can't be out of bound
         d <= spawnInnerRadius // can't be inside spawn area ring
       );
+
+      let minedChunksCount = 0;
 
       // when setting up a new account in development mode, you can tell
       // the game where to start searching for planets using this query

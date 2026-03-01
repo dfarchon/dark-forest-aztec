@@ -112,9 +112,8 @@ export class BackgroundRenderer implements BackgroundRendererType {
       for (let y = 0; y < height; y += 100) {
         const worldCoords = viewport.canvasToWorldCoords({ x, y });
 
-        const space = context.spaceTypeFromPerlin(
-          context.getSpaceTypePerlin(worldCoords, false),
-        );
+        const perlinVal = context.getSpaceTypePerlin(worldCoords, false);
+        const space = context.spaceTypeFromPerlin(perlinVal);
 
         let color: RGBVec = [255, 0, 0];
         // if (space === SpaceType.NEBULA) ctx.fillStyle = '#ff0000';

@@ -1,4 +1,8 @@
-import { Fraction, getRandomGradientAt, rand } from "@dfpunk/hashing";
+import {
+  Fraction,
+  getRandomGradientAt,
+  poseidon2RandForPerlin,
+} from "@dfpunk/hashing";
 import { Abstract, PerlinConfig, Rectangle, WorldCoords } from "@dfpunk/types";
 
 /* types */
@@ -8,7 +12,7 @@ export const valueOf = (v: Vector): [number, number] => [
   v.y.valueOf(),
 ];
 
-export type PerlinRand = ReturnType<typeof rand>;
+export type PerlinRand = ReturnType<typeof poseidon2RandForPerlin>;
 
 export type GridPoint = WorldCoords & { __value: never };
 
@@ -122,7 +126,7 @@ export function getCachedGradient(
 
   let myRand = randFns[key];
   if (!myRand) {
-    myRand = rand(key);
+    myRand = poseidon2RandForPerlin(key);
     randFns[key] = myRand;
   }
 
@@ -131,8 +135,8 @@ export function getCachedGradient(
 
   let res = getRandomGradientAt(
     {
-      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x), // mirror across the vertical y-axis
-      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y), // mirror across the horizontal x-axis
+      x: new Fraction(config.mirrorY ? Math.abs(coords.x) : coords.x),
+      y: new Fraction(config.mirrorX ? Math.abs(coords.y) : coords.y),
     },
     new Fraction(scale * 2 ** pow),
     myRand,

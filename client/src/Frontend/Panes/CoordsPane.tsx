@@ -51,9 +51,10 @@ class CoordsText extends React.Component<
       else if (spaceType === SpaceType.DEAD_SPACE) suff = "\u00b0 (DEAD SPACE)";
 
       spacetypeText = `${Math.floor((16 - per) * 16)}${suff}`;
-    }
-
-    if (this.spacetypeRef.current) {
+      if (this.spacetypeRef.current) {
+        this.spacetypeRef.current.innerText = "TEMP: " + spacetypeText;
+      }
+    } else if (this.spacetypeRef.current) {
       this.spacetypeRef.current.innerText = "TEMP: " + spacetypeText;
     }
   }
