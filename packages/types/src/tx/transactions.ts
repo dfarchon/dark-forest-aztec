@@ -16,6 +16,7 @@ export type ContractMethodName =
   | "unpauseGame"
   | "buyHat"
   | "transferPlanet"
+  | "createPlanet"
   | "findArtifact"
   | "prospectPlanet"
   | "depositArtifact"
@@ -89,6 +90,14 @@ export type UnconfirmedPlanetTransfer = TxIntent & {
   methodName: "transferPlanet";
   planetId: LocationId;
   newOwner: EthAddress;
+};
+
+export type UnconfirmedCreatePlanet = TxIntent & {
+  methodName: "createPlanet";
+  locationId: LocationId;
+  coords: { x: number; y: number };
+  level: number;
+  planetType: number;
 };
 
 export type UnconfirmedClaimReward = TxIntent & {

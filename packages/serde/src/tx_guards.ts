@@ -4,6 +4,7 @@ import type {
   UnconfirmedActivateArtifact,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
+  UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
   UnconfirmedFindArtifact,
@@ -59,6 +60,18 @@ export function isUnconfirmedTransfer(
   txIntent: TxIntent,
 ): txIntent is UnconfirmedPlanetTransfer {
   return txIntent.methodName === "transferPlanet";
+}
+
+export function isUnconfirmedCreatePlanet(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedCreatePlanet {
+  return txIntent.methodName === "createPlanet";
+}
+
+export function isUnconfirmedCreatePlanetTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedCreatePlanet> {
+  return isUnconfirmedCreatePlanet(tx.intent);
 }
 
 export function isUnconfirmedFindArtifact(
