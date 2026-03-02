@@ -578,7 +578,8 @@ contract ArtifactSystem {
         let prospect_block = new_planet.prospected_block_number as u32;
         let header = get_block_header_at(prospect_block, *self.context);
         let block_hash: Field = header.hash();
-        let artifact_seed = poseidon2_hash([args.planet_id, block_hash]);
+        let core_hash: Field = poseidon2_hash(args.core_address.serialize());
+        let artifact_seed = poseidon2_hash([args.planet_id, core_hash, block_hash]);
 
         let biome =
             game_utils::_get_biome_u128(new_planet.space_type, args.biomebase, game_config_core);
@@ -1312,12 +1313,12 @@ contract ArtifactSystem {
             wh_artifact_locations_hash = wi_alhash;
         }
 
-        assert(new_planet.owner == sender, "you must own this planet");
         assert(!new_planet.destroyed, "planet is destroyed");
         assert(artifact != Artifact::zero(), "artifact not found");
         assert(artifact_location.planet_id == location_id, "artifact not on this planet");
 
         let is_crescent = artifact.artifact_type == ArtifactType::ShipCrescent();
+        let is_spaceship = artifact_utils::is_spaceship(artifact.artifact_type);
 
         let (new_artifact, final_planet, updated_planet_artifacts, should_burn) = if is_crescent {
             assert(artifact.activations == 0, "crescent cannot be activated more than once");
@@ -1351,7 +1352,21 @@ contract ArtifactSystem {
             new_planet_crescent.last_updated = timestamp;
 
             (new_artifact, new_planet_crescent, new_planet_artifacts, false)
+        } else if is_spaceship {
+            // Non-crescent spaceships: mirror L1 behavior.
+            // Only increment activations; do NOT mark as "activated" or buff the planet.
+            let mut new_artifact = artifact;
+            new_artifact.activations += 1;
+            new_artifact.last_updated = timestamp;
+
+            (new_artifact, new_planet, new_planet_artifacts, false)
         } else {
+            // Non-spaceship artifacts: require ownership and enforce one-active-artifact-per-planet.
+            assert(
+                new_planet.owner == sender,
+                "you must own the planet you are activating an artifact on",
+            );
+
             let active = game_utils::get_active_artifact(new_planet_artifacts, active_artifacts);
             assert(
                 active == Artifact::zero(),
@@ -1362,7 +1377,7 @@ contract ArtifactSystem {
                 artifact_utils::get_artifact_cooldown_seconds(artifact.artifact_type);
             if cooldown_seconds > 0 {
                 let time_since_last = timestamp - artifact.last_deactivated;
-                assert(time_since_last >= cooldown_seconds, "artifact on cooldown");
+                assert(time_since_last > cooldown_seconds, "artifact on cooldown");
             }
 
             if artifact.artifact_type == ArtifactType::Wormhole() {

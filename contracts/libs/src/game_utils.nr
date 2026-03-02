@@ -229,8 +229,11 @@ pub fn _random_artifact_type_and_level_bonus(
     _space_type: u8,
 ) -> (u8, u8) {
     let seed_u128 = artifact_seed as u128;
-    let last_byte_of_seed: u8 = (seed_u128 % 256) as u8;
-    let second_last_byte_of_seed: u8 = ((seed_u128 / 256) % 256) as u8;
+    // Solidity: lastByteOfSeed = artifactSeed % 0xFF; secondLastByteOfSeed = ((artifactSeed - lastByteOfSeed) / 256) % 0xFF;
+    let last_byte_raw: u128 = seed_u128 % 0xFF;
+    let last_byte_of_seed: u8 = last_byte_raw as u8;
+    let second_last_byte_raw: u128 = ((seed_u128 - last_byte_raw) / 256) % 0xFF;
+    let second_last_byte_of_seed: u8 = second_last_byte_raw as u8;
 
     let mut artifact_type: u8 = ArtifactType::Pyramid();
 
