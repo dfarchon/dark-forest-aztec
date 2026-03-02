@@ -311,15 +311,54 @@ export class TxExecutor {
 
         // 5. Submit — send({ wait: NO_WAIT }) returns TxHash immediately
         //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
+        const methodFn = (
+          contract.methods as Record<
+            string,
+            (...a: unknown[]) => {
+              send: (o: unknown) => Promise<TxHash>;
+              simulate: (o: unknown) => Promise<unknown>;
+            }
+          >
+        )[method];
+        const invocation = methodFn(...contractArgs);
+
+        if (
+          tx.intent.methodName === "revealLocation" ||
+          tx.intent.methodName === "move"
+        ) {
+          try {
+            console.debug(
+              `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
+            );
+            console.debug(
+              `[TxExecutor] contractArgs (${contractArgs.length}):`,
+              contractArgs
+            );
+            const simResult = await invocation.simulate(sendOpts);
+            console.debug(
+              `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
+              simResult
+            );
+
+            console.log(simResult);
+          } catch (simErr) {
+            console.error(
+              `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+              simErr
+            );
+            if (simErr instanceof Error) {
+              console.error(`[TxExecutor] error message:`, simErr.message);
+              console.error(`[TxExecutor] error stack:`, simErr.stack);
+              if ("cause" in simErr) {
+                console.error(`[TxExecutor] error cause:`, simErr.cause);
+              }
+            }
+            throw simErr;
+          }
+        }
+
         const submitted: TxHash = await timeout(
-          (
-            contract.methods as Record<
-              string,
-              (...a: unknown[]) => { send: (o: unknown) => Promise<TxHash> }
-            >
-          )
-            [method](...contractArgs)
-            .send(sendOpts),
+          invocation.send(sendOpts),
           TX_SUBMIT_TIMEOUT,
           `tx request ${tx.id} failed to submit: timed out`
         );

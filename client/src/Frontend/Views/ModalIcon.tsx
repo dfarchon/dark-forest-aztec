@@ -36,8 +36,6 @@ const icon = (modal: ModalName): React.ReactNode => {
   else if (modal === ModalName.Hats) return <Icon type={IconType.Hat} />;
   else if (modal === ModalName.Settings)
     return <Icon type={IconType.Settings} />;
-  else if (modal === ModalName.AdminControls)
-    return <Icon type={IconType.Lock} />;
   else if (modal === ModalName.Plugins) return <Icon type={IconType.Plugin} />;
   else if (modal === ModalName.YourArtifacts)
     return <Icon type={IconType.Artifact} />;

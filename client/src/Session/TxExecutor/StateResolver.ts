@@ -37,8 +37,8 @@ import type {
   UnconfirmedInit,
   UnconfirmedMove,
   UnconfirmedPauseGame,
-  UnconfirmedPlanetTransfer,
   UnconfirmedReveal,
+  UnconfirmedSafeSetOwner,
   UnconfirmedSetWorldConfig,
   UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
@@ -276,8 +276,9 @@ export class StateResolver {
         return this.resolveUnpauseGame(intent as UnconfirmedUnpauseGame);
       case "createPlanet":
         return this.resolveCreatePlanet(intent as UnconfirmedCreatePlanet);
-      case "transferPlanet":
-        return this.resolveTransferPlanet(intent as UnconfirmedPlanetTransfer);
+      case "safeSetOwner":
+        return this.resolveSafeSetOwner(intent as UnconfirmedSafeSetOwner);
+
       default:
         throw new Error(
           `StateResolver: method "${intent.methodName}" not implemented`
@@ -413,8 +414,8 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // revealLocation — 20 args
-  // [location, perlin, level, x, y, timestamp,
+  // revealLocation — 21 args
+  // [location, perlin, level, x, y, timestamp, is_admin,
   //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
   //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
   //  planetState, planetRevealedCoords, playerState, world]
@@ -490,7 +491,7 @@ export class StateResolver {
     // than the hash stored in the indexer, so the contract will derive a
     // different level.  Recompute it client-side to match.
     let level: number;
-    if (snark && !snark.disable_zk_checks) {
+    if (snark && !snark.disable_zk_checks && !planetRaw?.is_initialized) {
       level = computePlanetLevelFromLocationId(
         locationId,
         perlin,
@@ -518,6 +519,9 @@ export class StateResolver {
     const levelIndex = Math.min(9, Math.max(0, Number(level)));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
+    const isAdmin =
+      !!config.admin && playerAddr.toLowerCase() === config.admin.toLowerCase();
+
     if (this.enableHashPreflight) {
       await this.verifyRevealStateHashes(
         locationId,
@@ -535,6 +539,7 @@ export class StateResolver {
       x,
       y,
       timestamp,
+      isAdmin,
       config.snarkConfig,
       planetDefaultStats,
       config.worldConfig,
@@ -676,8 +681,6 @@ export class StateResolver {
         : artifactZero();
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
-    const levelIndex = Math.min(9, Math.max(0, targetLevelResolved));
-    const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
     if (this.enableHashPreflight) {
       await this.verifyMoveStateHashes(
@@ -725,6 +728,7 @@ export class StateResolver {
       const outputs = await computeMoveProofOutputs(inputs);
       // Use Poseidon2-computed perlin so contract and validation agree (intent may have stale perlin).
       targetPerlin = Math.floor(outputs.perlin);
+
       // Recompute target level from Poseidon2 hash bytes (used by initialize_planet_with_defaults)
       targetLevelResolved = computePlanetLevelFromLocationId(
         outputs.targetHash,
@@ -785,6 +789,15 @@ export class StateResolver {
         perlinRaw: outputs.perlin,
       });
     }
+
+    // For already-initialized planets (e.g. admin-created via create_planet),
+    // use the stored level rather than the one derived from locationId bytes.
+    if (targetPlanetRaw?.is_initialized) {
+      targetLevelResolved = Number(targetPlanetRaw.planet_level);
+    }
+
+    const levelIndex = Math.min(9, Math.max(0, targetLevelResolved));
+    const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
     // Use UI-provided timestamp when available so the refreshed population
     // matches the energy the user saw at move time.  Fall back to the
@@ -1176,20 +1189,111 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // transferPlanet — Admin.set_owner(planet_id, planet_state, new_owner)
+  // safeSetOwner — 20 args
+  // [x, y, r, locationId, perlin, level, newOwner, timestamp,
+  //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
+  //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
+  //  planetState, world]
   // -------------------------------------------------------------------------
-  private async resolveTransferPlanet(
-    intent: UnconfirmedPlanetTransfer
+
+  private async resolveSafeSetOwner(
+    intent: UnconfirmedSafeSetOwner
   ): Promise<unknown[]> {
-    const args = await (intent.args instanceof Promise
-      ? intent.args
-      : Promise.resolve(intent.args));
-    const [locationIdDecStr, newOwnerEth] = args as [string, string];
-    const planetId = BigInt(String(locationIdDecStr));
-    const planetRaw = this.indexer.getPlanet(String(locationIdDecStr));
+    const intentArgs = await intent.args;
+    // intentArgs = [x, y, locationIdHex, perlin, level, newOwner]
+    const [rawX, rawY, rawLocationId, rawPerlin, rawLevel, rawNewOwner] =
+      intentArgs;
+    const x = signedCoordToField(rawX as number | bigint);
+    const y = signedCoordToField(rawY as number | bigint);
+    let locationId = hexIdToField(rawLocationId);
+    let perlin = Number(rawPerlin);
+    let level = Number(rawLevel);
+    const newOwner = AztecAddress.fromString(String(rawNewOwner));
+
+    const config = await this.configCache.getConfig();
+
+    const snark = config.snarkConfig as Record<string, unknown> | undefined;
+    if (snark && !snark.disable_zk_checks) {
+      const coord = (v: unknown) =>
+        typeof v === "number" ? v : Number(BigInt(String(v ?? 0)));
+      const inputs = buildLocationProofInputs(
+        {
+          planethash_key: BigInt(String(snark.planethash_key ?? 0)),
+          spacetype_key: BigInt(String(snark.spacetype_key ?? 0)),
+          perlin_length_scale: BigInt(String(snark.perlin_length_scale ?? 0)),
+          perlin_mirror_x: Boolean(snark.perlin_mirror_x),
+          perlin_mirror_y: Boolean(snark.perlin_mirror_y),
+        },
+        coord(rawX),
+        coord(rawY)
+      );
+      const outputs = await computeLocationProofOutputs(inputs);
+      locationId = outputs.locationHash;
+      perlin = Math.floor(outputs.perlin);
+      level = computePlanetLevelFromLocationId(
+        locationId,
+        perlin,
+        config.gameConfigCore as Record<string, unknown>,
+        config.planetLevelThresholds as Record<string, unknown>
+      );
+      console.debug("[SafeSetOwner proof] computed (Poseidon2):", {
+        x: inputs.x,
+        y: inputs.y,
+        locationHash: outputs.locationHash.toString(),
+        perlin,
+        level,
+      });
+    }
+
+    const locationIdDec = locationIdToDecStr(
+      String(rawLocationId) as import("@dfpunk/types").LocationId
+    );
+
+    const planetRaw = this.indexer.getPlanet(locationIdDec);
     const planetState = planetRaw ? planetToContract(planetRaw) : planetZero();
-    const newOwner = AztecAddress.fromString(String(newOwnerEth));
-    return [planetId, planetState, newOwner];
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
+    const r = BigInt(world.radius as bigint | number);
+
+    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    if (planetRaw) {
+      const planetLastUpdated = BigInt(planetRaw.last_updated);
+      if (planetLastUpdated > timestamp) {
+        console.warn(
+          `[StateResolver] chainClock ${timestamp} behind planet last_updated=${planetLastUpdated}, advancing timestamp`
+        );
+        timestamp = planetLastUpdated;
+      }
+    }
+
+    const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
+    const levelIndex = Math.min(9, Math.max(0, level));
+    const planetDefaultStats = config.planetDefaultStats[levelIndex];
+
+    return [
+      x,
+      y,
+      r,
+      locationId,
+      perlin,
+      level,
+      newOwner,
+      timestamp,
+      config.snarkConfig,
+      planetDefaultStats,
+      config.worldConfig,
+      config.gameConfigCore,
+      config.planetLevelThresholds,
+      config.spaceJunkConfig,
+      tier0,
+      tier1,
+      tier2,
+      tier3,
+      planetState,
+      world,
+    ];
   }
 
   // -------------------------------------------------------------------------

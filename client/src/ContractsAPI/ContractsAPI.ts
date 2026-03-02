@@ -274,10 +274,6 @@ export class ContractsAPI extends EventEmitter {
     return gameConfigToContractConstants(config);
   }
 
-  public invalidateConfigCache(): void {
-    this.configCache.invalidate();
-  }
-
   public async getConfig(): Promise<GameConfig> {
     return this.configCache.getConfig();
   }

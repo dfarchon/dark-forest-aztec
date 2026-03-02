@@ -11,12 +11,8 @@ export type ContractMethodName =
   | "initializePlayer"
   | "move"
   | "upgradePlanet"
-  | "setWorldConfig"
-  | "pauseGame"
-  | "unpauseGame"
   | "buyHat"
   | "transferPlanet"
-  | "createPlanet"
   | "findArtifact"
   | "prospectPlanet"
   | "depositArtifact"
@@ -31,7 +27,13 @@ export type ContractMethodName =
   | "createLobby"
   | "invadePlanet"
   | "capturePlanet"
-  | "claimReward";
+  | "claimReward"
+  // Admin-only methods
+  | "setWorldConfig"
+  | "pauseGame"
+  | "unpauseGame"
+  | "createPlanet"
+  | "safeSetOwner";
 
 /**
  * Client-side transaction status (UI/executor lifecycle). Aztec counterpart of EthTxStatus.
@@ -92,14 +94,6 @@ export type UnconfirmedPlanetTransfer = TxIntent & {
   newOwner: EthAddress;
 };
 
-export type UnconfirmedCreatePlanet = TxIntent & {
-  methodName: "createPlanet";
-  locationId: LocationId;
-  coords: { x: number; y: number };
-  level: number;
-  planetType: number;
-};
-
 export type UnconfirmedClaimReward = TxIntent & {
   methodName: "claimReward";
   sortedPlayerAddresses: EthAddress[];
@@ -110,18 +104,6 @@ export type UnconfirmedUpgrade = TxIntent & {
   methodName: "upgradePlanet";
   locationId: LocationId;
   upgradeBranch: number;
-};
-
-export type UnconfirmedSetWorldConfig = TxIntent & {
-  methodName: "setWorldConfig";
-};
-
-export type UnconfirmedPauseGame = TxIntent & {
-  methodName: "pauseGame";
-};
-
-export type UnconfirmedUnpauseGame = TxIntent & {
-  methodName: "unpauseGame";
 };
 
 export type UnconfirmedBuyHat = TxIntent & {
@@ -195,4 +177,31 @@ export type UnconfirmedInvadePlanet = TxIntent & {
 export type UnconfirmedCapturePlanet = TxIntent & {
   methodName: "capturePlanet";
   locationId: LocationId;
+};
+
+export type UnconfirmedSetWorldConfig = TxIntent & {
+  methodName: "setWorldConfig";
+};
+
+export type UnconfirmedPauseGame = TxIntent & {
+  methodName: "pauseGame";
+};
+
+export type UnconfirmedUnpauseGame = TxIntent & {
+  methodName: "unpauseGame";
+};
+
+export type UnconfirmedCreatePlanet = TxIntent & {
+  methodName: "createPlanet";
+  locationId: LocationId;
+  coords: { x: number; y: number };
+  level: number;
+  planetType: number;
+};
+
+export type UnconfirmedSafeSetOwner = TxIntent & {
+  methodName: "safeSetOwner";
+  locationId: LocationId;
+  location: WorldLocation;
+  newOwner: EthAddress;
 };

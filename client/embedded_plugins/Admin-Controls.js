@@ -55,43 +55,68 @@ function formatSpeedMultiplier(hundredths) {
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles — lean overrides; base button/input/select styling from PluginElements
 // ---------------------------------------------------------------------------
-const wrapperStyle = { display: "flex", flexDirection: "column", gap: "8px" };
-const rowStyle = { display: "flex", gap: "8px", alignItems: "center" };
-const btn = {
-  background: "#3d444c",
-  color: "#e4e4e4",
-  border: "1px solid #5a6268",
-  borderRadius: "4px",
-  padding: "6px 12px",
-  cursor: "pointer",
-  fontSize: "13px",
+const wrapperStyle = { display: "flex", flexDirection: "column", gap: "4px" };
+const sectionStyle = {
+  borderTop: "1px solid #333",
+  paddingTop: "12px",
+  marginTop: "8px",
 };
-const selectStyle = {
-  outline: "none",
-  background: "#151515",
-  color: "#838383",
-  borderRadius: "4px",
-  border: "1px solid #777",
-  padding: "2px 6px",
-  cursor: "pointer",
-  minWidth: "120px",
-};
-const inputStyle = { ...selectStyle, flex: "1", minWidth: "80px" };
 const headingStyle = {
-  fontSize: "14pt",
-  textDecoration: "underline",
-  marginBottom: "6px",
+  fontSize: "11pt",
+  fontWeight: "600",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  color: "#ddd",
+  margin: "0 0 8px 0",
+};
+const rowStyle = {
+  display: "flex",
+  gap: "8px",
+  alignItems: "center",
+  flexWrap: "wrap",
 };
 const linkStyle = {
   cursor: "pointer",
   textDecoration: "underline",
   color: "#00ADE1",
 };
-const messageStyle = { marginTop: "8px" };
-const greenStyle = { color: "#7ce7a0" };
-const redStyle = { color: "#f58f8f" };
+const addressStyle = {
+  display: "inline-block",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: "10pt",
+  color: "#888",
+  verticalAlign: "bottom",
+};
+const fullWidthBtn = { width: "100%" };
+const flexInput = { flex: "1", minWidth: "80px" };
+const narrowInput = { width: "80px" };
+const selectFlex = { flex: "1", minWidth: "100px" };
+const greenStyle = { color: "#00DC82" };
+const redStyle = { color: "#FF6492" };
+const bannerBase = {
+  padding: "6px 10px",
+  borderRadius: "3px",
+  marginTop: "8px",
+  fontSize: "11pt",
+  lineHeight: "1.4",
+};
+const successBanner = {
+  ...bannerBase,
+  borderLeft: "3px solid #00DC82",
+  background: "rgba(0,220,130,0.08)",
+  color: "#00DC82",
+};
+const errorBanner = {
+  ...bannerBase,
+  borderLeft: "3px solid #FF6492",
+  background: "rgba(255,100,146,0.08)",
+  color: "#FF6492",
+};
 
 // ---------------------------------------------------------------------------
 // API (only implemented ones called; rest stub)
@@ -104,17 +129,33 @@ async function unpauseGame() {
 }
 async function givePlanet(planet, newOwner) {
   if (!planet?.locationId || !newOwner) return;
-  const tx = await df.transferPlanet?.(planet.locationId, newOwner);
+  const tx = await df.safeSetOwner?.(planet.locationId, newOwner);
   if (tx?.confirmedPromise)
     tx.confirmedPromise.then(() => df.hardRefreshPlanet?.(planet.locationId));
   return tx;
 }
 async function updateGameSpeed(worldConfig, speedHundredths) {
-  if (!worldConfig)
+  if (worldConfig)
     return df.setWorldConfig?.({
       ...worldConfig,
       time_factor_hundredths: speedHundredths,
     });
+}
+
+async function adminRevealPlanet(locationId, coords) {
+  const location = {
+    coords,
+    hash: locationId,
+    perlin: df.spaceTypePerlin(coords, false),
+    biomebase: df.biomebasePerlin(coords, false),
+  };
+  const txIntent = {
+    methodName: "revealLocation",
+    locationId,
+    location,
+    args: Promise.resolve([locationId, coords.x, coords.y]),
+  };
+  return df.submitTransaction(txIntent);
 }
 
 // Stubs (no contract support in this client)
@@ -134,8 +175,9 @@ function PlanetLink({ planetId }) {
   `;
 }
 
-function Heading({ title }) {
-  return html`<h2 style=${headingStyle}>${title}</h2>`;
+function Heading({ title, first }) {
+  const style = first ? headingStyle : { ...headingStyle, ...sectionStyle };
+  return html`<h2 style=${style}>${title}</h2>`;
 }
 
 function accountOptions(players) {
@@ -179,8 +221,30 @@ function PlanetCreator({ statusCallback, errorCallback }) {
         );
         if (tx?.confirmedPromise) {
           tx.confirmedPromise
-            .then(() => statusCallback?.("Create planet confirmed."))
-            .catch(() => {});
+            .then(async () => {
+              const locId = tx.intent?.locationId;
+              statusCallback?.("Create planet confirmed. Revealing location…");
+              if (locId && typeof df.hardRefreshPlanet === "function") {
+                await df.hardRefreshPlanet(locId);
+              }
+              if (locId && tx.intent?.coords) {
+                const revealTx = await adminRevealPlanet(
+                  locId,
+                  tx.intent.coords
+                );
+                await revealTx?.confirmedPromise;
+                statusCallback?.("Planet created and location revealed.");
+              } else {
+                statusCallback?.(
+                  "Planet created. Reveal not available (no coords)."
+                );
+              }
+            })
+            .catch((e) => {
+              statusCallback?.(
+                "Planet created but reveal failed: " + (e?.message ?? String(e))
+              );
+            });
         }
       } catch (e) {
         const msg = e?.message ?? String(e);
@@ -190,6 +254,7 @@ function PlanetCreator({ statusCallback, errorCallback }) {
         setCreating(false);
       }
     };
+
     const move = (coords) => setPlanetCoords(coords);
     uiEmitter.on("WorldMouseClick", place);
     uiEmitter.on("WorldMouseMove", move);
@@ -207,7 +272,7 @@ function PlanetCreator({ statusCallback, errorCallback }) {
   ]);
 
   return html`
-    <div style=${{ width: "100%" }}>
+    <div>
       <${Heading} title="Create planet" />
       <div style=${rowStyle}>
         <label>Level</label>
@@ -217,11 +282,10 @@ function PlanetCreator({ statusCallback, errorCallback }) {
           max=${9}
           value=${level}
           onInput=${(e) => setLevel(Number(e.target?.value) || 0)}
-          style=${inputStyle}
+          style=${narrowInput}
         />
         <label>Type</label>
         <select
-          style=${selectStyle}
           value=${planetType}
           onChange=${(e) => setPlanetType(Number(e.target?.value) || 0)}
         >
@@ -230,10 +294,10 @@ function PlanetCreator({ statusCallback, errorCallback }) {
           )}
         </select>
       </div>
-      <div style=${rowStyle}>
+      <div style=${{ ...rowStyle, marginTop: "6px" }}>
         ${!choosingLocation
           ? html`<button
-              style=${btn}
+              style=${fullWidthBtn}
               onClick=${() => setChoosingLocation(true)}
               disabled=${creating}
             >
@@ -244,10 +308,7 @@ function PlanetCreator({ statusCallback, errorCallback }) {
               ${Math.round(planetCoords?.y ?? 0)}) — click map to create</span
             >`}
         ${choosingLocation
-          ? html`<button
-              style=${btn}
-              onClick=${() => setChoosingLocation(false)}
-            >
+          ? html`<button onClick=${() => setChoosingLocation(false)}>
               Cancel
             </button>`
           : ""}
@@ -446,10 +507,20 @@ function App() {
 
   return html`
     <div style=${wrapperStyle}>
-      <p>Account: ${account ?? "(none)"}</p>
-      ${player?.address != null ? html`<p>Player: ${player.address}</p>` : ""}
+      <div style=${{ marginBottom: "4px" }}>
+        <div style=${rowStyle}>
+          <span style=${{ color: "#888" }}>Account</span>
+          <span style=${addressStyle}>${account ?? "(none)"}</span>
+        </div>
+        ${player?.address != null
+          ? html`<div style=${rowStyle}>
+              <span style=${{ color: "#888" }}>Player</span>
+              <span style=${addressStyle}>${player.address}</span>
+            </div>`
+          : ""}
+      </div>
 
-      <${Heading} title="Game speed" />
+      <${Heading} title="Game speed" first />
       <div style=${rowStyle}>
         <label>Time factor</label>
         <input
@@ -459,12 +530,14 @@ function App() {
           value=${speedHundredths}
           onInput=${(e) =>
             setSpeedHundredths(clampSpeed(Number(e.target?.value)))}
-          style=${{ width: "80px", ...selectStyle }}
+          style=${narrowInput}
         />
-        <span>${formatSpeedMultiplier(speedHundredths)}</span>
+        <span style=${{ color: "#ddd" }}
+          >${formatSpeedMultiplier(speedHundredths)}</span
+        >
       </div>
       <button
-        style=${btn}
+        style=${fullWidthBtn}
         disabled=${loadingConfig ||
         updatingSpeed ||
         updatingPause ||
@@ -476,13 +549,13 @@ function App() {
 
       <${Heading} title="Pause / Unpause" />
       <div style=${rowStyle}>
-        <span>State </span>
+        <span>State</span>
         <span style=${paused ? redStyle : greenStyle}
           >${paused ? "PAUSED" : "RUNNING"}</span
         >
       </div>
       <button
-        style=${btn}
+        style=${fullWidthBtn}
         disabled=${loadingConfig || updatingPause || updatingSpeed}
         onClick=${togglePause}
       >
@@ -499,12 +572,12 @@ function App() {
       <div style=${rowStyle}>
         <input
           type="text"
-          style=${inputStyle}
+          style=${flexInput}
           value=${whitelistAddress}
           onInput=${(e) => setWhitelistAddress(e.target?.value ?? "")}
           placeholder="Address to whitelist"
         />
-        <button style=${btn} onClick=${onWhitelist}>Whitelist address</button>
+        <button onClick=${onWhitelist}>Whitelist</button>
       </div>
 
       <${Heading} title="Give planet" />
@@ -512,35 +585,34 @@ function App() {
         <span
           >Planet: <${PlanetLink} planetId=${selectedPlanet?.locationId}
         /></span>
-        <span> to </span>
+        <span>to</span>
         <select
-          style=${selectStyle}
+          style=${selectFlex}
           value=${targetAccount ?? ""}
           onChange=${(e) => setTargetAccount(e.target?.value)}
         >
           ${accountOptions(allPlayers)}
         </select>
-        <button
-          style=${btn}
-          onClick=${onGivePlanet}
-          disabled=${!selectedPlanet || !targetAccount}
-        >
-          Give planet
-        </button>
       </div>
+      <button
+        style=${fullWidthBtn}
+        onClick=${onGivePlanet}
+        disabled=${!selectedPlanet || !targetAccount}
+      >
+        Give planet
+      </button>
 
       <${Heading} title="Give spaceships" />
       <div style=${rowStyle}>
         <select
-          style=${selectStyle}
           value=${selectedShip}
           onChange=${(e) => setSelectedShip(Number(e.target?.value))}
         >
           ${rangeOptions(MIN_SPACESHIP_TYPE, MAX_SPACESHIP_TYPE, "Ship")}
         </select>
-        <span> to </span>
+        <span>to</span>
         <select
-          style=${selectStyle}
+          style=${selectFlex}
           value=${targetAccount ?? ""}
           onChange=${(e) => setTargetAccount(e.target?.value)}
         >
@@ -552,7 +624,6 @@ function App() {
           >On planet: <${PlanetLink} planetId=${selectedPlanet?.locationId}
         /></span>
         <button
-          style=${btn}
           onClick=${onSpawnSpaceship}
           disabled=${!selectedPlanet || !targetAccount}
         >
@@ -563,29 +634,28 @@ function App() {
       <${Heading} title="Give artifacts" />
       <div style=${rowStyle}>
         <select
-          style=${selectStyle}
           value=${artifactRarity}
           onChange=${(e) => setArtifactRarity(e.target?.value)}
         >
           ${rangeOptions(MIN_ARTIFACT_RARITY, MAX_ARTIFACT_RARITY, "Rarity")}
         </select>
         <select
-          style=${selectStyle}
           value=${artifactBiome}
           onChange=${(e) => setArtifactBiome(e.target?.value)}
         >
           ${rangeOptions(MIN_BIOME, MAX_BIOME, "Biome")}
         </select>
         <select
-          style=${selectStyle}
           value=${selectedArtifact}
           onChange=${(e) => setSelectedArtifact(Number(e.target?.value))}
         >
           ${rangeOptions(MIN_ARTIFACT_TYPE, MIN_SPACESHIP_TYPE - 1, "Type")}
         </select>
-        <span> to </span>
+      </div>
+      <div style=${rowStyle}>
+        <span>to</span>
         <select
-          style=${selectStyle}
+          style=${selectFlex}
           value=${targetAccount ?? ""}
           onChange=${(e) => setTargetAccount(e.target?.value)}
         >
@@ -597,7 +667,6 @@ function App() {
           >On planet: <${PlanetLink} planetId=${selectedPlanet?.locationId}
         /></span>
         <button
-          style=${btn}
           onClick=${onGiveArtifact}
           disabled=${!selectedPlanet || !targetAccount}
         >
@@ -611,25 +680,17 @@ function App() {
       />
 
       ${loadingConfig
-        ? html`<div style=${messageStyle}>Loading config…</div>`
+        ? html`<div style=${bannerBase}>Loading config…</div>`
         : ""}
-      ${status
-        ? html`<div style=${messageStyle}>
-            <span style=${greenStyle}>${status}</span>
-          </div>`
-        : ""}
-      ${error
-        ? html`<div style=${messageStyle}>
-            <span style=${redStyle}>${error}</span>
-          </div>`
-        : ""}
+      ${status ? html`<div style=${successBanner}>${status}</div>` : ""}
+      ${error ? html`<div style=${errorBanner}>${error}</div>` : ""}
     </div>
   `;
 }
 
 export default class Plugin {
   async render(container) {
-    container.style.width = "525px";
+    container.style.width = "450px";
     container.style.minHeight = "500px";
     render(html`<${App} />`, container);
   }

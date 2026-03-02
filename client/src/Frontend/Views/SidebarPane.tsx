@@ -17,7 +17,6 @@ import { ModalToggleButton } from "./ModalIcon";
 
 export function SidebarPane({
   settingsHook,
-  adminControlsHook,
   helpHook,
   pluginsHook,
   yourArtifactsHook,
@@ -25,7 +24,6 @@ export function SidebarPane({
   transactionLogHook,
 }: {
   settingsHook: Hook<boolean>;
-  adminControlsHook?: Hook<boolean>;
   helpHook: Hook<boolean>;
   pluginsHook: Hook<boolean>;
   yourArtifactsHook: Hook<boolean>;
@@ -50,17 +48,6 @@ export function SidebarPane({
           shortcutKey={TOGGLE_SETTINGS_PANE}
           shortcutText={sidebarHovered ? TOGGLE_SETTINGS_PANE : undefined}
         />
-        {adminControlsHook && (
-          <>
-            <EmSpacer height={0.5} />
-            <ModalToggleButton
-              modal={ModalName.AdminControls}
-              hook={adminControlsHook}
-              text={sidebarHovered ? "Admin" : undefined}
-              size="stretch"
-            />
-          </>
-        )}
         <EmSpacer height={0.5} />
         <ModalToggleButton
           modal={ModalName.Help}

@@ -30,8 +30,11 @@ import {
   isUnconfirmedInitTx,
   isUnconfirmedInvadePlanetTx,
   isUnconfirmedMoveTx,
+  isUnconfirmedPauseGameTx,
   isUnconfirmedProspectPlanetTx,
   isUnconfirmedRevealTx,
+  isUnconfirmedSafeSetOwnerTx,
+  isUnconfirmedUnpauseGameTx,
   isUnconfirmedUpgradeTx,
   isUnconfirmedWithdrawArtifactTx,
   isUnconfirmedWithdrawSilverTx,
@@ -83,6 +86,7 @@ import {
   UnconfirmedPlanetTransfer,
   UnconfirmedProspectPlanet,
   UnconfirmedReveal,
+  UnconfirmedSafeSetOwner,
   UnconfirmedSetWorldConfig,
   UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
@@ -882,41 +886,16 @@ class GameManager extends EventEmitter {
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
           ]);
-        } else if (tx.intent.methodName === "pauseGame") {
+        } else if (isUnconfirmedPauseGameTx(tx)) {
           gameManager.paused = true;
           gameManager.paused$.publish(true);
-        } else if (tx.intent.methodName === "unpauseGame") {
+        } else if (isUnconfirmedUnpauseGameTx(tx)) {
           gameManager.paused = false;
           gameManager.paused$.publish(false);
         } else if (isUnconfirmedCreatePlanetTx(tx)) {
-          const receipt = await tx.confirmedPromise;
-          if (receipt.blockNumber != null) {
-            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
-          }
-          await gameManager.hardRefreshPlanet(tx.intent.locationId);
-          const planet = gameManager.entityStore.getPlanetWithId(
-            tx.intent.locationId
-          );
-          if (planet && tx.intent.coords) {
-            const intCoords = {
-              x: Math.round(tx.intent.coords.x),
-              y: Math.round(tx.intent.coords.y),
-            };
-            const revealedLocation: RevealedLocation = {
-              coords: intCoords,
-              hash: tx.intent.locationId,
-              perlin: gameManager.spaceTypePerlin(intCoords, true),
-              biomebase: gameManager.biomebasePerlin(intCoords, true),
-              revealer: gameManager.getAccount()!,
-            };
-            gameManager.entityStore.replacePlanetFromContractData(
-              planet,
-              undefined,
-              undefined,
-              revealedLocation
-            );
-          }
-          gameManager.emit(GameManagerEvent.PlanetUpdate);
+          gameManager.hardRefreshPlanet(tx.intent.locationId);
+        } else if (isUnconfirmedSafeSetOwnerTx(tx)) {
+          gameManager.hardRefreshPlanet(tx.intent.locationId);
         }
 
         gameManager.entityStore.clearUnconfirmedTxIntent(tx);
@@ -2100,14 +2079,16 @@ class GameManager extends EventEmitter {
         throw new Error("you're already broadcasting coordinates");
       }
 
-      const myLastRevealTimestamp = this.players.get(
-        this.account
-      )?.lastRevealTimestamp;
-      if (
-        myLastRevealTimestamp &&
-        Date.now() < this.getNextBroadcastAvailableTimestamp()
-      ) {
-        throw new Error("still on cooldown for broadcasting");
+      if (!this.isAdmin()) {
+        const myLastRevealTimestamp = this.players.get(
+          this.account
+        )?.lastRevealTimestamp;
+        if (
+          myLastRevealTimestamp &&
+          Date.now() < this.getNextBroadcastAvailableTimestamp()
+        ) {
+          throw new Error("still on cooldown for broadcasting");
+        }
       }
 
       // this is shitty. used for the popup window
@@ -3289,14 +3270,6 @@ class GameManager extends EventEmitter {
     }
   }
 
-  /** Alias for plugins: transfer planet ownership (admin). Same as transferOwnership. */
-  public async transferPlanet(
-    planetId: LocationId,
-    newOwner: EthAddress
-  ): Promise<Transaction<UnconfirmedPlanetTransfer>> {
-    return this.transferOwnership(planetId, newOwner);
-  }
-
   public async setWorldConfig(
     worldConfig: WorldConfig
   ): Promise<Transaction<UnconfirmedSetWorldConfig>> {
@@ -3313,6 +3286,11 @@ class GameManager extends EventEmitter {
       this.getNotificationsManager().txInitError("setWorldConfig", e.message);
       throw e;
     }
+  }
+
+  public async getWorldConfig(): Promise<WorldConfig> {
+    const config = await this.contractsAPI.getConfig();
+    return config.worldConfig as WorldConfig;
   }
 
   public async pauseGame(): Promise<Transaction<UnconfirmedPauseGame>> {
@@ -3341,9 +3319,33 @@ class GameManager extends EventEmitter {
     }
   }
 
-  public async getWorldConfig(): Promise<WorldConfig> {
-    const config = await this.contractsAPI.getConfig();
-    return config.worldConfig as WorldConfig;
+  public async safeSetOwner(
+    planetId: LocationId,
+    newOwner: EthAddress
+  ): Promise<Transaction<UnconfirmedSafeSetOwner>> {
+    try {
+      const location = this.getLocationOfPlanet(planetId);
+      if (!location) {
+        throw new Error(`Cannot find location for planet ${planetId}`);
+      }
+      const planet = this.getPlanetWithId(planetId);
+      const x = location.coords.x;
+      const y = location.coords.y;
+      const perlin = location.perlin;
+      const level = planet?.planetLevel ?? 0;
+
+      const txIntent: UnconfirmedSafeSetOwner = {
+        methodName: "safeSetOwner",
+        args: Promise.resolve([x, y, planetId, perlin, level, newOwner]),
+        locationId: planetId,
+        location,
+        newOwner,
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("safeSetOwner", e.message);
+      throw e;
+    }
   }
 
   /**

@@ -65,10 +65,10 @@ export class ContractResolver {
         return { contract: this.admin, method: "pause" };
       case "unpauseGame":
         return { contract: this.admin, method: "unpause" };
-      case "transferPlanet":
-        return { contract: this.admin, method: "set_owner" };
       case "createPlanet":
         return { contract: this.admin, method: "create_planet" };
+      case "safeSetOwner":
+        return { contract: this.admin, method: "safe_set_owner" };
       default:
         throw new Error(`ContractResolver: unsupported method "${methodName}"`);
     }

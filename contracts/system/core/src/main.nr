@@ -1030,6 +1030,7 @@ contract Core {
         x: Field,
         y: Field,
         timestamp: u64, // timestamp for private time-based computations
+        is_admin: bool,
         // Config inputs (to be validated via hash in public)
         provided_snark_config: SnarkConfig,
         planet_default_stats: PlanetDefaultStats,
@@ -1058,8 +1059,8 @@ contract Core {
                 planet_hash_key,
                 space_type_key,
                 scale,
-                provided_snark_config.perlin_mirror_y,
                 provided_snark_config.perlin_mirror_x,
+                provided_snark_config.perlin_mirror_y,
             );
             assert(expected_hash == location, "Reveal proof: location hash mismatch");
             assert(expected_perlin == perlin, "Reveal proof: perlin mismatch");
@@ -1159,10 +1160,13 @@ contract Core {
         let mut new_world = result.1;
         let mut update_world = result.2;
 
-        assert(
-            player_state.last_reveal_timestamp + world_config.location_reveal_cooldown < timestamp,
-            "Wait for cooldown before revealing again",
-        );
+        if !is_admin {
+            assert(
+                player_state.last_reveal_timestamp + world_config.location_reveal_cooldown
+                    < timestamp,
+                "Wait for cooldown before revealing again",
+            );
+        }
 
         let mut new_player_state = player_state;
         new_player_state.last_reveal_timestamp = timestamp;
@@ -1181,6 +1185,7 @@ contract Core {
             location,
             sender,
             timestamp,
+            is_admin,
             snark_config_hash,
             planet_default_stats_hash,
             world_config_hash,
@@ -1209,6 +1214,7 @@ contract Core {
         location: Field,
         sender: AztecAddress,
         timestamp: u64,
+        is_admin: bool,
         // Config hashes for verification
         snark_config_hash: Field,
         planet_default_stats_hash: Field,
@@ -1241,6 +1247,10 @@ contract Core {
         // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
         let max_time_drift: u64 = 300;
         assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        if is_admin {
+            assert(sender == self.storage.admin.read(), "Only admin can bypass cooldown");
+        }
 
         // Verify all config hashes match on-chain config
         let config_storage_address = self.internal.get_config_storage_address();

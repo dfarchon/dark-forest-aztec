@@ -4,7 +4,6 @@ import type {
   UnconfirmedActivateArtifact,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
-  UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
   UnconfirmedFindArtifact,
@@ -18,6 +17,10 @@ import type {
   UnconfirmedUpgrade,
   UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
+  UnconfirmedPauseGame,
+  UnconfirmedUnpauseGame,
+  UnconfirmedSafeSetOwner,
+  UnconfirmedCreatePlanet,
 } from "@dfpunk/types";
 
 export function isUnconfirmedReveal(
@@ -60,18 +63,6 @@ export function isUnconfirmedTransfer(
   txIntent: TxIntent,
 ): txIntent is UnconfirmedPlanetTransfer {
   return txIntent.methodName === "transferPlanet";
-}
-
-export function isUnconfirmedCreatePlanet(
-  txIntent: TxIntent,
-): txIntent is UnconfirmedCreatePlanet {
-  return txIntent.methodName === "createPlanet";
-}
-
-export function isUnconfirmedCreatePlanetTx(
-  tx: Transaction,
-): tx is Transaction<UnconfirmedCreatePlanet> {
-  return isUnconfirmedCreatePlanet(tx.intent);
 }
 
 export function isUnconfirmedFindArtifact(
@@ -132,6 +123,30 @@ export function isUnconfirmedInvadePlanet(
   txIntent: TxIntent,
 ): txIntent is UnconfirmedInvadePlanet {
   return txIntent.methodName === "invadePlanet";
+}
+
+export function isUnconfirmedPauseGame(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedPauseGame {
+  return txIntent.methodName === "pauseGame";
+}
+
+export function isUnconfirmedUnpauseGame(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedUnpauseGame {
+  return txIntent.methodName === "unpauseGame";
+}
+
+export function isUnconfirmedCreatePlanet(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedCreatePlanet {
+  return txIntent.methodName === "createPlanet";
+}
+
+export function isUnconfirmedSafeSetOwner(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedSafeSetOwner {
+  return txIntent.methodName === "safeSetOwner";
 }
 
 export function isUnconfirmedRevealTx(
@@ -234,4 +249,28 @@ export function isUnconfirmedCapturePlanetTx(
   tx: Transaction,
 ): tx is Transaction<UnconfirmedCapturePlanet> {
   return isUnconfirmedCapturePlanet(tx.intent);
+}
+
+export function isUnconfirmedPauseGameTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedPauseGame> {
+  return isUnconfirmedPauseGame(tx.intent);
+}
+
+export function isUnconfirmedUnpauseGameTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedUnpauseGame> {
+  return isUnconfirmedUnpauseGame(tx.intent);
+}
+
+export function isUnconfirmedCreatePlanetTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedCreatePlanet> {
+  return isUnconfirmedCreatePlanet(tx.intent);
+}
+
+export function isUnconfirmedSafeSetOwnerTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedSafeSetOwner> {
+  return isUnconfirmedSafeSetOwner(tx.intent);
 }

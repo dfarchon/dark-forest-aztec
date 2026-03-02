@@ -2,7 +2,6 @@ import { Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
-import { Hook } from "../../_types/global/GlobalTypes";
 import TutorialManager, {
   TutorialManagerEvent,
   TutorialState,
@@ -276,7 +275,7 @@ const StyledTutorialPane = styled.div<{ visible: boolean }>`
 export function TutorialPane({
   tutorialHook,
 }: {
-  tutorialHook: Hook<boolean>;
+  tutorialHook: [boolean, (newValue: boolean) => void];
 }) {
   const uiManager = useUIManager();
   const tutorialManager = TutorialManager.getInstance(uiManager);
