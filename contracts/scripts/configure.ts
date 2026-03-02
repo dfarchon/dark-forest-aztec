@@ -260,7 +260,7 @@ async function main() {
         await methods.add_authorized_contract(contractAddr).send(opts);
     };
 
-    const TOTAL_STEPS = 49;
+    const TOTAL_STEPS = 59;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -670,97 +670,92 @@ async function main() {
             : `${elapsedSec}s`;
     await run('ArtifactSystem system', async () => {
         await run('artifactSystem.set_config_storage_address()', async () => {
-            const tx = await artifactSystem.methods
+            await artifactSystem.methods
                 .set_config_storage_address(config.address)
                 .send(opts);
-            await tx.wait();
+        });
+
+        await run('artifactSystem.set_world_storage_address()', async () => {
+            await artifactSystem.methods
+                .set_world_storage_address(worldStorage.address)
+                .send(opts);
+            await worldStorage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
         });
 
         await run('artifactSystem.set_player_storage_address()', async () => {
-            const tx1 = await artifactSystem.methods
+            await artifactSystem.methods
                 .set_player_storage_address(playerStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await playerStorage.methods
+            await playerStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-            await tx2.wait();
         });
 
         await run('artifactSystem.set_planet_storage_address()', async () => {
-            const tx1 = await artifactSystem.methods
+            await artifactSystem.methods
                 .set_planet_storage_address(planetStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await planetStorage.methods
+            await planetStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-            await tx2.wait();
         });
 
         await run(
             'artifactSystem.set_planet_artifacts_storage_address()',
             async () => {
-                const tx1 = await artifactSystem.methods
+                await artifactSystem.methods
                     .set_planet_artifacts_storage_address(
                         planetArtifactsStorage.address
                     )
                     .send(opts);
-                await tx1.wait();
-                const tx2 = await planetArtifactsStorage.methods
+                await planetArtifactsStorage.methods
                     .add_authorized_contract(artifactSystem.address)
                     .send(opts);
-                await tx2.wait();
             }
         );
 
         await run(
             'artifactSystem.set_planet_events_storage_address()',
             async () => {
-                const tx1 = await artifactSystem.methods
+                await artifactSystem.methods
                     .set_planet_events_storage_address(
                         planetEventsStorage.address
                     )
                     .send(opts);
-                await tx1.wait();
-                const tx2 = await planetEventsStorage.methods
+                await planetEventsStorage.methods
                     .add_authorized_contract(artifactSystem.address)
                     .send(opts);
-                await tx2.wait();
             }
         );
 
         await run('artifactSystem.set_arrivals_storage_address()', async () => {
-            const tx = await artifactSystem.methods
+            await artifactSystem.methods
                 .set_arrivals_storage_address(arrivalStorage.address)
                 .send(opts);
-            await tx.wait();
         });
 
         await run('artifactSystem.set_artifact_storage_address()', async () => {
-            const tx1 = await artifactSystem.methods
+            await artifactSystem.methods
                 .set_artifact_storage_address(artifactStorage.address)
                 .send(opts);
-            await tx1.wait();
-            const tx2 = await artifactStorage.methods
+            await artifactStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-            await tx2.wait();
         });
 
         await run(
             'artifactSystem.set_artifact_location_storage_address()',
             async () => {
-                const tx1 = await artifactSystem.methods
+                await artifactSystem.methods
                     .set_artifact_location_storage_address(
                         artifactLocationStorage.address
                     )
                     .send(opts);
-                await tx1.wait();
-                const tx2 = await artifactLocationStorage.methods
+                await artifactLocationStorage.methods
                     .add_authorized_contract(artifactSystem.address)
                     .send(opts);
-                await tx2.wait();
             }
         );
     });
