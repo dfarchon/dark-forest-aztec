@@ -20,7 +20,10 @@ import TutorialManager, {
   TutorialState,
 } from "../../Backend/GameLogic/TutorialManager";
 import { ChainClock } from "../../Backend/Utils/ChainClock";
-import { getIndexerBootstrapUrl, getNodeUrl } from "../../config/env";
+import {
+  getEffectiveIndexerBootstrapUrl,
+  getEffectiveNodeUrl,
+} from "../../config/connection";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
@@ -94,7 +97,7 @@ export function GameLandingPage() {
     let destroyed = false;
     (async () => {
       try {
-        const nodeUrl = getNodeUrl();
+        const nodeUrl = getEffectiveNodeUrl();
         const wm = await createWalletManager({
           nodeUrl,
           storagePrefix: "dfpunk",
@@ -111,7 +114,7 @@ export function GameLandingPage() {
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
         };
-        const bootstrapUrl = getIndexerBootstrapUrl();
+        const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
         if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
         const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
@@ -497,7 +500,7 @@ export function GameLandingPage() {
 
         terminal.current?.println("Building ContractsAPI...");
 
-        const node = createAztecNodeClient(getNodeUrl());
+        const node = createAztecNodeClient(getEffectiveNodeUrl());
         const wallet = walletManager.getWallet();
         const configContract = ConfigContract.at(
           AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),

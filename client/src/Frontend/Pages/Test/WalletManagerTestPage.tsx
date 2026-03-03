@@ -12,7 +12,7 @@ import "./TestPageStyles.css";
 
 import * as React from "react";
 
-import { getNodeUrl } from "../../../config/env";
+import { getEffectiveNodeUrl } from "../../../config/connection";
 import {
   type AccountRecord,
   createWalletManager,
@@ -94,7 +94,7 @@ export function WalletManagerTestPage() {
     let destroyed = false;
 
     const config: WalletManagerConfig = {
-      nodeUrl: getNodeUrl(),
+      nodeUrl: getEffectiveNodeUrl(),
       storagePrefix: "dfpunk",
       balancePollIntervalMs: 15_000,
     };
@@ -263,7 +263,9 @@ export function WalletManagerTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{getNodeUrl()}</code>
+              <code style={{ fontSize: "0.85rem" }}>
+                {getEffectiveNodeUrl()}
+              </code>
             </div>
           </div>
           <div className="test-page__stat">

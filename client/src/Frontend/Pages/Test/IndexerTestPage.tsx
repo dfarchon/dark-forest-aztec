@@ -15,7 +15,10 @@ import "./TestPageStyles.css";
 import { START_BLOCK } from "@dfpunk/contracts";
 import * as React from "react";
 
-import { getIndexerBootstrapUrl, getNodeUrl } from "../../../config/env";
+import {
+  getEffectiveIndexerBootstrapUrl,
+  getEffectiveNodeUrl,
+} from "../../../config/connection";
 import type { IndexerLifecycle } from "../../../Session/Indexer";
 import {
   createIndexerConnection,
@@ -133,13 +136,13 @@ export function IndexerTestPage() {
     let destroyed = false;
 
     const config: IndexerConnectionConfig = {
-      nodeUrl: getNodeUrl(),
+      nodeUrl: getEffectiveNodeUrl(),
       startBlock: START_BLOCK,
       debounceMs: 1000,
       pollIntervalMs: 2000,
       maxBlocksPerRequest: 100,
     };
-    const bootstrapUrl = getIndexerBootstrapUrl();
+    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
     if (bootstrapUrl) config.bootstrapUrl = bootstrapUrl;
 
     createIndexerConnection(config)

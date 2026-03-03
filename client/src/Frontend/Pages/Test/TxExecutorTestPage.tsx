@@ -21,7 +21,10 @@ import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
 import * as React from "react";
 
 import { ChainClock } from "../../../Backend/Utils/ChainClock";
-import { getIndexerBootstrapUrl, getNodeUrl } from "../../../config/env";
+import {
+  getEffectiveIndexerBootstrapUrl,
+  getEffectiveNodeUrl,
+} from "../../../config/connection";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
 import {
   createIndexerConnection,
@@ -171,7 +174,7 @@ export function TxExecutorTestPage() {
       // 1. WalletManager
       setInitStep("Creating WalletManager…");
       const walletMgr = await createWalletManager({
-        nodeUrl: getNodeUrl(),
+        nodeUrl: getEffectiveNodeUrl(),
         storagePrefix: "dfpunk",
         balancePollIntervalMs: 15_000,
       });
@@ -193,13 +196,13 @@ export function TxExecutorTestPage() {
       // 2. IndexerConnection
       setInitStep("Creating IndexerConnection…");
       const indexerConfig: IndexerConnectionConfig = {
-        nodeUrl: getNodeUrl(),
+        nodeUrl: getEffectiveNodeUrl(),
         startBlock: START_BLOCK,
         debounceMs: 1000,
         pollIntervalMs: 2000,
         maxBlocksPerRequest: 100,
       };
-      const bootstrapUrl = getIndexerBootstrapUrl();
+      const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
       if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
       const { connection } = await createIndexerConnection(indexerConfig);
       if (destroyed) {
@@ -211,7 +214,7 @@ export function TxExecutorTestPage() {
 
       // 3. AztecNode client (separate from WalletManager's private node)
       setInitStep("Connecting to Aztec node…");
-      const node = createAztecNodeClient(getNodeUrl());
+      const node = createAztecNodeClient(getEffectiveNodeUrl());
       nodeRef.current = node;
 
       // 4. ConfigContract
@@ -488,7 +491,9 @@ export function TxExecutorTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{getNodeUrl()}</code>
+              <code style={{ fontSize: "0.85rem" }}>
+                {getEffectiveNodeUrl()}
+              </code>
             </div>
           </div>
           <div className="test-page__stat">

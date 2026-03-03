@@ -1,10 +1,11 @@
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { address } from "@dfpunk/serde";
-import React from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
 import { Btn } from "../Components/Btn";
+import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { EmSpacer, Link, Spacer, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
 import { HideSmall, Text, White } from "../Components/Text";
@@ -47,8 +48,32 @@ const ButtonWrapper = styled.div`
   --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
 `;
 
+const MODAL_WIDTH_ESTIMATE = 320;
+const MODAL_HEIGHT_ESTIMATE = 420;
+const MODAL_GAP_ABOVE_BUTTON = 12;
+
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
+  const [modalAnchor, setModalAnchor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const networkSettingsRef = useRef<HTMLDivElement>(null);
+
+  const toggleConnectionSettings = () => {
+    if (!connectionSettingsOpen) {
+      const el = networkSettingsRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setModalAnchor({
+          x: rect.left + rect.width / 2 - MODAL_WIDTH_ESTIMATE / 2,
+          y: rect.top - MODAL_HEIGHT_ESTIMATE - MODAL_GAP_ABOVE_BUTTON,
+        });
+      }
+    }
+    setConnectionSettingsOpen((prev) => !prev);
+  };
 
   return (
     <>
@@ -114,10 +139,20 @@ export default function LandingPage() {
               >
                 Enter Round 5
               </Btn>
+              <div ref={networkSettingsRef} style={{ display: "inline-block" }}>
+                <Btn size="large" onClick={toggleConnectionSettings}>
+                  Network settings
+                </Btn>
+              </div>
               {/* <Btn size="large" onClick={() => navigate(`/events`)}>
                 Events
               </Btn> */}
             </ButtonWrapper>
+            <ConnectionSettingsModal
+              open={connectionSettingsOpen}
+              onClose={() => setConnectionSettingsOpen(false)}
+              anchorPosition={modalAnchor}
+            />
           </Header>
           {/* <EmSpacer height={3} />
           Ways to get Involved
