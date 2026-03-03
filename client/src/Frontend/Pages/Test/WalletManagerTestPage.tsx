@@ -12,18 +12,13 @@ import "./TestPageStyles.css";
 
 import * as React from "react";
 
+import { getNodeUrl } from "../../../config/env";
 import {
   type AccountRecord,
   createWalletManager,
   type WalletManagerConfig,
 } from "../../../Session/WalletManager";
 import { TextPreview } from "../../Components/TextPreview";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -99,7 +94,7 @@ export function WalletManagerTestPage() {
     let destroyed = false;
 
     const config: WalletManagerConfig = {
-      nodeUrl: NODE_URL,
+      nodeUrl: getNodeUrl(),
       storagePrefix: "dfpunk",
       balancePollIntervalMs: 15_000,
     };
@@ -268,7 +263,7 @@ export function WalletManagerTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{NODE_URL}</code>
+              <code style={{ fontSize: "0.85rem" }}>{getNodeUrl()}</code>
             </div>
           </div>
           <div className="test-page__stat">

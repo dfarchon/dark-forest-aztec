@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { biomeName, isLocatable } from "@dfpunk/gamelogic";
 import {
   Artifact,
@@ -422,7 +423,7 @@ class NotificationManager extends EventEmitter {
     this.notify(
       NotificationType.BalanceEmpty,
       <span>
-        Your xDAI account is out of balance!
+        Your {L2_TOKEN_SYMBOL} account is out of balance!
         <br />
         Click <FAQ04Link>here</FAQ04Link> to learn how to get more.
       </span>

@@ -1,3 +1,4 @@
+import { CHAIN_DISPLAY_NAME, L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { address } from "@dfpunk/serde";
 import { Setting } from "@dfpunk/types";
 import React, { useState } from "react";
@@ -221,7 +222,7 @@ export function TxConfirmPopup() {
             <Row>
               <b>HAT Level</b>
               <span>
-                {hatLevel} ({hatCost} xDAI)
+                {hatLevel} ({hatCost} {L2_TOKEN_SYMBOL})
               </span>
             </Row>
           </>
@@ -335,7 +336,9 @@ export function TxConfirmPopup() {
         </Row>
         <Row>
           <b>Total Transaction Cost</b>
-          <span>{txCost.toFixed(8)} xDAI</span>
+          <span>
+            {txCost.toFixed(8)} {L2_TOKEN_SYMBOL}
+          </span>
         </Row>
         {method === "buyHat" && hatLevel && +hatLevel > 6 && (
           <Row>
@@ -351,7 +354,9 @@ export function TxConfirmPopup() {
         )}
         <Row className="mtop">
           <b>Account Balance</b>
-          <span>{parseFloat(balance).toFixed(8)} xDAI</span>
+          <span>
+            {parseFloat(balance).toFixed(8)} {L2_TOKEN_SYMBOL}
+          </span>
         </Row>
         <Row className="mtop">
           <Button onClick={doReject}>
@@ -367,7 +372,7 @@ export function TxConfirmPopup() {
       <div className="section">
         <Row className="network">
           <div>
-            <ConfirmIcon /> DF connected to xDAI
+            <ConfirmIcon /> DF connected to {CHAIN_DISPLAY_NAME}
           </div>
         </Row>
         <Row className="mtop">

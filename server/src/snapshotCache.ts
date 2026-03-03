@@ -32,8 +32,7 @@ export class SnapshotCache {
 
   /** Build full cache from current IndexerService state (used on startup). */
   buildFull(): void {
-    this.jsonObject.lastProcessedBlock =
-      this.indexer.getProcessedBlockNumber();
+    this.jsonObject.lastProcessedBlock = this.indexer.getProcessedBlockNumber();
     for (const table of TABLE_NAMES) {
       const map = this.indexer.getTable(table) as
         | Record<string, unknown>
@@ -45,8 +44,7 @@ export class SnapshotCache {
 
   /** Incrementally update cache from a change payload (called on each block). */
   applyChange(payload: IndexerChangePayload): void {
-    this.jsonObject.lastProcessedBlock =
-      this.indexer.getProcessedBlockNumber();
+    this.jsonObject.lastProcessedBlock = this.indexer.getProcessedBlockNumber();
 
     const { updatedIdsByTable } = payload;
     if (!updatedIdsByTable) {
@@ -87,7 +85,7 @@ export class SnapshotCache {
   getJsonString(): string {
     if (!this.jsonString) {
       this.jsonString = JSON.stringify(this.jsonObject, (_key, value) =>
-        typeof value === "bigint" ? value.toString() : value
+        typeof value === "bigint" ? value.toString() : value,
       );
       this.jsonByteLength = Buffer.byteLength(this.jsonString);
     }

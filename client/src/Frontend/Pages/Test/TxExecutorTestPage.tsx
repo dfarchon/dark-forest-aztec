@@ -21,6 +21,7 @@ import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
 import * as React from "react";
 
 import { ChainClock } from "../../../Backend/Utils/ChainClock";
+import { getIndexerBootstrapUrl, getNodeUrl } from "../../../config/env";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
 import {
   createIndexerConnection,
@@ -38,12 +39,6 @@ import {
   type WalletManager,
 } from "../../../Session/WalletManager";
 import { TextPreview } from "../../Components/TextPreview";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
 
 const MAX_TX_LOG = 50;
 
@@ -176,7 +171,7 @@ export function TxExecutorTestPage() {
       // 1. WalletManager
       setInitStep("Creating WalletManager…");
       const walletMgr = await createWalletManager({
-        nodeUrl: NODE_URL,
+        nodeUrl: getNodeUrl(),
         storagePrefix: "dfpunk",
         balancePollIntervalMs: 15_000,
       });
@@ -197,13 +192,16 @@ export function TxExecutorTestPage() {
 
       // 2. IndexerConnection
       setInitStep("Creating IndexerConnection…");
-      const { connection } = await createIndexerConnection({
-        nodeUrl: NODE_URL,
+      const indexerConfig: IndexerConnectionConfig = {
+        nodeUrl: getNodeUrl(),
         startBlock: START_BLOCK,
         debounceMs: 1000,
         pollIntervalMs: 2000,
         maxBlocksPerRequest: 100,
-      } as IndexerConnectionConfig);
+      };
+      const bootstrapUrl = getIndexerBootstrapUrl();
+      if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+      const { connection } = await createIndexerConnection(indexerConfig);
       if (destroyed) {
         connection.destroy();
         walletMgr.destroy();
@@ -213,7 +211,7 @@ export function TxExecutorTestPage() {
 
       // 3. AztecNode client (separate from WalletManager's private node)
       setInitStep("Connecting to Aztec node…");
-      const node = createAztecNodeClient(NODE_URL);
+      const node = createAztecNodeClient(getNodeUrl());
       nodeRef.current = node;
 
       // 4. ConfigContract
@@ -490,7 +488,7 @@ export function TxExecutorTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{NODE_URL}</code>
+              <code style={{ fontSize: "0.85rem" }}>{getNodeUrl()}</code>
             </div>
           </div>
           <div className="test-page__stat">

@@ -15,6 +15,7 @@ import "./TestPageStyles.css";
 import { START_BLOCK } from "@dfpunk/contracts";
 import * as React from "react";
 
+import { getIndexerBootstrapUrl, getNodeUrl } from "../../../config/env";
 import type { IndexerLifecycle } from "../../../Session/Indexer";
 import {
   createIndexerConnection,
@@ -23,12 +24,6 @@ import {
 } from "../../../Session/Indexer/IndexerConnection";
 import type { WorldState } from "../../../Session/Indexer/TableTypes/chain";
 import { TextPreview } from "../../Components/TextPreview";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,12 +133,14 @@ export function IndexerTestPage() {
     let destroyed = false;
 
     const config: IndexerConnectionConfig = {
-      nodeUrl: NODE_URL,
+      nodeUrl: getNodeUrl(),
       startBlock: START_BLOCK,
       debounceMs: 1000,
       pollIntervalMs: 2000,
       maxBlocksPerRequest: 100,
     };
+    const bootstrapUrl = getIndexerBootstrapUrl();
+    if (bootstrapUrl) config.bootstrapUrl = bootstrapUrl;
 
     createIndexerConnection(config)
       .then(({ connection, syncedToBlock: synced }) => {

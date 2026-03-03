@@ -16,7 +16,7 @@ export function debounce<T extends unknown[]>(
   fn: (...args: T) => void,
   waitMs: number,
   leading: boolean,
-  trailing: boolean
+  trailing: boolean,
 ): DebouncedFn<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let lastArgs: T | undefined;

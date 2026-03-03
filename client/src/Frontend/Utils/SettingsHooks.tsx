@@ -3,6 +3,7 @@ import { AutoGasSetting, EthAddress, Setting } from "@dfpunk/types";
 import React, { useCallback, useState } from "react";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
+import { isProductionLike } from "../../config/env";
 import { SelectFrom } from "../Components/CoreUI";
 import {
   Checkbox,
@@ -24,11 +25,11 @@ export const ALL_AUTO_GAS_SETTINGS = [
 ];
 
 function onlyInProduction(): string {
-  return process.env.NODE_ENV === "production" ? "true" : "false";
+  return isProductionLike() ? "true" : "false";
 }
 
 function onlyInDevelopment(): string {
-  return process.env.NODE_ENV !== "production" ? "true" : "false";
+  return isProductionLike() ? "false" : "true";
 }
 
 const defaultSettings: Record<Setting, string> = {

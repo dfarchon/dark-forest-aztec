@@ -11,11 +11,12 @@ const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL ?? "http://localhost:8080";
 const PORT = Number(process.env.PORT ?? 3001);
 const SQLITE_PATH = process.env.SQLITE_PATH ?? "./data/indexer.db";
 const PERSIST_MIN_INTERVAL_SEC = Number(
-  process.env.PERSIST_MIN_INTERVAL_SEC ?? 10
+  process.env.PERSIST_MIN_INTERVAL_SEC ?? 10,
 );
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
-const CORS_ORIGINS = (process.env.CORS_ORIGINS ??
-  "http://localhost:5173,http://127.0.0.1:5173")
+const CORS_ORIGINS = (
+  process.env.CORS_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173"
+)
   .split(",")
   .map((value) => value.trim())
   .filter((value) => value.length > 0);
@@ -23,7 +24,9 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS ??
 async function main(): Promise<void> {
   console.log(`[Server] Aztec node: ${AZTEC_NODE_URL}`);
   console.log(`[Server] SQLite path: ${SQLITE_PATH}`);
-  console.log(`[Server] CORS origins: ${CORS_ORIGINS.join(", ") || "(disabled)"}`);
+  console.log(
+    `[Server] CORS origins: ${CORS_ORIGINS.join(", ") || "(disabled)"}`,
+  );
 
   // 1. Initialize persistence
   const store = new SnapshotStore(SQLITE_PATH, PERSIST_MIN_INTERVAL_SEC);
@@ -44,7 +47,7 @@ async function main(): Promise<void> {
     const snapshot = jsonToSnapshot(stored.data);
     indexer.applySnapshot(snapshot);
     console.log(
-      `[Server] Restored to block ${stored.blockNumber}, catching up...`
+      `[Server] Restored to block ${stored.blockNumber}, catching up...`,
     );
   }
 

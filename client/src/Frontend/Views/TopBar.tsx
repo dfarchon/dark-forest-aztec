@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { Monomitter } from "@dfpunk/events";
 import { EthAddress, ModalName, TooltipName } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
@@ -223,7 +224,9 @@ export function TopBar({
           name={TooltipName.Empty}
           extraContent={<Text>Your burner wallet balance.</Text>}
         >
-          <Sub>({weiToEth(balance ?? 0n).toFixed(2)} xDAI)</Sub>
+          <Sub>
+            ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
+          </Sub>
         </TooltipTrigger>
         {process.env.DF_WEBSERVER_URL && (
           <>

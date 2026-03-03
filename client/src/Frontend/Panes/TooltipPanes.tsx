@@ -1,3 +1,4 @@
+import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
 import { PlanetType, TooltipName } from "@dfpunk/types";
 import React from "react";
 
@@ -9,12 +10,12 @@ import { useAccount, useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 export function NetworkHealthPane() {
   return (
     <>
-      <White>xDAI Tx Speed: </White>For each auto gas setting (which you can
-      choose in the <White>Settings</White> Pane), the average amount of time it
-      takes a transaction with that setting to confirm. The Dark Forest client
-      uploads diagnostic info (you can turn this off via settings), which is
-      aggregated into this network health indicator. I hope you find it helpful
-      in cases the network is being slow.
+      <White>{CHAIN_DISPLAY_NAME} Tx Speed: </White>For each auto gas setting
+      (which you can choose in the <White>Settings</White> Pane), the average
+      amount of time it takes a transaction with that setting to confirm. The
+      Dark Forest client uploads diagnostic info (you can turn this off via
+      settings), which is aggregated into this network health indicator. I hope
+      you find it helpful in cases the network is being slow.
     </>
   );
 }

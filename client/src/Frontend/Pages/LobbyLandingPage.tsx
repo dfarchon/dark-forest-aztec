@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import {
   EthConnection,
   ThrottledConcurrentQueue,
@@ -82,7 +83,7 @@ class LobbyPageTerminal {
     this.terminal.println(
       `Log in to create a lobby. We recommend using an account`
     );
-    this.terminal.println(`which owns at least 0.25 xDAI.`);
+    this.terminal.println(`which owns at least 0.25 ${L2_TOKEN_SYMBOL}.`);
     this.terminal.newline();
 
     if (accounts.length > 0) {
@@ -123,12 +124,12 @@ class LobbyPageTerminal {
 
       if (this.balancesEth[i] < 0.25) {
         this.terminal.println(
-          this.balancesEth[i].toFixed(2) + " xDAI",
+          this.balancesEth[i].toFixed(2) + ` ${L2_TOKEN_SYMBOL}`,
           TerminalTextStyle.Red
         );
       } else {
         this.terminal.println(
-          this.balancesEth[i].toFixed(2) + " xDAI",
+          this.balancesEth[i].toFixed(2) + ` ${L2_TOKEN_SYMBOL}`,
           TerminalTextStyle.Green
         );
       }
@@ -145,7 +146,7 @@ class LobbyPageTerminal {
       await this.displayAccounts();
     } else if (this.balancesEth[selection - 1] < 0.25) {
       this.terminal.println(
-        "Not enough xDAI. Select another account.",
+        `Not enough ${L2_TOKEN_SYMBOL}. Select another account.`,
         TerminalTextStyle.Red
       );
       await this.displayAccounts();

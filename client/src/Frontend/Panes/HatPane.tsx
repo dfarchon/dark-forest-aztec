@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { getHatSizeName, getPlanetCosmetic } from "@dfpunk/procedural";
 import { isUnconfirmedBuyHatTx } from "@dfpunk/serde";
 import { LocationId, Planet } from "@dfpunk/types";
@@ -71,16 +72,21 @@ export function HatPane({
         <div className="margin-top">
           <Sub>Next Level Cost</Sub>
           <span>
-            {getHatCostEth(planet)} USD <Sub>/</Sub> {getHatCostEth(planet)} DAI
+            {getHatCostEth(planet)} USD <Sub>/</Sub> {getHatCostEth(planet)}{" "}
+            {L2_TOKEN_SYMBOL}
           </span>
         </div>
         <div>
           <Sub>Current Balance</Sub>
-          <span>{balanceEth} xDAI</span>
+          <span>
+            {balanceEth} {L2_TOKEN_SYMBOL}
+          </span>
         </div>
 
         <EmSpacer height={1} />
-        <Link to={"https://blog.zkga.me/df-04-faq"}>Get More xDai</Link>
+        <Link to={"https://blog.zkga.me/df-04-faq"}>
+          Get More {L2_TOKEN_SYMBOL}
+        </Link>
         <EmSpacer height={0.5} />
 
         <Btn

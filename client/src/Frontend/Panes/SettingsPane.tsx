@@ -1,3 +1,4 @@
+import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
 import { Chunk, ModalName, Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -261,9 +262,10 @@ export function SettingsPane({
         <Section>
           <SectionHeader>Metrics Opt Out</SectionHeader>
           We collect a minimal set of data and statistics such as SNARK proving
-          times, average transaction times across browsers, and xDAI transaction
-          errors, to help us optimize performance and fix bugs. This does not
-          include personal data like email or IP address.
+          times, average transaction times across browsers, and{" "}
+          {CHAIN_DISPLAY_NAME} transaction errors, to help us optimize
+          performance and fix bugs. This does not include personal data like
+          email or IP address.
           <Spacer height={8} />
           <BooleanSetting
             uiManager={uiManager}

@@ -1,5 +1,6 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
   CONFIG_CONTRACT_ADDRESS,
   CORE_CONTRACT_ADDRESS,
@@ -19,6 +20,7 @@ import TutorialManager, {
   TutorialState,
 } from "../../Backend/GameLogic/TutorialManager";
 import { ChainClock } from "../../Backend/Utils/ChainClock";
+import { getIndexerBootstrapUrl, getNodeUrl } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
@@ -46,12 +48,6 @@ import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
 
 const enum TerminalPromptStep {
   NONE,
@@ -98,8 +94,9 @@ export function GameLandingPage() {
     let destroyed = false;
     (async () => {
       try {
+        const nodeUrl = getNodeUrl();
         const wm = await createWalletManager({
-          nodeUrl: NODE_URL,
+          nodeUrl,
           storagePrefix: "dfpunk",
         });
         if (destroyed) {
@@ -107,13 +104,16 @@ export function GameLandingPage() {
           return;
         }
 
-        const { connection } = await createIndexerConnection({
-          nodeUrl: NODE_URL,
+        const indexerConfig: IndexerConnectionConfig = {
+          nodeUrl,
           startBlock: START_BLOCK,
           debounceMs: 1000,
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
-        } as IndexerConnectionConfig);
+        };
+        const bootstrapUrl = getIndexerBootstrapUrl();
+        if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+        const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
           connection.destroy();
           wm.destroy();
@@ -184,11 +184,32 @@ export function GameLandingPage() {
         terminal.current?.newline();
         terminal.current?.newline();
         terminal.current?.printElement(
-          <MythicLabelText text={`                 Dark Forest`} />
+          <MythicLabelText text={`                 ${GAME_NAME}`} />
         );
         terminal.current?.newline();
         terminal.current?.newline();
 
+        // Project description (Version/Date/Champion table commented out below)
+        terminal.current?.println(
+          "Decentralized space conquest. Explore, expand, and compete in a",
+          TerminalTextStyle.Text
+        );
+        terminal.current?.println(
+          "universe of planets and artifacts. Runs on " +
+            CHAIN_DISPLAY_NAME +
+            ".",
+          TerminalTextStyle.Text
+        );
+
+        terminal.current?.println(
+          `APP VERSION ${APP_VERSION}.`,
+          TerminalTextStyle.Sub
+        );
+
+        terminal.current?.newline();
+        terminal.current?.newline();
+
+        /* Version / Date / Champion table (commented out)
         terminal.current?.print("    ");
         terminal.current?.print("Version", TerminalTextStyle.Sub);
         terminal.current?.print("    ");
@@ -196,116 +217,48 @@ export function GameLandingPage() {
         terminal.current?.print("              ");
         terminal.current?.print("Champion", TerminalTextStyle.Sub);
         terminal.current?.newline();
-
         terminal.current?.print("    v0.1       ", TerminalTextStyle.Text);
         terminal.current?.print("02/05/2020        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "Dylan Field",
-          () => {
-            window.open("https://twitter.com/zoink");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("Dylan Field", () => { window.open("https://twitter.com/zoink"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
         terminal.current?.print("    v0.2       ", TerminalTextStyle.Text);
-        terminal.current?.println(
-          "06/06/2020        Nate Foss",
-          TerminalTextStyle.Text
-        );
+        terminal.current?.println("06/06/2020        Nate Foss", TerminalTextStyle.Text);
         terminal.current?.print("    v0.3       ", TerminalTextStyle.Text);
         terminal.current?.print("08/07/2020        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "@hideandcleanse",
-          () => {
-            window.open("https://twitter.com/hideandcleanse");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@hideandcleanse", () => { window.open("https://twitter.com/hideandcleanse"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
         terminal.current?.print("    v0.4       ", TerminalTextStyle.Text);
         terminal.current?.print("10/02/2020        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "Jacob Rosenthal",
-          () => {
-            window.open("https://twitter.com/jacobrosenthal");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("Jacob Rosenthal", () => { window.open("https://twitter.com/jacobrosenthal"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
         terminal.current?.print("    v0.5       ", TerminalTextStyle.Text);
         terminal.current?.print("12/25/2020        ", TerminalTextStyle.Text);
-        terminal.current?.printElement(
-          <TextPreview
-            text={"0xb05d95422bf8d5024f9c340e8f7bd696d67ee3a9"}
-            focusedWidth={"100px"}
-            unFocusedWidth={"100px"}
-          />
-        );
+        terminal.current?.printElement(<TextPreview text={"0xb05d95422bf8d5024f9c340e8f7bd696d67ee3a9"} focusedWidth={"100px"} unFocusedWidth={"100px"} />);
         terminal.current?.println("");
-
         terminal.current?.print("    v0.6 r1    ", TerminalTextStyle.Text);
         terminal.current?.print("05/22/2021        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "Ansgar Dietrichs",
-          () => {
-            window.open("https://twitter.com/adietrichs");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("Ansgar Dietrichs", () => { window.open("https://twitter.com/adietrichs"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
-
         terminal.current?.print("    v0.6 r2    ", TerminalTextStyle.Text);
         terminal.current?.print("06/28/2021        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "@orden_gg",
-          () => {
-            window.open("https://twitter.com/orden_gg");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@orden_gg", () => { window.open("https://twitter.com/orden_gg"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
-
         terminal.current?.print("    v0.6 r3    ", TerminalTextStyle.Text);
         terminal.current?.print("08/22/2021        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "@dropswap_gg",
-          () => {
-            window.open("https://twitter.com/dropswap_gg");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@dropswap_gg", () => { window.open("https://twitter.com/dropswap_gg"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
-
         terminal.current?.print("    v0.6 r4    ", TerminalTextStyle.Text);
         terminal.current?.print("10/01/2021        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "@orden_gg",
-          () => {
-            window.open("https://twitter.com/orden_gg");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@orden_gg", () => { window.open("https://twitter.com/orden_gg"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
-
         terminal.current?.print("    v0.6 r5    ", TerminalTextStyle.Text);
         terminal.current?.print("02/18/2022        ", TerminalTextStyle.Text);
-        terminal.current?.printLink(
-          "@d_fdao",
-          () => {
-            window.open("https://twitter.com/d_fdao");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@d_fdao", () => { window.open("https://twitter.com/d_fdao"); }, TerminalTextStyle.Text);
         terminal.current?.print(" + ");
-        terminal.current?.printLink(
-          "@orden_gg",
-          () => {
-            window.open("https://twitter.com/orden_gg");
-          },
-          TerminalTextStyle.Text
-        );
+        terminal.current?.printLink("@orden_gg", () => { window.open("https://twitter.com/orden_gg"); }, TerminalTextStyle.Text);
         terminal.current?.newline();
         terminal.current?.newline();
+        */
       }
 
       const accounts = walletManager?.getAccounts() ?? [];
@@ -544,7 +497,7 @@ export function GameLandingPage() {
 
         terminal.current?.println("Building ContractsAPI...");
 
-        const node = createAztecNodeClient(NODE_URL);
+        const node = createAztecNodeClient(getNodeUrl());
         const wallet = walletManager.getWallet();
         const configContract = ConfigContract.at(
           AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),

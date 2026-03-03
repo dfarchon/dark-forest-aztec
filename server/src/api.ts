@@ -32,7 +32,7 @@ export function createApp(deps: ApiDeps): Hono {
       cors({
         origin: "*",
         exposeHeaders: snapshotExposeHeaders,
-      })
+      }),
     );
   } else if (corsOrigins.length > 0) {
     app.use(
@@ -40,7 +40,7 @@ export function createApp(deps: ApiDeps): Hono {
       cors({
         origin: corsOrigins,
         exposeHeaders: snapshotExposeHeaders,
-      })
+      }),
     );
   }
 
@@ -80,7 +80,7 @@ export function createApp(deps: ApiDeps): Hono {
         headers: {
           "Content-Type": "application/json",
         },
-      }
+      },
     );
   });
 
@@ -89,7 +89,10 @@ export function createApp(deps: ApiDeps): Hono {
     const status = indexer.getStatus();
     const snapshotBlock = cache.getProcessedBlockNumber();
     const snapshotBytes = cache.getJsonByteLength();
-    const blockLag = Math.max(0, status.latestKnownBlock - status.lastProcessedBlock);
+    const blockLag = Math.max(
+      0,
+      status.latestKnownBlock - status.lastProcessedBlock,
+    );
     return c.json({
       status: "ok",
       lifecycle: status.lifecycle,

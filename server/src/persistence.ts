@@ -80,7 +80,7 @@ export class SnapshotStore {
     try {
       const data = JSON.parse(row.data) as Record<string, unknown>;
       console.log(
-        `[Persistence] Restored snapshot from block ${row.block_number}`
+        `[Persistence] Restored snapshot from block ${row.block_number}`,
       );
       return { blockNumber: row.block_number, data };
     } catch (err) {
@@ -103,9 +103,7 @@ export class SnapshotStore {
  * Convert a persisted JSON object back to IndexerSnapshot (with Maps).
  * Mirrors OffChainSource.parseSnapshot() logic.
  */
-export function jsonToSnapshot(
-  data: Record<string, unknown>
-): IndexerSnapshot {
+export function jsonToSnapshot(data: Record<string, unknown>): IndexerSnapshot {
   const lastProcessedBlock =
     typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
 

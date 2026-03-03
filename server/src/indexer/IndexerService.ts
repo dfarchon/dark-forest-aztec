@@ -91,7 +91,7 @@ export class IndexerService {
   private readonly maxBlocksPerRequest: number;
   private readonly onBlockProcessed?: (
     fromBlock: number,
-    toBlock: number
+    toBlock: number,
   ) => void;
 
   private snapshot: IndexerSnapshot = emptySnapshot();
@@ -118,7 +118,7 @@ export class IndexerService {
       this.processNewBlocks.bind(this),
       this.debounceMs,
       true,
-      true
+      true,
     );
 
     /** Called when we learn of a new latest block (poll or push). */
@@ -154,9 +154,12 @@ export class IndexerService {
           while (fromBlock <= toBlock) {
             const chunkEnd = Math.min(
               fromBlock + this.maxBlocksPerRequest - 1,
-              toBlock
+              toBlock,
             );
-            const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
+            const updates = await this.source.getBlockUpdates(
+              fromBlock,
+              chunkEnd,
+            );
             this.applyUpdates(updates);
             this.snapshot.lastProcessedBlock = chunkEnd;
             this.onBlockProcessed?.(fromBlock, chunkEnd);
@@ -196,7 +199,7 @@ export class IndexerService {
 
   /** Build per-table list of row ids that were updated in this batch. */
   private buildUpdatedIdsByTable(
-    updates: BlockUpdates
+    updates: BlockUpdates,
   ): Partial<Record<TableName, TableId[]>> {
     const byTable = new Map<TableName, Set<TableId>>();
     for (const u of updates.updates) {
@@ -296,7 +299,7 @@ export class IndexerService {
     if (this.lifecycle !== "ready") {
       throw new Error(
         `[IndexerService] startPolling() requires lifecycle "ready", ` +
-          `current: "${this.lifecycle}"`
+          `current: "${this.lifecycle}"`,
       );
     }
     this.lifecycle = "live";
@@ -409,7 +412,7 @@ export class IndexerService {
   /** Generic: get table row(s). Typed by table name for function inputs. */
   getTable<K extends TableName>(
     table: K,
-    id?: TableId
+    id?: TableId,
   ): TableRowType[K] | Record<string, TableRowType[K]> | undefined {
     const map = this.snapshot[table] as Map<TableId, unknown>;
     if (id !== undefined) return map.get(id) as TableRowType[K] | undefined;
@@ -457,7 +460,7 @@ export class IndexerService {
       this.snapshot.planet_revealed_coords as Map<
         string,
         PlanetRevealedCoordsState
-      >
+      >,
     );
   }
 
@@ -467,7 +470,7 @@ export class IndexerService {
    */
   waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
     console.log(
-      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`
+      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
     );
     if (this.snapshot.lastProcessedBlock >= blockNumber) {
       console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
@@ -478,15 +481,15 @@ export class IndexerService {
         unsub();
         reject(
           new Error(
-            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`
-          )
+            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`,
+          ),
         );
       }, timeoutMs);
 
       const unsub = this.subscribe((payload) => {
         if (payload.toBlock >= blockNumber) {
           console.log(
-            `[DEBUG waitForBlock] synced to block ${payload.toBlock}, resolving`
+            `[DEBUG waitForBlock] synced to block ${payload.toBlock}, resolving`,
           );
           clearTimeout(timer);
           unsub();

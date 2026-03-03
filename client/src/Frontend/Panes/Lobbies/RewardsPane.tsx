@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import _ from "lodash";
 import React from "react";
 
@@ -60,7 +61,8 @@ export function RewardsPane({ config, onUpdate }: LobbiesPaneProps) {
     <>
       <Row>
         <span>
-          XDAI Reward for Players based on their rank at the end of the round
+          {L2_TOKEN_SYMBOL} Reward for Players based on their rank at the end of
+          the round
         </span>
       </Row>
       {rewardInputs}
