@@ -1,0 +1,46 @@
+{
+  "name": "server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "clean": "del-cli dist node_modules data",
+    "dev": "node --experimental-transform-types src/index.ts",
+    "e2e:down": "bash scripts/test-env.sh stop",
+    "e2e:logs": "bash scripts/test-env.sh e2e-logs",
+    "e2e:status": "bash scripts/test-env.sh status",
+    "e2e:up": "bash scripts/test-env.sh up",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
+    "start": "node --experimental-transform-types src/index.ts",
+    "test:block-rate": "node scripts/measure-block-rate.mjs",
+    "test:contracts:registration": "node --experimental-transform-types scripts/test-contract-registration.mjs",
+    "test:env:logs": "bash scripts/test-env.sh logs",
+    "test:env:reset": "bash scripts/test-env.sh reset-cache",
+    "test:env:start": "bash scripts/test-env.sh start",
+    "test:env:start-all": "bash scripts/test-env.sh start-all",
+    "test:env:status": "bash scripts/test-env.sh status",
+    "test:env:stop": "bash scripts/test-env.sh stop",
+    "test:env:up": "bash scripts/test-env.sh up",
+    "test:indexer-e2e": "node scripts/test-indexer-e2e.mjs",
+    "test:indexer-e2e:logs": "bash scripts/test-env.sh e2e-logs",
+    "test:indexer-e2e:start": "bash scripts/test-env.sh e2e-start",
+    "test:indexer-e2e:status": "bash scripts/test-env.sh e2e-status",
+    "test:indexer-e2e:stop": "bash scripts/test-env.sh e2e-stop",
+    "test:indexer-e2e:strict": "node scripts/test-indexer-e2e.mjs --strict --server-url http://localhost:3001",
+    "test:init-player:safe": "node --experimental-transform-types scripts/test-core-initialize-player-safe.mjs"
+  },
+  "dependencies": {
+    "@dfpunk/contracts": "workspace:*",
+    "@hono/node-server": "^1.13.8",
+    "better-sqlite3": "^11.8.1",
+    "hono": "^4.7.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "prettier": "3.7.4",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
