@@ -24,11 +24,11 @@ contract ArtifactSystem {
     };
 
     use ::libs::artifact_utils;
-    use ::libs::game_utils;
-    use ::libs::planet::{
-        self, assert_refresh_timestamp_monotonicity, build_refresh_event_hashes,
+    use ::libs::batch_utils::{
+        assert_refresh_timestamp_monotonicity, build_refresh_event_hashes,
         refresh_planet_and_apply_timestamp,
     };
+    use ::libs::game_utils;
 
     use ::config::Config;
 
@@ -143,59 +143,59 @@ contract ArtifactSystem {
         self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
     }
 
-    #[external("public")]
-    fn set_config_storage_address(config_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.config_storage_address.write(config_storage_address);
-    }
+    // #[external("public")]
+    // fn set_config_storage_address(config_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.config_storage_address.write(config_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_world_storage_address(world_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.world_storage_address.write(world_storage_address);
-    }
+    // #[external("public")]
+    // fn set_world_storage_address(world_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.world_storage_address.write(world_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_player_storage_address(player_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.player_storage_address.write(player_storage_address);
-    }
+    // #[external("public")]
+    // fn set_player_storage_address(player_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.player_storage_address.write(player_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_artifact_storage_address(artifact_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.artifact_storage_address.write(artifact_storage_address);
-    }
+    // #[external("public")]
+    // fn set_artifact_storage_address(artifact_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.artifact_storage_address.write(artifact_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_artifact_location_storage_address(artifact_location_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
-    }
+    // #[external("public")]
+    // fn set_artifact_location_storage_address(artifact_location_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_planet_storage_address(planet_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.planet_storage_address.write(planet_storage_address);
-    }
+    // #[external("public")]
+    // fn set_planet_storage_address(planet_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.planet_storage_address.write(planet_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_planet_artifacts_storage_address(planet_artifacts_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.planet_artifacts_storage_address.write(planet_artifacts_storage_address);
-    }
+    // #[external("public")]
+    // fn set_planet_artifacts_storage_address(planet_artifacts_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.planet_artifacts_storage_address.write(planet_artifacts_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_planet_events_storage_address(planet_events_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.planet_events_storage_address.write(planet_events_storage_address);
-    }
+    // #[external("public")]
+    // fn set_planet_events_storage_address(planet_events_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.planet_events_storage_address.write(planet_events_storage_address);
+    // }
 
-    #[external("public")]
-    fn set_arrivals_storage_address(arrivals_storage_address: AztecAddress) {
-        self.internal.assert_admin();
-        self.storage.arrivals_storage_address.write(arrivals_storage_address);
-    }
+    // #[external("public")]
+    // fn set_arrivals_storage_address(arrivals_storage_address: AztecAddress) {
+    //     self.internal.assert_admin();
+    //     self.storage.arrivals_storage_address.write(arrivals_storage_address);
+    // }
 
     // ========== Basic artifact CRUD ==========
 

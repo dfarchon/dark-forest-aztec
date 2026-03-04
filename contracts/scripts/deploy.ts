@@ -75,8 +75,8 @@ const ARTIFACT_SPECS: Array<{
     { modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
     { modulePath: './artifacts/Move.ts', exportName: 'MoveContract' },
     {
-        modulePath: './artifacts/ArtifactSystem.ts',
-        exportName: 'ArtifactSystemContract',
+        modulePath: './artifacts/Artifact.ts',
+        exportName: 'ArtifactContract',
     },
 ];
 
