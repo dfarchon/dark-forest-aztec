@@ -118,6 +118,31 @@ contract ArtifactSystem {
         self.storage.admin.write(new_admin);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_storage_address: AztecAddress,
+        world_storage_address: AztecAddress,
+        player_storage_address: AztecAddress,
+        planet_storage_address: AztecAddress,
+        planet_artifacts_storage_address: AztecAddress,
+        planet_events_storage_address: AztecAddress,
+        arrivals_storage_address: AztecAddress,
+        artifact_storage_address: AztecAddress,
+        artifact_location_storage_address: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_storage_address);
+        self.storage.world_storage_address.write(world_storage_address);
+        self.storage.player_storage_address.write(player_storage_address);
+        self.storage.planet_storage_address.write(planet_storage_address);
+        self.storage.planet_artifacts_storage_address.write(planet_artifacts_storage_address);
+        self.storage.planet_events_storage_address.write(planet_events_storage_address);
+        self.storage.arrivals_storage_address.write(arrivals_storage_address);
+        self.storage.artifact_storage_address.write(artifact_storage_address);
+        self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
+    }
+
     #[external("public")]
     fn set_config_storage_address(config_storage_address: AztecAddress) {
         self.internal.assert_admin();
@@ -566,11 +591,19 @@ contract ArtifactSystem {
         self.call(planet_artifacts_storage.set(planet_id, new_planet_artifacts));
         let location_storage =
             ArtifactLocationStorage::at(self.internal.get_artifact_location_storage_address());
+        // Batch write artifact locations (1 call instead of up to 20)
+        let mut batch_ids: [Field; 20] = [0; 20];
+        let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+        let mut batch_count: u32 = 0;
         for i in 0..20 {
             if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
-                self.call(location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+                let idx = batch_count;
+                batch_ids[idx] = artifacts_ids[i];
+                batch_locations[idx] = new_artifact_locations[i];
+                batch_count += 1;
             }
         }
+        self.call(location_storage.set_batch(batch_ids, batch_locations, batch_count));
 
         // Create new artifact and put on planet (find_artifact-specific)
         let config_storage = Config::at(self.internal.get_config_storage_address());
@@ -801,11 +834,19 @@ contract ArtifactSystem {
 
         self.call(planet_storage.set(location_id, new_planet));
         self.call(planet_events_storage.set(location_id, new_planet_events));
+        // Batch write artifact locations (1 call instead of up to 20)
+        let mut batch_ids: [Field; 20] = [0; 20];
+        let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+        let mut batch_count: u32 = 0;
         for i in 0..20 {
             if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
-                self.call(location_storage.set(artifact_ids[i], new_artifact_locations[i]));
+                let idx = batch_count;
+                batch_ids[idx] = artifact_ids[i];
+                batch_locations[idx] = new_artifact_locations[i];
+                batch_count += 1;
             }
         }
+        self.call(location_storage.set_batch(batch_ids, batch_locations, batch_count));
         self.call(planet_artifacts_storage.set(location_id, updated_artifacts));
         self.call(location_storage.set(artifact_id, new_location));
     }
@@ -993,11 +1034,19 @@ contract ArtifactSystem {
 
         self.call(planet_storage.set(location_id, new_planet));
         self.call(planet_events_storage.set(location_id, new_planet_events));
+        // Batch write artifact locations (1 call instead of up to 20)
+        let mut batch_ids: [Field; 20] = [0; 20];
+        let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+        let mut batch_count: u32 = 0;
         for i in 0..20 {
             if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
-                self.call(location_storage.set(artifact_ids[i], new_artifact_locations[i]));
+                let idx = batch_count;
+                batch_ids[idx] = artifact_ids[i];
+                batch_locations[idx] = new_artifact_locations[i];
+                batch_count += 1;
             }
         }
+        self.call(location_storage.set_batch(batch_ids, batch_locations, batch_count));
         self.call(planet_artifacts_storage.set(location_id, updated_artifacts));
         self.call(location_storage.set(artifact_id, new_location));
     }
@@ -1477,14 +1526,24 @@ contract ArtifactSystem {
                 wormhole_planet_id,
                 wormhole_new_planet_artifacts,
             ));
+            // Batch write wormhole artifact locations (1 call instead of up to 20)
+            let mut wormhole_batch_ids: [Field; 20] = [0; 20];
+            let mut wormhole_batch_locations: [ArtifactLocation; 20] =
+                [ArtifactLocation::zero(); 20];
+            let mut wormhole_batch_count: u32 = 0;
             for i in 0..20 {
                 if (i < wormhole_planet_event_count as u32) & (wormhole_artifact_ids[i] != 0) {
-                    self.call(location_storage.set(
-                        wormhole_artifact_ids[i],
-                        wormhole_new_artifact_locations[i],
-                    ));
+                    let idx = wormhole_batch_count;
+                    wormhole_batch_ids[idx] = wormhole_artifact_ids[i];
+                    wormhole_batch_locations[idx] = wormhole_new_artifact_locations[i];
+                    wormhole_batch_count += 1;
                 }
             }
+            self.call(location_storage.set_batch(
+                wormhole_batch_ids,
+                wormhole_batch_locations,
+                wormhole_batch_count,
+            ));
         }
 
         // 2. Artifact
@@ -1883,11 +1942,19 @@ contract ArtifactSystem {
 
         self.call(planet_events_storage.set(location_id, new_planet_events));
         self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts));
+        // Batch write artifact locations (1 call instead of up to 20)
+        let mut batch_ids: [Field; 20] = [0; 20];
+        let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+        let mut batch_count: u32 = 0;
         for i in 0..20 {
             if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
-                self.call(location_storage.set(artifact_ids[i], new_artifact_locations[i]));
+                let idx = batch_count;
+                batch_ids[idx] = artifact_ids[i];
+                batch_locations[idx] = new_artifact_locations[i];
+                batch_count += 1;
             }
         }
+        self.call(location_storage.set_batch(batch_ids, batch_locations, batch_count));
         self.call(planet_storage.set(location_id, prospect_planet));
     }
 

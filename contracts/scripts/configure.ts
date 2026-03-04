@@ -278,7 +278,7 @@ async function main() {
             .send(opts);
     };
 
-    const TOTAL_STEPS = 59;
+    const TOTAL_STEPS = 32;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -294,7 +294,7 @@ async function main() {
         );
     };
 
-    console.log('\n🔍 Configuring contracts (batched: 22 steps)...\n');
+    console.log('\n🔍 Configuring contracts (32 steps)...\n');
 
     // ---- Phase 1: Config initialization (10 calls) ----
 
@@ -618,108 +618,90 @@ async function main() {
         }
     );
 
-    const elapsedMs = Date.now() - scriptStartTime;
-    const elapsedSec = (elapsedMs / 1000).toFixed(1);
-    const elapsedMin = Math.floor(elapsedMs / 60000);
-    const elapsedSecRem = ((elapsedMs % 60000) / 1000).toFixed(1);
-    const timeStr =
-        elapsedMs >= 60000
-            ? `${elapsedMin}m ${elapsedSecRem}s`
-            : `${elapsedSec}s`;
-    await run('ArtifactSystem system', async () => {
-        await run('artifactSystem.set_config_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_config_storage_address(config.address)
-                .send(opts);
-        });
+    // ---- Phase 4: ArtifactSystem setup (9 calls) ----
 
-        await run('artifactSystem.set_world_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_world_storage_address(worldStorage.address)
-                .send(opts);
+    await run('ArtifactSystem.set_all_storage_addresses()', async () => {
+        await artifactSystem.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
+    });
+
+    await run(
+        'WorldStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
             await worldStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-        });
+        }
+    );
 
-        await run('artifactSystem.set_player_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_player_storage_address(playerStorage.address)
-                .send(opts);
+    await run(
+        'PlayerStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
             await playerStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-        });
+        }
+    );
 
-        await run('artifactSystem.set_planet_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_planet_storage_address(planetStorage.address)
-                .send(opts);
+    await run(
+        'PlanetStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
             await planetStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-        });
+        }
+    );
 
-        await run(
-            'artifactSystem.set_planet_artifacts_storage_address()',
-            async () => {
-                await artifactSystem.methods
-                    .set_planet_artifacts_storage_address(
-                        planetArtifactsStorage.address
-                    )
-                    .send(opts);
-                await planetArtifactsStorage.methods
-                    .add_authorized_contract(artifactSystem.address)
-                    .send(opts);
-            }
-        );
-
-        await run(
-            'artifactSystem.set_planet_events_storage_address()',
-            async () => {
-                await artifactSystem.methods
-                    .set_planet_events_storage_address(
-                        planetEventsStorage.address
-                    )
-                    .send(opts);
-                await planetEventsStorage.methods
-                    .add_authorized_contract(artifactSystem.address)
-                    .send(opts);
-            }
-        );
-
-        await run('artifactSystem.set_arrivals_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_arrivals_storage_address(arrivalStorage.address)
+    await run(
+        'PlanetArtifactsStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
+            await planetArtifactsStorage.methods
+                .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-        });
+        }
+    );
 
-        await run('artifactSystem.set_artifact_storage_address()', async () => {
-            await artifactSystem.methods
-                .set_artifact_storage_address(artifactStorage.address)
+    await run(
+        'PlanetEventsStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
+            await planetEventsStorage.methods
+                .add_authorized_contract(artifactSystem.address)
                 .send(opts);
+        }
+    );
+
+    await run(
+        'ArtifactStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
             await artifactStorage.methods
                 .add_authorized_contract(artifactSystem.address)
                 .send(opts);
-        });
+        }
+    );
 
-        await run(
-            'artifactSystem.set_artifact_location_storage_address()',
-            async () => {
-                await artifactSystem.methods
-                    .set_artifact_location_storage_address(
-                        artifactLocationStorage.address
-                    )
-                    .send(opts);
-                await artifactLocationStorage.methods
-                    .add_authorized_contract(artifactSystem.address)
-                    .send(opts);
-            }
-        );
-    });
+    await run(
+        'ArtifactLocationStorage.add_authorized_contract(ArtifactSystem)',
+        async () => {
+            await artifactLocationStorage.methods
+                .add_authorized_contract(artifactSystem.address)
+                .send(opts);
+        }
+    );
 
+    const elapsedMs = Date.now() - scriptStartTime;
     console.log('\n✅ Configure done.');
-    console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);
+    console.log(`⏱️  Total time: ${formatElapsed(elapsedMs)} (${elapsedMs}ms)`);
 }
 
 main()

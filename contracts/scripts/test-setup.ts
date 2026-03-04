@@ -181,6 +181,7 @@ const MOVE_FUNCTIONS = [
 
 const ARTIFACT_SYSTEM_FUNCTIONS = [
     'transfer_admin',
+    'set_all_storage_addresses',
     'set_config_storage_address',
     'set_player_storage_address',
     'set_artifact_storage_address',
