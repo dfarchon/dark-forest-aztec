@@ -9,13 +9,16 @@ import { ModalPane } from "../Views/ModalPane";
 
 const StyledPrivatePane = styled.div`
   width: 36em;
-  height: 10em;
-  & > div {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
+
+  .field {
+    margin-bottom: 0.75em;
+  }
+
+  .field-label {
+    margin-bottom: 0.2em;
   }
 `;
+
 export function PrivatePane({
   visible,
   onClose,
@@ -25,14 +28,20 @@ export function PrivatePane({
 }) {
   const uiManager = useUIManager();
 
-  const [sKey, setSKey] = useState<string | undefined>(undefined);
+  const [credentials, setCredentials] = useState<{
+    secretKey: string;
+    salt: string;
+    signingKey: string;
+  }>();
   const [home, setHome] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     if (!uiManager) return;
-    setSKey(uiManager.getPrivateKey());
+    setCredentials(uiManager.getAccountCredentials());
     const coords = uiManager.getHomeCoords();
     setHome(coords ? `(${coords.x}, ${coords.y})` : "");
   }, [uiManager]);
+
   return (
     <ModalPane
       id={ModalName.Private}
@@ -41,25 +50,56 @@ export function PrivatePane({
       onClose={onClose}
     >
       <StyledPrivatePane>
-        <p>
-          <Sub>
-            <u>secret key</u>
-          </Sub>
-        </p>
-        <p>
-          <TextPreview
-            text={sKey}
-            focusedWidth={"150px"}
-            unFocusedWidth={"150px"}
-          />
-        </p>
-        <br />
-        <p>
-          <Sub>
-            <u>Home Coords</u>
-          </Sub>
-        </p>
-        <p>{home}</p>
+        <div className="field">
+          <div className="field-label">
+            <Sub>
+              <u>Secret Key</u>
+            </Sub>
+          </div>
+          <div>
+            <TextPreview
+              text={credentials?.secretKey}
+              focusedWidth={"150px"}
+              unFocusedWidth={"150px"}
+            />
+          </div>
+        </div>
+        <div className="field">
+          <div className="field-label">
+            <Sub>
+              <u>Salt</u>
+            </Sub>
+          </div>
+          <div>
+            <TextPreview
+              text={credentials?.salt}
+              focusedWidth={"150px"}
+              unFocusedWidth={"150px"}
+            />
+          </div>
+        </div>
+        <div className="field">
+          <div className="field-label">
+            <Sub>
+              <u>Signing Key</u>
+            </Sub>
+          </div>
+          <div>
+            <TextPreview
+              text={credentials?.signingKey}
+              focusedWidth={"150px"}
+              unFocusedWidth={"150px"}
+            />
+          </div>
+        </div>
+        <div className="field">
+          <div className="field-label">
+            <Sub>
+              <u>Home Coords</u>
+            </Sub>
+          </div>
+          <div>{home}</div>
+        </div>
       </StyledPrivatePane>
     </ModalPane>
   );

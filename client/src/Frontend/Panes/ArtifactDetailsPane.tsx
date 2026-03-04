@@ -184,7 +184,7 @@ export function ArtifactDetailsBody({
   }
 
   const account = (addr: EthAddress) => {
-    const twitter = uiManager?.getTwitter(addr);
+    const twitter = uiManager?.getPlayer(addr)?.twitter;
     if (twitter) {
       return "@" + twitter;
     }

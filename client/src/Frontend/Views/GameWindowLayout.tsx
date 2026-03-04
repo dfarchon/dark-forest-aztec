@@ -95,14 +95,16 @@ export function GameWindowLayout({
   const [modalsContainer, setModalsContainer] = useState<
     HTMLDivElement | undefined
   >();
-  const modalsContainerCB = useCallback((node) => {
+  const modalsContainerCB = useCallback((node: HTMLDivElement) => {
     setModalsContainer(node);
   }, []);
+
   const [onboardingVisible, setOnboardingVisible] = useBooleanSetting(
     uiManager,
     Setting.NewPlayer
   );
   const tutorialHook = useBooleanSetting(uiManager, Setting.TutorialOpen);
+
   const selected = useSelectedPlanet(uiManager).value;
   const [selectedPlanetVisible, setSelectedPlanetVisible] =
     useState<boolean>(!!selected);
@@ -185,6 +187,7 @@ export function GameWindowLayout({
           visible={diagnosticsVisible}
           onClose={() => setDiagnosticsVisible(false)}
         />
+
         {modalsContainer && (
           <PluginLibraryPane
             modalsContainer={modalsContainer}

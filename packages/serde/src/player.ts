@@ -14,10 +14,10 @@ function toLocationId(s: string) {
 export function decodePlayer(key: string, state: PlayerState): Player {
   return {
     address: address(key),
-    initTimestamp: state.init_timestamp,
+    initTimestamp: Number(state.init_timestamp),
     homePlanetId: toLocationId(state.home_planet_id),
-    lastRevealTimestamp: state.last_reveal_timestamp,
-    lastClaimTimestamp: state.last_reveal_timestamp,
+    lastRevealTimestamp: Number(state.last_reveal_timestamp),
+    lastClaimTimestamp: Number(state.last_reveal_timestamp),
     score: Number(state.score),
     spaceJunk: Number(state.space_junk),
     spaceJunkLimit: Number(state.space_junk_limit),

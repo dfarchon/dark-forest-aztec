@@ -21,6 +21,7 @@ export interface GameConfig {
   planetDefaultStats: unknown[];
   worldConfig: unknown;
   gameConfigCore: unknown;
+  upgradeConfig: unknown;
   planetLevelThresholds: unknown;
   spaceJunkConfig: unknown;
   planetTypeWeightsTiers: [unknown, unknown, unknown, unknown];
@@ -67,6 +68,7 @@ export class ConfigCache {
       snarkConfig,
       worldConfig,
       gameConfigCore,
+      upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
       tier0,
@@ -78,6 +80,7 @@ export class ConfigCache {
       c.methods.get_snark_config().simulate({ from }),
       c.methods.get_world_config().simulate({ from }),
       c.methods.get_game_config_core().simulate({ from }),
+      c.methods.get_upgrade_config().simulate({ from }),
       c.methods.get_planet_level_thresholds().simulate({ from }),
       c.methods.get_space_junk_config().simulate({ from }),
       c.methods.get_planet_type_weights_tier(0).simulate({ from }),
@@ -116,26 +119,13 @@ export class ConfigCache {
       )
     ).then((vals) => vals.map((v) => Number(v ?? 0)));
 
-    // Debug: log shape of get_planet_default_stats return (snake_case vs camelCase, undefined?)
-    const level0 = planetDefaultStats[0] as Record<string, unknown> | undefined;
-    console.log("[ConfigCache] get_planet_default_stats(0) raw:", level0);
-    if (level0) {
-      console.log(
-        "[ConfigCache] keys:",
-        Object.keys(level0),
-        "| population_cap:",
-        level0.population_cap,
-        "| populationCap:",
-        level0.populationCap
-      );
-    }
-
     return {
       admin: admin != null ? String(admin) : "",
       snarkConfig,
       planetDefaultStats,
       worldConfig,
       gameConfigCore,
+      upgradeConfig,
       planetLevelThresholds,
       spaceJunkConfig,
       planetTypeWeightsTiers: [tier0, tier1, tier2, tier3],

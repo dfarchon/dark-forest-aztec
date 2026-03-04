@@ -331,7 +331,6 @@ export class Renderer {
     this.now = this.context.getChainTimeMs();
     this.draw();
     this.recordRender(Date.now());
-
     this.frameRequestId = window.requestAnimationFrame(() => this.loop());
   }
 

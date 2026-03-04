@@ -5,6 +5,7 @@ import { planetHasBonus } from "@dfpunk/hexgen";
 // import { EthConnection } from '@dfpunk/network';
 import { GameGLManager, Renderer } from "@dfpunk/renderer";
 import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -358,6 +359,12 @@ class GameUIManager extends EventEmitter {
     return this.gameManager.getPrivateKey();
   }
 
+  public getAccountCredentials():
+    | { secretKey: string; salt: string; signingKey: string }
+    | undefined {
+    return this.gameManager.getAccountCredentials();
+  }
+
   public getMyBalance(): number {
     return this.gameManager.getMyBalanceEth();
   }
@@ -575,6 +582,17 @@ class GameUIManager extends EventEmitter {
           if (forces < 1) return;
         }
 
+        console.log("[UI Move]", {
+          planetId: from.locationId,
+          energy: from.energy,
+          energyCap: from.energyCap,
+          lastUpdated: from.lastUpdated,
+          effectiveEnergy,
+          effPercent,
+          forces,
+          chainClockNowSec: this.gameManager.getChainTimeMs() / 1000,
+        });
+
         const dist = this.gameManager.getDist(from.locationId, to.locationId);
 
         const myAtk: number = this.gameManager.getEnergyArrivingForMove(
@@ -612,7 +630,9 @@ class GameUIManager extends EventEmitter {
             forces,
             silver,
             artifact?.id,
-            abandoning
+            abandoning,
+            false,
+            from.lastUpdated
           );
           tutorialManager.acceptInput(TutorialState.SendFleet);
         }
@@ -707,7 +727,7 @@ class GameUIManager extends EventEmitter {
     return planet.owner === this.gameManager.getAccount();
   }
 
-  public addNewChunk(chunk: Chunk) {
+  public addNewChunk(chunk: Chunk): void {
     this.gameManager.addNewChunk(chunk);
   }
 
@@ -736,6 +756,22 @@ class GameUIManager extends EventEmitter {
 
   public isAdmin(): boolean {
     return this.gameManager.isAdmin();
+  }
+
+  public setWorldConfig(worldConfig: WorldConfig) {
+    return this.gameManager.setWorldConfig(worldConfig);
+  }
+
+  public pauseGame() {
+    return this.gameManager.pauseGame();
+  }
+
+  public unpauseGame() {
+    return this.gameManager.unpauseGame();
+  }
+
+  public getWorldConfig(): Promise<WorldConfig> {
+    return this.gameManager.getWorldConfig();
   }
 
   // public getTwitter(address: EthAddress | undefined): string | undefined {

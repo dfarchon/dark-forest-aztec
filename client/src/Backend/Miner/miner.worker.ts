@@ -1,7 +1,7 @@
 import { Fr } from "@aztec/aztec.js/fields";
 import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
 import { LOCATION_ID_UB } from "@dfpunk/constants";
-import { perlin } from "@dfpunk/hashing";
+import { initPoseidon2, perlin } from "@dfpunk/hashing";
 import { locationIdFromBigInt } from "@dfpunk/serde";
 import { Chunk, PerlinConfig, Rectangle, WorldLocation } from "@dfpunk/types";
 
@@ -31,6 +31,8 @@ const exploreChunk = async (
   perlinMirrorX: boolean,
   perlinMirrorY: boolean
 ) => {
+  await initPoseidon2();
+
   const planetHashFn = async (x: number, y: number): Promise<bigint> => {
     const result = await poseidon2Hash([
       new Fr(BigInt(planetHashKey)),
@@ -97,7 +99,10 @@ const exploreChunk = async (
   const chunkData: Chunk = {
     chunkFootprint,
     planetLocations,
-    perlin: perlin(chunkCenter, { ...spaceTypePerlinOpts, floor: false }),
+    perlin: perlin(chunkCenter, {
+      ...spaceTypePerlinOpts,
+      floor: false,
+    }),
   };
   ctx.postMessage(JSON.stringify([chunkData, jobId]));
 };

@@ -1,6 +1,7 @@
 packages:
   - client
   - contracts
+  - server
   - packages/constants
   - packages/contracts
   - packages/events

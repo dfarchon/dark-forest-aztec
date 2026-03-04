@@ -3,14 +3,11 @@ import { AutoGasSetting, EthAddress, Setting } from "@dfpunk/types";
 import React, { useCallback, useState } from "react";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
+import { isProductionLike } from "../../config/env";
 import { SelectFrom } from "../Components/CoreUI";
 import {
   Checkbox,
   ColorInput,
-  DarkForestCheckbox,
-  DarkForestColorInput,
-  DarkForestNumberInput,
-  DarkForestTextInput,
   NumberInput,
   TextInput,
 } from "../Components/Input";
@@ -28,11 +25,11 @@ export const ALL_AUTO_GAS_SETTINGS = [
 ];
 
 function onlyInProduction(): string {
-  return process.env.NODE_ENV === "production" ? "true" : "false";
+  return isProductionLike() ? "true" : "false";
 }
 
 function onlyInDevelopment(): string {
-  return process.env.NODE_ENV !== "production" ? "true" : "false";
+  return isProductionLike() ? "false" : "true";
 }
 
 const defaultSettings: Record<Setting, string> = {
@@ -185,7 +182,7 @@ export function setNumberSetting(
 export function useSetting(
   uiManager: GameUIManager,
   setting: Setting
-): [string, (newValue: string | undefined) => void] {
+): [string, (newValue: string) => void] {
   const contractAddress = uiManager.getContractAddress();
   const account = uiManager.getAccount();
   const config = { contractAddress, account };
@@ -222,8 +219,8 @@ export function StringSetting({
 }) {
   const [settingValue, setSettingValue] = useSetting(uiManager, setting);
   const onChange = useCallback(
-    (e: Event & React.ChangeEvent<DarkForestTextInput>) => {
-      setSettingValue(e.target.value);
+    (e: Event) => {
+      setSettingValue((e.target as HTMLInputElement).value);
     },
     [setSettingValue]
   );
@@ -247,8 +244,8 @@ export function ColorSetting({
 }) {
   const [settingValue, setSettingValue] = useSetting(uiManager, setting);
   const onChange = useCallback(
-    (e: Event & React.ChangeEvent<DarkForestColorInput>) => {
-      setSettingValue(e.target.value);
+    (e: Event) => {
+      setSettingValue((e.target as HTMLInputElement).value);
     },
     [setSettingValue]
   );
@@ -324,8 +321,8 @@ export function BooleanSetting({
     <Checkbox
       label={settingDescription}
       checked={settingValue}
-      onChange={(e: Event & React.ChangeEvent<DarkForestCheckbox>) =>
-        setSettingValue(e.target.checked)
+      onChange={(e: Event) =>
+        setSettingValue((e.target as HTMLInputElement).checked)
       }
     />
   );
@@ -344,9 +341,10 @@ export function NumberSetting({
     <NumberInput
       format="float"
       value={settingValue}
-      onChange={(e: Event & React.ChangeEvent<DarkForestNumberInput>) => {
-        if (e.target.value) {
-          setSettingValue(e.target.value);
+      onChange={(e: Event) => {
+        const value = (e.target as HTMLInputElement).value;
+        if (value) {
+          setSettingValue(parseFloat(value));
         }
       }}
     />

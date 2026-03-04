@@ -1,0 +1,10 @@
+.git/
+node_modules/
+contracts/.env
+contracts/scripts/.test-accounts.json
+contracts/target/
+client/
+**/dist/
+**/build/
+*.log
+data/

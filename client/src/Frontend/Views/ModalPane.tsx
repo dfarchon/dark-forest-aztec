@@ -12,11 +12,7 @@ import { Btn } from "../Components/Btn";
 import { EmSpacer, Spacer, Title, Truncate } from "../Components/CoreUI";
 import { PaneProps } from "../Components/GameWindowComponents";
 import { MaybeShortcutButton } from "../Components/MaybeShortcutButton";
-import {
-  DarkForestModal,
-  Modal,
-  PositionChangedEvent,
-} from "../Components/Modal";
+import { Modal, PositionChangedEvent } from "../Components/Modal";
 import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
 import { useEmitterValue } from "../Utils/EmitterHooks";
@@ -52,8 +48,9 @@ const InfoSectionContent = styled.div`
   color: ${dfstyles.colors.subtext};
 `;
 
-export type ModalProps = PaneProps & {
-  title: string | React.ReactNode;
+export type ModalProps = Omit<PaneProps, "children"> & {
+  children: React.ReactNode | ((handle: ModalHandle) => React.ReactNode);
+  title: string | ((small: boolean) => React.ReactNode) | React.ReactNode;
   style?: CSSStyleDeclaration & React.CSSProperties;
   visible: boolean;
   onClose: () => void;
@@ -125,7 +122,7 @@ export function ModalPane({
   const [showingInformationSection, setShowingInformationSection] =
     useState(false);
   const onMouseDown = useCallback(
-    (e: Event & React.MouseEvent<DarkForestModal>) => {
+    (e: Event) => {
       push();
       e.stopPropagation();
     },
@@ -178,12 +175,13 @@ export function ModalPane({
   }, [frames, api]);
 
   const onPositionChanged = useCallback(
-    (evt: PositionChangedEvent) => {
+    (evt: Event) => {
       if (!id) return;
       if (visible) {
+        const posEvt = evt as PositionChangedEvent;
         modalManager.setModalPosition(id, {
-          x: evt.coords.x,
-          y: evt.coords.y,
+          x: posEvt.coords.x,
+          y: posEvt.coords.y,
           state: minimized ? "minimized" : "open",
           modalId: id,
         });

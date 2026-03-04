@@ -1,3 +1,4 @@
+import "../Styles/preflight.css";
 import "../Styles/style.css";
 
 import * as React from "react";

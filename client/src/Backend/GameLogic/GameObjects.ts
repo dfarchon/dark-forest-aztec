@@ -1517,19 +1517,21 @@ export class GameObjects {
   }
 
   /**
-   * returns timestamp (seconds) that planet will reach percent% of energycap
-   * time may be in the past
+   * Returns timestamp (seconds) at which the planet will reach percent% of
+   * its energy cap.  The result may be in the past.
+   *
+   * Uses the same linear growth model as the Noir contract (lazy_update.nr):
+   *   new_population = population + population_growth * time_diff
+   * Inverse: t1 = t0 + (p1 - p0) / g
    */
   public getEnergyCurveAtPercent(planet: Planet, percent: number): number {
     const p1 = (percent / 100) * planet.energyCap;
-    const c = planet.energyCap;
     const p0 = planet.energy;
     const g = planet.energyGrowth;
     const t0 = planet.lastUpdated;
 
-    const t1 = (c / (4 * g)) * Math.log((p1 * (c - p0)) / (p0 * (c - p1))) + t0;
-
-    return t1;
+    if (g <= 0) return Infinity;
+    return t0 + (p1 - p0) / g;
   }
 
   /**

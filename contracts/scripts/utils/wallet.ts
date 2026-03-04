@@ -1,8 +1,9 @@
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { Fr } from '@aztec/aztec.js/fields';
+import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
+import type { AccountManager } from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -16,6 +17,19 @@ const DEFAULT_PXE_STORE_DIR = path.join(
     '.store'
 );
 const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
+const FINGERPRINT_FILENAME = '.network-fingerprint';
+
+/**
+ * Compute a fingerprint for the current network instance by hashing block 1's header.
+ * Returns a sentinel value when the network has not yet produced block 1.
+ */
+async function getNetworkFingerprint(node: AztecNode): Promise<string> {
+    const blockNumber = await node.getBlockNumber();
+    if (blockNumber < 1) return 'genesis-pending';
+    const block = await node.getBlock(BlockNumber(1));
+    if (!block) return 'genesis-pending';
+    return (await block.hash()).toString();
+}
 
 export type SetupWalletOptions = {
     /** If true, remove existing PXE store before creating wallet (default: false) */
@@ -27,8 +41,9 @@ export type SetupWalletOptions = {
 };
 
 /**
- * Create a EmbeddedWallet connected to the given Aztec node.
- * Other scripts can use this for deploy or interaction.
+ * Create an EmbeddedWallet connected to the given Aztec node.
+ * Automatically detects network changes via block-1 fingerprint and clears
+ * the stale PXE store when necessary (without touching .env or account files).
  */
 export async function setupWallet(
     aztecNode: AztecNode,
@@ -40,9 +55,28 @@ export async function setupWallet(
         storeDir = DEFAULT_PXE_STORE_DIR,
     } = options;
 
-    if (clearStore && fs.existsSync(storeDir)) {
-        fs.rmSync(storeDir, { recursive: true, force: true });
+    const fingerprintPath = path.join(storeDir, FINGERPRINT_FILENAME);
+    const fingerprint = await getNetworkFingerprint(aztecNode);
+    const storedFingerprint = fs.existsSync(fingerprintPath)
+        ? fs.readFileSync(fingerprintPath, 'utf-8').trim()
+        : null;
+
+    const networkChanged =
+        storedFingerprint !== null && storedFingerprint !== fingerprint;
+
+    if (clearStore || networkChanged) {
+        if (networkChanged) {
+            console.warn(
+                '[setupWallet] Network change detected, clearing stale PXE store'
+            );
+        }
+        if (fs.existsSync(storeDir)) {
+            fs.rmSync(storeDir, { recursive: true, force: true });
+        }
     }
+
+    fs.mkdirSync(storeDir, { recursive: true });
+    fs.writeFileSync(fingerprintPath, fingerprint, 'utf-8');
 
     return await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {
@@ -67,6 +101,45 @@ export async function getSponsoredPFCContract() {
     return instance;
 }
 
+async function deployAccountIfNeeded(
+    aztecNode: AztecNode,
+    accountManager: AccountManager,
+    timeoutMs: number
+): Promise<boolean> {
+    const existing = await aztecNode.getContract(accountManager.address);
+    if (existing) return false;
+
+    const sponsoredFPC = await getSponsoredPFCContract();
+    const deployMethod = await accountManager.getDeployMethod();
+    try {
+        await deployMethod.send({
+            from: AztecAddress.ZERO,
+            fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(
+                    sponsoredFPC.address
+                ),
+            },
+            skipClassPublication: true,
+            skipInstancePublication: true,
+            wait: { timeout: timeoutMs },
+        });
+        return true;
+    } catch (error) {
+        if (isAccountAlreadyDeployedError(error)) {
+            return false;
+        }
+        throw error;
+    }
+}
+
+async function hasLocalAccount(
+    wallet: EmbeddedWallet,
+    address: AztecAddress
+): Promise<boolean> {
+    const accounts = await wallet.getAccounts();
+    return accounts.some((account) => account.item.equals(address));
+}
+
 /**
  * Load an account that was previously registered (e.g. after deploy wrote .env).
  * Reads ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY from process.env,
@@ -81,8 +154,12 @@ export async function getSponsoredPFCContract() {
  * or wallet.getAccounts() and use it as `from` without calling this.
  */
 export async function loadAccountFromEnv(
-    wallet: EmbeddedWallet
+    wallet: EmbeddedWallet,
+    aztecNode: AztecNode,
+    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
 ): Promise<AztecAddress> {
+    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
+    const envAddress = process.env.ACCOUNT_ADDRESS;
     const salt = process.env.ACCOUNT_SALT;
     const secretKey = process.env.ACCOUNT_SECRET_KEY;
     const signingKeyHex = process.env.ACCOUNT_SIGNING_KEY;
@@ -91,11 +168,26 @@ export async function loadAccountFromEnv(
             'Account not in .env. Set ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY (or run deploy first).'
         );
     }
+
+    if (envAddress) {
+        const accountAddress = AztecAddress.fromString(envAddress);
+        if (await hasLocalAccount(wallet, accountAddress)) {
+            if (!ensureDeployed) return accountAddress;
+            const deployed = await aztecNode.getContract(accountAddress);
+            if (deployed) return accountAddress;
+        }
+    }
+
     const accountManager = await wallet.createECDSARAccount(
         Fr.fromString(secretKey),
         Fr.fromString(salt),
         Buffer.from(signingKeyHex, 'hex')
     );
+
+    if (ensureDeployed) {
+        await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
+    }
+
     return accountManager.address;
 }
 
@@ -179,6 +271,7 @@ export async function createAccount(
  */
 export async function getOrCreateAccount(
     wallet: EmbeddedWallet,
+    aztecNode: AztecNode,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
     const hasAccount =
@@ -186,7 +279,9 @@ export async function getOrCreateAccount(
         process.env.ACCOUNT_SECRET_KEY &&
         process.env.ACCOUNT_SIGNING_KEY;
     if (hasAccount) {
-        return loadAccountFromEnv(wallet);
+        return loadAccountFromEnv(wallet, aztecNode, {
+            deployTimeoutMs: options.deployTimeoutMs,
+        });
     }
     return createAccount(wallet, options);
 }
@@ -198,6 +293,18 @@ export type TestAccountCredentials = {
     signingKey: string;
     address: string;
 };
+
+function isAccountAlreadyDeployedError(error: unknown): boolean {
+    const message =
+        error instanceof Error
+            ? error.message.toLowerCase()
+            : String(error).toLowerCase();
+    return (
+        message.includes('existing nullifier') ||
+        message.includes('already deployed') ||
+        message.includes('already exists')
+    );
+}
 
 /**
  * Create a new ECDSAR account, deploy it, and return credentials (no .env write).
@@ -243,12 +350,27 @@ export async function createAccountWithCredentials(
  */
 export async function loadAccountFromCredentials(
     wallet: EmbeddedWallet,
-    cred: TestAccountCredentials
+    cred: TestAccountCredentials,
+    aztecNode: AztecNode,
+    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
 ): Promise<AztecAddress> {
+    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
+    const accountAddress = AztecAddress.fromString(cred.address);
+    if (await hasLocalAccount(wallet, accountAddress)) {
+        if (!ensureDeployed) return accountAddress;
+        const deployed = await aztecNode.getContract(accountAddress);
+        if (deployed) return accountAddress;
+    }
+
     const accountManager = await wallet.createECDSARAccount(
         Fr.fromString(cred.secretKey),
         Fr.fromString(cred.salt),
         Buffer.from(cred.signingKey, 'hex')
     );
+
+    if (ensureDeployed) {
+        await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
+    }
+
     return accountManager.address;
 }

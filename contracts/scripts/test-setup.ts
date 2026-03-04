@@ -28,7 +28,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from contracts/ so it works regardless of cwd (e.g. run from repo root)
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true });
 
 /** Path to persisted test accounts (user1, user2) so they can be reused across runs. */
 const TEST_ACCOUNTS_PATH = path.join(__dirname, '.test-accounts.json');
@@ -64,6 +64,7 @@ const CONFIG_FUNCTIONS = [
     'initializeUpgrades',
     'initialize_cumulative_rarities',
     'set_planet_default_stats',
+    'set_default_upgrade_config',
     'set_upgrade',
     'set_upgrade_by_branch_level',
     // Getters
@@ -78,6 +79,7 @@ const CONFIG_FUNCTIONS = [
     'get_space_junk_config',
     'get_capture_zones_config',
     'get_planet_default_stats',
+    'get_upgrade_config',
     'get_upgrade',
     'get_upgrade_by_branch_level',
     'get_cumulative_rarity',
@@ -156,6 +158,10 @@ const CORE_FUNCTIONS = [
     'reveal_location_public',
     'initialize_player', // private
     'initialize_player_public',
+    'upgrade_planet', // private
+    'upgrade_planet_public',
+    'withdraw_silver', // private
+    'withdraw_silver_public',
 ] as const;
 
 const MOVE_FUNCTIONS = [
@@ -358,7 +364,7 @@ export async function getTestContext(): Promise<TestContext> {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    const admin = await loadAccountFromEnv(wallet);
+    const admin = await loadAccountFromEnv(wallet, aztecNode);
 
     let user1: AztecAddress;
     let user2: AztecAddress;
@@ -366,8 +372,16 @@ export async function getTestContext(): Promise<TestContext> {
         const saved = JSON.parse(
             fs.readFileSync(TEST_ACCOUNTS_PATH, 'utf-8')
         ) as TestAccountsFile;
-        user1 = await loadAccountFromCredentials(wallet, saved.user1);
-        user2 = await loadAccountFromCredentials(wallet, saved.user2);
+        user1 = await loadAccountFromCredentials(
+            wallet,
+            saved.user1,
+            aztecNode
+        );
+        user2 = await loadAccountFromCredentials(
+            wallet,
+            saved.user2,
+            aztecNode
+        );
     } else {
         const cred1 = await createAccountWithCredentials(wallet);
         user1 = AztecAddress.fromString(cred1.address);
@@ -384,6 +398,24 @@ export async function getTestContext(): Promise<TestContext> {
             JSON.stringify({ user1: cred1, user2: cred2 }, null, 2),
             'utf-8'
         );
+    }
+
+    // Ensure account contracts are known senders so account-auth notes can be discovered
+    // even when using a fresh local PXE store.
+    try {
+        await wallet.registerSender(admin, 'admin-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user1, 'user1-self');
+    } catch {
+        /* ignore */
+    }
+    try {
+        await wallet.registerSender(user2, 'user2-self');
+    } catch {
+        /* ignore */
     }
 
     const contracts = await getContractInstances(

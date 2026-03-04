@@ -3,6 +3,7 @@
  *
  * Demonstrates the full lifecycle:
  *  1. Initializes WalletManager + IndexerConnection + AztecNode + ConfigContract
+ *     and creates a shared ConfigCache
  *  2. Creates TxExecutor with lifecycle hooks
  *  3. Submit transactions (initializePlayer, move, raw JSON)
  *  4. Track transaction state transitions in real-time
@@ -19,6 +20,11 @@ import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
 import * as React from "react";
 
+import { ChainClock } from "../../../Backend/Utils/ChainClock";
+import {
+  getEffectiveIndexerBootstrapUrl,
+  getEffectiveNodeUrl,
+} from "../../../config/connection";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
 import {
   createIndexerConnection,
@@ -27,6 +33,7 @@ import {
 import {
   type AfterTransaction,
   type BeforeQueued,
+  ConfigCache,
   type Diagnostics,
   TxExecutor,
 } from "../../../Session/TxExecutor";
@@ -34,12 +41,7 @@ import {
   createWalletManager,
   type WalletManager,
 } from "../../../Session/WalletManager";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
+import { TextPreview } from "../../Components/TextPreview";
 
 const MAX_TX_LOG = 50;
 
@@ -59,11 +61,6 @@ interface TxLogEntry {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function truncate(str: string, head = 8, tail = 6): string {
-  if (str.length <= head + tail) return str;
-  return `${str.slice(0, head)}…${str.slice(-tail)}`;
-}
 
 function txStateBadgeClass(state: ClientTxStatus): string {
   const map: Record<ClientTxStatus, string> = {
@@ -177,7 +174,7 @@ export function TxExecutorTestPage() {
       // 1. WalletManager
       setInitStep("Creating WalletManager…");
       const walletMgr = await createWalletManager({
-        nodeUrl: NODE_URL,
+        nodeUrl: getEffectiveNodeUrl(),
         storagePrefix: "dfpunk",
         balancePollIntervalMs: 15_000,
       });
@@ -198,13 +195,16 @@ export function TxExecutorTestPage() {
 
       // 2. IndexerConnection
       setInitStep("Creating IndexerConnection…");
-      const { connection } = await createIndexerConnection({
-        nodeUrl: NODE_URL,
+      const indexerConfig: IndexerConnectionConfig = {
+        nodeUrl: getEffectiveNodeUrl(),
         startBlock: START_BLOCK,
         debounceMs: 1000,
         pollIntervalMs: 2000,
         maxBlocksPerRequest: 100,
-      } as IndexerConnectionConfig);
+      };
+      const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
+      if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+      const { connection } = await createIndexerConnection(indexerConfig);
       if (destroyed) {
         connection.destroy();
         walletMgr.destroy();
@@ -214,7 +214,7 @@ export function TxExecutorTestPage() {
 
       // 3. AztecNode client (separate from WalletManager's private node)
       setInitStep("Connecting to Aztec node…");
-      const node = createAztecNodeClient(NODE_URL);
+      const node = createAztecNodeClient(getEffectiveNodeUrl());
       nodeRef.current = node;
 
       // 4. ConfigContract
@@ -256,11 +256,19 @@ export function TxExecutorTestPage() {
         );
       };
 
+      const chainClock = new ChainClock(node);
+      await chainClock.syncFromNode();
+
+      const configCache = new ConfigCache(
+        configContract,
+        walletMgr.getActiveAddress()!
+      );
       const executor = new TxExecutor(
         walletMgr,
         connection,
         node,
-        configContract,
+        configCache,
+        chainClock,
         beforeQueued,
         undefined,
         afterTransaction
@@ -483,7 +491,9 @@ export function TxExecutorTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{NODE_URL}</code>
+              <code style={{ fontSize: "0.85rem" }}>
+                {getEffectiveNodeUrl()}
+              </code>
             </div>
           </div>
           <div className="test-page__stat">
@@ -499,7 +509,15 @@ export function TxExecutorTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Active address</div>
             <div className="test-page__stat-value">
-              <code>{activeAddress ? truncate(activeAddress) : "—"}</code>
+              {activeAddress ? (
+                <TextPreview
+                  text={activeAddress}
+                  unFocusedWidth="120px"
+                  focusedWidth="200px"
+                />
+              ) : (
+                "—"
+              )}
             </div>
           </div>
         </div>
@@ -809,7 +827,15 @@ export function TxExecutorTestPage() {
                       </span>
                     </td>
                     <td>
-                      <code>{entry.hash ? truncate(entry.hash) : "—"}</code>
+                      {entry.hash ? (
+                        <TextPreview
+                          text={entry.hash}
+                          unFocusedWidth="120px"
+                          focusedWidth="200px"
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>{new Date(entry.queuedAt).toLocaleTimeString()}</td>
                     <td

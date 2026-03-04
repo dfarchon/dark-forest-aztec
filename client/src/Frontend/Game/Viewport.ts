@@ -83,6 +83,7 @@ class Viewport {
     // while all of the above are in the world coordinate system, the below are in the page coordinate system
     this.viewportWidth = viewportWidth; // width / height
     this.viewportHeight = viewportHeight;
+    this.scale = this.widthInWorldUnits / this.viewportWidth;
 
     this.mouseLastCoords = centerWorldCoords;
     this.canvas = canvas;
@@ -97,7 +98,6 @@ class Viewport {
     this.isPanning = false;
     autoBind(this);
 
-    // fixes issue where viewport inits weirdly - TODO figure out why
     this.setWorldWidth(this.widthInWorldUnits);
     this.onScroll(0);
   }

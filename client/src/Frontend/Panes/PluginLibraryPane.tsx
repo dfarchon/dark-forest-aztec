@@ -1,6 +1,6 @@
 import { RECOMMENDED_MODAL_WIDTH } from "@dfpunk/constants";
 import { ModalName, PluginId, Setting } from "@dfpunk/types";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ReactSortable } from "react-sortablejs";
 import styled from "styled-components";
 import { v4 as uuidv4 } from "uuid";
@@ -43,8 +43,68 @@ function HelpContent() {
   );
 }
 
+const ScrollWrapper = styled.div`
+  display: flex;
+  position: relative;
+  max-height: 300px;
+`;
+
+const PluginListContainer = styled.div`
+  flex: 1;
+  min-width: 0;
+  max-height: 300px;
+  overflow-y: auto;
+`;
+
+const ScrollTrack = styled.div`
+  width: 10px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  position: relative;
+  background: ${dfstyles.colors.backgrounddark};
+  border: 1px solid ${dfstyles.colors.borderDark};
+  border-radius: 5px;
+  cursor: pointer;
+`;
+
+const ScrollThumb = styled.div`
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: ${dfstyles.colors.subtext};
+  border-radius: 5px;
+  cursor: grab;
+  transition: background 0.15s;
+
+  &:hover {
+    background: ${dfstyles.colors.text};
+  }
+
+  &:active {
+    cursor: grabbing;
+    background: ${dfstyles.colors.text};
+  }
+`;
+
+const PluginRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  min-height: 32px;
+`;
+
+const PluginName = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
 const Actions = styled.div`
-  float: right;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
 
   .blue {
     --df-button-hover-background: ${dfstyles.colors.dfblue};
@@ -96,6 +156,85 @@ export function PluginLibraryPane({
   const [forceReloadEmbeddedPlugins, _s] = useBooleanSetting(
     gameUIManager,
     Setting.ForceReloadEmbeddedPlugins
+  );
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [thumbTop, setThumbTop] = useState(0);
+  const [thumbHeight, setThumbHeight] = useState(0);
+  const [showScrollbar, setShowScrollbar] = useState(false);
+  const isDragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartScrollTop = useRef(0);
+
+  const updateThumb = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight) {
+      setShowScrollbar(false);
+      return;
+    }
+    setShowScrollbar(true);
+    const ratio = clientHeight / scrollHeight;
+    const newThumbHeight = Math.max(ratio * clientHeight, 30);
+    const maxTop = clientHeight - newThumbHeight;
+    const scrollRatio = scrollTop / (scrollHeight - clientHeight);
+    setThumbHeight(newThumbHeight);
+    setThumbTop(scrollRatio * maxTop);
+  }, []);
+
+  useEffect(() => {
+    updateThumb();
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateThumb);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateThumb, plugins]);
+
+  const handleTrackClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const el = scrollRef.current;
+      const track = trackRef.current;
+      if (!el || !track) return;
+      if ((e.target as HTMLElement) !== track) return;
+      const rect = track.getBoundingClientRect();
+      const clickY = e.clientY - rect.top;
+      const ratio = clickY / rect.height;
+      el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
+    },
+    []
+  );
+
+  const handleThumbMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging.current = true;
+      dragStartY.current = e.clientY;
+      dragStartScrollTop.current = scrollRef.current?.scrollTop ?? 0;
+
+      const handleMouseMove = (ev: MouseEvent) => {
+        if (!isDragging.current) return;
+        const el = scrollRef.current;
+        if (!el) return;
+        const deltaY = ev.clientY - dragStartY.current;
+        const trackHeight = el.clientHeight;
+        const scrollDelta = (deltaY / trackHeight) * el.scrollHeight;
+        el.scrollTop = dragStartScrollTop.current + scrollDelta;
+      };
+
+      const handleMouseUp = () => {
+        isDragging.current = false;
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    []
   );
 
   /**
@@ -197,19 +336,20 @@ export function PluginLibraryPane({
    * The Dark Forest process list.
    */
   function renderPluginsList() {
-    if (plugins.length === 0) {
+    if (!plugins || plugins.length === 0) {
       return "you have no plugins!";
     }
 
     return (
+      // @ts-expect-error ReactSortable types omit children but component accepts them
       <ReactSortable list={plugins} setList={onPluginReorder}>
         {plugins.map((plugin) => (
-          <div key={plugin.id}>
-            <Truncate maxWidth={"150px"} style={{ verticalAlign: "unset" }}>
-              <Sub>{plugin.name}</Sub>
-            </Truncate>
-
-            <Spacer width={8} />
+          <PluginRow key={plugin.id}>
+            <PluginName>
+              <Truncate maxWidth={"100%"} style={{ verticalAlign: "unset" }}>
+                <Sub>{plugin.name}</Sub>
+              </Truncate>
+            </PluginName>
             <Actions>
               <Btn
                 className="blue"
@@ -217,14 +357,12 @@ export function PluginLibraryPane({
               >
                 edit
               </Btn>
-              <Spacer width={4} />
               <Btn
                 className="red"
                 onClick={() => deletePluginClicked(plugin.id)}
               >
                 del
               </Btn>
-              <Spacer width={4} />
               <Btn
                 className="green"
                 onClick={() => runPluginClicked(plugin.id)}
@@ -232,7 +370,7 @@ export function PluginLibraryPane({
                 run
               </Btn>
             </Actions>
-          </div>
+          </PluginRow>
         ))}
       </ReactSortable>
     );
@@ -247,7 +385,7 @@ export function PluginLibraryPane({
     pluginManager.render(pluginId, el);
   }
 
-  const pluginModals = plugins.map((plugin) => {
+  const pluginModals = (plugins ?? []).map((plugin) => {
     return (
       <PluginModal
         key={plugin.id}
@@ -313,7 +451,19 @@ export function PluginLibraryPane({
         helpContent={HelpContent}
         width={RECOMMENDED_MODAL_WIDTH}
       >
-        {renderPluginsList()}
+        <ScrollWrapper>
+          <PluginListContainer ref={scrollRef} onScroll={updateThumb}>
+            {renderPluginsList()}
+          </PluginListContainer>
+          {showScrollbar && (
+            <ScrollTrack ref={trackRef} onClick={handleTrackClick}>
+              <ScrollThumb
+                style={{ top: thumbTop, height: thumbHeight }}
+                onMouseDown={handleThumbMouseDown}
+              />
+            </ScrollTrack>
+          )}
+        </ScrollWrapper>
         <Spacer height={8} />
         <Btn onClick={addPluginClicked}>Add Plugin</Btn>
       </ModalPane>

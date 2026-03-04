@@ -39,7 +39,7 @@ const COLORS: Record<
 };
 
 export class GifRenderer extends WebGLManager {
-  public projectionMatrix: mat4;
+  declare public projectionMatrix: mat4;
   private spriteRenderer: SpriteRenderer;
   private margin: number;
   private canvasDim: number;

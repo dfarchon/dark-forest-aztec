@@ -148,6 +148,11 @@ export default function ControllableCanvas() {
 
     uiEmitter.on(UIEmitterEvent.UIChange, doResize);
 
+    // Force viewport to sync with actual canvas dimensions after initialization.
+    // The earlier useLayoutEffect emits WindowResize before Viewport exists,
+    // so we need to re-emit it now that the Viewport is listening.
+    doResize();
+
     return () => {
       Viewport.destroyInstance();
       Renderer.destroy();

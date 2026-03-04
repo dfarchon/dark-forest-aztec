@@ -6,8 +6,8 @@
  * arrival ETAs, etc.) must use chain time, not Date.now().
  *
  * Usage:
- *   const clock = new ChainClock();
- *   await clock.syncFromNode(node);   // or clock.sync(chainTimestampSec)
+ *   const clock = new ChainClock(node);
+ *   await clock.syncFromNode();       // initial sync
  *   const nowMs = clock.now();        // chain-adjusted milliseconds
  *   const nowSec = clock.nowSec();    // chain-adjusted seconds
  */
@@ -15,6 +15,8 @@
 import type { AztecNode } from "@aztec/aztec.js/node";
 
 export class ChainClock {
+  private readonly node: AztecNode;
+
   /** Chain time minus client time, in milliseconds. */
   private offsetMs = 0;
 
@@ -23,6 +25,10 @@ export class ChainClock {
 
   private static MIN_SYNC_INTERVAL_MS = 3000;
 
+  constructor(node: AztecNode) {
+    this.node = node;
+  }
+
   /** Sync the clock from a known chain timestamp (seconds). */
   sync(chainTimestampSec: number): void {
     this.offsetMs = chainTimestampSec * 1000 - Date.now();
@@ -30,26 +36,19 @@ export class ChainClock {
   }
 
   /**
-   * Re-sync from an async timestamp source, throttled to avoid excessive
-   * RPC calls when blocks arrive in quick succession (local devnet).
+   * Re-sync by fetching the latest L2 block timestamp, throttled to avoid
+   * excessive RPC calls when blocks arrive in quick succession (local devnet).
    */
-  async resync(getTimestamp: () => Promise<number>): Promise<void> {
+  async resync(): Promise<void> {
     if (Date.now() - this.lastSyncMs < ChainClock.MIN_SYNC_INTERVAL_MS) return;
-    try {
-      const ts = await getTimestamp();
-      if (ts > 0) {
-        this.sync(ts);
-      }
-    } catch {
-      // keep current offset
-    }
+    await this.syncFromNode();
   }
 
   /** Fetch the latest L2 block timestamp and sync. */
-  async syncFromNode(node: AztecNode): Promise<void> {
+  async syncFromNode(): Promise<void> {
     try {
       const block = await (
-        node as unknown as {
+        this.node as unknown as {
           getBlock: (n: number | "latest") => Promise<
             | {
                 header?: {

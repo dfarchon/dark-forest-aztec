@@ -27,7 +27,13 @@ export type ContractMethodName =
   | "createLobby"
   | "invadePlanet"
   | "capturePlanet"
-  | "claimReward";
+  | "claimReward"
+  // Admin-only methods
+  | "setWorldConfig"
+  | "pauseGame"
+  | "unpauseGame"
+  | "createPlanet"
+  | "safeSetOwner";
 
 /**
  * Client-side transaction status (UI/executor lifecycle). Aztec counterpart of EthTxStatus.
@@ -58,6 +64,7 @@ export type UnconfirmedInit = TxIntent & {
   methodName: "initializePlayer";
   locationId: LocationId;
   location: WorldLocation;
+  uiTimestamp?: number;
 };
 
 export type UnconfirmedMove = TxIntent & {
@@ -68,6 +75,7 @@ export type UnconfirmedMove = TxIntent & {
   silver: number;
   abandoning: boolean;
   artifact?: ArtifactId;
+  uiTimestamp?: number;
 };
 
 export type UnconfirmedFindArtifact = TxIntent & {
@@ -169,4 +177,31 @@ export type UnconfirmedInvadePlanet = TxIntent & {
 export type UnconfirmedCapturePlanet = TxIntent & {
   methodName: "capturePlanet";
   locationId: LocationId;
+};
+
+export type UnconfirmedSetWorldConfig = TxIntent & {
+  methodName: "setWorldConfig";
+};
+
+export type UnconfirmedPauseGame = TxIntent & {
+  methodName: "pauseGame";
+};
+
+export type UnconfirmedUnpauseGame = TxIntent & {
+  methodName: "unpauseGame";
+};
+
+export type UnconfirmedCreatePlanet = TxIntent & {
+  methodName: "createPlanet";
+  locationId: LocationId;
+  coords: { x: number; y: number };
+  level: number;
+  planetType: number;
+};
+
+export type UnconfirmedSafeSetOwner = TxIntent & {
+  methodName: "safeSetOwner";
+  locationId: LocationId;
+  location: WorldLocation;
+  newOwner: EthAddress;
 };

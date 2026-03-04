@@ -24,13 +24,13 @@ import type {
   TxIntent,
 } from "@dfpunk/types";
 
+import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
-import { StateResolver } from "./StateResolver";
+import { StateResolver, type StateResolverOptions } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
-import { TimestampProvider } from "./TimestampProvider";
 import type {
   AfterTransaction,
   BeforeQueued,
@@ -104,11 +104,13 @@ export class TxExecutor {
     walletManager: WalletManager,
     indexer: IndexerConnection,
     node: AztecNode,
-    configContract: import("@aztec/aztec.js/contracts").ContractBase,
+    configCache: ConfigCache,
+    chainClock: ChainClock,
     beforeQueued?: BeforeQueued,
     beforeTransaction?: BeforeTransaction,
     afterTransaction?: AfterTransaction,
-    queueConfiguration?: ConcurrentQueueConfiguration
+    queueConfiguration?: ConcurrentQueueConfiguration,
+    stateResolverOptions?: StateResolverOptions
   ) {
     this.node = node;
     this.walletManager = walletManager;
@@ -123,17 +125,13 @@ export class TxExecutor {
     const wallet = walletManager.getWallet();
     this.contractResolver = new ContractResolver(wallet);
 
-    const configCache = new ConfigCache(
-      configContract,
-      walletManager.getActiveAddress()!
-    );
-    const timestampProvider = new TimestampProvider(node);
-
     this.stateResolver = new StateResolver(
       indexer,
       configCache,
-      timestampProvider,
-      () => walletManager.getActiveAddress()!.toString()
+      chainClock,
+      () => walletManager.getActiveAddress()!.toString(),
+      wallet,
+      stateResolverOptions
     );
   }
 
@@ -313,15 +311,54 @@ export class TxExecutor {
 
         // 5. Submit — send({ wait: NO_WAIT }) returns TxHash immediately
         //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
+        const methodFn = (
+          contract.methods as Record<
+            string,
+            (...a: unknown[]) => {
+              send: (o: unknown) => Promise<TxHash>;
+              simulate: (o: unknown) => Promise<unknown>;
+            }
+          >
+        )[method];
+        const invocation = methodFn(...contractArgs);
+
+        if (
+          tx.intent.methodName === "revealLocation" ||
+          tx.intent.methodName === "move"
+        ) {
+          try {
+            console.debug(
+              `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
+            );
+            console.debug(
+              `[TxExecutor] contractArgs (${contractArgs.length}):`,
+              contractArgs
+            );
+            const simResult = await invocation.simulate(sendOpts);
+            console.debug(
+              `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
+              simResult
+            );
+
+            console.log(simResult);
+          } catch (simErr) {
+            console.error(
+              `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+              simErr
+            );
+            if (simErr instanceof Error) {
+              console.error(`[TxExecutor] error message:`, simErr.message);
+              console.error(`[TxExecutor] error stack:`, simErr.stack);
+              if ("cause" in simErr) {
+                console.error(`[TxExecutor] error cause:`, simErr.cause);
+              }
+            }
+            throw simErr;
+          }
+        }
+
         const submitted: TxHash = await timeout(
-          (
-            contract.methods as Record<
-              string,
-              (...a: unknown[]) => { send: (o: unknown) => Promise<TxHash> }
-            >
-          )
-            [method](...contractArgs)
-            .send(sendOpts),
+          invocation.send(sendOpts),
           TX_SUBMIT_TIMEOUT,
           `tx request ${tx.id} failed to submit: timed out`
         );
@@ -437,12 +474,6 @@ export class TxExecutor {
 
   getQueueSize(): number {
     return this.queue.size();
-  }
-
-  /** Get the latest L2 block timestamp (seconds). */
-  async getChainTimestamp(): Promise<number> {
-    const ts = await new TimestampProvider(this.node).getTimestamp();
-    return Number(ts);
   }
 
   destroy(): void {

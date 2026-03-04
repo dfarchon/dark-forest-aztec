@@ -2,8 +2,9 @@
  * KeyStore: synchronous localStorage persistence for AccountRecords.
  *
  * Data layout in localStorage:
- *   {prefix}:accounts  → JSON array of AccountRecord
- *   {prefix}:active    → address hex string of the active account
+ *   {prefix}:accounts             → JSON array of AccountRecord
+ *   {prefix}:active               → address hex string of the active account
+ *   {prefix}:networkFingerprint   → hash string identifying the current network instance
  */
 
 import type { AccountRecord } from "./types";
@@ -29,11 +30,13 @@ function isValidRecord(r: unknown): r is AccountRecord {
 export class KeyStore {
   private readonly accountsKey: string;
   private readonly activeKey: string;
+  private readonly fingerprintKey: string;
 
   constructor(prefix?: string) {
     const p = prefix ?? DEFAULT_PREFIX;
     this.accountsKey = `${p}:accounts`;
     this.activeKey = `${p}:active`;
+    this.fingerprintKey = `${p}:networkFingerprint`;
   }
 
   // ---------------------------------------------------------------------------
@@ -103,6 +106,26 @@ export class KeyStore {
   }
 
   // ---------------------------------------------------------------------------
+  // Network fingerprint
+  // ---------------------------------------------------------------------------
+
+  getNetworkFingerprint(): string | null {
+    try {
+      return localStorage.getItem(this.fingerprintKey);
+    } catch {
+      return null;
+    }
+  }
+
+  setNetworkFingerprint(fingerprint: string): void {
+    try {
+      localStorage.setItem(this.fingerprintKey, fingerprint);
+    } catch {
+      /* storage full or unavailable */
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Bulk
   // ---------------------------------------------------------------------------
 
@@ -110,6 +133,7 @@ export class KeyStore {
     try {
       localStorage.removeItem(this.accountsKey);
       localStorage.removeItem(this.activeKey);
+      localStorage.removeItem(this.fingerprintKey);
     } catch {
       /* noop */
     }

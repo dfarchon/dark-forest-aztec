@@ -7,7 +7,7 @@ import { Hook } from "../../_types/global/GlobalTypes";
 import { Wrapper } from "../../Backend/Utils/Wrapper";
 import { Btn } from "../Components/Btn";
 import { CenterBackgroundSubtext } from "../Components/CoreUI";
-import { DarkForestNumberInput, NumberInput } from "../Components/Input";
+import { NumberInput } from "../Components/Input";
 import { LoadingSpinner } from "../Components/LoadingSpinner";
 import { Row } from "../Components/Row";
 import { Red } from "../Components/Text";
@@ -53,9 +53,10 @@ function SilverInput({
     <StyledSilverInput>
       <InputWrapper>
         <NumberInput
-          onChange={(e: Event & React.ChangeEvent<DarkForestNumberInput>) =>
-            setAmt(e.target.value)
-          }
+          onChange={(e: Event) => {
+            const val = (e.target as HTMLInputElement).value;
+            setAmt(val === "" ? undefined : parseFloat(val));
+          }}
           value={amt}
         />
       </InputWrapper>

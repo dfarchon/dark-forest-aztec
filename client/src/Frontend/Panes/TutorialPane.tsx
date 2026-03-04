@@ -1,8 +1,8 @@
+import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
 import { Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
-import { Hook } from "../../_types/global/GlobalTypes";
 import TutorialManager, {
   TutorialManagerEvent,
   TutorialState,
@@ -96,8 +96,9 @@ function TutorialPaneContent({
   } else if (tutorialState === TutorialState.Deselect) {
     return (
       <div>
-        Congrats, you've submitted a move to xDAI! Moves that are in the mempool
-        are shown as dotted lines. Accepted moves are shown as solid lines.
+        Congrats, you've submitted a move to {CHAIN_DISPLAY_NAME}! Moves that
+        are in the mempool are shown as dotted lines. Accepted moves are shown
+        as solid lines.
         <br />
         <br />
         <White>
@@ -276,7 +277,7 @@ const StyledTutorialPane = styled.div<{ visible: boolean }>`
 export function TutorialPane({
   tutorialHook,
 }: {
-  tutorialHook: Hook<boolean>;
+  tutorialHook: [boolean, (newValue: boolean) => void];
 }) {
   const uiManager = useUIManager();
   const tutorialManager = TutorialManager.getInstance(uiManager);

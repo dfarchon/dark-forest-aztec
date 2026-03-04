@@ -86,7 +86,7 @@ function commentForKey(key: string): string {
 
 function parseEnv(content: string): Array<{ key: string; value: string }> {
     const lines = content.split(/\r?\n/);
-    const entries: Array<{ key: string; value: string }> = [];
+    const map = new Map<string, string>();
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) continue;
@@ -94,16 +94,16 @@ function parseEnv(content: string): Array<{ key: string; value: string }> {
         if (eq <= 0) continue;
         const key = trimmed.slice(0, eq).trim();
         const value = trimmed.slice(eq + 1).trim();
-        if (key) entries.push({ key, value });
+        if (key) map.set(key, value);
     }
-    return entries;
+    return Array.from(map, ([key, value]) => ({ key, value }));
 }
 
 function formatValue(value: string): string {
     const lower = value.toLowerCase();
     if (lower === 'true' || lower === 'false') return lower;
     if (/^\d+$/.test(value)) return value;
-    return `'${value.replace(/'/g, "\\'")}'`;
+    return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function generateIndexTs(

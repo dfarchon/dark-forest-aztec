@@ -40,7 +40,8 @@ pub contract WorldStorage {
     fn constructor(admin: AztecAddress) {
         self.storage.admin.write(admin);
         self.storage.authorized_count.write(0);
-        let world = World::zero();
+        let mut world = World::zero();
+        world.misc_nonce = 1; // Activate: distinguish from World::zero()
         let root = poseidon2_hash(world.serialize());
         self.storage.state_roots.at(0).write(root);
         self.emit(WorldUpdate { id: 0, block_number: self.context.block_number(), state: world });
@@ -109,6 +110,24 @@ pub contract WorldStorage {
 
         self.storage.authorized_list.at(last_index).write(AztecAddress::zero());
         self.storage.authorized_count.write(last_index);
+    }
+
+    /// Batch authorize up to 3 contracts in a single transaction.
+    #[external("public")]
+    fn add_authorized_contracts_batch(addresses: [AztecAddress; 3], count: u8) {
+        self.internal.assert_admin();
+        let mut current_count = self.storage.authorized_count.read();
+        for i in 0..3 {
+            if (i as u8) < count {
+                let addr = addresses[i];
+                assert(!self.storage.authorized_map.at(addr).read(), "Already authorized");
+                self.storage.authorized_map.at(addr).write(true);
+                self.storage.authorized_index.at(addr).write(current_count);
+                self.storage.authorized_list.at(current_count).write(addr);
+                current_count += 1;
+            }
+        }
+        self.storage.authorized_count.write(current_count);
     }
 
     // ================== PUBLIC VIEWS ==================

@@ -1,13 +1,14 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { biomeName, isLocatable } from "@dfpunk/gamelogic";
 import {
   Artifact,
   Biome,
   Chunk,
   ContractMethodName,
-  EthTxStatus,
   LocatablePlanet,
   Planet,
   TxIntent,
+  TxStatus,
 } from "@dfpunk/types";
 import EventEmitter from "events";
 import { startCase } from "lodash";
@@ -112,7 +113,7 @@ export type NotificationInfo = {
   id: string;
   color?: string;
   txData?: TxIntent;
-  txStatus?: EthTxStatus;
+  txStatus?: TxStatus;
 };
 
 export const enum NotificationManagerEvent {
@@ -422,7 +423,7 @@ class NotificationManager extends EventEmitter {
     this.notify(
       NotificationType.BalanceEmpty,
       <span>
-        Your xDAI account is out of balance!
+        Your {L2_TOKEN_SYMBOL} account is out of balance!
         <br />
         Click <FAQ04Link>here</FAQ04Link> to learn how to get more.
       </span>

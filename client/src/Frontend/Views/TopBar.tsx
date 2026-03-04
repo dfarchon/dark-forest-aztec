@@ -1,11 +1,15 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { Monomitter } from "@dfpunk/events";
 import { EthAddress, ModalName, TooltipName } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
 import { Hook } from "../../_types/global/GlobalTypes";
-import { CaptureZonesGeneratedEvent } from "../../Backend/GameLogic/CaptureZoneGenerator";
+// import { CaptureZonesGeneratedEvent } from "../../Backend/GameLogic/CaptureZoneGenerator";
 import { weiToEth } from "../../Backend/Utils/Utils";
+
+// Stub type for when CaptureZoneGenerator is re-enabled
+type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
 import { AlignCenterHorizontally } from "../Components/CoreUI";
 import { AccountLabel } from "../Components/Labels/Labels";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
@@ -191,17 +195,19 @@ export function TopBar({
     uiManager.getMyBalanceBn()
   );
 
-  let captureZones = null;
-  if (uiManager.captureZonesEnabled) {
-    const captureZoneGenerator = uiManager.getCaptureZoneGenerator();
-    if (captureZoneGenerator) {
-      const emitter = captureZoneGenerator.generated$;
-      const nextChangeBlock = captureZoneGenerator.getNextChangeBlock();
-      captureZones = (
-        <CaptureZones emitter={emitter} nextChangeBlock={nextChangeBlock} />
-      );
-    }
-  }
+  // TODO: CaptureZoneGenerator module and getCaptureZoneGenerator not yet implemented
+  // let captureZones = null;
+  // if (uiManager.captureZonesEnabled) {
+  //   const captureZoneGenerator = uiManager.getCaptureZoneGenerator();
+  //   if (captureZoneGenerator) {
+  //     const emitter = captureZoneGenerator.generated$;
+  //     const nextChangeBlock = captureZoneGenerator.getNextChangeBlock();
+  //     captureZones = (
+  //       <CaptureZones emitter={emitter} nextChangeBlock={nextChangeBlock} />
+  //     );
+  //   }
+  // }
+  const captureZones = null;
 
   return (
     <TopBarContainer>
@@ -218,7 +224,9 @@ export function TopBar({
           name={TooltipName.Empty}
           extraContent={<Text>Your burner wallet balance.</Text>}
         >
-          <Sub>({weiToEth(balance).toFixed(2)} xDAI)</Sub>
+          <Sub>
+            ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
+          </Sub>
         </TooltipTrigger>
         {process.env.DF_WEBSERVER_URL && (
           <>

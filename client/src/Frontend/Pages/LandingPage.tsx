@@ -1,10 +1,11 @@
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { address } from "@dfpunk/serde";
-import React from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
 import { Btn } from "../Components/Btn";
+import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { EmSpacer, Link, Spacer, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
 import { HideSmall, Text, White } from "../Components/Text";
@@ -47,13 +48,37 @@ const ButtonWrapper = styled.div`
   --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
 `;
 
+const MODAL_WIDTH_ESTIMATE = 320;
+const MODAL_HEIGHT_ESTIMATE = 420;
+const MODAL_GAP_ABOVE_BUTTON = 12;
+
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
+  const [modalAnchor, setModalAnchor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const networkSettingsRef = useRef<HTMLDivElement>(null);
+
+  const toggleConnectionSettings = () => {
+    if (!connectionSettingsOpen) {
+      const el = networkSettingsRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setModalAnchor({
+          x: rect.left + rect.width / 2 - MODAL_WIDTH_ESTIMATE / 2,
+          y: rect.top - MODAL_HEIGHT_ESTIMATE - MODAL_GAP_ABOVE_BUTTON,
+        });
+      }
+    }
+    setConnectionSettingsOpen((prev) => !prev);
+  };
 
   return (
     <>
       <PrettyOverlayGradient />
-      <Hiring />
+      {/* <Hiring /> */}
 
       <Page>
         <OnlyMobile>
@@ -114,12 +139,22 @@ export default function LandingPage() {
               >
                 Enter Round 5
               </Btn>
-              <Btn size="large" onClick={() => navigate(`/events`)}>
+              <div ref={networkSettingsRef} style={{ display: "inline-block" }}>
+                <Btn size="large" onClick={toggleConnectionSettings}>
+                  Network settings
+                </Btn>
+              </div>
+              {/* <Btn size="large" onClick={() => navigate(`/events`)}>
                 Events
-              </Btn>
+              </Btn> */}
             </ButtonWrapper>
+            <ConnectionSettingsModal
+              open={connectionSettingsOpen}
+              onClose={() => setConnectionSettingsOpen(false)}
+              anchorPosition={modalAnchor}
+            />
           </Header>
-          <EmSpacer height={3} />
+          {/* <EmSpacer height={3} />
           Ways to get Involved
           <EmSpacer height={1} />
           <Involved>
@@ -156,9 +191,9 @@ export default function LandingPage() {
                 backgroundImage: "url('/public/get_involved/lobby.png')",
               }}
             ></InvolvedItem>
-          </Involved>
-          <EmSpacer height={3} />
-          <HallOfFame style={{ color: dfstyles.colors.text }}>
+          </Involved> */}
+          {/* <EmSpacer height={3} /> */}
+          {/* <HallOfFame style={{ color: dfstyles.colors.text }}>
             <HallOfFameTitle>Space Masters</HallOfFameTitle>
             <Spacer height={8} />
             <table>
@@ -297,15 +332,13 @@ export default function LandingPage() {
                 </TRow>
               </tbody>
             </table>
-          </HallOfFame>
-          <Spacer height={32} />
+          </HallOfFame> */}
+          {/* <Spacer height={32} /> */}
         </MainContentContainer>
 
-        <Spacer height={128} />
-
-        <LeadboardDisplay />
-
-        <Spacer height={256} />
+        {/* <Spacer height={128} />
+        <LeadboardDisplay /> 
+        <Spacer height={256} /> */}
       </Page>
     </>
   );

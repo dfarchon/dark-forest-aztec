@@ -166,7 +166,7 @@ const radius = connection.getWorldRadius();
 const paused = connection.getIsPaused();
 const players = connection.getPlayers(); // Map<string, PlayerState>
 const planet = connection.getPlanet(locationId); // PlanetState | undefined
-const arrivals = connection.getArrivalsForPlanets([planetId1, planetId2]);
+const arrivals = connection.getArrivalsForPlanet(planetId); // pending arrivals via planet_events
 const artifact = connection.getArtifact(artifactId);
 const block = connection.getCurrentBlockNumber();
 ```

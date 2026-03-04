@@ -12,17 +12,13 @@ import "./TestPageStyles.css";
 
 import * as React from "react";
 
+import { getEffectiveNodeUrl } from "../../../config/connection";
 import {
   type AccountRecord,
   createWalletManager,
   type WalletManagerConfig,
 } from "../../../Session/WalletManager";
-
-const NODE_URL =
-  typeof import.meta.env.VITE_AZTEC_NODE_URL === "string" &&
-  import.meta.env.VITE_AZTEC_NODE_URL.length > 0
-    ? import.meta.env.VITE_AZTEC_NODE_URL
-    : "http://localhost:8080";
+import { TextPreview } from "../../Components/TextPreview";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,7 +94,7 @@ export function WalletManagerTestPage() {
     let destroyed = false;
 
     const config: WalletManagerConfig = {
-      nodeUrl: NODE_URL,
+      nodeUrl: getEffectiveNodeUrl(),
       storagePrefix: "dfpunk",
       balancePollIntervalMs: 15_000,
     };
@@ -267,13 +263,23 @@ export function WalletManagerTestPage() {
           <div className="test-page__stat">
             <div className="test-page__stat-label">Node URL</div>
             <div className="test-page__stat-value">
-              <code style={{ fontSize: "0.85rem" }}>{NODE_URL}</code>
+              <code style={{ fontSize: "0.85rem" }}>
+                {getEffectiveNodeUrl()}
+              </code>
             </div>
           </div>
           <div className="test-page__stat">
             <div className="test-page__stat-label">Active address</div>
             <div className="test-page__stat-value">
-              <code>{activeAddress ? truncate(activeAddress) : "—"}</code>
+              {activeAddress ? (
+                <TextPreview
+                  text={activeAddress}
+                  unFocusedWidth="120px"
+                  focusedWidth="200px"
+                />
+              ) : (
+                "—"
+              )}
             </div>
           </div>
           <div className="test-page__stat">
@@ -394,7 +400,11 @@ export function WalletManagerTestPage() {
                 {accounts.map((acc) => (
                   <tr key={acc.address}>
                     <td>
-                      <code>{truncate(acc.address)}</code>
+                      <TextPreview
+                        text={acc.address}
+                        unFocusedWidth="120px"
+                        focusedWidth="200px"
+                      />
                       {acc.address === activeAddress && (
                         <span
                           className="test-page__badge test-page__badge--active"

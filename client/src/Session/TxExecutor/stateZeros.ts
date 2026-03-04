@@ -20,6 +20,11 @@ export function worldZero(): Record<string, unknown> {
   };
 }
 
+/** Initial world state as stored by WorldStorage constructor (misc_nonce = 1). */
+export function worldInitial(): Record<string, unknown> {
+  return { ...worldZero(), misc_nonce: 1n };
+}
+
 export function playerZero(): Record<string, unknown> {
   return {
     init_timestamp: 0,
@@ -116,6 +121,16 @@ export function artifactZero(): Record<string, unknown> {
     wormhole_to: 0n,
     controller: AZTEC_ZERO,
     last_updated: 0,
+  };
+}
+
+export function planetRevealedCoordsZero(): Record<string, unknown> {
+  return {
+    location_id: 0n,
+    x: 0n,
+    y: 0n,
+    revealer:
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
   };
 }
 

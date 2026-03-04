@@ -1,3 +1,4 @@
+import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
 import { ModalName } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -67,7 +68,8 @@ function OnboardMoney({ advance }: { advance: () => void }) {
         >
           burner wallet
         </a>{" "}
-        for you and dripped 15c to it, courtesy of Dark Forest Team and xDAI.
+        for you and dripped 15c to it, courtesy of Dark Forest Team and{" "}
+        {CHAIN_DISPLAY_NAME}.
       </p>
       <p className="indent">
         Your burner wallet address is: <br />
@@ -140,35 +142,55 @@ function OnboardStorage({ advance }: { advance: () => void }) {
 }
 function OnboardKeys({ advance }: { advance: () => void }) {
   const uiManager = useUIManager();
-  const [sKey, setSKey] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (!uiManager) return;
-    setSKey(uiManager.getPrivateKey());
-  }, [uiManager]);
+  const [credentials, setCredentials] = useState<{
+    secretKey: string;
+    salt: string;
+    signingKey: string;
+  }>();
 
   const [home, setHome] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!uiManager) return;
+    setCredentials(uiManager.getAccountCredentials());
     const coords = uiManager.getHomeCoords();
     setHome(coords ? `(${coords.x}, ${coords.y})` : "");
   }, [uiManager]);
 
   return (
     <StyledOnboardingContent>
-      <p>
-        Your private key is: <br />
+      <div>
+        Your secret key is:
         <TextPreview
-          text={sKey}
+          text={credentials?.secretKey}
           focusedWidth={"150px"}
           unFocusedWidth={"150px"}
         />
-      </p>
+      </div>
+      <div>
+        Your salt is:
+        <TextPreview
+          text={credentials?.salt}
+          focusedWidth={"150px"}
+          unFocusedWidth={"150px"}
+        />
+      </div>
+      <div>
+        Your signing key is:
+        <TextPreview
+          text={credentials?.signingKey}
+          focusedWidth={"150px"}
+          unFocusedWidth={"150px"}
+        />
+      </div>
       <p>
         Your home coordinates are: <br />
         <White>{home}</White>
       </p>
 
-      <p>When you have backed up your key and coordinates, please proceed.</p>
+      <p>
+        When you have backed up your credentials and coordinates, please
+        proceed.
+      </p>
 
       <div>
         <span></span>

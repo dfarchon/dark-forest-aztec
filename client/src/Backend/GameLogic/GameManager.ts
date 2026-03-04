@@ -8,34 +8,40 @@ import {
 } from "@dfpunk/constants";
 import { Monomitter, monomitter, Subscription } from "@dfpunk/events";
 import {
-  DECAY_SCALE_OVER_RANGE,
+  getDMaxFraction,
   getRange,
   isActivated,
   isLocatable,
   isSpaceShip,
+  L_OVER_RANGE,
   timeUntilNextBroadcastAvailable,
 } from "@dfpunk/gamelogic";
-import { fakeHash, perlin } from "@dfpunk/hashing";
+import { fakeHash, initPoseidon2, perlin } from "@dfpunk/hashing";
 import { getPlanetName } from "@dfpunk/procedural";
 import {
   artifactIdToDecStr,
   isUnconfirmedActivateArtifactTx,
   isUnconfirmedBuyHatTx,
   isUnconfirmedCapturePlanetTx,
+  isUnconfirmedCreatePlanetTx,
   isUnconfirmedDeactivateArtifactTx,
   isUnconfirmedDepositArtifactTx,
   isUnconfirmedFindArtifactTx,
   isUnconfirmedInitTx,
   isUnconfirmedInvadePlanetTx,
   isUnconfirmedMoveTx,
+  isUnconfirmedPauseGameTx,
   isUnconfirmedProspectPlanetTx,
   isUnconfirmedRevealTx,
+  isUnconfirmedSafeSetOwnerTx,
+  isUnconfirmedUnpauseGameTx,
   isUnconfirmedUpgradeTx,
   isUnconfirmedWithdrawArtifactTx,
   isUnconfirmedWithdrawSilverTx,
   locationIdFromBigInt,
   locationIdToDecStr,
 } from "@dfpunk/serde";
+import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
   ArtifactId,
@@ -69,15 +75,20 @@ import {
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedClaimReward,
+  UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
   UnconfirmedFindArtifact,
   UnconfirmedInit,
   UnconfirmedInvadePlanet,
   UnconfirmedMove,
+  UnconfirmedPauseGame,
   UnconfirmedPlanetTransfer,
   UnconfirmedProspectPlanet,
   UnconfirmedReveal,
+  UnconfirmedSafeSetOwner,
+  UnconfirmedSetWorldConfig,
+  UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
   UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
@@ -152,7 +163,6 @@ function toFr(n: number): Fr {
   const v = BigInt(n);
   return new Fr(v < 0n ? v + Fr.MODULUS : v);
 }
-
 class GameManager extends EventEmitter {
   /**
    * This variable contains the internal state of objects that live in the game world.
@@ -212,7 +222,7 @@ class GameManager extends EventEmitter {
   /**
    * In debug builds of the game, we can connect to a set of contracts deployed to a local
    * blockchain, which are tweaked to not verify planet hashes, meaning we can use a faster hash
-   * function with similar properties to mimc. This allows us to mine the map faster in debug mode.
+   * function with similar properties to Poseidon2. This allows us to mine the map faster in debug mode.
    *
    * @todo move this into a separate `GameConfiguration` class.
    */
@@ -376,8 +386,8 @@ class GameManager extends EventEmitter {
     players: Map<string, Player>,
     touchedPlanets: Map<LocationId, Planet>,
     allTouchedPlanetIds: Set<LocationId>,
-    revealedCoords: Map<LocationId, RevealedCoords>,
-    claimedCoords: Map<LocationId, ClaimedCoords>,
+    revealedLocations: Map<LocationId, RevealedLocation>,
+    claimedLocations: Map<LocationId, ClaimedLocation>,
     worldRadius: number,
     unprocessedArrivals: Map<VoyageId, QueuedArrival>,
     unprocessedPlanetArrivalIds: Map<LocationId, VoyageId[]>,
@@ -436,43 +446,6 @@ class GameManager extends EventEmitter {
     this.contractConstants = contractConstants;
     this.homeLocation = homeLocation;
 
-    const revealedLocations = new Map<LocationId, RevealedLocation>();
-    for (const [locationId, coords] of revealedCoords) {
-      const planet = touchedPlanets.get(locationId);
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-        revealedLocations.set(locationId, {
-          ...location,
-          revealer: coords.revealer,
-        });
-      }
-    }
-
-    const claimedLocations = new Map<LocationId, ClaimedLocation>();
-
-    for (const [locationId, coords] of claimedCoords) {
-      const planet = touchedPlanets.get(locationId);
-
-      if (planet) {
-        const location: WorldLocation = {
-          hash: locationId,
-          coords,
-          perlin: planet.perlin,
-          biomebase: this.biomebasePerlin(coords, true),
-        };
-
-        const revealedLocation = { ...location, revealer: coords.revealer };
-
-        revealedLocations.set(locationId, revealedLocation);
-        claimedLocations.set(locationId, revealedLocation);
-      }
-    }
-
     this.entityStore = new GameObjects(
       account,
       touchedPlanets,
@@ -514,11 +487,9 @@ class GameManager extends EventEmitter {
     }, 5000);
 
     this.contractsAPI.indexerConnection.blockNumber$.subscribe(() => {
-      this.chainClock
-        .resync(() => this.contractsAPI.getChainTimestamp())
-        .then(() => {
-          this.entityStore.flushMaturedArrivals();
-        });
+      this.chainClock.resync().then(() => {
+        this.entityStore.flushMaturedArrivals();
+      });
     });
 
     this.hashRate = 0;
@@ -606,10 +577,12 @@ class GameManager extends EventEmitter {
     contractsAPI,
     terminal,
     contractAddress,
+    chainClock,
   }: {
     contractsAPI: ContractsAPI;
     terminal: React.MutableRefObject<TerminalHandle | undefined>;
     contractAddress: EthAddress;
+    chainClock: ChainClock;
   }): Promise<GameManager> {
     if (!terminal.current) {
       throw new Error("you must pass in a handle to a terminal");
@@ -699,18 +672,53 @@ class GameManager extends EventEmitter {
       planetRarity: initialState.contractConstants.PLANET_RARITY,
     };
 
+    await initPoseidon2();
+
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
 
-    // Sync chain clock so game-time calculations use L2 block time
-    const chainClock = new ChainClock();
-    try {
-      const chainTs = await contractsAPI.getChainTimestamp();
-      chainClock.sync(chainTs);
-      terminal.current?.println(
-        `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
-      );
-    } catch {
-      terminal.current?.println("Chain clock sync failed, using system clock");
+    const perlinOpts = {
+      scale: initialState.contractConstants.PERLIN_LENGTH_SCALE,
+      mirrorX: initialState.contractConstants.PERLIN_MIRROR_X,
+      mirrorY: initialState.contractConstants.PERLIN_MIRROR_Y,
+      floor: true as const,
+    };
+    const revealedLocations = new Map<LocationId, RevealedLocation>();
+    for (const [locationId, coords] of initialState.revealedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        revealedLocations.set(locationId, {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        });
+      }
+    }
+    const claimedLocations = new Map<LocationId, ClaimedLocation>();
+    const claimedCoordsMap = initialState.claimedCoordsMap
+      ? initialState.claimedCoordsMap
+      : new Map<LocationId, ClaimedCoords>();
+    for (const [locationId, coords] of claimedCoordsMap) {
+      const planet = initialState.touchedAndLocatedPlanets.get(locationId);
+      if (planet) {
+        const biomebase = perlin(coords, {
+          ...perlinOpts,
+          key: initialState.contractConstants.BIOMEBASE_KEY,
+        });
+        const location: ClaimedLocation = {
+          hash: locationId,
+          coords,
+          perlin: planet.perlin,
+          biomebase,
+          revealer: coords.revealer,
+        };
+        claimedLocations.set(locationId, location);
+      }
     }
 
     const gameManager = new GameManager(
@@ -719,10 +727,8 @@ class GameManager extends EventEmitter {
       initialState.players,
       initialState.touchedAndLocatedPlanets,
       new Set(Array.from(initialState.allTouchedPlanetIds)),
-      initialState.revealedCoordsMap,
-      initialState.claimedCoordsMap
-        ? initialState.claimedCoordsMap
-        : new Map<LocationId, ClaimedCoords>(),
+      revealedLocations,
+      claimedLocations,
       initialState.worldRadius,
       initialState.arrivals,
       initialState.planetVoyageIdMap,
@@ -880,6 +886,16 @@ class GameManager extends EventEmitter {
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
           ]);
+        } else if (isUnconfirmedPauseGameTx(tx)) {
+          gameManager.paused = true;
+          gameManager.paused$.publish(true);
+        } else if (isUnconfirmedUnpauseGameTx(tx)) {
+          gameManager.paused = false;
+          gameManager.paused$.publish(false);
+        } else if (isUnconfirmedCreatePlanetTx(tx)) {
+          gameManager.hardRefreshPlanet(tx.intent.locationId);
+        } else if (isUnconfirmedSafeSetOwnerTx(tx)) {
+          gameManager.hardRefreshPlanet(tx.intent.locationId);
         }
 
         gameManager.entityStore.clearUnconfirmedTxIntent(tx);
@@ -954,8 +970,7 @@ class GameManager extends EventEmitter {
       return;
     }
 
-    const allArrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
-    const arrivals = allArrivals.filter((a) => a.toPlanet === planetId);
+    const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
     const artifactsOnPlanets =
       await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
     const artifactsOnPlanet = artifactsOnPlanets[0];
@@ -1500,6 +1515,191 @@ class GameManager extends EventEmitter {
     return this.entityStore.getPlanetWithId(planetId, false);
   }
 
+  async debugPlanet(planetId: LocationId): Promise<void> {
+    const stalePlanet = this.entityStore.getPlanetWithId(planetId, false);
+    if (!stalePlanet) {
+      console.warn(`[debugPlanet] Planet not found: ${planetId}`);
+      return;
+    }
+
+    const decId = locationIdToDecStr(planetId);
+    const allArrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+    const nowSec = Math.floor(this.chainClock.nowSec());
+
+    const chainRaw = this.contractsAPI.indexerConnection.getPlanet(decId);
+    const precision = CONTRACT_PRECISION;
+    const chainCreatedAt = chainRaw ? Number(chainRaw.created_at) : 0;
+    const chainLastUpdated = chainRaw ? Number(chainRaw.last_updated) : 0;
+    const chainEnergy = chainRaw ? Number(chainRaw.population) / precision : 0;
+    const isHome = chainRaw?.is_home_planet ?? stalePlanet.isHomePlanet;
+
+    const planetEvents =
+      this.contractsAPI.indexerConnection.getPlanetEvents(decId);
+    const pendingIds = new Set<string>();
+    if (planetEvents) {
+      for (let i = 0; i < planetEvents.count; i++) {
+        pendingIds.add(planetEvents.events[i].id);
+      }
+    }
+
+    // Initial energy at creation
+    const initialEnergy = isHome ? 50000 / precision : stalePlanet.energy;
+    // For non-home planets the default barbarian energy is baked into the
+    // decoded stalePlanet.energy when the planet hasn't been touched yet.
+    // If the planet HAS been touched, we recalculate from contract defaults.
+    const defaultInitialEnergy = isHome
+      ? 50000 / precision
+      : (() => {
+          const lvl = stalePlanet.planetLevel;
+          const cc = this.contractConstants;
+          let cap = cc.defaultPopulationCap[lvl];
+          const st = stalePlanet.spaceType;
+          if (st === SpaceType.DEAD_SPACE) cap *= 20;
+          else if (st === SpaceType.DEEP_SPACE) cap *= 10;
+          else if (st === SpaceType.SPACE) cap *= 4;
+          let pirates = (cap * cc.defaultBarbarianPercentage[lvl]) / 100;
+          if (stalePlanet.planetType === PlanetType.SILVER_BANK) pirates /= 2;
+          return pirates;
+        })();
+
+    // Arrivals targeting this planet, sorted by arrivalTime
+    const inbound = allArrivals
+      .filter((a) => a.toPlanet === planetId)
+      .sort((a, b) => a.arrivalTime - b.arrivalTime);
+
+    // Build timeline
+    type TimelineRow = {
+      time: number;
+      dt: string;
+      event: string;
+      detail: string;
+      energyBefore: string;
+      energyAfter: string;
+      owner: string;
+    };
+
+    const rows: TimelineRow[] = [];
+    let simEnergy = defaultInitialEnergy;
+    let simLastUpdated = chainCreatedAt;
+    let simOwner = isHome ? (stalePlanet.owner ?? "player") : "(nobody)";
+    const { energyCap, energyGrowth, defense } = stalePlanet;
+
+    const grow = (toSec: number) => {
+      if (stalePlanet.pausers > 0) return;
+      const dt = toSec - simLastUpdated;
+      if (dt > 0 && simOwner !== "(nobody)") {
+        simEnergy = Math.min(simEnergy + energyGrowth * dt, energyCap);
+      }
+      simLastUpdated = toSec;
+    };
+
+    // 1) Planet creation
+    rows.push({
+      time: chainCreatedAt,
+      dt: "—",
+      event: "CREATED",
+      detail: isHome ? "home planet" : "initialized by first move",
+      energyBefore: "—",
+      energyAfter: simEnergy.toFixed(1),
+      owner: simOwner,
+    });
+
+    // 2) All inbound arrivals
+    for (const a of inbound) {
+      const isPending = pendingIds.has(a.eventId);
+      const energyBefore = simEnergy;
+      grow(a.arrivalTime);
+      const energyAfterGrowth = simEnergy;
+
+      const isFriendly = a.player === simOwner;
+      if (isFriendly) {
+        simEnergy = Math.min(simEnergy + a.energyArriving, energyCap);
+      } else {
+        const effectiveAttack = (a.energyArriving * 100) / defense;
+        if (simEnergy > effectiveAttack) {
+          simEnergy -= effectiveAttack;
+        } else {
+          simOwner = a.player;
+          simEnergy = a.energyArriving - (energyAfterGrowth * defense) / 100;
+          if (simEnergy <= 0) simEnergy = 1;
+        }
+      }
+
+      const delta = a.arrivalTime - nowSec;
+      const tag = isPending
+        ? delta > 0
+          ? `PENDING (in ${delta}s)`
+          : "PENDING (matured)"
+        : "SETTLED";
+
+      rows.push({
+        time: a.arrivalTime,
+        dt: `+${a.arrivalTime - chainCreatedAt}s`,
+        event: `${tag} | ${isFriendly ? "friendly" : "hostile"}`,
+        detail:
+          `e=${a.energyArriving.toFixed(1)} s=${a.silverMoved.toFixed(1)}` +
+          ` from=${a.fromPlanet.slice(0, 8)}… [${a.eventId}]`,
+        energyBefore: energyBefore.toFixed(1),
+        energyAfter: simEnergy.toFixed(1),
+        owner: simOwner.slice(0, 10) + "…",
+      });
+    }
+
+    // 3) NOW marker
+    grow(nowSec);
+    rows.push({
+      time: nowSec,
+      dt: `+${nowSec - chainCreatedAt}s`,
+      event: ">>> NOW <<<",
+      detail: "",
+      energyBefore: "—",
+      energyAfter: simEnergy.toFixed(1),
+      owner: simOwner.slice(0, 10) + "…",
+    });
+
+    console.group(`[debugPlanet] ${planetId}`);
+
+    console.group("Planet Info");
+    console.log("planetLevel:", stalePlanet.planetLevel);
+    console.log("planetType:", stalePlanet.planetType);
+    console.log("spaceType:", stalePlanet.spaceType);
+    console.log("isHomePlanet:", isHome);
+    console.log("energyCap:", energyCap, "energyGrowth:", energyGrowth);
+    console.log("defense:", defense);
+    console.log("chain created_at:", chainCreatedAt);
+    console.log("chain last_updated:", chainLastUpdated);
+    console.log("chain energy:", chainEnergy);
+    console.log("client lastUpdated:", stalePlanet.lastUpdated);
+    console.log("client energy:", stalePlanet.energy);
+    console.log("simulated initial energy:", defaultInitialEnergy);
+    console.groupEnd();
+
+    console.group("Arrivals Summary");
+    console.log("total arrivals in indexer:", allArrivals.length);
+    console.log("inbound (toPlanet):", inbound.length);
+    console.log("pending (in PlanetEvents):", pendingIds.size);
+    console.log(
+      "settled:",
+      inbound.filter((a) => !pendingIds.has(a.eventId)).length
+    );
+    console.groupEnd();
+
+    console.group(`Timeline (${rows.length} events)`);
+    console.table(rows);
+    console.groupEnd();
+
+    console.group("Verification");
+    console.log("simulated energy at NOW:", simEnergy.toFixed(1));
+    console.log("chain energy at last_updated:", chainEnergy.toFixed(1));
+    console.log(
+      "match?",
+      Math.abs(simEnergy - chainEnergy) < 1 ? "YES" : "NO (drift)"
+    );
+    console.groupEnd();
+
+    console.groupEnd();
+  }
+
   /**
    * Get the score of the currently logged-in account.
    */
@@ -1619,11 +1819,29 @@ class GameManager extends EventEmitter {
   }
 
   /**
-   * Gets the private key of the burner wallet used by this account.
-   * Aztec wallet does not expose private key; return undefined.
+   * Gets the secret key of the active Aztec ECDSAR account.
    */
   getPrivateKey(): string | undefined {
-    return undefined;
+    return this.contractsAPI.getWalletManager().getActiveAccountRecord()
+      ?.secretKey;
+  }
+
+  /**
+   * Returns the full credential triple (secretKey, salt, signingKey) needed
+   * to recover/import the active Aztec ECDSAR account.
+   */
+  getAccountCredentials():
+    | { secretKey: string; salt: string; signingKey: string }
+    | undefined {
+    const record = this.contractsAPI
+      .getWalletManager()
+      .getActiveAccountRecord();
+    if (!record) return undefined;
+    return {
+      secretKey: record.secretKey,
+      salt: record.salt,
+      signingKey: record.signingKey,
+    };
   }
 
   /**
@@ -1861,14 +2079,16 @@ class GameManager extends EventEmitter {
         throw new Error("you're already broadcasting coordinates");
       }
 
-      const myLastRevealTimestamp = this.players.get(
-        this.account
-      )?.lastRevealTimestamp;
-      if (
-        myLastRevealTimestamp &&
-        Date.now() < this.getNextBroadcastAvailableTimestamp()
-      ) {
-        throw new Error("still on cooldown for broadcasting");
+      if (!this.isAdmin()) {
+        const myLastRevealTimestamp = this.players.get(
+          this.account
+        )?.lastRevealTimestamp;
+        if (
+          myLastRevealTimestamp &&
+          Date.now() < this.getNextBroadcastAvailableTimestamp()
+        ) {
+          throw new Error("still on cooldown for broadcasting");
+        }
       }
 
       // this is shitty. used for the popup window
@@ -1950,6 +2170,7 @@ class GameManager extends EventEmitter {
         locationId: planet.location.hash,
         location: planet.location,
         args: getArgs(),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       this.terminal.current?.println(
@@ -2046,31 +2267,28 @@ class GameManager extends EventEmitter {
     return true;
   }
 
-  private async findRandomHomePlanet(): Promise<LocatablePlanet> {
-    return new Promise<LocatablePlanet>((resolve, reject) => {
-      const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
-      const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
-      let minedChunksCount = 0;
+  private findRandomHomePlanet(): Promise<LocatablePlanet> {
+    const initPerlinMin = this.contractConstants.INIT_PERLIN_MIN;
+    const initPerlinMax = this.contractConstants.INIT_PERLIN_MAX;
 
+    // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
+    // area, distributed evenly in the inner perimeter of the world
+    let spawnInnerRadius = Math.sqrt(
+      Math.max(
+        Math.PI * this.worldRadius ** 2 - this.contractConstants.SPAWN_RIM_AREA,
+        0
+      ) / Math.PI
+    );
+
+    if (this.contractConstants.SPAWN_RIM_AREA === 0) {
+      spawnInnerRadius = 0;
+    }
+
+    return new Promise<LocatablePlanet>((resolve, reject) => {
       let x: number;
       let y: number;
       let d: number;
       let p: number;
-
-      // if this.contractConstants.SPAWN_RIM_AREA is non-zero, then players must spawn in that
-      // area, distributed evenly in the inner perimeter of the world
-      let spawnInnerRadius = Math.sqrt(
-        Math.max(
-          Math.PI * this.worldRadius ** 2 -
-            this.contractConstants.SPAWN_RIM_AREA,
-          0
-        ) / Math.PI
-      );
-
-      if (this.contractConstants.SPAWN_RIM_AREA === 0) {
-        spawnInnerRadius = 0;
-      }
-
       do {
         // sample from square
         x = Math.random() * this.worldRadius * 2 - this.worldRadius;
@@ -2083,6 +2301,8 @@ class GameManager extends EventEmitter {
         d >= this.worldRadius || // can't be out of bound
         d <= spawnInnerRadius // can't be inside spawn area ring
       );
+
+      let minedChunksCount = 0;
 
       // when setting up a new account in development mode, you can tell
       // the game where to start searching for planets using this query
@@ -2318,10 +2538,7 @@ class GameManager extends EventEmitter {
       const txIntent: UnconfirmedFindArtifact = {
         methodName: "findArtifact",
         planetId: planet.locationId,
-        args: this.snarkHelper.getFindArtifactArgs(
-          planet.location.coords.x,
-          planet.location.coords.y
-        ),
+        args: Promise.resolve([]), // TODO: implement findArtifact args
       };
 
       const tx =
@@ -2337,7 +2554,8 @@ class GameManager extends EventEmitter {
               return current.heldArtifactIds
                 .map(this.getArtifactWithId.bind(this))
                 .find(
-                  (a: Artifact) => a?.planetDiscoveredOn === planet.locationId
+                  (a: Artifact | undefined) =>
+                    a?.planetDiscoveredOn === planet.locationId
                 ) as Artifact;
             }
           ).then((foundArtifact) => {
@@ -2746,7 +2964,8 @@ class GameManager extends EventEmitter {
     silver: number,
     artifactMoved?: ArtifactId,
     abandoning = false,
-    bypassChecks = false
+    bypassChecks = false,
+    uiTimestamp?: number
   ): Promise<Transaction<UnconfirmedMove>> {
     localStorage.setItem(
       `${this.getAccount()?.toLowerCase()}-fromPlanet`,
@@ -2845,6 +3064,7 @@ class GameManager extends EventEmitter {
         silver: silverMoved,
         artifact: artifactMoved,
         abandoning,
+        uiTimestamp,
       };
 
       if (artifactMoved) {
@@ -2916,7 +3136,7 @@ class GameManager extends EventEmitter {
 
   /**
    * Submits a transaction to the blockchain to buy a hat for the given planet. You must own the
-   * planet. Warning costs real xdai. Hats are permanently locked to a planet. They are purely
+   * planet. Warning: costs real L2 token (see {@link L2_TOKEN_SYMBOL}). Hats are permanently locked to a planet. They are purely
    * cosmetic and a great way to BM your opponents or just look your best. Just like in the real
    * world, more money means more hat.
    */
@@ -2953,12 +3173,7 @@ class GameManager extends EventEmitter {
       };
 
       // Always await the submitTransaction so we can catch rejections
-      const tx = await this.contractsAPI.submitTransaction(txIntent, {
-        gasLimit: 500000,
-        value: bigInt(1000000000000000000)
-          .multiply(2 ** planet.hatLevel)
-          .toString(),
-      });
+      const tx = await this.contractsAPI.submitTransaction(txIntent);
 
       return tx;
     } catch (e) {
@@ -3012,6 +3227,123 @@ class GameManager extends EventEmitter {
       return tx;
     } catch (e) {
       this.getNotificationsManager().txInitError("transferPlanet", e.message);
+      throw e;
+    }
+  }
+
+  /**
+   * Admin-only: create a planet at the given coordinates with the given level and type.
+   * Calls Admin.create_planet(AdminCreatePlanetArgs). require_valid_location_id is false.
+   * Coords are rounded to integers (map clicks can yield floats).
+   */
+  public async createPlanet(
+    coords: WorldCoords,
+    level: number,
+    planetType: number
+  ): Promise<Transaction<UnconfirmedCreatePlanet>> {
+    try {
+      const intCoords: WorldCoords = {
+        x: Math.round(Number(coords.x)),
+        y: Math.round(Number(coords.y)),
+      };
+      const locationIdBigInt = await this.locationBigIntFromCoords(intCoords);
+      const perlin = this.spaceTypePerlin(intCoords, false);
+      const locationId = locationIdFromBigInt(locationIdBigInt);
+      const txIntent: UnconfirmedCreatePlanet = {
+        methodName: "createPlanet",
+        args: Promise.resolve([
+          locationIdBigInt,
+          perlin & 0xff,
+          Math.max(0, Math.min(9, Math.floor(level))),
+          Math.max(0, Math.min(4, Math.floor(planetType))),
+          false,
+        ]),
+        locationId,
+        coords: intCoords,
+        level: Math.max(0, Math.min(9, Math.floor(level))),
+        planetType: Math.max(0, Math.min(4, Math.floor(planetType))),
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("createPlanet", e.message);
+      throw e;
+    }
+  }
+
+  public async setWorldConfig(
+    worldConfig: WorldConfig
+  ): Promise<Transaction<UnconfirmedSetWorldConfig>> {
+    try {
+      const txIntent: UnconfirmedSetWorldConfig = {
+        methodName: "setWorldConfig",
+        args: Promise.resolve([worldConfig]),
+      };
+
+      const tx = await this.contractsAPI.submitTransaction(txIntent);
+
+      return tx;
+    } catch (e) {
+      this.getNotificationsManager().txInitError("setWorldConfig", e.message);
+      throw e;
+    }
+  }
+
+  public async getWorldConfig(): Promise<WorldConfig> {
+    const config = await this.contractsAPI.getConfig();
+    return config.worldConfig as WorldConfig;
+  }
+
+  public async pauseGame(): Promise<Transaction<UnconfirmedPauseGame>> {
+    try {
+      const txIntent: UnconfirmedPauseGame = {
+        methodName: "pauseGame",
+        args: [],
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("pauseGame", e.message);
+      throw e;
+    }
+  }
+
+  public async unpauseGame(): Promise<Transaction<UnconfirmedUnpauseGame>> {
+    try {
+      const txIntent: UnconfirmedUnpauseGame = {
+        methodName: "unpauseGame",
+        args: [],
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("unpauseGame", e.message);
+      throw e;
+    }
+  }
+
+  public async safeSetOwner(
+    planetId: LocationId,
+    newOwner: EthAddress
+  ): Promise<Transaction<UnconfirmedSafeSetOwner>> {
+    try {
+      const location = this.getLocationOfPlanet(planetId);
+      if (!location) {
+        throw new Error(`Cannot find location for planet ${planetId}`);
+      }
+      const planet = this.getPlanetWithId(planetId);
+      const x = location.coords.x;
+      const y = location.coords.y;
+      const perlin = location.perlin;
+      const level = planet?.planetLevel ?? 0;
+
+      const txIntent: UnconfirmedSafeSetOwner = {
+        methodName: "safeSetOwner",
+        args: Promise.resolve([x, y, planetId, perlin, level, newOwner]),
+        locationId: planetId,
+        location,
+        newOwner,
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError("safeSetOwner", e.message);
       throw e;
     }
   }
@@ -3165,14 +3497,32 @@ class GameManager extends EventEmitter {
     const from = this.getPlanetWithId(fromId);
     if (!from) throw new Error("origin planet unknown");
     const dist = this.getDist(fromId, toId);
-    const decayScale =
-      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
+    const rangeBuff = this.getRangeBuff(abandoning);
+    const L = from.range * rangeBuff * L_OVER_RANGE;
 
-    // Linear decay matching contract: popArriving = popMoved * (1 - dist/L) - energyCap/20, L = range*4.55
-    const remainingRatio = 1 - dist / decayScale;
-    if (remainingRatio <= 0) return Infinity;
-
-    return (arrivingEnergy + from.energyCap / 20) / remainingRatio;
+    // Piecewise linear decay: popArriving = sentEnergy * (dMax - dist) / dMax
+    // where dMax = L * getDMaxFraction(sentEnergy / energyCap * 100).
+    // Binary search for the sentEnergy that yields arrivingEnergy.
+    let lo = arrivingEnergy;
+    let hi = from.energyCap * 2;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      const p = (mid / from.energyCap) * 100;
+      const dMax = L * getDMaxFraction(p);
+      const arriving =
+        dMax > 0 && dist < dMax ? (mid * (dMax - dist)) / dMax : 0;
+      if (arriving < arrivingEnergy) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    const result = hi;
+    // Verify the result actually arrives with positive energy
+    const pCheck = (result / from.energyCap) * 100;
+    const dMaxCheck = L * getDMaxFraction(pCheck);
+    if (dMaxCheck <= 0 || dist >= dMaxCheck) return Infinity;
+    return result;
   }
 
   /**
@@ -3205,18 +3555,14 @@ class GameManager extends EventEmitter {
       }
     }
 
-    const decayScale =
-      from.range * this.getRangeBuff(abandoning) * DECAY_SCALE_OVER_RANGE;
+    // Piecewise linear decay matching contract (move/src/main.nr)
+    const percent = (sentEnergy / from.energyCap) * 100;
+    const rangeBuff = this.getRangeBuff(abandoning);
+    const dMax =
+      from.range * rangeBuff * L_OVER_RANGE * getDMaxFraction(percent);
 
-    // Linear decay matching contract (move/src/main.nr): popArriving = popMoved * (1 - dist/L) - populationCap/20, L = range*4.55
-    if (dist >= decayScale) return 0;
-
-    const remainingRatio = 1 - dist / decayScale;
-    const popAfterDecay = sentEnergy * remainingRatio;
-    const debuff = from.energyCap / 20;
-    const ret = popAfterDecay - debuff;
-
-    return ret > 0 ? ret : 0;
+    if (dist >= dMax || dMax <= 0) return 0;
+    return (sentEnergy * (dMax - dist)) / dMax;
   }
 
   /**
@@ -3502,7 +3848,9 @@ class GameManager extends EventEmitter {
     );
     const diffEmitter = generateDiffEmitter(disposableEmitter);
     return new Promise((resolve, reject) => {
-      diffEmitter.subscribe(({ current, previous }: Diff<Planet>) => {
+      diffEmitter.subscribe((diff) => {
+        if (!diff) return;
+        const { current, previous } = diff;
         try {
           const predicateResults = predicate({ current, previous });
           if (predicateResults) {

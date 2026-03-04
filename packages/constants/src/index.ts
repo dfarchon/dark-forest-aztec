@@ -9,6 +9,19 @@ import {
   PlanetLevel,
 } from "@dfpunk/types";
 
+/** Display name of the game / universe. */
+export const GAME_NAME = "Dark Forest";
+/** Token symbol on the L1 base chain (e.g. Ethereum mainnet). Shown in UI for deposits/withdrawals. */
+export const L1_TOKEN_SYMBOL = "ETH";
+/** Token symbol on the L2 chain (Aztec). Shown in UI for in-game balance, gas, etc. */
+export const L2_TOKEN_SYMBOL = "ETH";
+/** Chain name shown in UI (e.g. "Powered by Aztec"). */
+export const CHAIN_DISPLAY_NAME = "Aztec";
+/** Organizer / host name for the game instance (e.g. round operator). */
+export const ORGANIZER_NAME = "DFArchon";
+/** Client / app version string. */
+export const APP_VERSION = "v0.0.1";
+
 /**
  * The precision of Energy & Silver stored in the Dark Forest smart contracts.
  *
@@ -26,7 +39,7 @@ export const DEFAULT_MAX_CALL_RETRIES = 12 as const;
 /**
  * The upper-bounds of a LocationID.
  *
- * Represents the maximum possible value that the MiMC hash function (used for IDing locations in the universe) can output.
+ * Represents the maximum possible value that the hash function (Poseidon2, used for IDing locations in the universe) can output.
  * A LocationID must be less than `LOCATION_ID_UB / PLANET_RARITY` in order to be considered a valid planet.
  */
 export const LOCATION_ID_UB: bigint = BigInt(
@@ -97,16 +110,14 @@ export const MIN_BIOME = Biome.OCEAN;
 export const MAX_BIOME = Biome.CORRUPTED;
 
 /**
- * The URL for xDai's API that returns the gas prices for 35th, 60th, and 90th percentiles of gas prices in the
- * previous 200 blocks. Useful for auto gas price setting.
- *
- * https://www.xdaichain.com/for-developers/developer-resources/gas-price-oracle
+ * The URL for the chain's gas price API that returns the 35th, 60th, and 90th percentiles of gas
+ * prices in the previous 200 blocks. Useful for auto gas price setting.
  */
 export const GAS_PRICE_API =
   "https://blockscout.com/xdai/mainnet/api/v1/gas-price-oracle" as const;
 
 /**
- * In case we cannot load gas prices from xDai, these are the default auto gas prices.
+ * In case we cannot load gas prices from the chain, these are the default auto gas prices.
  */
 export const DEFAULT_GAS_PRICES: GasPrices = {
   slow: 1,
@@ -115,8 +126,8 @@ export const DEFAULT_GAS_PRICES: GasPrices = {
 } as const;
 
 /**
- * In case xDai's auto-price is something ridiculous, we don't want our players to insta run out of
- * money.
+ * In case the chain's auto-price is something ridiculous, we don't want our players to insta run
+ * out of money.
  */
 export const MAX_AUTO_GAS_PRICE_GWEI = 15 as const;
 

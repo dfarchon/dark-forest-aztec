@@ -269,19 +269,167 @@ export const PluginElements = styled.div`
   min-height: 100px;
   max-height: 600px;
   overflow: scroll;
+  font-family: "Inconsolata", monospace;
+  font-size: ${dfstyles.fontSizeS};
+  line-height: 1.5;
 
   button {
-    border: 1px solid white;
+    appearance: none;
+    background: ${dfstyles.colors.backgroundlight};
+    color: ${dfstyles.colors.text};
+    border: 1px solid ${dfstyles.colors.border};
     border-radius: 4px;
-    padding: 0 0.3em;
-
-    transition: background-color 0.2s colors 0.2s;
+    padding: 4px 8px;
+    margin: 2px;
+    min-height: 28px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.3;
+    vertical-align: middle;
+    transition:
+      background-color 0.15s,
+      color 0.15s,
+      border-color 0.15s;
 
     &:hover {
-      background-color: ${dfstyles.colors.text};
-      color: black;
-      border: 1px transparent;
+      background: ${dfstyles.colors.text};
+      color: ${dfstyles.colors.background};
+      border-color: ${dfstyles.colors.text};
     }
+
+    &:active {
+      filter: brightness(80%);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      filter: none;
+    }
+  }
+
+  input,
+  textarea,
+  select {
+    appearance: none;
+    background: ${dfstyles.colors.background};
+    color: ${dfstyles.colors.text};
+    border: 1px solid ${dfstyles.colors.borderDark};
+    border-radius: 3px;
+    padding: 4px 8px;
+    margin: 2px 0;
+    min-height: 28px;
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+
+    &:focus {
+      border-color: ${dfstyles.colors.border};
+    }
+  }
+
+  input[type="range"] {
+    appearance: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    min-height: auto;
+    vertical-align: middle;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    appearance: auto;
+    width: auto;
+    min-height: auto;
+    padding: 0;
+    margin: 2px 4px 2px 0;
+    vertical-align: middle;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid ${dfstyles.colors.borderDarkest};
+  }
+
+  th {
+    color: ${dfstyles.colors.subtext};
+    font-weight: bold;
+  }
+
+  a {
+    color: ${dfstyles.colors.dfblue};
+    text-decoration: underline;
+
+    &:hover {
+      color: ${dfstyles.colors.text};
+    }
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid ${dfstyles.colors.borderDark};
+    margin: 8px 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: ${dfstyles.colors.text};
+    font-weight: bold;
+    margin: 6px 0;
+  }
+
+  h1 {
+    font-size: 14pt;
+  }
+
+  h2 {
+    font-size: 13pt;
+  }
+
+  h3 {
+    font-size: ${dfstyles.fontSizeS};
+  }
+
+  h4 {
+    font-size: 11pt;
+  }
+
+  h5,
+  h6 {
+    font-size: 10pt;
+    color: ${dfstyles.colors.subtext};
+  }
+
+  p {
+    margin: 4px 0;
+  }
+
+  code {
+    font-family: "Inconsolata", monospace;
+    color: ${dfstyles.colors.textLight};
+  }
+
+  i,
+  em {
+    color: ${dfstyles.colors.subtext};
+  }
+
+  /* Prevent plugin-injected <style> from being visible */
+  style {
+    display: none;
   }
 `;
 

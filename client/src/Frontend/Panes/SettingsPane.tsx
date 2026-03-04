@@ -1,3 +1,4 @@
+import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
 import { Chunk, ModalName, Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -5,7 +6,7 @@ import styled from "styled-components";
 import TutorialManager from "../../Backend/GameLogic/TutorialManager";
 import { Btn } from "../Components/Btn";
 import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
-import { DarkForestTextInput, TextInput } from "../Components/Input";
+import { TextInput } from "../Components/Input";
 import { Slider } from "../Components/Slider";
 import { Green, Red } from "../Components/Text";
 import Viewport, { getDefaultScroll } from "../Game/Viewport";
@@ -145,8 +146,8 @@ export function SettingsPane({
   };
 
   const [scrollSpeed, setScrollSpeed] = useState<number>(DEFAULT_SCROLL);
-  const onScrollChange = (e: Event & React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(e.target.value);
+  const onScrollChange = (e: Event) => {
+    const value = parseFloat((e.target as HTMLInputElement).value);
     if (!isNaN(value)) setScrollSpeed(value);
   };
 
@@ -231,8 +232,8 @@ export function SettingsPane({
           <TextInput
             value={importMapByTextBoxValue}
             placeholder={"Paste map contents here"}
-            onChange={(e: Event & React.ChangeEvent<DarkForestTextInput>) =>
-              setImportMapByTextBoxValue(e.target.value)
+            onChange={(e: Event) =>
+              setImportMapByTextBoxValue((e.target as HTMLInputElement).value)
             }
           />
           <Spacer height={8} />
@@ -261,9 +262,10 @@ export function SettingsPane({
         <Section>
           <SectionHeader>Metrics Opt Out</SectionHeader>
           We collect a minimal set of data and statistics such as SNARK proving
-          times, average transaction times across browsers, and xDAI transaction
-          errors, to help us optimize performance and fix bugs. This does not
-          include personal data like email or IP address.
+          times, average transaction times across browsers, and{" "}
+          {CHAIN_DISPLAY_NAME} transaction errors, to help us optimize
+          performance and fix bugs. This does not include personal data like
+          email or IP address.
           <Spacer height={8} />
           <BooleanSetting
             uiManager={uiManager}

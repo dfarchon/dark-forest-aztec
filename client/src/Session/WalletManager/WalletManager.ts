@@ -9,10 +9,11 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { Fr } from "@aztec/aztec.js/fields";
+import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
+import type { AccountManager } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -20,14 +21,38 @@ import {
   ACCOUNT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
   ADMIN_DEPLOYMENT_SALT,
+  ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
+  ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
+  ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
+  ARTIFACT_STORAGE_DEPLOYMENT_SALT,
   CORE_DEPLOYER_ADDRESS,
   CORE_DEPLOYMENT_SALT,
   MOVE_DEPLOYER_ADDRESS,
   MOVE_DEPLOYMENT_SALT,
+  PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_STORAGE_DEPLOYMENT_SALT,
+  PLAYER_STORAGE_DEPLOYER_ADDRESS,
+  PLAYER_STORAGE_DEPLOYMENT_SALT,
+  WORLD_STORAGE_DEPLOYER_ADDRESS,
+  WORLD_STORAGE_DEPLOYMENT_SALT,
 } from "@dfpunk/contracts";
 import { AdminContractArtifact } from "@dfpunk/contracts/artifacts/Admin";
+import { ArrivalStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArrivalStorage";
+import { ArtifactLocationStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
+import { ArtifactStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactStorage";
 import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
+import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
+import { PlanetEventsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetStorage";
+import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlayerStorage";
+import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
@@ -38,9 +63,59 @@ const DEFAULT_BALANCE_POLL_MS = 15_000;
 const DEPLOY_TIMEOUT_MS = 120_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
+const GENESIS_PENDING_SENTINEL = "genesis-pending";
 
 /**
- * Register Core, Move, Admin with the wallet's PXE so simulate() and send() can run.
+ * Compute a fingerprint for the current network instance by hashing block 1's header.
+ * Returns a sentinel value when the network has not yet produced block 1.
+ */
+async function getNetworkFingerprint(node: AztecNode): Promise<string> {
+  const blockNumber = await node.getBlockNumber();
+  if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
+  const block = await node.getBlock(BlockNumber(1));
+  if (!block) return GENESIS_PENDING_SENTINEL;
+  return (await block.hash()).toString();
+}
+
+/**
+ * Best-effort deletion of PXE and wallet IndexedDB databases from previous network instances.
+ * Skips the database matching `currentPrefix` (belonging to the active network).
+ * Uses the non-standard `indexedDB.databases()` API available in modern browsers.
+ */
+async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
+  if (
+    typeof indexedDB === "undefined" ||
+    typeof indexedDB.databases !== "function"
+  ) {
+    return;
+  }
+  try {
+    const databases = await indexedDB.databases();
+    const stalePatterns = [/^pxe_data_/, /^wallet_data_/];
+    const deletions = databases
+      .filter(
+        (db) =>
+          db.name &&
+          stalePatterns.some((p) => p.test(db.name!)) &&
+          (!currentPrefix || !db.name!.startsWith(currentPrefix))
+      )
+      .map(
+        (db) =>
+          new Promise<void>((resolve) => {
+            const req = indexedDB.deleteDatabase(db.name!);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+            req.onblocked = () => resolve();
+          })
+      );
+    await Promise.all(deletions);
+  } catch {
+    /* best-effort cleanup */
+  }
+}
+
+/**
+ * Register game contracts (system + storage) with the wallet's PXE so simulate() and send() can run.
  * Requires deployer + salt from @dfpunk/contracts (run sync-env-and-artifacts after deploy).
  */
 async function registerGameContractsWithPxe(
@@ -70,6 +145,54 @@ async function registerGameContractsWithPxe(
       salt: ADMIN_DEPLOYMENT_SALT,
       artifact: AdminContractArtifact,
       name: "Admin",
+    },
+    {
+      deployer: PLANET_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetStorageContractArtifact,
+      name: "PlanetStorage",
+    },
+    {
+      deployer: PLAYER_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLAYER_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlayerStorageContractArtifact,
+      name: "PlayerStorage",
+    },
+    {
+      deployer: PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetEventsStorageContractArtifact,
+      name: "PlanetEventsStorage",
+    },
+    {
+      deployer: PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetArtifactsStorageContractArtifact,
+      name: "PlanetArtifactsStorage",
+    },
+    {
+      deployer: ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArrivalStorageContractArtifact,
+      name: "ArrivalStorage",
+    },
+    {
+      deployer: ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArtifactStorageContractArtifact,
+      name: "ArtifactStorage",
+    },
+    {
+      deployer: ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+      artifact: ArtifactLocationStorageContractArtifact,
+      name: "ArtifactLocationStorage",
+    },
+    {
+      deployer: WORLD_STORAGE_DEPLOYER_ADDRESS,
+      salt: WORLD_STORAGE_DEPLOYMENT_SALT,
+      artifact: WorldStorageContractArtifact,
+      name: "WorldStorage",
     },
   ];
   for (const { deployer, salt, artifact, name } of specs) {
@@ -127,8 +250,87 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
+    const mgr = await WalletManager._initWallet(node, config);
+
+    const savedAddr = mgr.keyStore.getActiveAddress();
+    if (savedAddr) {
+      try {
+        await mgr.restoreAccount(savedAddr);
+      } catch (err) {
+        console.warn("[WalletManager] Failed to restore saved account:", err);
+        console.warn("[WalletManager] Clearing stale PXE data and retrying...");
+        mgr.destroy();
+        await clearStaleIndexedDBs();
+        mgr.keyStore.clearActiveAddress();
+
+        const retryMgr = await WalletManager._initWallet(node, config);
+        retryMgr.startBalancePolling(
+          config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
+        );
+        return retryMgr;
+      }
+    }
+
+    mgr.startBalancePolling(
+      config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
+    );
+
+    return mgr;
+  }
+
+  /**
+   * Force-clear all PXE IndexedDB databases and reset the active account pointer,
+   * then create a fresh WalletManager. Account records are preserved so they can
+   * be re-deployed on the new network. Useful as a manual "reset wallet cache" action in UI.
+   */
+  static async resetAndCreate(
+    config: WalletManagerConfig
+  ): Promise<WalletManager> {
+    await clearStaleIndexedDBs();
+    new KeyStore(config.storagePrefix).clearActiveAddress();
+    return WalletManager.create(config);
+  }
+
+  /**
+   * Core wallet initialisation: fingerprint check, PXE creation, contract registration.
+   * Extracted so `create()` can retry with a clean slate on stale-data errors.
+   */
+  private static async _initWallet(
+    node: AztecNode,
+    config: WalletManagerConfig
+  ): Promise<WalletManager> {
+    const keyStore = new KeyStore(config.storagePrefix);
+
+    const fingerprint = await getNetworkFingerprint(node);
+    const storedFingerprint = keyStore.getNetworkFingerprint();
+    const networkChanged = storedFingerprint !== fingerprint;
+
+    const l1Addresses = await node.getL1ContractAddresses();
+    const rollupAddr = l1Addresses.rollupAddress.toString();
+    const fpSuffix =
+      fingerprint === GENESIS_PENDING_SENTINEL
+        ? "genesis"
+        : fingerprint.slice(2, 10);
+    const pxeDataDir = `pxe_data_${rollupAddr}_${fpSuffix}`;
+
+    if (networkChanged) {
+      if (storedFingerprint) {
+        console.warn(
+          "[WalletManager] Network change detected, clearing stale PXE data"
+        );
+      } else {
+        console.info(
+          "[WalletManager] No stored fingerprint, clearing PXE data to avoid stale state"
+        );
+      }
+      await clearStaleIndexedDBs(pxeDataDir);
+      keyStore.clearActiveAddress();
+      keyStore.setNetworkFingerprint(fingerprint);
+    }
+
     const wallet = await EmbeddedWallet.create(node, {
       pxeConfig: {
+        dataDirectory: pxeDataDir,
         dataStoreMapSizeKb:
           config.pxeConfig?.dataStoreMapSizeKb ??
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
@@ -145,25 +347,7 @@ export class WalletManager {
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
     await registerGameContractsWithPxe(wallet, admin);
 
-    const keyStore = new KeyStore(config.storagePrefix);
-
-    const mgr = new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
-
-    const savedAddr = keyStore.getActiveAddress();
-    if (savedAddr) {
-      try {
-        await mgr.restoreAccount(savedAddr);
-      } catch (err) {
-        console.warn("[WalletManager] Failed to restore saved account:", err);
-        keyStore.clearActiveAddress();
-      }
-    }
-
-    mgr.startBalancePolling(
-      config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
-    );
-
-    return mgr;
+    return new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
   }
 
   // ---------------------------------------------------------------------------
@@ -181,17 +365,7 @@ export class WalletManager {
       Buffer.from(signingKeyBuf)
     );
 
-    const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts = {
-      from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
-      },
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { timeout: DEPLOY_TIMEOUT_MS },
-    };
-    await deployMethod.send(deployOpts);
+    await this.deployAccountIfNeeded(accountManager);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -208,36 +382,48 @@ export class WalletManager {
     return record;
   }
 
-  async restoreAccount(address: string): Promise<void> {
+  async restoreAccount(
+    address: string,
+    onStatus?: (msg: string) => void
+  ): Promise<{ deployed: boolean }> {
     const record = this.keyStore.getAccount(address);
     if (!record) {
       throw new Error(`KeyStore: no account found for ${address}`);
     }
 
-    await this.wallet.createECDSARAccount(
+    const accountManager = await this.wallet.createECDSARAccount(
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       Buffer.from(record.signingKey, "hex")
     );
 
+    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
+
     this.setActive(AztecAddress.fromString(address), address);
+    return { deployed };
   }
 
-  async switchAccount(address: string): Promise<void> {
-    await this.restoreAccount(address);
+  async switchAccount(
+    address: string,
+    onStatus?: (msg: string) => void
+  ): Promise<{ deployed: boolean }> {
+    return this.restoreAccount(address, onStatus);
   }
 
   async importAccount(
     secretKey: string,
     salt: string,
     signingKey: string,
-    label?: string
-  ): Promise<AccountRecord> {
+    label?: string,
+    onStatus?: (msg: string) => void
+  ): Promise<AccountRecord & { deployed: boolean }> {
     const accountManager = await this.wallet.createECDSARAccount(
       Fr.fromString(secretKey),
       Fr.fromString(salt),
       Buffer.from(signingKey, "hex")
     );
+
+    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -251,7 +437,7 @@ export class WalletManager {
     this.keyStore.saveAccount(record);
     this.setActive(accountManager.address, record.address);
 
-    return record;
+    return { ...record, deployed };
   }
 
   removeAccount(address: string): void {
@@ -284,6 +470,12 @@ export class WalletManager {
 
   getAccounts(): AccountRecord[] {
     return this.keyStore.listAccounts();
+  }
+
+  getActiveAccountRecord(): AccountRecord | null {
+    const addr = this.activeAddress?.toString();
+    if (!addr) return null;
+    return this.keyStore.getAccount(addr);
   }
 
   /** Last known balance (synchronous). Updated by getBalance() and polling. */
@@ -320,6 +512,39 @@ export class WalletManager {
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
+
+  /**
+   * Deploy the account contract on-chain if it is not already deployed.
+   * Queries the node for the contract instance; if absent, sends a deploy tx.
+   * @returns `true` if a deployment was performed, `false` if already deployed.
+   */
+  private async deployAccountIfNeeded(
+    accountManager: AccountManager,
+    onStatus?: (msg: string) => void
+  ): Promise<boolean> {
+    onStatus?.("Checking deployment status...");
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    if (metadata.isContractInitialized) return false;
+
+    onStatus?.("Account not deployed on current network. Deploying...");
+    console.info(
+      `[WalletManager] Account ${accountManager.address} not deployed on-chain, deploying...`
+    );
+    const deployMethod = await accountManager.getDeployMethod();
+    onStatus?.("Waiting for deploy transaction...");
+    await deployMethod.send({
+      from: AztecAddress.ZERO,
+      fee: {
+        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
+      },
+      skipClassPublication: true,
+      skipInstancePublication: true,
+      wait: { timeout: DEPLOY_TIMEOUT_MS },
+    });
+    return true;
+  }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {
     this.activeAddress = aztecAddr;

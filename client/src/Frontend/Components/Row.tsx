@@ -1,8 +1,11 @@
 import { DarkForestRow } from "@dfpunk/ui";
-import { createComponent } from "@lit-labs/react";
+import { createComponent } from "@lit/react";
 import React from "react";
 
 customElements.define(DarkForestRow.tagName, DarkForestRow);
 
-// This wraps the customElement in a React wrapper to make it behave exactly like a React component
-export const Row = createComponent(React, DarkForestRow.tagName, DarkForestRow);
+export const Row = createComponent({
+  react: React,
+  tagName: DarkForestRow.tagName,
+  elementClass: DarkForestRow,
+});

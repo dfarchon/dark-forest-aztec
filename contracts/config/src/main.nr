@@ -20,7 +20,7 @@ pub contract Config {
         snark::SnarkConfig,
         space_junk::SpaceJunkConfig,
         spaceships::SpaceshipsConfig,
-        upgrade::Upgrade,
+        upgrade::{Upgrade, UpgradeConfig},
         world::WorldConfig,
     };
 
@@ -44,6 +44,7 @@ pub contract Config {
         spaceships_config: PublicMutable<SpaceshipsConfig, Context>,
         space_junk_config: PublicMutable<SpaceJunkConfig, Context>,
         capture_zones_config: PublicMutable<CaptureZonesConfig, Context>,
+        upgrade_config: PublicMutable<UpgradeConfig, Context>,
 
         // ========== Config Hashes (for off-chain verification) ==========
         world_config_hash: PublicMutable<Field, Context>,
@@ -58,6 +59,7 @@ pub contract Config {
         spaceships_config_hash: PublicMutable<Field, Context>,
         space_junk_config_hash: PublicMutable<Field, Context>,
         capture_zones_config_hash: PublicMutable<Field, Context>,
+        upgrade_config_hash: PublicMutable<Field, Context>,
         planet_default_stats_hash: Map<u8, PublicMutable<Field, Context>, Context>, // level 0-9 hashes
 
         // ========== Default Stats & Upgrades ==========
@@ -247,6 +249,21 @@ pub contract Config {
     }
 
     #[external("public")]
+    fn set_default_upgrade_config() {
+        self.internal.assert_admin();
+        let config = UpgradeConfig::zero();
+        self.storage.upgrade_config.write(config);
+        self.storage.upgrade_config_hash.write(poseidon2_hash(config.serialize()));
+    }
+
+    #[external("public")]
+    fn set_upgrade_config(config: UpgradeConfig) {
+        self.internal.assert_admin();
+        self.storage.upgrade_config.write(config);
+        self.storage.upgrade_config_hash.write(poseidon2_hash(config.serialize()));
+    }
+
+    #[external("public")]
     fn initializeUpgrades() {
         self.internal.assert_admin();
 
@@ -388,6 +405,65 @@ pub contract Config {
         self.storage.planet_default_stats_hash.at(level).write(poseidon2_hash(stats.serialize()));
     }
 
+    /// Batch set planet default stats for up to 5 levels in a single transaction.
+    /// 5 x (8 stats fields + 1 hash) = 45 storage writes, well under the 63-write limit.
+    #[external("public")]
+    fn set_planet_default_stats_batch(levels: [u8; 5], stats: [PlanetDefaultStats; 5], count: u8) {
+        self.internal.assert_admin();
+        for i in 0..5 {
+            if (i as u8) < count {
+                self.storage.planet_default_stats.at(levels[i]).write(stats[i]);
+                self.storage.planet_default_stats_hash.at(levels[i]).write(poseidon2_hash(stats[i]
+                    .serialize()));
+            }
+        }
+    }
+
+    /// Batch initialize default configs (part 1): world, snark, game_core, thresholds, artifacts, spaceships.
+    /// Total storage writes: ~55 slots (under 63-write limit).
+    #[external("public")]
+    fn set_default_configs_batch_1() {
+        self.internal.assert_admin();
+
+        let world = WorldConfig::zero();
+        self.storage.world_config.write(world);
+        self.storage.world_config_hash.write(poseidon2_hash(world.serialize()));
+
+        let snark = SnarkConfig::zero();
+        self.storage.snark_config.write(snark);
+        self.storage.snark_config_hash.write(poseidon2_hash(snark.serialize()));
+
+        let core = GameConfigCore::zero();
+        let thresholds = PlanetLevelThresholds::zero();
+        self.storage.game_config_core.write(core);
+        self.storage.planet_level_thresholds.write(thresholds);
+        self.storage.game_config_core_hash.write(poseidon2_hash(core.serialize()));
+        self.storage.planet_level_thresholds_hash.write(poseidon2_hash(thresholds.serialize()));
+
+        let artifacts = ArtifactsConfig::zero();
+        self.storage.artifacts_config.write(artifacts);
+        self.storage.artifacts_config_hash.write(poseidon2_hash(artifacts.serialize()));
+
+        let spaceships = SpaceshipsConfig::zero();
+        self.storage.spaceships_config.write(spaceships);
+        self.storage.spaceships_config_hash.write(poseidon2_hash(spaceships.serialize()));
+    }
+
+    /// Batch initialize default configs (part 2): space_junk, capture_zones.
+    /// Total storage writes: ~31 slots (under 63-write limit).
+    #[external("public")]
+    fn set_default_configs_batch_2() {
+        self.internal.assert_admin();
+
+        let space_junk = SpaceJunkConfig::zero();
+        self.storage.space_junk_config.write(space_junk);
+        self.storage.space_junk_config_hash.write(poseidon2_hash(space_junk.serialize()));
+
+        let capture_zones = CaptureZonesConfig::zero();
+        self.storage.capture_zones_config.write(capture_zones);
+        self.storage.capture_zones_config_hash.write(poseidon2_hash(capture_zones.serialize()));
+    }
+
     #[external("public")]
     fn set_upgrade(key: u128, upgrade: Upgrade) {
         self.internal.assert_admin();
@@ -484,6 +560,13 @@ pub contract Config {
     #[view]
     fn get_capture_zones_config() -> CaptureZonesConfig {
         self.storage.capture_zones_config.read()
+    }
+
+    /// Returns UpgradeConfig (upgrade costs and level caps).
+    #[external("public")]
+    #[view]
+    fn get_upgrade_config() -> UpgradeConfig {
+        self.storage.upgrade_config.read()
     }
 
     /// Returns default planet stats for the given level.
@@ -590,6 +673,13 @@ pub contract Config {
         self.storage.capture_zones_config_hash.read()
     }
 
+    /// Returns the stored hash of UpgradeConfig.
+    #[external("public")]
+    #[view]
+    fn get_upgrade_config_hash() -> Field {
+        self.storage.upgrade_config_hash.read()
+    }
+
     /// Returns the stored hash of PlanetDefaultStats for the given level.
     #[external("public")]
     #[view]
@@ -692,6 +782,13 @@ pub contract Config {
         self.storage.capture_zones_config_hash.read() == poseidon2_hash(config.serialize())
     }
 
+    /// Verifies that the given UpgradeConfig matches the stored hash.
+    #[external("public")]
+    #[view]
+    fn verify_upgrade_config(config: UpgradeConfig) -> bool {
+        self.storage.upgrade_config_hash.read() == poseidon2_hash(config.serialize())
+    }
+
     /// Verifies that the given PlanetDefaultStats matches the stored hash for the given level.
     #[external("public")]
     #[view]
@@ -776,6 +873,13 @@ pub contract Config {
         self.storage.capture_zones_config_hash.read() == hash
     }
 
+    /// Verifies that the given hash matches the stored UpgradeConfig hash.
+    #[external("public")]
+    #[view]
+    fn verify_upgrade_config_hash(hash: Field) -> bool {
+        self.storage.upgrade_config_hash.read() == hash
+    }
+
     /// Verifies that the given hash matches the stored PlanetDefaultStats hash for the given level.
     #[external("public")]
     #[view]
@@ -819,10 +923,10 @@ pub contract Config {
     }
 
     /// Verifies all config hashes at once. Returns true if all match.
-    /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones]
+    /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones, upgrade]
     #[external("public")]
     #[view]
-    fn verify_all_config_hashes(hashes: [Field; 12]) -> bool {
+    fn verify_all_config_hashes(hashes: [Field; 13]) -> bool {
         (self.storage.world_config_hash.read() == hashes[0])
             & (self.storage.snark_config_hash.read() == hashes[1])
             & (self.storage.game_config_core_hash.read() == hashes[2])
@@ -835,6 +939,7 @@ pub contract Config {
             & (self.storage.spaceships_config_hash.read() == hashes[9])
             & (self.storage.space_junk_config_hash.read() == hashes[10])
             & (self.storage.capture_zones_config_hash.read() == hashes[11])
+            & (self.storage.upgrade_config_hash.read() == hashes[12])
     }
 
     // ========== Storage Access Functions ==========
@@ -906,6 +1011,11 @@ pub contract Config {
     #[external("utility")]
     unconstrained fn get_capture_zones_config_unconstrained() -> CaptureZonesConfig {
         self.storage.capture_zones_config.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_upgrade_config_unconstrained() -> UpgradeConfig {
+        self.storage.upgrade_config.read()
     }
 
     #[external("utility")]
@@ -1077,6 +1187,12 @@ pub contract Config {
         self.storage.capture_zones_config_hash.read()
     }
 
+    /// Returns the stored hash of UpgradeConfig (unconstrained).
+    #[external("utility")]
+    unconstrained fn get_upgrade_config_hash_unconstrained() -> Field {
+        self.storage.upgrade_config_hash.read()
+    }
+
     /// Returns the stored hash of PlanetDefaultStats for the given level (unconstrained).
     #[external("utility")]
     unconstrained fn get_planet_default_stats_hash_unconstrained(level: u8) -> Field {
@@ -1101,9 +1217,9 @@ pub contract Config {
     }
 
     /// Returns all config hashes in a single call (unconstrained).
-    /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones]
+    /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones, upgrade]
     #[external("utility")]
-    unconstrained fn get_all_config_hashes_unconstrained() -> [Field; 12] {
+    unconstrained fn get_all_config_hashes_unconstrained() -> [Field; 13] {
         [
             self.storage.world_config_hash.read(),
             self.storage.snark_config_hash.read(),
@@ -1117,6 +1233,7 @@ pub contract Config {
             self.storage.spaceships_config_hash.read(),
             self.storage.space_junk_config_hash.read(),
             self.storage.capture_zones_config_hash.read(),
+            self.storage.upgrade_config_hash.read(),
         ]
     }
 }

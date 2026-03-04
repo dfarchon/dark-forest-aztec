@@ -100,7 +100,15 @@ export class PluginManager {
     isAdmin: boolean,
     overwriteEmbeddedPlugins: boolean
   ): Promise<void> {
-    this.pluginLibrary = await this.gameManager.loadPlugins();
+    const loaded = await this.gameManager.loadPlugins();
+    const lastById = new Map<string, number>();
+    loaded.forEach((p, i) => lastById.set(p.id, i));
+    this.pluginLibrary = loaded.filter(
+      (_, i) => lastById.get(loaded[i].id) === i
+    );
+    if (this.pluginLibrary.length < loaded.length) {
+      this.gameManager.savePlugins(this.pluginLibrary);
+    }
 
     this.onNewEmbeddedPlugins(
       getEmbeddedPlugins(isAdmin),
@@ -190,7 +198,12 @@ export class PluginManager {
       code,
     };
 
-    this.pluginLibrary.push(newPlugin);
+    const existingIndex = this.pluginLibrary.findIndex((p) => p.id === id);
+    if (existingIndex !== -1) {
+      this.pluginLibrary[existingIndex] = newPlugin;
+    } else {
+      this.pluginLibrary.push(newPlugin);
+    }
     this.gameManager.savePlugins(this.pluginLibrary);
 
     this.notifyPluginLibraryUpdated();
@@ -226,7 +239,7 @@ export class PluginManager {
       // webpack skip over this dynamic `import` call so it won't be transformed into
       // a weird _webpack_require_dynamic_ call
       const { default: Plugin } = await import(
-        /* webpackIgnore: true */ moduleUrl
+        /* webpackIgnore: true */ /* @vite-ignore */ moduleUrl
       );
       if (this.pluginProcesses[id] === undefined) {
         // instantiate the plugin and attach it to the process list

@@ -188,7 +188,7 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Loading account from .env...');
-    const deployer = await loadAccountFromEnv(wallet);
+    const deployer = await loadAccountFromEnv(wallet, aztecNode);
     console.log(`✅ Account loaded: ${deployer.toString()}\n`);
 
     console.log('📄 Connecting to contracts...');
@@ -240,24 +240,42 @@ async function main() {
         },
     };
 
-    /** Add authorized contract only if not already authorized (idempotent for re-runs). */
-    const addAuthorizedIfNeeded = async (
+    /** Batch authorize contracts on a storage contract (idempotent for re-runs). */
+    const addAuthorizedBatchIfNeeded = async (
         storage: ContractBase,
-        contractAddr: AztecAddress
+        contractAddrs: AztecAddress[]
     ) => {
         const methods = storage.methods as unknown as {
             is_authorized: (a: AztecAddress) => {
                 simulate: (o?: object) => Promise<boolean>;
             };
-            add_authorized_contract: (a: AztecAddress) => {
+            add_authorized_contracts_batch: (
+                a: [AztecAddress, AztecAddress, AztecAddress],
+                c: number
+            ) => {
                 send: (o: typeof opts) => Promise<unknown>;
             };
         };
-        const isAuth = await methods
-            .is_authorized(contractAddr)
-            .simulate({ from: deployer });
-        if (isAuth) return;
-        await methods.add_authorized_contract(contractAddr).send(opts);
+
+        // Filter out already-authorized addresses
+        const toAuthorize: AztecAddress[] = [];
+        for (const addr of contractAddrs) {
+            const isAuth = await methods
+                .is_authorized(addr)
+                .simulate({ from: deployer });
+            if (!isAuth) toAuthorize.push(addr);
+        }
+        if (toAuthorize.length === 0) return;
+
+        // Pad to fixed array of 3
+        const padded: [AztecAddress, AztecAddress, AztecAddress] = [
+            toAuthorize[0] ?? AztecAddress.zero(),
+            toAuthorize[1] ?? AztecAddress.zero(),
+            toAuthorize[2] ?? AztecAddress.zero(),
+        ];
+        await methods
+            .add_authorized_contracts_batch(padded, toAuthorize.length)
+            .send(opts);
     };
 
     const TOTAL_STEPS = 59;
@@ -276,19 +294,23 @@ async function main() {
         );
     };
 
-    console.log('\n🔍 Configuring contracts...\n');
+    console.log('\n🔍 Configuring contracts (batched: 22 steps)...\n');
 
-    await run('Config.set_default_world_config()', async () => {
-        await config.methods.set_default_world_config().send(opts);
-    });
+    // ---- Phase 1: Config initialization (10 calls) ----
 
-    await run('Config.set_default_snark_config()', async () => {
-        await config.methods.set_default_snark_config().send(opts);
-    });
+    await run(
+        'Config.set_default_configs_batch_1() [world, snark, game, thresholds, artifacts, spaceships]',
+        async () => {
+            await config.methods.set_default_configs_batch_1().send(opts);
+        }
+    );
 
-    await run('Config.set_default_game_config()', async () => {
-        await config.methods.set_default_game_config().send(opts);
-    });
+    await run(
+        'Config.set_default_configs_batch_2() [space_junk, capture_zones]',
+        async () => {
+            await config.methods.set_default_configs_batch_2().send(opts);
+        }
+    );
 
     for (const tier of [0, 1, 2, 3] as const) {
         await run(
@@ -301,28 +323,8 @@ async function main() {
         );
     }
 
-    await run('Config.set_default_artifacts_config()', async () => {
-        await config.methods.set_default_artifacts_config().send(opts);
-    });
-
-    await run('Config.set_default_spaceships_config()', async () => {
-        await config.methods.set_default_spaceships_config().send(opts);
-    });
-
-    await run('Config.set_default_space_junk_config()', async () => {
-        await config.methods.set_default_space_junk_config().send(opts);
-    });
-
-    await run('Config.set_default_capture_zones_config()', async () => {
-        await config.methods.set_default_capture_zones_config().send(opts);
-    });
-
-    // ---- planet default stats & upgrades ----
-    // NOTE: Public storage writes are limited to 63 per call.
-    // PlanetDefaultStats has 8 u128 fields; writing 10 levels in a single call would exceed the limit.
-    // We therefore write per-level (10 separate calls).
+    // ---- planet default stats (batched: 5+5 instead of 10 individual calls) ----
     const planetDefaultStats = [
-        // level 0: Asteroid
         {
             level: 0,
             stats: {
@@ -336,7 +338,6 @@ async function main() {
                 barbarian_percentage: 0n,
             },
         },
-        // level 1: Brown Dwarf
         {
             level: 1,
             stats: {
@@ -350,7 +351,6 @@ async function main() {
                 barbarian_percentage: 1n,
             },
         },
-        // level 2: Red Dwarf
         {
             level: 2,
             stats: {
@@ -364,7 +364,6 @@ async function main() {
                 barbarian_percentage: 2n,
             },
         },
-        // level 3: White Dwarf
         {
             level: 3,
             stats: {
@@ -378,7 +377,6 @@ async function main() {
                 barbarian_percentage: 3n,
             },
         },
-        // level 4: Yellow Star
         {
             level: 4,
             stats: {
@@ -392,7 +390,6 @@ async function main() {
                 barbarian_percentage: 4n,
             },
         },
-        // level 5: Blue Star
         {
             level: 5,
             stats: {
@@ -406,7 +403,6 @@ async function main() {
                 barbarian_percentage: 5n,
             },
         },
-        // level 6: Giant
         {
             level: 6,
             stats: {
@@ -420,7 +416,6 @@ async function main() {
                 barbarian_percentage: 7n,
             },
         },
-        // level 7: Supergiant
         {
             level: 7,
             stats: {
@@ -434,7 +429,6 @@ async function main() {
                 barbarian_percentage: 10n,
             },
         },
-        // level 8: Unlabeled1
         {
             level: 8,
             stats: {
@@ -448,7 +442,6 @@ async function main() {
                 barbarian_percentage: 20n,
             },
         },
-        // level 9: Unlabeled2
         {
             level: 9,
             stats: {
@@ -464,201 +457,166 @@ async function main() {
         },
     ];
 
-    for (const { level, stats } of planetDefaultStats) {
-        await run(`set_planet_default_stats(${level})`, async () => {
-            await config.methods
-                .set_planet_default_stats(level, stats)
-                .send(opts);
-        });
-    }
+    // Batch 1: levels 0-4
+    await run('Config.set_planet_default_stats_batch(0-4)', async () => {
+        const batch = planetDefaultStats.slice(0, 5);
+        await config.methods
+            .set_planet_default_stats_batch(
+                batch.map((b) => b.level),
+                batch.map((b) => b.stats),
+                5
+            )
+            .send(opts);
+    });
+
+    // Batch 2: levels 5-9
+    await run('Config.set_planet_default_stats_batch(5-9)', async () => {
+        const batch = planetDefaultStats.slice(5, 10);
+        await config.methods
+            .set_planet_default_stats_batch(
+                batch.map((b) => b.level),
+                batch.map((b) => b.stats),
+                5
+            )
+            .send(opts);
+    });
 
     await run('Config.initializeUpgrades()', async () => {
         await config.methods.initializeUpgrades().send(opts);
+    });
+
+    await run('Config.set_default_upgrade_config()', async () => {
+        await config.methods.set_default_upgrade_config().send(opts);
     });
 
     await run('Config.initialize_cumulative_rarities()', async () => {
         await config.methods.initialize_cumulative_rarities().send(opts);
     });
 
-    await run('Admin system', async () => {
-        await run('admin.set_config_storage_address()', async () => {
-            await admin.methods
-                .set_config_storage_address(config.address)
-                .send(opts);
-        });
+    // ---- Phase 2: System contract setup (3 calls) ----
 
-        await run('admin.set_world_storage_address()', async () => {
-            await admin.methods
-                .set_world_storage_address(worldStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(worldStorage, admin.address);
-        });
-
-        await run('admin.set_player_storage_address()', async () => {
-            await admin.methods
-                .set_player_storage_address(playerStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(playerStorage, admin.address);
-        });
-
-        await run('admin.set_planet_storage_address()', async () => {
-            await admin.methods
-                .set_planet_storage_address(planetStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(planetStorage, admin.address);
-        });
+    await run('Admin.set_all_storage_addresses()', async () => {
+        await admin.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address
+            )
+            .send(opts);
     });
 
-    await run('Core system', async () => {
-        await run('core.set_config_storage_address()', async () => {
-            await core.methods
-                .set_config_storage_address(config.address)
-                .send(opts);
-        });
-
-        await run('core.set_world_storage_address()', async () => {
-            await core.methods
-                .set_world_storage_address(worldStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(worldStorage, core.address);
-        });
-
-        await run('core.set_player_storage_address()', async () => {
-            await core.methods
-                .set_player_storage_address(playerStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(playerStorage, core.address);
-        });
-
-        await run('core.set_planet_storage_address()', async () => {
-            await core.methods
-                .set_planet_storage_address(planetStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(planetStorage, core.address);
-        });
-
-        await run(
-            'core.set_planet_revealed_coords_storage_address()',
-            async () => {
-                await core.methods
-                    .set_planet_revealed_coords_storage_address(
-                        planetRevealedCoordsStorage.address
-                    )
-                    .send(opts);
-                await addAuthorizedIfNeeded(
-                    planetRevealedCoordsStorage,
-                    core.address
-                );
-            }
-        );
-
-        await run('core.set_planet_events_storage_address()', async () => {
-            await core.methods
-                .set_planet_events_storage_address(planetEventsStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(planetEventsStorage, core.address);
-        });
-
-        await run('core.set_planet_artifacts_storage_address()', async () => {
-            await core.methods
-                .set_planet_artifacts_storage_address(
-                    planetArtifactsStorage.address
-                )
-                .send(opts);
-            await addAuthorizedIfNeeded(planetArtifactsStorage, core.address);
-        });
-
-        await run('core.set_arrivals_storage_address()', async () => {
-            await core.methods
-                .set_arrivals_storage_address(arrivalStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(arrivalStorage, core.address);
-        });
-
-        await run('core.set_artifact_storage_address()', async () => {
-            await core.methods
-                .set_artifact_storage_address(artifactStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(artifactStorage, core.address);
-        });
-
-        await run('core.set_artifact_location_storage_address()', async () => {
-            await core.methods
-                .set_artifact_location_storage_address(
-                    artifactLocationStorage.address
-                )
-                .send(opts);
-            await addAuthorizedIfNeeded(artifactLocationStorage, core.address);
-        });
+    await run('Core.set_all_storage_addresses()', async () => {
+        await core.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetRevealedCoordsStorage.address,
+                planetEventsStorage.address,
+                planetArtifactsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
     });
 
-    await run('Move system', async () => {
-        await run('move.set_config_storage_address()', async () => {
-            await move.methods
-                .set_config_storage_address(config.address)
-                .send(opts);
-        });
-
-        await run('move.set_world_storage_address()', async () => {
-            await move.methods
-                .set_world_storage_address(worldStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(worldStorage, move.address);
-        });
-
-        await run('move.set_player_storage_address()', async () => {
-            await move.methods
-                .set_player_storage_address(playerStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(playerStorage, move.address);
-        });
-
-        await run('move.set_planet_storage_address()', async () => {
-            await move.methods
-                .set_planet_storage_address(planetStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(planetStorage, move.address);
-        });
-
-        await run('move.set_planet_events_storage_address()', async () => {
-            await move.methods
-                .set_planet_events_storage_address(planetEventsStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(planetEventsStorage, move.address);
-        });
-
-        await run('move.set_planet_artifacts_storage_address()', async () => {
-            await move.methods
-                .set_planet_artifacts_storage_address(
-                    planetArtifactsStorage.address
-                )
-                .send(opts);
-            await addAuthorizedIfNeeded(planetArtifactsStorage, move.address);
-        });
-
-        await run('move.set_arrivals_storage_address()', async () => {
-            await move.methods
-                .set_arrivals_storage_address(arrivalStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(arrivalStorage, move.address);
-        });
-
-        await run('move.set_artifact_storage_address()', async () => {
-            await move.methods
-                .set_artifact_storage_address(artifactStorage.address)
-                .send(opts);
-            await addAuthorizedIfNeeded(artifactStorage, move.address);
-        });
-
-        await run('move.set_artifact_location_storage_address()', async () => {
-            await move.methods
-                .set_artifact_location_storage_address(
-                    artifactLocationStorage.address
-                )
-                .send(opts);
-            await addAuthorizedIfNeeded(artifactLocationStorage, move.address);
-        });
+    await run('Move.set_all_storage_addresses()', async () => {
+        await move.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetEventsStorage.address,
+                planetArtifactsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
     });
+
+    // ---- Phase 3: Storage authorization (9 calls) ----
+
+    await run('WorldStorage.add_authorized_contracts_batch()', async () => {
+        await addAuthorizedBatchIfNeeded(worldStorage, [
+            admin.address,
+            core.address,
+            move.address,
+        ]);
+    });
+
+    await run('PlayerStorage.add_authorized_contracts_batch()', async () => {
+        await addAuthorizedBatchIfNeeded(playerStorage, [
+            admin.address,
+            core.address,
+            move.address,
+        ]);
+    });
+
+    await run('PlanetStorage.add_authorized_contracts_batch()', async () => {
+        await addAuthorizedBatchIfNeeded(planetStorage, [
+            admin.address,
+            core.address,
+            move.address,
+        ]);
+    });
+
+    await run(
+        'PlanetRevealedCoordsStorage.add_authorized_contracts_batch()',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetRevealedCoordsStorage, [
+                core.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlanetEventsStorage.add_authorized_contracts_batch()',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetEventsStorage, [
+                core.address,
+                move.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlanetArtifactsStorage.add_authorized_contracts_batch()',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
+                core.address,
+                move.address,
+            ]);
+        }
+    );
+
+    await run('ArrivalStorage.add_authorized_contracts_batch()', async () => {
+        await addAuthorizedBatchIfNeeded(arrivalStorage, [
+            core.address,
+            move.address,
+        ]);
+    });
+
+    await run('ArtifactStorage.add_authorized_contracts_batch()', async () => {
+        await addAuthorizedBatchIfNeeded(artifactStorage, [
+            core.address,
+            move.address,
+        ]);
+    });
+
+    await run(
+        'ArtifactLocationStorage.add_authorized_contracts_batch()',
+        async () => {
+            await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
+                core.address,
+                move.address,
+            ]);
+        }
+    );
 
     const elapsedMs = Date.now() - scriptStartTime;
     const elapsedSec = (elapsedMs / 1000).toFixed(1);

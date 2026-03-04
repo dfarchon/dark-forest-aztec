@@ -37,4 +37,44 @@ const ImgContainer = styled.div`
   }
 `;
 
-const LandingPageRoundArtImg = styled.img``;
+const ImgWrapper = styled.div`
+  display: inline-block;
+  transform-origin: center top;
+`;
+
+const SizeControl = styled.div`
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+`;
+
+const Spacer = styled.span<{ width: number }>`
+  display: inline-block;
+  width: ${(p) => p.width}px;
+`;
+
+const ScaleBtn = styled.button`
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: inherit;
+  font-size: 1em;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+`;
+
+const ScaleValue = styled.span`
+  min-width: 3em;
+  display: inline-block;
+  text-align: center;
+`;
+
+const LandingPageRoundArtImg = styled.img`
+  display: block;
+  max-width: 100%;
+  height: auto;
+`;

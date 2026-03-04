@@ -24,7 +24,7 @@ contract Core {
         snark::SnarkConfig,
         space_junk::SpaceJunkConfig,
         spaceships::SpaceshipsConfig,
-        upgrade::Upgrade,
+        upgrade::{Upgrade, UpgradeConfig},
         world::WorldConfig,
     };
 
@@ -39,9 +39,12 @@ contract Core {
         world::World,
     };
 
-    use ::libs::game_utils::{revert_if_bad_snark_perlin_flags, update_world_radius};
+    use ::libs::game_utils::{_buff_planet, revert_if_bad_snark_perlin_flags, update_world_radius};
 
-    use ::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
+    use ::libs::planet::{
+        check_player_init, initialize_planet_with_defaults, refresh_planet, validate_upgrade_planet,
+        validate_withdraw_silver,
+    };
 
     use ::arrival_storage::ArrivalStorage;
     use ::artifact_location_storage::ArtifactLocationStorage;
@@ -200,6 +203,33 @@ contract Core {
         self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_addr: AztecAddress,
+        world_addr: AztecAddress,
+        player_addr: AztecAddress,
+        planet_addr: AztecAddress,
+        planet_revealed_coords_addr: AztecAddress,
+        planet_events_addr: AztecAddress,
+        planet_artifacts_addr: AztecAddress,
+        arrivals_addr: AztecAddress,
+        artifact_addr: AztecAddress,
+        artifact_location_addr: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_addr);
+        self.storage.world_storage_address.write(world_addr);
+        self.storage.player_storage_address.write(player_addr);
+        self.storage.planet_storage_address.write(planet_addr);
+        self.storage.planet_revealed_coords_storage_address.write(planet_revealed_coords_addr);
+        self.storage.planet_events_storage_address.write(planet_events_addr);
+        self.storage.planet_artifacts_storage_address.write(planet_artifacts_addr);
+        self.storage.arrivals_storage_address.write(arrivals_addr);
+        self.storage.artifact_storage_address.write(artifact_addr);
+        self.storage.artifact_location_storage_address.write(artifact_location_addr);
+    }
+
     #[external("private")]
     fn refresh_planet_private(
         location: Field,
@@ -255,8 +285,16 @@ contract Core {
         let planet_is_initialized: bool = planet_state != Planet::zero();
         assert(planet_is_initialized, "Planet is not initialized");
 
-        let planet_state_hash = poseidon2_hash(planet_state.serialize());
-        let planet_events_state_hash = poseidon2_hash(planet_events_state.serialize());
+        let planet_state_hash = if planet_state == Planet::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_state.serialize())
+        };
+        let planet_events_state_hash = if planet_events_state == PlanetEvents::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_events_state.serialize())
+        };
 
         // Extract arrival_ids and artifact_ids by order: [id_0, id_1, ..., id_19]
         let mut arrival_ids: [Field; 20] = [0; 20];
@@ -440,6 +478,549 @@ contract Core {
         }
     }
 
+    #[external("private")]
+    fn upgrade_planet(
+        location: Field,
+        branch: u8,
+        timestamp: u64,
+        upgrade_config: UpgradeConfig,
+        upgrade: Upgrade,
+        planet_state: Planet,
+        planet_events_state: PlanetEvents,
+        arrivals: [Arrival; 20],
+        artifacts: [Artifact; 20],
+        artifact_locations: [ArtifactLocation; 20],
+        planet_artifacts_state: PlanetArtifacts,
+    ) {
+        let sender = self.msg_sender();
+
+        assert(planet_state != Planet::zero(), "Planet is not initialized");
+        assert(
+            timestamp >= planet_state.last_updated,
+            "Timestamp must be >= planet's last_updated",
+        );
+        assert(
+            timestamp >= planet_events_state.last_updated,
+            "Timestamp must be >= planet_events' last_updated",
+        );
+        assert(
+            timestamp >= planet_artifacts_state.last_updated,
+            "Timestamp must be >= planet_artifacts' last_updated",
+        );
+
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                let arrival = arrivals[i];
+
+                assert(
+                    timestamp >= arrival.departure_time,
+                    "Timestamp must be >= arrival's departure_time",
+                );
+
+                if arrival.carried_artifact_id != 0 {
+                    let artifact = artifacts[i];
+                    let artifact_location = artifact_locations[i];
+
+                    assert(
+                        timestamp >= artifact.last_updated,
+                        "Timestamp must be >= artifact's last_updated",
+                    );
+                    assert(
+                        timestamp >= artifact_location.last_updated,
+                        "Timestamp must be >= artifact_location's last_updated",
+                    );
+                }
+            }
+        }
+
+        let planet_state_hash = poseidon2_hash(planet_state.serialize());
+        let planet_events_state_hash = if planet_events_state == PlanetEvents::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_events_state.serialize())
+        };
+
+        let mut arrivals_ids: [Field; 20] = [0; 20];
+        let mut arrivals_hash: [Field; 20] = [0; 20];
+        let mut artifacts_ids: [Field; 20] = [0; 20];
+        let mut artifacts_hash: [Field; 20] = [0; 20];
+        let mut artifact_locations_hash: [Field; 20] = [0; 20];
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                let arrival_id = planet_events_state.events[i].id;
+                let arrival = arrivals[i];
+                let artifact_id = arrival.carried_artifact_id;
+
+                arrivals_ids[i] = arrival_id;
+                artifacts_ids[i] = artifact_id;
+                if arrival_id != 0 {
+                    arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+
+                    if artifact_id != 0 {
+                        artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
+                        artifact_locations_hash[i] =
+                            poseidon2_hash(artifact_locations[i].serialize());
+                    }
+                }
+            }
+        }
+
+        let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_artifacts_state.serialize())
+        };
+
+        let refreshed_states = refresh_planet(
+            timestamp,
+            location,
+            planet_state,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            artifact_locations,
+            planet_artifacts_state,
+        );
+
+        let mut refreshed_planet = refreshed_states.0;
+        let mut new_planet_events_state = refreshed_states.1;
+        let mut new_planet_artifacts_state = refreshed_states.2;
+        let mut new_artifact_locations = refreshed_states.3;
+
+        refreshed_planet.last_updated = timestamp;
+        new_planet_events_state.last_updated = timestamp;
+        new_planet_artifacts_state.last_updated = timestamp;
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                new_artifact_locations[i].last_updated = timestamp;
+            }
+        }
+
+        let (current_branch_level, silver_cost) =
+            validate_upgrade_planet(refreshed_planet, branch, sender, upgrade_config);
+
+        let mut new_planet = refreshed_planet;
+        new_planet.silver -= silver_cost;
+        if branch == UpgradeBranch::Defense() {
+            new_planet.upgrade_state_0 += 1;
+        } else if branch == UpgradeBranch::Range() {
+            new_planet.upgrade_state_1 += 1;
+        } else {
+            new_planet.upgrade_state_2 += 1;
+        }
+        new_planet = _buff_planet(location, new_planet, upgrade).1;
+        new_planet.last_updated = timestamp;
+
+        let upgrade_config_hash = poseidon2_hash(upgrade_config.serialize());
+        let upgrade_hash = poseidon2_hash(upgrade.serialize());
+
+        self.enqueue_self.upgrade_planet_public(
+            location,
+            sender,
+            branch,
+            current_branch_level,
+            timestamp,
+            planet_state_hash,
+            planet_events_state_hash,
+            planet_events_state.count as u8,
+            arrivals_ids,
+            arrivals_hash,
+            artifacts_ids,
+            artifacts_hash,
+            artifact_locations_hash,
+            planet_artifacts_state_hash,
+            upgrade_config_hash,
+            upgrade_hash,
+            new_planet,
+            new_planet_events_state,
+            new_planet_artifacts_state,
+            new_artifact_locations,
+        );
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn upgrade_planet_public(
+        location: Field,
+        sender: AztecAddress,
+        branch: u8,
+        current_branch_level: u8,
+        timestamp: u64,
+        planet_state_hash: Field,
+        planet_events_state_hash: Field,
+        planet_event_count: u8,
+        arrivals_ids: [Field; 20],
+        arrivals_hash: [Field; 20],
+        artifacts_ids: [Field; 20],
+        artifacts_hash: [Field; 20],
+        artifact_locations_hash: [Field; 20],
+        planet_artifacts_state_hash: Field,
+        upgrade_config_hash: Field,
+        upgrade_hash: Field,
+        new_planet: Planet,
+        new_planet_events_state: PlanetEvents,
+        new_planet_artifacts_state: PlanetArtifacts,
+        new_artifact_locations: [ArtifactLocation; 20],
+    ) {
+        let actual_timestamp = self.context.timestamp();
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        let max_time_drift: u64 = 300;
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        let planet_storage_address = self.internal.get_planet_storage_address();
+        let planet_storage = PlanetStorage::at(planet_storage_address);
+        assert(
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
+            "Planet state hash mismatch",
+        );
+
+        let planet_events_storage_address = self.internal.get_planet_events_storage_address();
+        let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
+        assert(
+            self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)),
+            "Planet events state hash mismatch",
+        );
+
+        let arrival_storage_address = self.internal.get_arrivals_storage_address();
+        let arrival_storage = ArrivalStorage::at(arrival_storage_address);
+        let artifact_storage_address = self.internal.get_artifact_storage_address();
+        let artifact_storage = ArtifactStorage::at(artifact_storage_address);
+        let artifact_location_storage_address =
+            self.internal.get_artifact_location_storage_address();
+        let artifact_location_storage =
+            ArtifactLocationStorage::at(artifact_location_storage_address);
+        for i in 0..20 {
+            if (i as u8) < planet_event_count {
+                let arrival_id = arrivals_ids[i];
+                let artifact_id = artifacts_ids[i];
+
+                if arrival_id != 0 {
+                    assert(
+                        self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])),
+                        "Arrival hash mismatch",
+                    );
+                }
+
+                if artifact_id != 0 {
+                    assert(
+                        self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])),
+                        "Artifact hash mismatch",
+                    );
+                    assert(
+                        self.view(artifact_location_storage.verify_hash(
+                            artifact_id,
+                            artifact_locations_hash[i],
+                        )),
+                        "Artifact location hash mismatch",
+                    );
+                }
+            }
+        }
+
+        let planet_artifacts_storage_address = self.internal.get_planet_artifacts_storage_address();
+        let planet_artifacts_storage = PlanetArtifactsStorage::at(planet_artifacts_storage_address);
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(location, planet_artifacts_state_hash)),
+            "Planet artifacts state hash mismatch",
+        );
+
+        let config_storage_address = self.internal.get_config_storage_address();
+        let config = Config::at(config_storage_address);
+        assert(
+            self.view(config.verify_upgrade_config_hash(upgrade_config_hash)),
+            "Upgrade config hash mismatch",
+        );
+
+        let configured_upgrade = self.view(config.get_upgrade_by_branch_level(
+            branch as u128,
+            current_branch_level as u128,
+        ));
+        assert(
+            poseidon2_hash(configured_upgrade.serialize()) == upgrade_hash,
+            "Upgrade hash mismatch",
+        );
+
+        assert(new_planet.owner == sender, "Planet owner mismatch");
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_events_storage.set(location, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
+        for i in 0..20 {
+            if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
+                self.call(artifact_location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+            }
+        }
+    }
+
+    #[external("private")]
+    fn withdraw_silver(
+        location: Field,
+        silver_to_withdraw: u128,
+        timestamp: u64,
+        world_config: WorldConfig,
+        planet_state: Planet,
+        planet_events_state: PlanetEvents,
+        arrivals: [Arrival; 20],
+        artifacts: [Artifact; 20],
+        artifact_locations: [ArtifactLocation; 20],
+        planet_artifacts_state: PlanetArtifacts,
+        player_state: Player,
+    ) {
+        let sender = self.msg_sender();
+
+        assert(planet_state != Planet::zero(), "Planet is not initialized");
+        assert(player_state != Player::zero(), "Player is not initialized");
+        assert(
+            timestamp >= planet_state.last_updated,
+            "Timestamp must be >= planet's last_updated",
+        );
+        assert(
+            timestamp >= player_state.last_updated,
+            "Timestamp must be >= player's last_updated",
+        );
+        assert(
+            timestamp >= planet_events_state.last_updated,
+            "Timestamp must be >= planet_events' last_updated",
+        );
+        assert(
+            timestamp >= planet_artifacts_state.last_updated,
+            "Timestamp must be >= planet_artifacts' last_updated",
+        );
+
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                let arrival = arrivals[i];
+
+                assert(
+                    timestamp >= arrival.departure_time,
+                    "Timestamp must be >= arrival's departure_time",
+                );
+
+                if arrival.carried_artifact_id != 0 {
+                    let artifact = artifacts[i];
+                    let artifact_location = artifact_locations[i];
+
+                    assert(
+                        timestamp >= artifact.last_updated,
+                        "Timestamp must be >= artifact's last_updated",
+                    );
+                    assert(
+                        timestamp >= artifact_location.last_updated,
+                        "Timestamp must be >= artifact_location's last_updated",
+                    );
+                }
+            }
+        }
+
+        let planet_state_hash = poseidon2_hash(planet_state.serialize());
+        let planet_events_state_hash = if planet_events_state == PlanetEvents::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_events_state.serialize())
+        };
+
+        let mut arrivals_ids: [Field; 20] = [0; 20];
+        let mut arrivals_hash: [Field; 20] = [0; 20];
+        let mut artifacts_ids: [Field; 20] = [0; 20];
+        let mut artifacts_hash: [Field; 20] = [0; 20];
+        let mut artifact_locations_hash: [Field; 20] = [0; 20];
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                let arrival_id = planet_events_state.events[i].id;
+                let arrival = arrivals[i];
+                let artifact_id = arrival.carried_artifact_id;
+
+                arrivals_ids[i] = arrival_id;
+                artifacts_ids[i] = artifact_id;
+                if arrival_id != 0 {
+                    arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+
+                    if artifact_id != 0 {
+                        artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
+                        artifact_locations_hash[i] =
+                            poseidon2_hash(artifact_locations[i].serialize());
+                    }
+                }
+            }
+        }
+
+        let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_artifacts_state.serialize())
+        };
+
+        let refreshed_states = refresh_planet(
+            timestamp,
+            location,
+            planet_state,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            artifact_locations,
+            planet_artifacts_state,
+        );
+
+        let mut refreshed_planet = refreshed_states.0;
+        let mut new_planet_events_state = refreshed_states.1;
+        let mut new_planet_artifacts_state = refreshed_states.2;
+        let mut new_artifact_locations = refreshed_states.3;
+
+        refreshed_planet.last_updated = timestamp;
+        new_planet_events_state.last_updated = timestamp;
+        new_planet_artifacts_state.last_updated = timestamp;
+        for i in 0..20 {
+            if i < planet_events_state.count {
+                new_artifact_locations[i].last_updated = timestamp;
+            }
+        }
+
+        validate_withdraw_silver(refreshed_planet, silver_to_withdraw, sender);
+
+        let mut new_planet = refreshed_planet;
+        new_planet.silver -= silver_to_withdraw;
+        new_planet.last_updated = timestamp;
+
+        let score: u128 = ((silver_to_withdraw / 1000) * world_config.silver_score_value) / 100;
+        let mut new_player = player_state;
+        new_player.score += score;
+        new_player.last_updated = timestamp;
+
+        let player_state_hash = poseidon2_hash(player_state.serialize());
+        let world_config_hash = poseidon2_hash(world_config.serialize());
+
+        self.enqueue_self.withdraw_silver_public(
+            location,
+            sender,
+            timestamp,
+            planet_state_hash,
+            planet_events_state_hash,
+            planet_events_state.count as u8,
+            arrivals_ids,
+            arrivals_hash,
+            artifacts_ids,
+            artifacts_hash,
+            artifact_locations_hash,
+            planet_artifacts_state_hash,
+            player_state_hash,
+            world_config_hash,
+            new_planet,
+            new_planet_events_state,
+            new_planet_artifacts_state,
+            new_artifact_locations,
+            new_player,
+        );
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn withdraw_silver_public(
+        location: Field,
+        sender: AztecAddress,
+        timestamp: u64,
+        planet_state_hash: Field,
+        planet_events_state_hash: Field,
+        planet_event_count: u8,
+        arrivals_ids: [Field; 20],
+        arrivals_hash: [Field; 20],
+        artifacts_ids: [Field; 20],
+        artifacts_hash: [Field; 20],
+        artifact_locations_hash: [Field; 20],
+        planet_artifacts_state_hash: Field,
+        player_state_hash: Field,
+        world_config_hash: Field,
+        new_planet: Planet,
+        new_planet_events_state: PlanetEvents,
+        new_planet_artifacts_state: PlanetArtifacts,
+        new_artifact_locations: [ArtifactLocation; 20],
+        new_player: Player,
+    ) {
+        let actual_timestamp = self.context.timestamp();
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        let max_time_drift: u64 = 300;
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        let config_storage_address = self.internal.get_config_storage_address();
+        let config = Config::at(config_storage_address);
+        assert(
+            self.view(config.verify_world_config_hash(world_config_hash)),
+            "World config hash mismatch",
+        );
+
+        let planet_storage_address = self.internal.get_planet_storage_address();
+        let planet_storage = PlanetStorage::at(planet_storage_address);
+        assert(
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
+            "Planet state hash mismatch",
+        );
+
+        let planet_events_storage_address = self.internal.get_planet_events_storage_address();
+        let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
+        assert(
+            self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)),
+            "Planet events state hash mismatch",
+        );
+
+        let arrival_storage_address = self.internal.get_arrivals_storage_address();
+        let arrival_storage = ArrivalStorage::at(arrival_storage_address);
+        let artifact_storage_address = self.internal.get_artifact_storage_address();
+        let artifact_storage = ArtifactStorage::at(artifact_storage_address);
+        let artifact_location_storage_address =
+            self.internal.get_artifact_location_storage_address();
+        let artifact_location_storage =
+            ArtifactLocationStorage::at(artifact_location_storage_address);
+        for i in 0..20 {
+            if (i as u8) < planet_event_count {
+                let arrival_id = arrivals_ids[i];
+                let artifact_id = artifacts_ids[i];
+
+                if arrival_id != 0 {
+                    assert(
+                        self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])),
+                        "Arrival hash mismatch",
+                    );
+                }
+
+                if artifact_id != 0 {
+                    assert(
+                        self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])),
+                        "Artifact hash mismatch",
+                    );
+                    assert(
+                        self.view(artifact_location_storage.verify_hash(
+                            artifact_id,
+                            artifact_locations_hash[i],
+                        )),
+                        "Artifact location hash mismatch",
+                    );
+                }
+            }
+        }
+
+        let planet_artifacts_storage_address = self.internal.get_planet_artifacts_storage_address();
+        let planet_artifacts_storage = PlanetArtifactsStorage::at(planet_artifacts_storage_address);
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(location, planet_artifacts_state_hash)),
+            "Planet artifacts state hash mismatch",
+        );
+
+        let player_storage_address = self.internal.get_player_storage_address();
+        let player_storage = PlayerStorage::at(player_storage_address);
+        assert(
+            self.view(player_storage.verify_hash(sender, player_state_hash)),
+            "Player state hash mismatch",
+        );
+
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_events_storage.set(location, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
+        for i in 0..20 {
+            if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
+                self.call(artifact_location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+            }
+        }
+        self.call(player_storage.set(sender, new_player));
+    }
+
     /// Noir port of Solidity `DFCoreFacet.revealLocation`.
     #[external("private")]
     fn reveal_location(
@@ -449,6 +1030,7 @@ contract Core {
         x: Field,
         y: Field,
         timestamp: u64, // timestamp for private time-based computations
+        is_admin: bool,
         // Config inputs (to be validated via hash in public)
         provided_snark_config: SnarkConfig,
         planet_default_stats: PlanetDefaultStats,
@@ -467,7 +1049,21 @@ contract Core {
         world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            // todo: implement zk checks
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            let (expected_hash, expected_perlin) = circuits::circuits::reveal::reveal_proof(
+                x,
+                y,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_x,
+                provided_snark_config.perlin_mirror_y,
+            );
+            assert(expected_hash == location, "Reveal proof: location hash mismatch");
+            assert(expected_perlin == perlin, "Reveal proof: perlin mismatch");
         }
 
         let sender = self.msg_sender();
@@ -564,10 +1160,13 @@ contract Core {
         let mut new_world = result.1;
         let mut update_world = result.2;
 
-        assert(
-            player_state.last_reveal_timestamp + world_config.location_reveal_cooldown < timestamp,
-            "Wait for cooldown before revealing again",
-        );
+        if !is_admin {
+            assert(
+                player_state.last_reveal_timestamp + world_config.location_reveal_cooldown
+                    < timestamp,
+                "Wait for cooldown before revealing again",
+            );
+        }
 
         let mut new_player_state = player_state;
         new_player_state.last_reveal_timestamp = timestamp;
@@ -586,6 +1185,7 @@ contract Core {
             location,
             sender,
             timestamp,
+            is_admin,
             snark_config_hash,
             planet_default_stats_hash,
             world_config_hash,
@@ -614,6 +1214,7 @@ contract Core {
         location: Field,
         sender: AztecAddress,
         timestamp: u64,
+        is_admin: bool,
         // Config hashes for verification
         snark_config_hash: Field,
         planet_default_stats_hash: Field,
@@ -646,6 +1247,10 @@ contract Core {
         // Timestamp cannot be too old (e.g., 5 minutes = 300 seconds)
         let max_time_drift: u64 = 300;
         assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        if is_admin {
+            assert(sender == self.storage.admin.read(), "Only admin can bypass cooldown");
+        }
 
         // Verify all config hashes match on-chain config
         let config_storage_address = self.internal.get_config_storage_address();
@@ -784,7 +1389,22 @@ contract Core {
         world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            //todo: implement zk checks
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            let (expected_hash, expected_perlin) = circuits::circuits::init::init_proof(
+                radius as Field,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+                x,
+                y,
+            );
+            assert(expected_hash == location_id, "Init proof: location hash mismatch");
+            assert(expected_perlin == perlin, "Init proof: perlin mismatch");
         }
 
         let sender = self.msg_sender();

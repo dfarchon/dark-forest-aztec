@@ -100,7 +100,7 @@ export function SortableTable<T>({
       ))}
       columns={columns.map(
         (originalColumn) =>
-          function Column(t, i) {
+          function Column(t: T, i: number) {
             return <TableCell>{originalColumn(t, i)}</TableCell>;
           }
       )}

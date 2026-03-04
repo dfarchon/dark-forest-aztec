@@ -1,3 +1,4 @@
+import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import {
   EthConnection,
   ThrottledConcurrentQueue,
@@ -7,15 +8,18 @@ import { address } from "@dfpunk/serde";
 import { EthAddress } from "@dfpunk/types";
 import { utils, Wallet } from "ethers";
 import React, { useEffect, useRef, useState } from "react";
+import styled from "styled-components";
 
 import { addAccount, getAccounts } from "../../Backend/Network/AccountManager";
 import { getEthConnection } from "../../Backend/Network/Blockchain";
+import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
   InitRenderState,
   TerminalWrapper,
 } from "../Components/GameLandingPageComponents";
 import { MythicLabelText } from "../Components/Labels/MythicLabel";
 import { TextPreview } from "../Components/TextPreview";
+import dfstyles from "../Styles/dfstyles";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import { DarkForestTips } from "../Views/DarkForestTips";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
@@ -82,7 +86,7 @@ class LobbyPageTerminal {
     this.terminal.println(
       `Log in to create a lobby. We recommend using an account`
     );
-    this.terminal.println(`which owns at least 0.25 xDAI.`);
+    this.terminal.println(`which owns at least 0.25 ${L2_TOKEN_SYMBOL}.`);
     this.terminal.newline();
 
     if (accounts.length > 0) {
@@ -123,12 +127,12 @@ class LobbyPageTerminal {
 
       if (this.balancesEth[i] < 0.25) {
         this.terminal.println(
-          this.balancesEth[i].toFixed(2) + " xDAI",
+          this.balancesEth[i].toFixed(2) + ` ${L2_TOKEN_SYMBOL}`,
           TerminalTextStyle.Red
         );
       } else {
         this.terminal.println(
-          this.balancesEth[i].toFixed(2) + " xDAI",
+          this.balancesEth[i].toFixed(2) + ` ${L2_TOKEN_SYMBOL}`,
           TerminalTextStyle.Green
         );
       }
@@ -145,7 +149,7 @@ class LobbyPageTerminal {
       await this.displayAccounts();
     } else if (this.balancesEth[selection - 1] < 0.25) {
       this.terminal.println(
-        "Not enough xDAI. Select another account.",
+        `Not enough ${L2_TOKEN_SYMBOL}. Select another account.`,
         TerminalTextStyle.Red
       );
       await this.displayAccounts();
@@ -244,6 +248,27 @@ class LobbyPageTerminal {
   }
 }
 
+const LobbyToolbar = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: ${dfstyles.colors.background};
+  border-bottom: 1px solid ${dfstyles.colors.border};
+`;
+
+const LobbyToolbarLink = styled.button`
+  background: none;
+  border: none;
+  color: ${dfstyles.colors.subtext};
+  cursor: pointer;
+  font-size: ${dfstyles.fontSizeS};
+  padding: 0;
+  text-decoration: underline;
+  &:hover {
+    color: ${dfstyles.colors.text};
+  }
+`;
+
 export function LobbyLandingPage({
   onReady,
 }: {
@@ -252,6 +277,7 @@ export function LobbyLandingPage({
   const terminal = useRef<TerminalHandle>();
   const [connection, setConnection] = useState<EthConnection | undefined>();
   const [controller, setController] = useState<LobbyPageTerminal | undefined>();
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
 
   useEffect(() => {
     getEthConnection()
@@ -284,9 +310,26 @@ export function LobbyLandingPage({
   }, [terminal, connection, controller, onReady]);
 
   return (
-    <TerminalWrapper initRender={InitRenderState.NONE} terminalEnabled={false}>
-      <Terminal ref={terminal} promptCharacter={"$"} />
-    </TerminalWrapper>
+    <>
+      <LobbyToolbar>
+        <LobbyToolbarLink
+          type="button"
+          onClick={() => setConnectionSettingsOpen(true)}
+        >
+          Network settings
+        </LobbyToolbarLink>
+      </LobbyToolbar>
+      <TerminalWrapper
+        initRender={InitRenderState.NONE}
+        terminalEnabled={false}
+      >
+        <Terminal ref={terminal} promptCharacter={"$"} />
+      </TerminalWrapper>
+      <ConnectionSettingsModal
+        open={connectionSettingsOpen}
+        onClose={() => setConnectionSettingsOpen(false)}
+      />
+    </>
   );
 }
 

@@ -156,6 +156,31 @@ contract Move {
         self.storage.artifact_location_storage_address.write(artifact_location_storage_address);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_addr: AztecAddress,
+        world_addr: AztecAddress,
+        player_addr: AztecAddress,
+        planet_addr: AztecAddress,
+        planet_events_addr: AztecAddress,
+        planet_artifacts_addr: AztecAddress,
+        arrivals_addr: AztecAddress,
+        artifact_addr: AztecAddress,
+        artifact_location_addr: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_addr);
+        self.storage.world_storage_address.write(world_addr);
+        self.storage.player_storage_address.write(player_addr);
+        self.storage.planet_storage_address.write(planet_addr);
+        self.storage.planet_events_storage_address.write(planet_events_addr);
+        self.storage.planet_artifacts_storage_address.write(planet_artifacts_addr);
+        self.storage.arrivals_storage_address.write(arrivals_addr);
+        self.storage.artifact_storage_address.write(artifact_addr);
+        self.storage.artifact_location_storage_address.write(artifact_location_addr);
+    }
+
     #[external("private")]
     fn move(
         source_loc: Field,
@@ -204,7 +229,30 @@ contract Move {
         activated_artifact: Artifact,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            // todo: implement zk checks
+            // Verify move proof: coords (x1,y1)->(x2,y2) produce source_loc, target_loc, target_perlin
+            let r = world.radius as Field;
+            let dist_max = max_dist as Field;
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            // So: x_mirror = perlin_mirror_y, y_mirror = perlin_mirror_x
+            let (expected_source, expected_target, expected_perlin) = circuits::circuits::move::move_proof(
+                r,
+                dist_max,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+                x1,
+                y1,
+                x2,
+                y2,
+            );
+            assert(expected_source == source_loc, "Move proof: source location hash mismatch");
+            assert(expected_target == target_loc, "Move proof: target location hash mismatch");
+            assert(expected_perlin == target_perlin, "Move proof: target perlin mismatch");
         }
 
         let sender = self.msg_sender();
@@ -532,13 +580,20 @@ contract Move {
             let mut arrivals_from_owner: u8 = 0;
             let mut arrivals_from_others: u8 = 0;
 
-            // Count arrivals from owner vs others
-            // Use fixed array size 20 as compile-time constant for loop bound
+            // After refresh_planet, event indices may have been rearranged via
+            // swap-and-pop. Look up each remaining event's arrival by matching
+            // event id against the arrivals array instead of using index directly.
             for i in 0..20 {
                 if i < new_target_planet_events.count {
-                    let arrival = target_arrivals[i];
+                    let event_id = new_target_planet_events.events[i].id;
+                    let mut arrival_player = AztecAddress::zero();
+                    for j in 0..20 {
+                        if target_arrivals[j].id == event_id {
+                            arrival_player = target_arrivals[j].player;
+                        }
+                    }
 
-                    if arrival.player == new_target_planet.owner {
+                    if arrival_player == new_target_planet.owner {
                         arrivals_from_owner += 1;
                     } else {
                         arrivals_from_others += 1;
@@ -659,32 +714,29 @@ contract Move {
 
         // _createArrival - Enter the arrival data for event id
 
-        // Calculate decayed population that will arrive
-        // Linear decay: remaining = popMoved * (1 - distance/L) with L chosen so max reachable
-        // distance matches Solidity (range * log2(20) ~= 4.32*range). L = range * 455/100.
+        // Piecewise linear decay: max reachable distance D_max depends on energy percentage.
+        // Constraint points: (0%,0L) (25%,0.5L) (50%,0.75L) (100%,L) where L = range * 432/100.
+        // Within D_max, arriving pop decays linearly: popMoved * (D_max - dist) / D_max.
         let pop_arriving = if is_spaceship_move {
-            0 // Spaceship moves are 0-energy moves
+            0
         } else {
-            // Decay scale L = range * 91/20 so that at d = range*log2(20) we get pop_after_decay = cap/20
-            let decay_range_times_hundred = new_source_planet.range * 455u128;
+            let percent = pop_moved * 100 / new_source_planet.population_cap;
 
-            // Linear decay: distance_ratio = (distance/L)*100 (0-100), remaining = 1 - distance_ratio/100
-            let distance_ratio = if effectiveDistTimesHundred >= decay_range_times_hundred {
-                100u128 // Distance >= L, 100% decay (0% remaining)
+            let d_max_percent = if percent <= 25 {
+                percent * 2
+            } else if percent <= 50 {
+                25 + percent
             } else {
-                (effectiveDistTimesHundred * 100) / decay_range_times_hundred
+                (100 + percent) / 2
             };
 
-            let remaining_ratio = 100 - distance_ratio; // percentage remaining (0-100)
-            let pop_after_distance_decay = (pop_moved * remaining_ratio) / 100;
+            let d_factor = new_source_planet.range * 432 * d_max_percent;
+            let dist_scaled = effectiveDistTimesHundred * 100;
 
-            // Apply big planet debuff (5% of target planet's population cap)
-            let big_planet_debuff = new_source_planet.population_cap / 20;
-
-            if pop_after_distance_decay > big_planet_debuff {
-                pop_after_distance_decay - big_planet_debuff
+            if (dist_scaled >= d_factor) | (d_factor == 0) {
+                0
             } else {
-                0 // Not enough forces after decay and debuff
+                pop_moved * (d_factor - dist_scaled) / d_factor
             }
         };
 

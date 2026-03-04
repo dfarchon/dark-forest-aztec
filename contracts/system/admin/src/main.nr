@@ -101,6 +101,21 @@ contract Admin {
         self.storage.planet_storage_address.write(planet_storage_address);
     }
 
+    /// Batch set all storage addresses in a single transaction.
+    #[external("public")]
+    fn set_all_storage_addresses(
+        config_addr: AztecAddress,
+        world_addr: AztecAddress,
+        player_addr: AztecAddress,
+        planet_addr: AztecAddress,
+    ) {
+        self.internal.assert_admin();
+        self.storage.config_storage_address.write(config_addr);
+        self.storage.world_storage_address.write(world_addr);
+        self.storage.player_storage_address.write(player_addr);
+        self.storage.planet_storage_address.write(planet_addr);
+    }
+
     /// Pause the game. Verifies world matches on-chain state via WorldStorage.verify(), then sets paused = true.
     #[external("public")]
     fn pause(world: World) {
@@ -220,7 +235,26 @@ contract Admin {
         world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
-            //todo: implement zk checks
+            let planet_hash_key = provided_snark_config.planethash_key as Field;
+            let space_type_key = provided_snark_config.spacetype_key as Field;
+            let scale = provided_snark_config.perlin_length_scale;
+            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
+            let (expected_hash, expected_perlin) = circuits::circuits::reveal::reveal_proof(
+                x,
+                y,
+                planet_hash_key,
+                space_type_key,
+                scale,
+                provided_snark_config.perlin_mirror_y,
+                provided_snark_config.perlin_mirror_x,
+            );
+            assert(expected_hash == location_id, "ZK check: location hash mismatch");
+            assert(expected_perlin == perlin, "ZK check: perlin mismatch");
+            // Radius check: x^2 + y^2 < r^2
+            let r_field = r as Field;
+            let dist_sq = (x * x + y * y) as u128;
+            let r_sq = (r_field * r_field) as u128;
+            assert(dist_sq < r_sq, "ZK check: coordinates outside radius");
         }
 
         let sender = self.msg_sender();
