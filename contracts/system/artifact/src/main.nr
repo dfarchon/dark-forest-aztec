@@ -298,188 +298,8 @@ contract ArtifactSystem {
         self.storage.world_storage_address.read()
     }
 
-    // ========== Game Logic: Prospect Planet ==========
-
-    /// Prospect a planet for artifacts. L1: prospectPlanet calls refreshPlanet first. Private: logic with params; public: verify + write (Move pattern).
-    #[external("private")]
-    fn prospect_planet(
-        location_id: Field,
-        planet: Planet,
-        planet_artifacts: PlanetArtifacts,
-        planet_events_state: PlanetEvents,
-        arrivals: [Arrival; 20],
-        artifacts: [Artifact; 20],
-        artifact_locations: [ArtifactLocation; 20],
-        planet_artifacts_artifacts: [Artifact; 20],
-        timestamp: u64,
-        world: World,
-        block_number: u32,
-        gear_required: bool,
-    ) {
-        let sender = self.msg_sender();
-
-        assert_refresh_timestamp_monotonicity(
-            timestamp,
-            planet,
-            planet_events_state,
-            arrivals,
-            artifacts,
-            artifact_locations,
-            planet_artifacts,
-        );
-
-        let (new_planet, new_planet_events, new_planet_artifacts, new_artifact_locations) = refresh_planet_and_apply_timestamp(
-            timestamp,
-            location_id,
-            planet,
-            planet_events_state,
-            arrivals,
-            artifacts,
-            artifact_locations,
-            planet_artifacts,
-        );
-        let new_planet_artifacts_artifacts = artifact_utils::build_planet_artifacts_artifacts_after_refresh(
-            new_planet_artifacts,
-            planet_artifacts,
-            planet_artifacts_artifacts,
-            planet_events_state,
-            arrivals,
-            artifacts,
-            location_id,
-        );
-
-        let has_gear = game_utils::contains_gear_ship(
-            sender,
-            new_planet_artifacts,
-            new_planet_artifacts_artifacts,
-        );
-        let prospect_planet_result = artifact_utils::prospect_planet_logic(
-            new_planet,
-            block_number,
-            timestamp,
-            sender,
-            gear_required,
-            has_gear,
-        );
-
-        let (arrival_ids, arrivals_hash, artifact_ids, artifacts_hash, artifact_locations_hash) = build_refresh_event_hashes(
-            planet_events_state,
-            arrivals,
-            artifacts,
-            artifact_locations,
-        );
-        let planet_hash = poseidon2_hash(planet.serialize());
-        let planet_artifacts_hash = poseidon2_hash(planet_artifacts.serialize());
-        let planet_events_hash = if planet_events_state == PlanetEvents::zero() {
-            0
-        } else {
-            poseidon2_hash(planet_events_state.serialize())
-        };
-
-        self.enqueue_self.prospect_planet_public(
-            location_id,
-            timestamp,
-            world,
-            planet_hash,
-            planet_artifacts_hash,
-            planet_events_hash,
-            planet_events_state.count as u8,
-            arrival_ids,
-            arrivals_hash,
-            artifact_ids,
-            artifacts_hash,
-            artifact_locations_hash,
-            new_planet_events,
-            new_planet_artifacts,
-            new_artifact_locations,
-            prospect_planet_result,
-        );
-    }
-
-    #[external("public")]
-    #[only_self]
-    fn prospect_planet_public(
-        location_id: Field,
-        timestamp: u64,
-        world: World,
-        planet_hash: Field,
-        planet_artifacts_hash: Field,
-        planet_events_hash: Field,
-        planet_event_count: u8,
-        arrival_ids: [Field; 20],
-        arrivals_hash: [Field; 20],
-        artifact_ids: [Field; 20],
-        artifacts_hash: [Field; 20],
-        artifact_locations_hash: [Field; 20],
-        new_planet_events: PlanetEvents,
-        new_planet_artifacts: PlanetArtifacts,
-        new_artifact_locations: [ArtifactLocation; 20],
-        prospect_planet: Planet,
-    ) {
-        self.internal.assert_not_paused(world);
-
-        let actual_timestamp = self.context.timestamp();
-        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
-        let max_time_drift: u64 = 300;
-        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
-
-        let planet_storage = PlanetStorage::at(self.internal.get_planet_storage_address());
-        let planet_artifacts_storage =
-            PlanetArtifactsStorage::at(self.internal.get_planet_artifacts_storage_address());
-        let planet_events_storage =
-            PlanetEventsStorage::at(self.internal.get_planet_events_storage_address());
-        let location_storage =
-            ArtifactLocationStorage::at(self.internal.get_artifact_location_storage_address());
-        let arrival_storage = ArrivalStorage::at(self.internal.get_arrivals_storage_address());
-        let artifact_storage = ArtifactStorage::at(self.internal.get_artifact_storage_address());
-
-        assert(
-            self.view(planet_storage.verify_hash(location_id, planet_hash)),
-            "planet hash mismatch",
-        );
-        assert(
-            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_hash)),
-            "planet_artifacts hash mismatch",
-        );
-        assert(
-            self.view(planet_events_storage.verify_hash(location_id, planet_events_hash)),
-            "planet_events hash mismatch",
-        );
-        for i in 0..20 {
-            if (i as u32) < (planet_event_count as u32) {
-                if arrival_ids[i] != 0 {
-                    assert(
-                        self.view(arrival_storage.verify_hash(arrival_ids[i], arrivals_hash[i])),
-                        "arrival hash mismatch",
-                    );
-                }
-                if artifact_ids[i] != 0 {
-                    assert(
-                        self.view(artifact_storage.verify_hash(artifact_ids[i], artifacts_hash[i])),
-                        "artifact hash mismatch",
-                    );
-                    assert(
-                        self.view(location_storage.verify_hash(
-                            artifact_ids[i],
-                            artifact_locations_hash[i],
-                        )),
-                        "artifact_location hash mismatch",
-                    );
-                }
-            }
-        }
-
-        self.call(planet_events_storage.set(location_id, new_planet_events));
-        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts));
-        for i in 0..20 {
-            if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
-                self.call(location_storage.set(artifact_ids[i], new_artifact_locations[i]));
-            }
-        }
-        self.call(planet_storage.set(location_id, prospect_planet));
-    }
-
     // ========== Game Logic: Find Artifact ==========
+    // Solidity: LibArtifactUtils.checkFindArtifact / findArtifact
 
     /// Private entry for finding an artifact on a prospected ruins planet.
     /// Same pattern as move: caller passes refresh params (from events), we call refresh_planet
@@ -524,7 +344,7 @@ contract ArtifactSystem {
             artifact_locations,
             planet_artifacts,
         );
-        let new_planet_artifacts_artifacts = artifact_utils::build_planet_artifacts_artifacts_after_refresh(
+        let new_planet_artifacts_artifacts = artifact_utils::resolve_artifact_structs(
             new_planet_artifacts,
             planet_artifacts,
             planet_artifacts_artifacts,
@@ -566,7 +386,7 @@ contract ArtifactSystem {
 
         if spaceships_config.gear {
             assert(
-                game_utils::contains_gear_ship(
+                artifact_utils::contains_gear(
                     sender,
                     new_planet_artifacts,
                     new_planet_artifacts_artifacts,
@@ -581,8 +401,7 @@ contract ArtifactSystem {
         let core_hash: Field = poseidon2_hash(args.core_address.serialize());
         let artifact_seed = poseidon2_hash([args.planet_id, core_hash, block_hash]);
 
-        let biome =
-            game_utils::_get_biome_u128(new_planet.space_type, args.biomebase, game_config_core);
+        let biome = game_utils::_get_biome(new_planet.space_type, args.biomebase, game_config_core);
         let (artifact_type, level_bonus) = game_utils::_random_artifact_type_and_level_bonus(
             artifact_seed,
             biome,
@@ -778,7 +597,7 @@ contract ArtifactSystem {
         self.call(location_storage.set(artifact_id, location));
 
         let final_planet_artifacts =
-            game_utils::add_artifact_id_to_planet_artifacts(artifact_id, new_planet_artifacts);
+            game_utils::push_artifact_id(artifact_id, new_planet_artifacts);
 
         let mut out_planet = find_planet;
         out_planet.last_updated = actual_timestamp;
@@ -793,6 +612,7 @@ contract ArtifactSystem {
     }
 
     // ========== Game Logic: Deposit / Withdraw Artifact ==========
+    // Solidity: LibArtifactUtils.depositArtifact / withdrawArtifact
 
     /// Deposit an artifact to a planet (no ERC721 ownership check). L1: depositArtifact calls refreshPlanet first. Private: logic; public: verify + write (Move pattern).
     #[external("private")]
@@ -862,8 +682,7 @@ contract ArtifactSystem {
         assert(!artifact_utils::is_spaceship(artifact.artifact_type), "cannot deposit spaceships");
         assert(new_planet_artifacts.count < 5, "too many artifacts on this planet");
 
-        let updated_artifacts =
-            game_utils::add_artifact_id_to_planet_artifacts(artifact_id, new_planet_artifacts);
+        let updated_artifacts = game_utils::push_artifact_id(artifact_id, new_planet_artifacts);
         let mut new_location = artifact_location;
         new_location.planet_id = location_id;
         new_location.last_updated = timestamp;
@@ -1055,8 +874,7 @@ contract ArtifactSystem {
         assert(new_planet.planet_level > artifact.rarity, "spacetime rip not high enough level");
         assert(!artifact_utils::is_spaceship(artifact.artifact_type), "cannot withdraw spaceships");
 
-        let updated_artifacts =
-            game_utils::remove_artifact_id_from_planet_artifacts(artifact_id, new_planet_artifacts);
+        let updated_artifacts = game_utils::remove_artifact_id(artifact_id, new_planet_artifacts);
         let mut new_location = artifact_location;
         new_location.planet_id = 0;
         new_location.last_updated = timestamp;
@@ -1185,6 +1003,7 @@ contract ArtifactSystem {
     }
 
     // ========== Game Logic: Activate / Deactivate Artifact ==========
+    // Solidity: LibArtifactUtils.activateArtifact / activateSpaceshipArtifact / activateNonSpaceshipArtifact / deactivateArtifact
 
     /// Activate an artifact on a planet. L1: activateArtifact calls refreshPlanet(locationId) and refreshPlanet(wormholeTo) when wormholeTo != 0.
     /// Private: all logic (config passed as params for Crescent); public only verifies hashes and writes (Move pattern).
@@ -1338,9 +1157,7 @@ contract ArtifactSystem {
             let mut new_planet_crescent = new_planet;
             if new_planet_crescent.silver == 0 {
                 new_planet_crescent.silver = 1;
-                let (silver_growth, _silver_cap, _initial_silver) = artifact_utils::default_planet_silver_stats(
-                    location_id,
-                    new_planet_crescent.planet_level,
+                let (silver_growth, _silver_cap, _initial_silver) = artifact_utils::default_silver_stats(
                     PlanetType::SilverMine(),
                     new_planet_crescent.space_type,
                     planet_default_stats,
@@ -1374,7 +1191,7 @@ contract ArtifactSystem {
             );
 
             let cooldown_seconds =
-                artifact_utils::get_artifact_cooldown_seconds(artifact.artifact_type);
+                artifact_utils::artifact_cooldown_seconds(artifact.artifact_type);
             if cooldown_seconds > 0 {
                 let time_since_last = timestamp - artifact.last_deactivated;
                 assert(time_since_last > cooldown_seconds, "artifact on cooldown");
@@ -1426,10 +1243,7 @@ contract ArtifactSystem {
             let should_burn_on_activate = is_bloom | is_black_domain;
 
             let updated_artifacts = if should_burn_on_activate {
-                game_utils::remove_artifact_id_from_planet_artifacts(
-                    artifact_id,
-                    new_planet_artifacts,
-                )
+                game_utils::remove_artifact_id(artifact_id, new_planet_artifacts)
             } else {
                 new_planet_artifacts
             };
@@ -1750,7 +1564,7 @@ contract ArtifactSystem {
             | (artifact.artifact_type == ArtifactType::PhotoidCannon());
 
         let updated_planet_artifacts = if should_burn {
-            game_utils::remove_artifact_id_from_planet_artifacts(artifact_id, new_planet_artifacts)
+            game_utils::remove_artifact_id(artifact_id, new_planet_artifacts)
         } else {
             new_planet_artifacts
         };
@@ -1895,7 +1709,190 @@ contract ArtifactSystem {
         self.call(planet_storage.set(location_id, debuffed_planet));
     }
 
+    // ========== Game Logic: Prospect Planet ==========
+    // Solidity: LibArtifactUtils.prospectPlanet
+
+    /// Prospect a planet for artifacts. L1: prospectPlanet calls refreshPlanet first. Private: logic with params; public: verify + write (Move pattern).
+    #[external("private")]
+    fn prospect_planet(
+        location_id: Field,
+        planet: Planet,
+        planet_artifacts: PlanetArtifacts,
+        planet_events_state: PlanetEvents,
+        arrivals: [Arrival; 20],
+        artifacts: [Artifact; 20],
+        artifact_locations: [ArtifactLocation; 20],
+        planet_artifacts_artifacts: [Artifact; 20],
+        timestamp: u64,
+        world: World,
+        block_number: u32,
+        gear_required: bool,
+    ) {
+        let sender = self.msg_sender();
+
+        assert_refresh_timestamp_monotonicity(
+            timestamp,
+            planet,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            artifact_locations,
+            planet_artifacts,
+        );
+
+        let (new_planet, new_planet_events, new_planet_artifacts, new_artifact_locations) = refresh_planet_and_apply_timestamp(
+            timestamp,
+            location_id,
+            planet,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            artifact_locations,
+            planet_artifacts,
+        );
+        let new_planet_artifacts_artifacts = artifact_utils::resolve_artifact_structs(
+            new_planet_artifacts,
+            planet_artifacts,
+            planet_artifacts_artifacts,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            location_id,
+        );
+
+        let has_gear = artifact_utils::contains_gear(
+            sender,
+            new_planet_artifacts,
+            new_planet_artifacts_artifacts,
+        );
+        let prospect_planet_result = artifact_utils::prospect_planet_logic(
+            new_planet,
+            block_number,
+            timestamp,
+            sender,
+            gear_required,
+            has_gear,
+        );
+
+        let (arrival_ids, arrivals_hash, artifact_ids, artifacts_hash, artifact_locations_hash) = build_refresh_event_hashes(
+            planet_events_state,
+            arrivals,
+            artifacts,
+            artifact_locations,
+        );
+        let planet_hash = poseidon2_hash(planet.serialize());
+        let planet_artifacts_hash = poseidon2_hash(planet_artifacts.serialize());
+        let planet_events_hash = if planet_events_state == PlanetEvents::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_events_state.serialize())
+        };
+
+        self.enqueue_self.prospect_planet_public(
+            location_id,
+            timestamp,
+            world,
+            planet_hash,
+            planet_artifacts_hash,
+            planet_events_hash,
+            planet_events_state.count as u8,
+            arrival_ids,
+            arrivals_hash,
+            artifact_ids,
+            artifacts_hash,
+            artifact_locations_hash,
+            new_planet_events,
+            new_planet_artifacts,
+            new_artifact_locations,
+            prospect_planet_result,
+        );
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn prospect_planet_public(
+        location_id: Field,
+        timestamp: u64,
+        world: World,
+        planet_hash: Field,
+        planet_artifacts_hash: Field,
+        planet_events_hash: Field,
+        planet_event_count: u8,
+        arrival_ids: [Field; 20],
+        arrivals_hash: [Field; 20],
+        artifact_ids: [Field; 20],
+        artifacts_hash: [Field; 20],
+        artifact_locations_hash: [Field; 20],
+        new_planet_events: PlanetEvents,
+        new_planet_artifacts: PlanetArtifacts,
+        new_artifact_locations: [ArtifactLocation; 20],
+        prospect_planet: Planet,
+    ) {
+        self.internal.assert_not_paused(world);
+
+        let actual_timestamp = self.context.timestamp();
+        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        let max_time_drift: u64 = 300;
+        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+
+        let planet_storage = PlanetStorage::at(self.internal.get_planet_storage_address());
+        let planet_artifacts_storage =
+            PlanetArtifactsStorage::at(self.internal.get_planet_artifacts_storage_address());
+        let planet_events_storage =
+            PlanetEventsStorage::at(self.internal.get_planet_events_storage_address());
+        let location_storage =
+            ArtifactLocationStorage::at(self.internal.get_artifact_location_storage_address());
+        let arrival_storage = ArrivalStorage::at(self.internal.get_arrivals_storage_address());
+        let artifact_storage = ArtifactStorage::at(self.internal.get_artifact_storage_address());
+
+        assert(
+            self.view(planet_storage.verify_hash(location_id, planet_hash)),
+            "planet hash mismatch",
+        );
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_hash)),
+            "planet_artifacts hash mismatch",
+        );
+        assert(
+            self.view(planet_events_storage.verify_hash(location_id, planet_events_hash)),
+            "planet_events hash mismatch",
+        );
+        for i in 0..20 {
+            if (i as u32) < (planet_event_count as u32) {
+                if arrival_ids[i] != 0 {
+                    assert(
+                        self.view(arrival_storage.verify_hash(arrival_ids[i], arrivals_hash[i])),
+                        "arrival hash mismatch",
+                    );
+                }
+                if artifact_ids[i] != 0 {
+                    assert(
+                        self.view(artifact_storage.verify_hash(artifact_ids[i], artifacts_hash[i])),
+                        "artifact hash mismatch",
+                    );
+                    assert(
+                        self.view(location_storage.verify_hash(
+                            artifact_ids[i],
+                            artifact_locations_hash[i],
+                        )),
+                        "artifact_location hash mismatch",
+                    );
+                }
+            }
+        }
+
+        self.call(planet_events_storage.set(location_id, new_planet_events));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts));
+        for i in 0..20 {
+            if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
+                self.call(location_storage.set(artifact_ids[i], new_artifact_locations[i]));
+            }
+        }
+        self.call(planet_storage.set(location_id, prospect_planet));
+    }
+
     // ========== Game Logic: Spaceships & Admin ==========
+    // Solidity: LibArtifactUtils.containsGear / isSpaceship (via helpers), DFArtifactFacet.giveSpaceShips / adminGiveArtifact
 
     /// Give spaceships to player on their home planet (one-time claim). Private: logic with config as param; public: verify + create_artifact loop + write (Move pattern).
     #[external("private")]
@@ -1927,10 +1924,9 @@ contract ArtifactSystem {
 
         let (id0, args0) = if spaceships_config.mothership {
             let (aid, a) =
-                artifact_utils::build_create_spaceship_args(location_id, sender, 10, nonce);
+                artifact_utils::create_and_place_spaceship(location_id, sender, 10, nonce);
             nonce += 1;
-            updated_artifacts =
-                game_utils::add_artifact_id_to_planet_artifacts(aid, updated_artifacts);
+            updated_artifacts = game_utils::push_artifact_id(aid, updated_artifacts);
             (aid, a)
         } else {
             (0, create_args_zero)
@@ -1938,10 +1934,9 @@ contract ArtifactSystem {
 
         let (id1, args1) = if spaceships_config.crescent {
             let (aid, a) =
-                artifact_utils::build_create_spaceship_args(location_id, sender, 11, nonce);
+                artifact_utils::create_and_place_spaceship(location_id, sender, 11, nonce);
             nonce += 1;
-            updated_artifacts =
-                game_utils::add_artifact_id_to_planet_artifacts(aid, updated_artifacts);
+            updated_artifacts = game_utils::push_artifact_id(aid, updated_artifacts);
             (aid, a)
         } else {
             (0, create_args_zero)
@@ -1949,10 +1944,9 @@ contract ArtifactSystem {
 
         let (id2, args2) = if spaceships_config.whale {
             let (aid, a) =
-                artifact_utils::build_create_spaceship_args(location_id, sender, 12, nonce);
+                artifact_utils::create_and_place_spaceship(location_id, sender, 12, nonce);
             nonce += 1;
-            updated_artifacts =
-                game_utils::add_artifact_id_to_planet_artifacts(aid, updated_artifacts);
+            updated_artifacts = game_utils::push_artifact_id(aid, updated_artifacts);
             (aid, a)
         } else {
             (0, create_args_zero)
@@ -1960,10 +1954,9 @@ contract ArtifactSystem {
 
         let (id3, args3) = if spaceships_config.gear {
             let (aid, a) =
-                artifact_utils::build_create_spaceship_args(location_id, sender, 13, nonce);
+                artifact_utils::create_and_place_spaceship(location_id, sender, 13, nonce);
             nonce += 1;
-            updated_artifacts =
-                game_utils::add_artifact_id_to_planet_artifacts(aid, updated_artifacts);
+            updated_artifacts = game_utils::push_artifact_id(aid, updated_artifacts);
             (aid, a)
         } else {
             (0, create_args_zero)
@@ -1971,9 +1964,8 @@ contract ArtifactSystem {
 
         let (id4, args4) = if spaceships_config.titan {
             let (aid, a) =
-                artifact_utils::build_create_spaceship_args(location_id, sender, 14, nonce);
-            updated_artifacts =
-                game_utils::add_artifact_id_to_planet_artifacts(aid, updated_artifacts);
+                artifact_utils::create_and_place_spaceship(location_id, sender, 14, nonce);
+            updated_artifacts = game_utils::push_artifact_id(aid, updated_artifacts);
             (aid, a)
         } else {
             (0, create_args_zero)
@@ -2059,8 +2051,7 @@ contract ArtifactSystem {
         self.call(ArtifactSystem::at(self.context.this_address()).create_artifact(args));
 
         // Add to planet artifacts (LibGameUtils port)
-        let updated_artifacts =
-            game_utils::add_artifact_id_to_planet_artifacts(args.id, planet_artifacts);
+        let updated_artifacts = game_utils::push_artifact_id(args.id, planet_artifacts);
         self.call(planet_artifacts_storage.set(args.planet_id, updated_artifacts));
     }
 }
