@@ -25,7 +25,10 @@ import type { StorageContractAddresses } from "./AztecNodeSource";
 import { createAztecNodeBlockSource } from "./AztecNodeSource";
 import type { IndexerServiceOptions } from "./IndexerService";
 import { IndexerService } from "./IndexerService";
-import { OffChainBlockSource } from "./OffChainSource";
+import {
+  OffChainBlockSource,
+  type SnapshotDownloadProgress,
+} from "./OffChainSource";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -55,6 +58,8 @@ export interface IndexerConnectionConfig {
   nodeUrl: string;
   /** Optional off-chain indexer URL for bootstrap snapshot. */
   bootstrapUrl?: string;
+  /** Optional callback for bootstrap snapshot download progress. */
+  onSnapshotProgress?: (progress: SnapshotDownloadProgress) => void;
   /** Override default contract addresses from @dfpunk/contracts. */
   contractAddresses?: StorageContractAddresses;
   /** Start block when no bootstrap is used. */
@@ -436,7 +441,10 @@ export async function createIndexerConnection(
     config.contractAddresses
   );
   const bootstrapSource = config.bootstrapUrl
-    ? new OffChainBlockSource({ baseUrl: config.bootstrapUrl })
+    ? new OffChainBlockSource({
+        baseUrl: config.bootstrapUrl,
+        onSnapshotProgress: config.onSnapshotProgress,
+      })
     : undefined;
 
   const serviceOpts: IndexerServiceOptions & { source: typeof source } = {

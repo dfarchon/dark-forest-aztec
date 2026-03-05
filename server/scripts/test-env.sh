@@ -181,7 +181,9 @@ start_aztec() {
   # shellcheck disable=SC2086
   start_bg "aztec" "${AZTEC_PID_FILE}" "${AZTEC_LOG_FILE}" \
     bash -lc "source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; ${aztec_cmd} start --local-network --l1-rpc-urls http://127.0.0.1:8545"
-  wait_for_port_stable 8080 180 5 "aztec"
+  # Local-network bootstrap may retry L1 deployment and exceed 3 minutes.
+  # Give aztec enough time to complete setup before declaring failure.
+  wait_for_port_stable 8080 480 5 "aztec"
 }
 
 start_server() {
@@ -218,14 +220,37 @@ start_e2e() {
   echo "indexer-e2e started: pid=${pid} log=${E2E_LOG_FILE}"
 }
 
+start_e2e_fast() {
+  local args=(
+    --interval-sec 0
+    --high-throughput
+    --skip-warmup
+    --max-no-progress-steps 6
+    --sqlite-max-lag-blocks 3
+    --sqlite-check-interval-sec 90
+    --coverage-check-interval-sec 120
+  )
+  start_e2e "${args[@]}" "$@"
+}
+
 run_contracts_start() {
   require_cmd pnpm
   require_cmd aztec
 
+  # Use Node 24.12.0 for pnpm so root package.json "engines" is satisfied.
+  # Put nvm's node bin first so we don't use homebrew's pnpm/node (which can be different).
+  local node_bin
+  node_bin="$(bash -lc 'source ~/.nvm/nvm.sh 2>/dev/null && nvm use 24.12.0 2>/dev/null && dirname "$(nvm which 24.12.0 2>/dev/null)"' 2>/dev/null)" || true
+  if [[ -z "${node_bin}" || ! -x "${node_bin}/node" ]]; then
+    echo "warning: nvm node 24.12.0 not found; pnpm may report engine mismatch (current node is used)"
+    node_bin=""
+  fi
+  local path_prepend="${node_bin:+${node_bin}:}/opt/homebrew/bin"
+
   echo "[contracts] clean-store"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; PATH='/opt/homebrew/bin':\$PATH; pnpm --filter contracts run clean-store"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; pnpm --filter contracts run clean-store"
   echo "[contracts] start"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; PATH='/opt/homebrew/bin':\$PATH; printf 'y\n' | pnpm --filter contracts run start"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; printf 'y\n' | pnpm --filter contracts run start"
 }
 
 stop_e2e() {
@@ -351,7 +376,7 @@ up_all() {
   start_aztec
   run_contracts_start
   start_server
-  start_e2e "$@"
+  start_e2e_fast "$@"
   echo "full test environment started"
   show_status
 }
@@ -374,6 +399,7 @@ case "${ACTION}" in
   start-all) start_all "$@" ;;
   up) up_all "$@" ;;
   e2e-start) start_e2e "$@" ;;
+  e2e-start-fast) start_e2e_fast "$@" ;;
   e2e-stop) stop_e2e ;;
   e2e-status) status_e2e ;;
   e2e-logs) logs_e2e ;;
@@ -386,8 +412,9 @@ usage: test-env.sh {reset-cache|start|start-all|up|stop|status|logs [anvil|aztec
   reset-cache  stop managed services and clear local test cache
   start        start anvil + aztec + server
   start-all    start anvil + aztec + server + server e2e runner
-  up           one command: reset-cache + anvil + aztec + contracts start + server + e2e
+  up           one command: reset-cache + anvil + aztec + contracts start + server + fast e2e
   e2e-start    start indexer e2e process (defaults to --interval-sec 0)
+  e2e-start-fast  start high-throughput indexer e2e (faster event production, no full reset)
   e2e-stop     stop indexer e2e process
   e2e-status   show indexer e2e process status
   e2e-logs     tail indexer e2e log

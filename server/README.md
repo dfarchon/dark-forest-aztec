@@ -107,11 +107,17 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
 - Headers:
   - `Content-Type: application/json`
   - `Content-Encoding: gzip`
+  - `X-Snapshot-Block: <number>`
+  - `X-Snapshot-Uncompressed-Length: <number>`
   - `Cache-Control: no-cache`
 
 ### `GET /blocks/latest`
 
-- Returns `{ blockNumber }` from indexer processed state.
+- Returns:
+  - `blockNumber`
+  - `snapshotBlock`
+  - `snapshotBytes`
+  - `snapshotEncoding`
 
 ### `GET /health`
 
@@ -122,9 +128,9 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
   - `latestKnownBlock`
   - `isSyncing`
 
-### `GET /admin/backup?token=...`
+### `GET /admin/backup`
 
-- Token protected.
+- Bearer token protected (`Authorization: Bearer <ADMIN_TOKEN>`).
 - Disabled when `ADMIN_TOKEN` is empty.
 - Returns SQLite DB file as attachment.
 
@@ -151,35 +157,82 @@ corepack pnpm install
 corepack pnpm --filter server dev
 ```
 
+## Local URLs (Default)
+
+- Frontend: `http://127.0.0.1:5173`
+- Indexer server: `http://localhost:3001`
+- Aztec node: `http://localhost:8080`
+- Anvil: `http://127.0.0.1:8545`
+
+Common local API checks:
+
+- `http://localhost:3001/health`
+- `http://localhost:3001/blocks/latest`
+- `http://localhost:3001/snapshot`
+
+## Client Run (Latest)
+
+Client connection config now resolves in this priority:
+
+1. User override in `localStorage` (set from the in-app connection settings UI)
+2. Environment variables (`VITE_*`)
+3. Built-in defaults
+
+Environment variables used by client:
+
+- `VITE_AZTEC_NODE_URL` (default fallback: `http://localhost:8080`)
+- `VITE_INDEXER_BOOTSTRAP_URL` (optional; when unset, client syncs from chain `START_BLOCK`)
+- `VITE_APP_MODE` (`production` | `development`, optional)
+
+Start client (local dev):
+
+```bash
+corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
+```
+
+Start client with explicit node/indexer URLs:
+
+```bash
+VITE_AZTEC_NODE_URL=http://localhost:8080 \
+VITE_INDEXER_BOOTSTRAP_URL=http://localhost:3001 \
+corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
+```
+
+If env changes do not appear, clear local overrides first (because localStorage has higher priority):
+
+```js
+localStorage.removeItem("dfpunk:connection:nodeUrl");
+localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
+```
+
 ## Local E2E Test Stack (One-Command)
 
 Use the server-side helper script to avoid manual coordination each time:
 
 ```bash
 # Stop services and clear local test cache (PXE store, test accounts, sqlite)
-pnpm --filter server run test:env:reset
+pnpm --filter server run e2e:reset
 
 # Start anvil + aztec sandbox + server
-pnpm --filter server run test:env:start
+pnpm --filter server run e2e:runtime
 
 # Start full stack + continuous server e2e runner
-pnpm --filter server run test:env:start-all
+pnpm --filter server run e2e:up
 
 # Inspect status and health
-pnpm --filter server run test:env:status
+pnpm --filter server run e2e:status
 
 # Tail logs
-pnpm --filter server run test:env:logs -- e2e
-pnpm --filter server run test:env:logs -- server
+pnpm --filter server run e2e:logs
 
 # Stop everything managed by this helper
-pnpm --filter server run test:env:stop
+pnpm --filter server run e2e:down
 ```
 
 Notes:
 
 - Run only one continuous e2e runner at a time in the same repo/chain.
-- `test:env:reset` deletes:
+- `e2e:reset` deletes:
   - `contracts/.store`
   - `contracts/wallet_data_*`
   - `contracts/scripts/.test-accounts.json`

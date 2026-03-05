@@ -31,6 +31,7 @@ import {
   IndexerConnection,
   type IndexerConnectionConfig,
 } from "../../Session/Indexer/IndexerConnection";
+import type { SnapshotDownloadProgress } from "../../Session/Indexer/OffChainSource";
 import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
@@ -52,6 +53,21 @@ import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function snapshotPhaseLabel(progress: SnapshotDownloadProgress): string {
+  if (progress.phase === "parsing") return "parsing";
+  if (progress.phase === "complete") return "done";
+  if (progress.percent !== null) return `${progress.percent}%`;
+  return "downloading";
+}
 
 const enum TerminalPromptStep {
   NONE,
@@ -77,6 +93,7 @@ export function GameLandingPage() {
   const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
+  const snapshotHideTokenRef = useRef(0);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(true);
@@ -86,6 +103,10 @@ export function GameLandingPage() {
   >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const [step, setStep] = useState(TerminalPromptStep.NONE);
+  const [snapshotProgress, setSnapshotProgress] =
+    useState<SnapshotDownloadProgress | null>(null);
+  const [snapshotBootstrapPending, setSnapshotBootstrapPending] =
+    useState<boolean>(Boolean(getEffectiveIndexerBootstrapUrl()));
 
   const params = new URLSearchParams(location.search);
   const selectedAddress = params.get("account");
@@ -96,6 +117,8 @@ export function GameLandingPage() {
 
   useEffect(() => {
     let destroyed = false;
+    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
+    setSnapshotBootstrapPending(Boolean(bootstrapUrl));
     (async () => {
       try {
         const nodeUrl = getEffectiveNodeUrl();
@@ -118,8 +141,12 @@ export function GameLandingPage() {
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
         };
-        const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
         if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+        indexerConfig.onSnapshotProgress = (progress) => {
+          if (destroyed) return;
+          setSnapshotBootstrapPending(false);
+          setSnapshotProgress(progress);
+        };
         const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
           connection.destroy();
@@ -128,8 +155,10 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
+        setSnapshotBootstrapPending(false);
         setWalletManager(wm);
       } catch (e) {
+        setSnapshotBootstrapPending(false);
         console.error("Failed to initialize Aztec session:", e);
         alert("Error connecting to Aztec network");
       }
@@ -845,6 +874,20 @@ export function GameLandingPage() {
   }, [initRenderState]);
 
   useEffect(() => {
+    if (!snapshotProgress || !snapshotProgress.done) return;
+    snapshotHideTokenRef.current += 1;
+    const token = snapshotHideTokenRef.current;
+    const timer = window.setTimeout(() => {
+      setSnapshotProgress((current) => {
+        if (!current || !current.done) return current;
+        if (snapshotHideTokenRef.current !== token) return current;
+        return null;
+      });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [snapshotProgress]);
+
+  useEffect(() => {
     const gameUiManager = gameUIManagerRef.current;
     if (!terminalVisible && gameUiManager) {
       const tutorialManager = TutorialManager.getInstance(gameUiManager);
@@ -891,6 +934,85 @@ export function GameLandingPage() {
           promptCharacter={"$"}
         />
       </TerminalWrapper>
+      {(snapshotProgress || snapshotBootstrapPending) && (
+        <div
+          style={{
+            position: "fixed",
+            left: "12px",
+            bottom: "12px",
+            zIndex: 1200,
+            padding: "8px 10px",
+            background: "rgba(10, 10, 10, 0.88)",
+            border: "1px solid #4d4d4d",
+            color: "#e6e6e6",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            lineHeight: 1.35,
+          }}
+        >
+          <div>snapshot download</div>
+          {snapshotProgress ? (
+            <>
+              <div>
+                {snapshotPhaseLabel(snapshotProgress)}
+                {" · "}
+                {formatBytes(snapshotProgress.loadedBytes)}
+                {snapshotProgress.totalBytes
+                  ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
+                  : ""}
+              </div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${
+                      snapshotProgress.phase === "parsing" ||
+                      snapshotProgress.phase === "complete"
+                        ? 100
+                        : snapshotProgress.percent !== null
+                          ? Math.max(0, Math.min(100, snapshotProgress.percent))
+                          : 0
+                    }%`,
+                    background: "#e6e6e6",
+                    transition: "width 120ms linear",
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>starting...</div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: "35%",
+                    height: "100%",
+                    background: "#8a8a8a",
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );
