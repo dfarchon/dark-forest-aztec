@@ -61,6 +61,13 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
+function snapshotPhaseLabel(progress: SnapshotDownloadProgress): string {
+  if (progress.phase === "parsing") return "parsing";
+  if (progress.phase === "complete") return "done";
+  if (progress.percent !== null) return `${progress.percent}%`;
+  return "downloading";
+}
+
 const enum TerminalPromptStep {
   NONE,
   COMPATIBILITY_CHECKS_PASSED,
@@ -939,15 +946,12 @@ export function GameLandingPage() {
           {snapshotProgress ? (
             <>
               <div>
-                {snapshotProgress.percent !== null
-                  ? `${snapshotProgress.percent}%`
-                  : "downloading"}
+                {snapshotPhaseLabel(snapshotProgress)}
                 {" · "}
                 {formatBytes(snapshotProgress.loadedBytes)}
                 {snapshotProgress.totalBytes
                   ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
                   : ""}
-                {snapshotProgress.done ? " · done" : ""}
               </div>
               <div
                 style={{
@@ -963,10 +967,11 @@ export function GameLandingPage() {
                   style={{
                     height: "100%",
                     width: `${
-                      snapshotProgress.percent !== null
-                        ? Math.max(0, Math.min(100, snapshotProgress.percent))
-                        : snapshotProgress.done
-                          ? 100
+                      snapshotProgress.phase === "parsing" ||
+                      snapshotProgress.phase === "complete"
+                        ? 100
+                        : snapshotProgress.percent !== null
+                          ? Math.max(0, Math.min(100, snapshotProgress.percent))
                           : 0
                     }%`,
                     background: "#e6e6e6",

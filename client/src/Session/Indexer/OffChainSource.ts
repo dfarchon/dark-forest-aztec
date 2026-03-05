@@ -20,6 +20,7 @@ export interface SnapshotDownloadProgress {
   loadedBytes: number;
   totalBytes: number | null;
   percent: number | null;
+  phase: "downloading" | "parsing" | "complete";
   done: boolean;
 }
 
@@ -152,7 +153,10 @@ export class OffChainBlockSource implements IBlockEventSource {
   private emitSnapshotProgress(progress: SnapshotDownloadProgress): void {
     if (!this.onSnapshotProgress) return;
     const now = Date.now();
-    const forceEmit = progress.done || progress.loadedBytes === 0;
+    const forceEmit =
+      progress.done ||
+      progress.loadedBytes === 0 ||
+      progress.phase !== "downloading";
     if (
       !forceEmit &&
       now - this.lastProgressEmitAt < this.progressEmitMinIntervalMs
@@ -187,28 +191,48 @@ export class OffChainBlockSource implements IBlockEventSource {
       return (await res.json()) as Record<string, unknown>;
     }
 
+    this.emitSnapshotProgress({
+      loadedBytes: 0,
+      totalBytes,
+      percent: this.toPercent(0, totalBytes),
+      phase: "downloading",
+      done: false,
+    });
+
     if (!res.body) {
       const buf = new Uint8Array(await res.arrayBuffer());
       this.emitSnapshotProgress({
         loadedBytes: buf.byteLength,
         totalBytes,
         percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "downloading",
+        done: false,
+      });
+
+      this.emitSnapshotProgress({
+        loadedBytes: buf.byteLength,
+        totalBytes,
+        percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "parsing",
+        done: false,
+      });
+
+      const text = new TextDecoder().decode(buf);
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      this.emitSnapshotProgress({
+        loadedBytes: buf.byteLength,
+        totalBytes,
+        percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "complete",
         done: true,
       });
-      const text = new TextDecoder().decode(buf);
-      return JSON.parse(text) as Record<string, unknown>;
+      return parsed;
     }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let loadedBytes = 0;
     let text = "";
-    this.emitSnapshotProgress({
-      loadedBytes: 0,
-      totalBytes,
-      percent: this.toPercent(0, totalBytes),
-      done: false,
-    });
 
     while (true) {
       const { done, value } = await reader.read();
@@ -220,6 +244,7 @@ export class OffChainBlockSource implements IBlockEventSource {
         loadedBytes,
         totalBytes,
         percent: this.toPercent(loadedBytes, totalBytes),
+        phase: "downloading",
         done: false,
       });
     }
@@ -229,8 +254,17 @@ export class OffChainBlockSource implements IBlockEventSource {
       loadedBytes,
       totalBytes,
       percent: this.toPercent(loadedBytes, totalBytes),
+      phase: "parsing",
+      done: false,
+    });
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    this.emitSnapshotProgress({
+      loadedBytes,
+      totalBytes,
+      percent: this.toPercent(loadedBytes, totalBytes),
+      phase: "complete",
       done: true,
     });
-    return JSON.parse(text) as Record<string, unknown>;
+    return parsed;
   }
 }

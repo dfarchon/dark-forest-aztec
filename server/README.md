@@ -128,9 +128,9 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
   - `latestKnownBlock`
   - `isSyncing`
 
-### `GET /admin/backup?token=...`
+### `GET /admin/backup`
 
-- Token protected.
+- Bearer token protected (`Authorization: Bearer <ADMIN_TOKEN>`).
 - Disabled when `ADMIN_TOKEN` is empty.
 - Returns SQLite DB file as attachment.
 
@@ -155,6 +155,54 @@ IndexerService options (hardcoded in `src/index.ts`; move to env if needed):
 ```bash
 corepack pnpm install
 corepack pnpm --filter server dev
+```
+
+## Local URLs (Default)
+
+- Frontend: `http://127.0.0.1:5173`
+- Indexer server: `http://localhost:3001`
+- Aztec node: `http://localhost:8080`
+- Anvil: `http://127.0.0.1:8545`
+
+Common local API checks:
+
+- `http://localhost:3001/health`
+- `http://localhost:3001/blocks/latest`
+- `http://localhost:3001/snapshot`
+
+## Client Run (Latest)
+
+Client connection config now resolves in this priority:
+
+1. User override in `localStorage` (set from the in-app connection settings UI)
+2. Environment variables (`VITE_*`)
+3. Built-in defaults
+
+Environment variables used by client:
+
+- `VITE_AZTEC_NODE_URL` (default fallback: `http://localhost:8080`)
+- `VITE_INDEXER_BOOTSTRAP_URL` (optional; when unset, client syncs from chain `START_BLOCK`)
+- `VITE_APP_MODE` (`production` | `development`, optional)
+
+Start client (local dev):
+
+```bash
+corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
+```
+
+Start client with explicit node/indexer URLs:
+
+```bash
+VITE_AZTEC_NODE_URL=http://localhost:8080 \
+VITE_INDEXER_BOOTSTRAP_URL=http://localhost:3001 \
+corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
+```
+
+If env changes do not appear, clear local overrides first (because localStorage has higher priority):
+
+```js
+localStorage.removeItem("dfpunk:connection:nodeUrl");
+localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
 ```
 
 ## Local E2E Test Stack (One-Command)

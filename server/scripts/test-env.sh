@@ -181,7 +181,9 @@ start_aztec() {
   # shellcheck disable=SC2086
   start_bg "aztec" "${AZTEC_PID_FILE}" "${AZTEC_LOG_FILE}" \
     bash -lc "source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; ${aztec_cmd} start --local-network --l1-rpc-urls http://127.0.0.1:8545"
-  wait_for_port_stable 8080 180 5 "aztec"
+  # Local-network bootstrap may retry L1 deployment and exceed 3 minutes.
+  # Give aztec enough time to complete setup before declaring failure.
+  wait_for_port_stable 8080 480 5 "aztec"
 }
 
 start_server() {
@@ -235,10 +237,20 @@ run_contracts_start() {
   require_cmd pnpm
   require_cmd aztec
 
+  # Use Node 24.12.0 for pnpm so root package.json "engines" is satisfied.
+  # Put nvm's node bin first so we don't use homebrew's pnpm/node (which can be different).
+  local node_bin
+  node_bin="$(bash -lc 'source ~/.nvm/nvm.sh 2>/dev/null && nvm use 24.12.0 2>/dev/null && dirname "$(nvm which 24.12.0 2>/dev/null)"' 2>/dev/null)" || true
+  if [[ -z "${node_bin}" || ! -x "${node_bin}/node" ]]; then
+    echo "warning: nvm node 24.12.0 not found; pnpm may report engine mismatch (current node is used)"
+    node_bin=""
+  fi
+  local path_prepend="${node_bin:+${node_bin}:}/opt/homebrew/bin"
+
   echo "[contracts] clean-store"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; PATH='/opt/homebrew/bin':\$PATH; pnpm --filter contracts run clean-store"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; pnpm --filter contracts run clean-store"
   echo "[contracts] start"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; PATH='/opt/homebrew/bin':\$PATH; printf 'y\n' | pnpm --filter contracts run start"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; printf 'y\n' | pnpm --filter contracts run start"
 }
 
 stop_e2e() {
