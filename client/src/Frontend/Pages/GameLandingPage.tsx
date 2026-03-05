@@ -770,7 +770,8 @@ export function GameLandingPage() {
       const input = (await terminal.current?.getInput()) || "";
       let res = "";
       try {
-        // Indirect eval for global scope
+        // indirect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
+        // Indirect eval for global scope (avoids comma-operator lint)
         const indirectEval = globalThis.eval;
         res = indirectEval(input) as string;
         if (res !== undefined) {
