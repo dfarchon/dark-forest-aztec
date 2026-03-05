@@ -95,9 +95,14 @@ const CONTRACT_SPECS = [
         exportName: 'MoveContract',
     },
     {
-        name: 'ArtifactSystem',
-        modulePath: './artifacts/ArtifactSystem.ts',
-        exportName: 'ArtifactSystemContract',
+        name: 'ArtifactAction',
+        modulePath: './artifacts/ArtifactAction.ts',
+        exportName: 'ArtifactActionContract',
+    },
+    {
+        name: 'ArtifactManager',
+        modulePath: './artifacts/ArtifactManager.ts',
+        exportName: 'ArtifactManagerContract',
     },
 ];
 
@@ -122,7 +127,8 @@ function addressesFromEnv(): Record<string, string> {
         ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
-        ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactManager', 'ARTIFACT_MANAGER_SYSTEM_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -201,7 +207,8 @@ async function main() {
     const admin = contracts['Admin'];
     const core = contracts['Core'];
     const move = contracts['Move'];
-    const artifactSystem = contracts['ArtifactSystem'];
+    const artifactActionSystem = contracts['ArtifactAction'];
+    const artifactManagerSystem = contracts['ArtifactManager'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -217,7 +224,9 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
-    if (!artifactSystem) throw new Error('ArtifactSystem instance missing');
+    if (!artifactActionSystem || !artifactManagerSystem) {
+        throw new Error('ArtifactAction or ArtifactManager instance missing');
+    }
 
     if (
         !worldStorage ||
@@ -618,10 +627,10 @@ async function main() {
         }
     );
 
-    // ---- Phase 4: ArtifactSystem setup (9 calls) ----
+    // ---- Phase 4: ArtifactAction & ArtifactManager setup ----
 
-    await run('ArtifactSystem.set_all_storage_addresses()', async () => {
-        await artifactSystem.methods
+    await run('ArtifactAction.set_all_storage_addresses()', async () => {
+        await artifactActionSystem.methods
             .set_all_storage_addresses(
                 config.address,
                 worldStorage.address,
@@ -636,66 +645,90 @@ async function main() {
             .send(opts);
     });
 
+    await run('ArtifactManager.set_all_storage_addresses()', async () => {
+        await artifactManagerSystem.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
+    });
+
+    // Authorize both artifact systems on storages (batch where supported)
     await run(
-        'WorldStorage.add_authorized_contract(ArtifactSystem)',
+        'WorldStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await worldStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(worldStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'PlayerStorage.add_authorized_contract(ArtifactSystem)',
+        'PlayerStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await playerStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(playerStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'PlanetStorage.add_authorized_contract(ArtifactSystem)',
+        'PlanetStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await planetStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(planetStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'PlanetArtifactsStorage.add_authorized_contract(ArtifactSystem)',
+        'PlanetArtifactsStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await planetArtifactsStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'PlanetEventsStorage.add_authorized_contract(ArtifactSystem)',
+        'PlanetEventsStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await planetEventsStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(planetEventsStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'ArtifactStorage.add_authorized_contract(ArtifactSystem)',
+        'ArtifactStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await artifactStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(artifactStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 
     await run(
-        'ArtifactLocationStorage.add_authorized_contract(ArtifactSystem)',
+        'ArtifactLocationStorage.add_authorized_contracts_batch(artifact systems)',
         async () => {
-            await artifactLocationStorage.methods
-                .add_authorized_contract(artifactSystem.address)
-                .send(opts);
+            await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
+                artifactActionSystem.address,
+                artifactManagerSystem.address,
+            ]);
         }
     );
 

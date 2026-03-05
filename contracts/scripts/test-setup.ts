@@ -179,7 +179,7 @@ const MOVE_FUNCTIONS = [
     'move_public',
 ] as const;
 
-const ARTIFACT_SYSTEM_FUNCTIONS = [
+const ARTIFACT_MANAGER_FUNCTIONS = [
     'transfer_admin',
     'set_all_storage_addresses',
     'set_config_storage_address',
@@ -190,13 +190,30 @@ const ARTIFACT_SYSTEM_FUNCTIONS = [
     'set_planet_artifacts_storage_address',
     'create_artifact',
     'update_artifact',
-    'prospect_planet',
-    'find_artifact', // private
-    'find_artifact_public',
     'deposit_artifact',
     'withdraw_artifact',
+    'give_space_ships', // private
+    'give_space_ships_public',
+    'admin_give_artifact',
+] as const;
+
+const ARTIFACT_ACTION_FUNCTIONS = [
+    'transfer_admin',
+    'set_all_storage_addresses',
+    'set_config_storage_address',
+    'set_player_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'set_planet_storage_address',
+    'set_planet_artifacts_storage_address',
+    'prospect_planet',
+    'prospect_planet_public',
+    'find_artifact', // private
+    'find_artifact_public',
     'activate_artifact',
+    'activate_artifact_public',
     'deactivate_artifact',
+    'deactivate_artifact_public',
 ] as const;
 
 /** All contracts and their public method names (for iteration or assertions). */
@@ -205,13 +222,18 @@ const CONTRACT_FUNCTIONS = {
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
     Move: MOVE_FUNCTIONS,
-    ArtifactSystem: ARTIFACT_SYSTEM_FUNCTIONS,
+    ArtifactAction: ARTIFACT_ACTION_FUNCTIONS,
+    ArtifactManager: ARTIFACT_MANAGER_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
 export type AdminFunctionName = (typeof ADMIN_FUNCTIONS)[number];
 export type CoreFunctionName = (typeof CORE_FUNCTIONS)[number];
 export type MoveFunctionName = (typeof MOVE_FUNCTIONS)[number];
+export type ArtifactActionFunctionName =
+    (typeof ARTIFACT_ACTION_FUNCTIONS)[number];
+export type ArtifactManagerFunctionName =
+    (typeof ARTIFACT_MANAGER_FUNCTIONS)[number];
 
 // ---------------------------------------------------------------------------
 
@@ -270,9 +292,14 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactLocationStorageContract',
     },
     {
-        name: 'ArtifactSystem',
-        modulePath: './artifacts/ArtifactSystem.ts',
-        exportName: 'ArtifactSystemContract',
+        name: 'ArtifactAction',
+        modulePath: './artifacts/ArtifactAction.ts',
+        exportName: 'ArtifactActionContract',
+    },
+    {
+        name: 'ArtifactManager',
+        modulePath: './artifacts/ArtifactManager.ts',
+        exportName: 'ArtifactManagerContract',
     },
     {
         name: 'Admin',
@@ -305,7 +332,8 @@ const ENV_KEYS: Array<[string, string]> = [
     ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS'],
-    ['ArtifactSystem', 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'],
+    ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
+    ['ArtifactManager', 'ARTIFACT_MANAGER_SYSTEM_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['Move', 'MOVE_CONTRACT_ADDRESS'],

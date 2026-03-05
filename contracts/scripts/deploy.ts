@@ -75,8 +75,12 @@ const ARTIFACT_SPECS: Array<{
     { modulePath: './artifacts/Core.ts', exportName: 'CoreContract' },
     { modulePath: './artifacts/Move.ts', exportName: 'MoveContract' },
     {
-        modulePath: './artifacts/Artifact.ts',
-        exportName: 'ArtifactContract',
+        modulePath: './artifacts/ArtifactAction.ts',
+        exportName: 'ArtifactActionContract',
+    },
+    {
+        modulePath: './artifacts/ArtifactManager.ts',
+        exportName: 'ArtifactManagerContract',
     },
 ];
 
@@ -155,8 +159,13 @@ const DEPLOY_DEFINITIONS: Array<{
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
-        name: 'ArtifactSystem',
-        envPrefix: 'ARTIFACT_SYSTEM',
+        name: 'ArtifactAction',
+        envPrefix: 'ARTIFACT_ACTION_SYSTEM',
+        getConstructorArgs: (ctx) => [ctx.deployer.toField()],
+    },
+    {
+        name: 'ArtifactManager',
+        envPrefix: 'ARTIFACT_MANAGER_SYSTEM',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
 ];
