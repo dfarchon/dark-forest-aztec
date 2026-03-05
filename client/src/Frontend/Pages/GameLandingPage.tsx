@@ -85,6 +85,7 @@ export function GameLandingPage() {
   const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
+  const snapshotHideTokenRef = useRef(0);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(true);
@@ -96,6 +97,8 @@ export function GameLandingPage() {
   const [step, setStep] = useState(TerminalPromptStep.NONE);
   const [snapshotProgress, setSnapshotProgress] =
     useState<SnapshotDownloadProgress | null>(null);
+  const [snapshotBootstrapPending, setSnapshotBootstrapPending] =
+    useState<boolean>(Boolean(getEffectiveIndexerBootstrapUrl()));
 
   const params = new URLSearchParams(location.search);
   const selectedAddress = params.get("account");
@@ -106,6 +109,8 @@ export function GameLandingPage() {
 
   useEffect(() => {
     let destroyed = false;
+    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
+    setSnapshotBootstrapPending(Boolean(bootstrapUrl));
     (async () => {
       try {
         const nodeUrl = getEffectiveNodeUrl();
@@ -125,10 +130,10 @@ export function GameLandingPage() {
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
         };
-        const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
         if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
         indexerConfig.onSnapshotProgress = (progress) => {
           if (destroyed) return;
+          setSnapshotBootstrapPending(false);
           setSnapshotProgress(progress);
         };
         const { connection } = await createIndexerConnection(indexerConfig);
@@ -139,8 +144,10 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
+        setSnapshotBootstrapPending(false);
         setWalletManager(wm);
       } catch (e) {
+        setSnapshotBootstrapPending(false);
         console.error("Failed to initialize Aztec session:", e);
         alert("Error connecting to Aztec network");
       }
@@ -853,12 +860,15 @@ export function GameLandingPage() {
 
   useEffect(() => {
     if (!snapshotProgress || !snapshotProgress.done) return;
+    snapshotHideTokenRef.current += 1;
+    const token = snapshotHideTokenRef.current;
     const timer = window.setTimeout(() => {
-      setSnapshotProgress((prev) => {
-        if (!prev || !prev.done) return prev;
+      setSnapshotProgress((current) => {
+        if (!current || !current.done) return current;
+        if (snapshotHideTokenRef.current !== token) return current;
         return null;
       });
-    }, 1500);
+    }, 2500);
     return () => window.clearTimeout(timer);
   }, [snapshotProgress]);
 
@@ -909,7 +919,7 @@ export function GameLandingPage() {
           promptCharacter={"$"}
         />
       </TerminalWrapper>
-      {snapshotProgress && (
+      {(snapshotProgress || snapshotBootstrapPending) && (
         <div
           style={{
             position: "fixed",
@@ -926,17 +936,68 @@ export function GameLandingPage() {
           }}
         >
           <div>snapshot download</div>
-          <div>
-            {snapshotProgress.percent !== null
-              ? `${snapshotProgress.percent}%`
-              : "downloading"}
-            {" · "}
-            {formatBytes(snapshotProgress.loadedBytes)}
-            {snapshotProgress.totalBytes
-              ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
-              : ""}
-            {snapshotProgress.done ? " · done" : ""}
-          </div>
+          {snapshotProgress ? (
+            <>
+              <div>
+                {snapshotProgress.percent !== null
+                  ? `${snapshotProgress.percent}%`
+                  : "downloading"}
+                {" · "}
+                {formatBytes(snapshotProgress.loadedBytes)}
+                {snapshotProgress.totalBytes
+                  ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
+                  : ""}
+                {snapshotProgress.done ? " · done" : ""}
+              </div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${
+                      snapshotProgress.percent !== null
+                        ? Math.max(0, Math.min(100, snapshotProgress.percent))
+                        : snapshotProgress.done
+                          ? 100
+                          : 0
+                    }%`,
+                    background: "#e6e6e6",
+                    transition: "width 120ms linear",
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>starting...</div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: "35%",
+                    height: "100%",
+                    background: "#8a8a8a",
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
       <div ref={topLevelContainer}></div>
