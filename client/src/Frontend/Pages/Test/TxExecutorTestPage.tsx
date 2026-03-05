@@ -25,6 +25,7 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
 } from "../../../config/connection";
+import { getProverEnabled } from "../../../config/env";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
 import {
   createIndexerConnection,
@@ -62,32 +63,32 @@ interface TxLogEntry {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const TX_STATE_BADGE_MAP: Record<ClientTxStatus, string> = {
+  Init: "test-page__badge--idle",
+  Processing: "test-page__badge--syncing",
+  Prioritized: "test-page__badge--syncing",
+  Submit: "test-page__badge--ready",
+  Confirm: "test-page__badge--success",
+  Fail: "test-page__badge--destroyed",
+  Cancel: "test-page__badge--idle",
+};
+
 function txStateBadgeClass(state: ClientTxStatus): string {
-  const map: Record<ClientTxStatus, string> = {
-    Init: "test-page__badge--idle",
-    Processing: "test-page__badge--syncing",
-    Prioritized: "test-page__badge--syncing",
-    Submit: "test-page__badge--ready",
-    Confirm: "test-page__badge--success",
-    Fail: "test-page__badge--destroyed",
-    Cancel: "test-page__badge--idle",
-  };
-  return `test-page__badge ${map[state] ?? ""}`;
+  const badgeClass = TX_STATE_BADGE_MAP[state] ?? "";
+  return `test-page__badge ${badgeClass}`;
 }
 
 // ---------------------------------------------------------------------------
 // Shared UI components
 // ---------------------------------------------------------------------------
 
-function Section({
-  title,
-  children,
-  defaultOpen = true,
-}: {
+interface SectionProps {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
-}) {
+}
+
+function Section({ title, children, defaultOpen = true }: SectionProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
     <section className="test-page__section">
@@ -177,6 +178,9 @@ export function TxExecutorTestPage() {
         nodeUrl: getEffectiveNodeUrl(),
         storagePrefix: "dfpunk",
         balancePollIntervalMs: 15_000,
+        pxeConfig: {
+          proverEnabled: getProverEnabled(),
+        },
       });
       if (destroyed) {
         walletMgr.destroy();
@@ -380,7 +384,7 @@ export function TxExecutorTestPage() {
     setInitX("0");
     setInitY("0");
     setInitRadius("0");
-    // locationId must have bytes 4-6 (BE) in level-0 range [4_194_292, 16_777_216). Same formula as test-core-initialize-player.
+
     const level0LocId = (10_000_000n << 216n) | (255n << 64n);
     setInitLocId(level0LocId.toString());
     setInitPerlin("13");
