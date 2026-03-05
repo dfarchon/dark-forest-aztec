@@ -218,6 +218,19 @@ start_e2e() {
   echo "indexer-e2e started: pid=${pid} log=${E2E_LOG_FILE}"
 }
 
+start_e2e_fast() {
+  local args=(
+    --interval-sec 0
+    --high-throughput
+    --skip-warmup
+    --max-no-progress-steps 6
+    --sqlite-max-lag-blocks 3
+    --sqlite-check-interval-sec 90
+    --coverage-check-interval-sec 120
+  )
+  start_e2e "${args[@]}" "$@"
+}
+
 run_contracts_start() {
   require_cmd pnpm
   require_cmd aztec
@@ -351,7 +364,7 @@ up_all() {
   start_aztec
   run_contracts_start
   start_server
-  start_e2e "$@"
+  start_e2e_fast "$@"
   echo "full test environment started"
   show_status
 }
@@ -374,6 +387,7 @@ case "${ACTION}" in
   start-all) start_all "$@" ;;
   up) up_all "$@" ;;
   e2e-start) start_e2e "$@" ;;
+  e2e-start-fast) start_e2e_fast "$@" ;;
   e2e-stop) stop_e2e ;;
   e2e-status) status_e2e ;;
   e2e-logs) logs_e2e ;;
@@ -386,8 +400,9 @@ usage: test-env.sh {reset-cache|start|start-all|up|stop|status|logs [anvil|aztec
   reset-cache  stop managed services and clear local test cache
   start        start anvil + aztec + server
   start-all    start anvil + aztec + server + server e2e runner
-  up           one command: reset-cache + anvil + aztec + contracts start + server + e2e
+  up           one command: reset-cache + anvil + aztec + contracts start + server + fast e2e
   e2e-start    start indexer e2e process (defaults to --interval-sec 0)
+  e2e-start-fast  start high-throughput indexer e2e (faster event production, no full reset)
   e2e-stop     stop indexer e2e process
   e2e-status   show indexer e2e process status
   e2e-logs     tail indexer e2e log

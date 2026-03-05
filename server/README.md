@@ -107,11 +107,17 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
 - Headers:
   - `Content-Type: application/json`
   - `Content-Encoding: gzip`
+  - `X-Snapshot-Block: <number>`
+  - `X-Snapshot-Uncompressed-Length: <number>`
   - `Cache-Control: no-cache`
 
 ### `GET /blocks/latest`
 
-- Returns `{ blockNumber }` from indexer processed state.
+- Returns:
+  - `blockNumber`
+  - `snapshotBlock`
+  - `snapshotBytes`
+  - `snapshotEncoding`
 
 ### `GET /health`
 
@@ -157,29 +163,28 @@ Use the server-side helper script to avoid manual coordination each time:
 
 ```bash
 # Stop services and clear local test cache (PXE store, test accounts, sqlite)
-pnpm --filter server run test:env:reset
+pnpm --filter server run e2e:reset
 
 # Start anvil + aztec sandbox + server
-pnpm --filter server run test:env:start
+pnpm --filter server run e2e:runtime
 
 # Start full stack + continuous server e2e runner
-pnpm --filter server run test:env:start-all
+pnpm --filter server run e2e:up
 
 # Inspect status and health
-pnpm --filter server run test:env:status
+pnpm --filter server run e2e:status
 
 # Tail logs
-pnpm --filter server run test:env:logs -- e2e
-pnpm --filter server run test:env:logs -- server
+pnpm --filter server run e2e:logs
 
 # Stop everything managed by this helper
-pnpm --filter server run test:env:stop
+pnpm --filter server run e2e:down
 ```
 
 Notes:
 
 - Run only one continuous e2e runner at a time in the same repo/chain.
-- `test:env:reset` deletes:
+- `e2e:reset` deletes:
   - `contracts/.store`
   - `contracts/wallet_data_*`
   - `contracts/scripts/.test-accounts.json`
