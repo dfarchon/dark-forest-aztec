@@ -22,7 +22,7 @@ export function createApp(deps: ApiDeps): Hono {
   const snapshotExposeHeaders = [
     "Content-Length",
     "X-Snapshot-Block",
-    "X-Snapshot-Format",
+    "X-Snapshot-Uncompressed-Length",
   ];
 
   // Browser calls from local frontend (or configured domains) need CORS.
@@ -51,6 +51,7 @@ export function createApp(deps: ApiDeps): Hono {
   // GET /snapshot — returns pre-gzipped snapshot Buffer
   app.get("/snapshot", () => {
     const buf = cache.getGzipBuffer();
+    const jsonBytes = cache.getJsonByteLength();
     const snapshotBlock = cache.getProcessedBlockNumber();
     return new Response(Uint8Array.from(buf), {
       status: 200,
@@ -59,7 +60,9 @@ export function createApp(deps: ApiDeps): Hono {
         "Content-Encoding": "gzip",
         "Content-Length": String(buf.byteLength),
         "X-Snapshot-Block": String(snapshotBlock),
-        "X-Snapshot-Format": "dfpunk-snapshot-v1",
+        // Uncompressed JSON bytes help clients compute a meaningful progress
+        // when the transport body is transparently decompressed by fetch.
+        "X-Snapshot-Uncompressed-Length": String(jsonBytes),
         "Cache-Control": "no-cache",
       },
     });

@@ -176,7 +176,9 @@ export class OffChainBlockSource implements IBlockEventSource {
   private async readSnapshotJsonWithProgress(
     res: Response
   ): Promise<Record<string, unknown>> {
-    const totalHeader = res.headers.get("content-length");
+    const totalHeader =
+      res.headers.get("x-snapshot-uncompressed-length") ??
+      res.headers.get("content-length");
     const parsedTotal = totalHeader ? Number.parseInt(totalHeader, 10) : NaN;
     const totalBytes =
       Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : null;
