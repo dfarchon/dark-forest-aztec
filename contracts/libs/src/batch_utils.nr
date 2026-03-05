@@ -110,3 +110,23 @@ pub fn build_refresh_event_hashes(
     }
     (arrival_ids, arrivals_hash, artifact_ids, artifacts_hash, artifact_locations_hash)
 }
+
+/// Pack non-zero artifact_ids and their locations into a compact batch array.
+pub fn pack_artifact_location_batch(
+    artifact_ids: [Field; 20],
+    artifact_locations: [ArtifactLocation; 20],
+    count: u32,
+) -> ([Field; 20], [ArtifactLocation; 20], u32) {
+    let mut batch_ids: [Field; 20] = [0; 20];
+    let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+    let mut batch_count: u32 = 0;
+    for i in 0..20 {
+        if (i < count) & (artifact_ids[i] != 0) {
+            let idx = batch_count;
+            batch_ids[idx] = artifact_ids[i];
+            batch_locations[idx] = artifact_locations[i];
+            batch_count += 1;
+        }
+    }
+    (batch_ids, batch_locations, batch_count)
+}
