@@ -24,6 +24,7 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
 } from "../../config/connection";
+import { getProverEnabled } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
@@ -101,6 +102,9 @@ export function GameLandingPage() {
         const wm = await createWalletManager({
           nodeUrl,
           storagePrefix: "dfpunk",
+          pxeConfig: {
+            proverEnabled: getProverEnabled(),
+          },
         });
         if (destroyed) {
           wm.destroy();
@@ -322,6 +326,7 @@ export function GameLandingPage() {
         }
       } else {
         const userInput = await terminal.current?.getInput();
+
         if (userInput === "a" && accounts.length > 0) {
           setStep(TerminalPromptStep.DISPLAY_ACCOUNTS);
         } else if (userInput === "n") {
@@ -349,32 +354,34 @@ export function GameLandingPage() {
       terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
 
       const selection = +((await terminal.current?.getInput()) || "");
+
       if (isNaN(selection) || selection > accounts.length) {
         terminal.current?.println("Unrecognized input. Please try again.");
         await advanceStateFromDisplayAccounts(terminal);
-      } else {
-        const account = accounts[selection - 1];
-        try {
-          terminal.current?.println("Restoring account...");
-          const result = await walletManager?.switchAccount(
-            account.address,
-            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
-          );
-          if (result?.deployed) {
-            terminal.current?.println(
-              "Deployed to new network.",
-              TerminalTextStyle.Green
-            );
-          } else {
-            terminal.current?.println("Done.", TerminalTextStyle.Green);
-          }
-          setStep(TerminalPromptStep.ACCOUNT_SET);
-        } catch (e) {
+        return;
+      }
+
+      const account = accounts[selection - 1];
+      try {
+        terminal.current?.println("Restoring account...");
+        const result = await walletManager?.switchAccount(
+          account.address,
+          (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+        );
+        if (result?.deployed) {
           terminal.current?.println(
-            "An unknown error occurred. please try again.",
-            TerminalTextStyle.Red
+            "Deployed to new network.",
+            TerminalTextStyle.Green
           );
+        } else {
+          terminal.current?.println("Done.", TerminalTextStyle.Green);
         }
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (e) {
+        terminal.current?.println(
+          "An unknown error occurred. please try again.",
+          TerminalTextStyle.Red
+        );
       }
     },
     [walletManager]
@@ -595,6 +602,7 @@ export function GameLandingPage() {
         "If you're importing an account, make sure you know what you're doing."
       );
       const userInput = await terminal.current?.getInput();
+
       if (userInput === "y") {
         setStep(TerminalPromptStep.ADD_ACCOUNT);
       } else if (userInput === "n") {
@@ -618,14 +626,14 @@ export function GameLandingPage() {
           const x = parseInt((await terminal.current?.getInput()) || "");
           terminal.current?.println("y: ", TerminalTextStyle.Blue);
           const y = parseInt((await terminal.current?.getInput()) || "");
-          if (
-            Number.isNaN(x) ||
-            Number.isNaN(y) ||
-            Math.abs(x) > 2 ** 32 ||
-            Math.abs(y) > 2 ** 32
-          ) {
+
+          const isValidCoordinate = (coord: number) =>
+            !Number.isNaN(coord) && Math.abs(coord) <= 2 ** 32;
+
+          if (!isValidCoordinate(x) || !isValidCoordinate(y)) {
             throw "Invalid home coordinates.";
           }
+
           if (await gameUIManager.addAccount({ x, y })) {
             terminal.current?.println("Successfully added account.");
             terminal.current?.println("Initializing game...");
@@ -762,7 +770,7 @@ export function GameLandingPage() {
       const input = (await terminal.current?.getInput()) || "";
       let res = "";
       try {
-        // indrect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
+        // indirect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
         // Indirect eval for global scope (avoids comma-operator lint)
         const indirectEval = globalThis.eval;
         res = indirectEval(input) as string;

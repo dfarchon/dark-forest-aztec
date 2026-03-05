@@ -6,8 +6,11 @@
 const DEFAULT_NODE_URL = "http://localhost:8080";
 
 function getString(key: string): string | undefined {
-  const v = import.meta.env[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
+  const value = import.meta.env[key];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  return undefined;
 }
 
 /**
@@ -26,13 +29,27 @@ export function getIndexerBootstrapUrl(): string | undefined {
 }
 
 /**
- * Whether the app should use "production-like" default settings
- * (e.g. NewPlayer, TutorialOpen default "true").
- * Uses VITE_APP_MODE when set ("production" | "development"), otherwise import.meta.env.MODE.
+ * Whether the app should use production-like default settings
+ * (e.g. NewPlayer, TutorialOpen default true).
+ * Uses VITE_APP_MODE when set (production | development), otherwise import.meta.env.MODE.
  */
 export function isProductionLike(): boolean {
   const mode = getString("VITE_APP_MODE");
-  if (mode === "production") return true;
-  if (mode === "development") return false;
+  if (mode === "production") {
+    return true;
+  }
+  if (mode === "development") {
+    return false;
+  }
   return import.meta.env.MODE === "production";
+}
+
+/**
+ * Whether to enable client-side proof generation in PXE.
+ * Required for devnet/testnet (true), optional for local development (false for speed).
+ * Defaults to false when unset.
+ */
+export function getProverEnabled(): boolean {
+  const value = getString("VITE_PROVER_ENABLED");
+  return value === "true";
 }

@@ -25,7 +25,7 @@ import {
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true only for proof benchmarking. */
+/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true for devnets that require real proofs. */
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
 
 const CONTRACT_SPECS = [
@@ -129,11 +129,13 @@ function addressesFromEnv(): Record<string, string> {
 
 function formatElapsed(ms: number): string {
     if (ms >= 60000) {
-        const m = Math.floor(ms / 60000);
-        const s = ((ms % 60000) / 1000).toFixed(1);
-        return `${m}m ${s}s`;
+        const minutes = Math.floor(ms / 60000);
+        const seconds = ((ms % 60000) / 1000).toFixed(1);
+        return `${minutes}m ${seconds}s`;
     }
-    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms >= 1000) {
+        return `${(ms / 1000).toFixed(1)}s`;
+    }
     return `${ms}ms`;
 }
 
@@ -176,7 +178,7 @@ async function main() {
     console.log('📝 Registering SponsoredFPC contract...');
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
-        proverEnabled: false, // Always false for fast configure
+        proverEnabled: PROVER_ENABLED, // Respect environment variable like other scripts
     });
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
@@ -278,8 +280,7 @@ async function main() {
         const stepStart = Date.now();
         await action();
         const stepMs = Date.now() - stepStart;
-        const stepTime =
-            stepMs >= 1000 ? `${(stepMs / 1000).toFixed(1)}s` : `${stepMs}ms`;
+        const stepTime = formatElapsed(stepMs);
         const totalElapsed = Date.now() - scriptStartTime;
         console.log(
             `✅ ${label} (${stepTime}) | elapsed: ${formatElapsed(totalElapsed)}`
@@ -611,13 +612,7 @@ async function main() {
     );
 
     const elapsedMs = Date.now() - scriptStartTime;
-    const elapsedSec = (elapsedMs / 1000).toFixed(1);
-    const elapsedMin = Math.floor(elapsedMs / 60000);
-    const elapsedSecRem = ((elapsedMs % 60000) / 1000).toFixed(1);
-    const timeStr =
-        elapsedMs >= 60000
-            ? `${elapsedMin}m ${elapsedSecRem}s`
-            : `${elapsedSec}s`;
+    const timeStr = formatElapsed(elapsedMs);
 
     console.log('\n✅ Configure done.');
     console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);
