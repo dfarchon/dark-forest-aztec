@@ -384,7 +384,7 @@ export function TxExecutorTestPage() {
     setInitX("0");
     setInitY("0");
     setInitRadius("0");
-
+    // locationId must have bytes 4-6 (BE) in level-0 range [4_194_292, 16_777_216). Same formula as test-core-initialize-player.
     const level0LocId = (10_000_000n << 216n) | (255n << 64n);
     setInitLocId(level0LocId.toString());
     setInitPerlin("13");
