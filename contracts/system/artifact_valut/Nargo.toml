@@ -1,5 +1,5 @@
 [package]
-name = "core"
+name = "artifact_valut"
 type = "contract"
 authors = [""]
 

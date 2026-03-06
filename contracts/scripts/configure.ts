@@ -100,9 +100,9 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactActionContract',
     },
     {
-        name: 'ArtifactManager',
-        modulePath: './artifacts/ArtifactManager.ts',
-        exportName: 'ArtifactManagerContract',
+        name: 'ArtifactVault',
+        modulePath: './artifacts/ArtifactValut.ts',
+        exportName: 'ArtifactValutContract',
     },
 ];
 
@@ -128,7 +128,7 @@ function addressesFromEnv(): Record<string, string> {
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
         ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
-        ['ArtifactManager', 'ARTIFACT_MANAGER_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -208,7 +208,7 @@ async function main() {
     const core = contracts['Core'];
     const move = contracts['Move'];
     const artifactActionSystem = contracts['ArtifactAction'];
-    const artifactManagerSystem = contracts['ArtifactManager'];
+    const artifactVaultSystem = contracts['ArtifactVault'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -224,8 +224,8 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
-    if (!artifactActionSystem || !artifactManagerSystem) {
-        throw new Error('ArtifactAction or ArtifactManager instance missing');
+    if (!artifactActionSystem || !artifactVaultSystem) {
+        throw new Error('ArtifactAction or ArtifactVault instance missing');
     }
 
     if (
@@ -627,7 +627,7 @@ async function main() {
         }
     );
 
-    // ---- Phase 4: ArtifactAction & ArtifactManager setup ----
+    // ---- Phase 4: ArtifactAction & ArtifactVault setup ----
 
     await run('ArtifactAction.set_all_storage_addresses()', async () => {
         await artifactActionSystem.methods
@@ -645,8 +645,8 @@ async function main() {
             .send(opts);
     });
 
-    await run('ArtifactManager.set_all_storage_addresses()', async () => {
-        await artifactManagerSystem.methods
+    await run('ArtifactVault.set_all_storage_addresses()', async () => {
+        await artifactVaultSystem.methods
             .set_all_storage_addresses(
                 config.address,
                 worldStorage.address,
@@ -667,7 +667,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(worldStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -677,7 +677,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(playerStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -687,7 +687,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(planetStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -697,7 +697,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -707,7 +707,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(planetEventsStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -717,7 +717,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(artifactStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );
@@ -727,7 +727,7 @@ async function main() {
         async () => {
             await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
                 artifactActionSystem.address,
-                artifactManagerSystem.address,
+                artifactVaultSystem.address,
             ]);
         }
     );

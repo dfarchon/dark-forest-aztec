@@ -1,7 +1,5 @@
 use ::aztec::macros::aztec;
 
-/// Artifact action contract.
-/// Handles prospect/find/activate/deactivate artifact lifecycle on top of shared storages.
 #[aztec]
 contract ArtifactAction {
     use ::aztec::{

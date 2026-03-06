@@ -79,8 +79,8 @@ const ARTIFACT_SPECS: Array<{
         exportName: 'ArtifactActionContract',
     },
     {
-        modulePath: './artifacts/ArtifactManager.ts',
-        exportName: 'ArtifactManagerContract',
+        modulePath: './artifacts/ArtifactValut.ts',
+        exportName: 'ArtifactValutContract',
     },
 ];
 
@@ -164,8 +164,8 @@ const DEPLOY_DEFINITIONS: Array<{
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
-        name: 'ArtifactManager',
-        envPrefix: 'ARTIFACT_MANAGER_SYSTEM',
+        name: 'ArtifactVault',
+        envPrefix: 'ARTIFACT_VAULT_SYSTEM',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
 ];

@@ -1,9 +1,7 @@
 use ::aztec::macros::aztec;
 
-/// Artifact manager contract.
-/// Handles storage address config, CRUD, deposit/withdraw, spaceships & admin give flows.
 #[aztec]
-contract ArtifactManager {
+contract ArtifactValut {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
@@ -840,7 +838,7 @@ contract ArtifactManager {
             "planet_artifacts hash mismatch",
         );
 
-        let manager = ArtifactManager::at(self.context.this_address());
+        let manager = ArtifactValut::at(self.context.this_address());
         for i in 0..5 {
             if artifact_ids[i] != 0 {
                 self.call(manager.create_artifact(create_args_list[i]));
@@ -869,7 +867,7 @@ contract ArtifactManager {
         );
 
         // Create artifact
-        self.call(ArtifactManager::at(self.context.this_address()).create_artifact(args));
+        self.call(ArtifactValut::at(self.context.this_address()).create_artifact(args));
 
         // Add to planet artifacts (LibGameUtils port)
         let updated_artifacts = game_utils::push_artifact_id(args.id, planet_artifacts);
