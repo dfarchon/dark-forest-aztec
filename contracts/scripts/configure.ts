@@ -25,7 +25,7 @@ import {
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true for devnets that require real proofs. */
+/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true only for proof benchmarking. */
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
 
 const CONTRACT_SPECS = [
@@ -94,6 +94,16 @@ const CONTRACT_SPECS = [
         modulePath: './artifacts/Move.ts',
         exportName: 'MoveContract',
     },
+    {
+        name: 'ArtifactAction',
+        modulePath: './artifacts/ArtifactAction.ts',
+        exportName: 'ArtifactActionContract',
+    },
+    {
+        name: 'ArtifactVault',
+        modulePath: './artifacts/ArtifactValut.ts',
+        exportName: 'ArtifactValutContract',
+    },
 ];
 
 function addressesFromEnv(): Record<string, string> {
@@ -117,6 +127,8 @@ function addressesFromEnv(): Record<string, string> {
         ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
+        ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -129,13 +141,11 @@ function addressesFromEnv(): Record<string, string> {
 
 function formatElapsed(ms: number): string {
     if (ms >= 60000) {
-        const minutes = Math.floor(ms / 60000);
-        const seconds = ((ms % 60000) / 1000).toFixed(1);
-        return `${minutes}m ${seconds}s`;
+        const m = Math.floor(ms / 60000);
+        const s = ((ms % 60000) / 1000).toFixed(1);
+        return `${m}m ${s}s`;
     }
-    if (ms >= 1000) {
-        return `${(ms / 1000).toFixed(1)}s`;
-    }
+    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
     return `${ms}ms`;
 }
 
@@ -178,7 +188,7 @@ async function main() {
     console.log('📝 Registering SponsoredFPC contract...');
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
-        proverEnabled: PROVER_ENABLED, // Respect environment variable like other scripts
+        proverEnabled: false, // Always false for fast configure
     });
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
@@ -197,6 +207,8 @@ async function main() {
     const admin = contracts['Admin'];
     const core = contracts['Core'];
     const move = contracts['Move'];
+    const artifactActionSystem = contracts['ArtifactAction'];
+    const artifactVaultSystem = contracts['ArtifactVault'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -212,6 +224,9 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
+    if (!artifactActionSystem || !artifactVaultSystem) {
+        throw new Error('ArtifactAction or ArtifactVault instance missing');
+    }
 
     if (
         !worldStorage ||
@@ -272,7 +287,7 @@ async function main() {
             .send(opts);
     };
 
-    const TOTAL_STEPS = 23;
+    const TOTAL_STEPS = 32;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -280,14 +295,15 @@ async function main() {
         const stepStart = Date.now();
         await action();
         const stepMs = Date.now() - stepStart;
-        const stepTime = formatElapsed(stepMs);
+        const stepTime =
+            stepMs >= 1000 ? `${(stepMs / 1000).toFixed(1)}s` : `${stepMs}ms`;
         const totalElapsed = Date.now() - scriptStartTime;
         console.log(
             `✅ ${label} (${stepTime}) | elapsed: ${formatElapsed(totalElapsed)}`
         );
     };
 
-    console.log('\n🔍 Configuring contracts (batched: 22 steps)...\n');
+    console.log('\n🔍 Configuring contracts (32 steps)...\n');
 
     // ---- Phase 1: Config initialization (10 calls) ----
 
@@ -611,11 +627,114 @@ async function main() {
         }
     );
 
-    const elapsedMs = Date.now() - scriptStartTime;
-    const timeStr = formatElapsed(elapsedMs);
+    // ---- Phase 4: ArtifactAction & ArtifactVault setup ----
 
+    await run('ArtifactAction.set_all_storage_addresses()', async () => {
+        await artifactActionSystem.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
+    });
+
+    await run('ArtifactVault.set_all_storage_addresses()', async () => {
+        await artifactVaultSystem.methods
+            .set_all_storage_addresses(
+                config.address,
+                worldStorage.address,
+                playerStorage.address,
+                planetStorage.address,
+                planetArtifactsStorage.address,
+                planetEventsStorage.address,
+                arrivalStorage.address,
+                artifactStorage.address,
+                artifactLocationStorage.address
+            )
+            .send(opts);
+    });
+
+    // Authorize both artifact systems on storages (batch where supported)
+    await run(
+        'WorldStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(worldStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlayerStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(playerStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlanetStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlanetArtifactsStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'PlanetEventsStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(planetEventsStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'ArtifactStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(artifactStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    await run(
+        'ArtifactLocationStorage.add_authorized_contracts_batch(artifact systems)',
+        async () => {
+            await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
+                artifactActionSystem.address,
+                artifactVaultSystem.address,
+            ]);
+        }
+    );
+
+    const elapsedMs = Date.now() - scriptStartTime;
     console.log('\n✅ Configure done.');
-    console.log(`⏱️  Total time: ${timeStr} (${elapsedMs}ms)`);
+    console.log(`⏱️  Total time: ${formatElapsed(elapsedMs)} (${elapsedMs}ms)`);
 }
 
 main()

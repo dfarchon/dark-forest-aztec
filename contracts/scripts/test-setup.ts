@@ -179,18 +179,61 @@ const MOVE_FUNCTIONS = [
     'move_public',
 ] as const;
 
+const ARTIFACT_VAULT_FUNCTIONS = [
+    'transfer_admin',
+    'set_all_storage_addresses',
+    'set_config_storage_address',
+    'set_player_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'set_planet_storage_address',
+    'set_planet_artifacts_storage_address',
+    'create_artifact',
+    'update_artifact',
+    'deposit_artifact',
+    'withdraw_artifact',
+    'give_space_ships', // private
+    'give_space_ships_public',
+    'admin_give_artifact',
+] as const;
+
+const ARTIFACT_ACTION_FUNCTIONS = [
+    'transfer_admin',
+    'set_all_storage_addresses',
+    'set_config_storage_address',
+    'set_player_storage_address',
+    'set_artifact_storage_address',
+    'set_artifact_location_storage_address',
+    'set_planet_storage_address',
+    'set_planet_artifacts_storage_address',
+    'prospect_planet',
+    'prospect_planet_public',
+    'find_artifact', // private
+    'find_artifact_public',
+    'activate_artifact',
+    'activate_artifact_public',
+    'deactivate_artifact',
+    'deactivate_artifact_public',
+] as const;
+
 /** All contracts and their public method names (for iteration or assertions). */
 const CONTRACT_FUNCTIONS = {
     Config: CONFIG_FUNCTIONS,
     Admin: ADMIN_FUNCTIONS,
     Core: CORE_FUNCTIONS,
     Move: MOVE_FUNCTIONS,
+    ArtifactAction: ARTIFACT_ACTION_FUNCTIONS,
+    ArtifactVault: ARTIFACT_VAULT_FUNCTIONS,
 } as const;
 
 export type ConfigFunctionName = (typeof CONFIG_FUNCTIONS)[number];
 export type AdminFunctionName = (typeof ADMIN_FUNCTIONS)[number];
 export type CoreFunctionName = (typeof CORE_FUNCTIONS)[number];
 export type MoveFunctionName = (typeof MOVE_FUNCTIONS)[number];
+export type ArtifactActionFunctionName =
+    (typeof ARTIFACT_ACTION_FUNCTIONS)[number];
+export type ArtifactVaultFunctionName =
+    (typeof ARTIFACT_VAULT_FUNCTIONS)[number];
 
 // ---------------------------------------------------------------------------
 
@@ -249,6 +292,16 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactLocationStorageContract',
     },
     {
+        name: 'ArtifactAction',
+        modulePath: './artifacts/ArtifactAction.ts',
+        exportName: 'ArtifactActionContract',
+    },
+    {
+        name: 'ArtifactVault',
+        modulePath: './artifacts/ArtifactValut.ts',
+        exportName: 'ArtifactValutContract',
+    },
+    {
         name: 'Admin',
         modulePath: './artifacts/Admin.ts',
         exportName: 'AdminContract',
@@ -279,6 +332,8 @@ const ENV_KEYS: Array<[string, string]> = [
     ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
     ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS'],
+    ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
+    ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
     ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
     ['Core', 'CORE_CONTRACT_ADDRESS'],
     ['Move', 'MOVE_CONTRACT_ADDRESS'],
@@ -288,7 +343,10 @@ function addressesFromEnv(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, key] of ENV_KEYS) {
         const v = process.env[key];
-        if (key === 'MOVE_CONTRACT_ADDRESS') {
+        if (
+            key === 'MOVE_CONTRACT_ADDRESS' ||
+            key === 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'
+        ) {
             if (v) out[name] = v;
             continue;
         }
