@@ -13,6 +13,7 @@ import "./TestPageStyles.css";
 import * as React from "react";
 
 import { getEffectiveNodeUrl } from "../../../config/connection";
+import { getProverEnabled } from "../../../config/env";
 import {
   type AccountRecord,
   createWalletManager,
@@ -33,15 +34,13 @@ function truncate(str: string, head = 8, tail = 6): string {
 // Shared UI components
 // ---------------------------------------------------------------------------
 
-function Section({
-  title,
-  children,
-  defaultOpen = true,
-}: {
+interface SectionProps {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
-}) {
+}
+
+function Section({ title, children, defaultOpen = true }: SectionProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
     <section className="test-page__section">
@@ -97,6 +96,9 @@ export function WalletManagerTestPage() {
       nodeUrl: getEffectiveNodeUrl(),
       storagePrefix: "dfpunk",
       balancePollIntervalMs: 15_000,
+      pxeConfig: {
+        proverEnabled: getProverEnabled(),
+      },
     };
 
     createWalletManager(config)
@@ -184,7 +186,10 @@ export function WalletManagerTestPage() {
   const handleRemoveAccount = (address: string) => {
     const mgr = mgrRef.current;
     if (!mgr) return;
-    if (!confirm(`Remove account ${truncate(address)}?`)) return;
+
+    const confirmed = confirm(`Remove account ${truncate(address)}?`);
+    if (!confirmed) return;
+
     mgr.removeAccount(address);
     setAccounts(mgr.getAccounts());
     setActiveAddress(mgr.getActiveAddress()?.toString());

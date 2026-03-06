@@ -16,11 +16,21 @@ import type {
 } from "./types";
 import { TABLE_NAMES } from "./types";
 
+export interface SnapshotDownloadProgress {
+  loadedBytes: number;
+  totalBytes: number | null;
+  percent: number | null;
+  phase: "downloading" | "parsing" | "complete";
+  done: boolean;
+}
+
 export interface OffChainSourceOptions {
   /** Base URL of the indexer API (no trailing slash). */
   baseUrl: string;
   /** Optional fetch (e.g. with auth or custom headers). */
   fetch?: typeof fetch;
+  /** Optional callback for snapshot download progress. */
+  onSnapshotProgress?: (progress: SnapshotDownloadProgress) => void;
 }
 
 /**
@@ -40,10 +50,19 @@ export interface OffChainSourceOptions {
 export class OffChainBlockSource implements IBlockEventSource {
   private readonly baseUrl: string;
   private readonly doFetch: typeof fetch;
+  private readonly onSnapshotProgress:
+    | ((progress: SnapshotDownloadProgress) => void)
+    | undefined;
+  private readonly progressEmitMinIntervalMs = 120;
+  private lastProgressEmitAt = 0;
 
   constructor(options: OffChainSourceOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.doFetch = options.fetch ?? fetch;
+    const fetchImpl = options.fetch;
+    // Avoid illegal invocation with browser-native fetch while preserving custom fetch implementations.
+    this.doFetch = (input: RequestInfo | URL, init?: RequestInit) =>
+      fetchImpl ? fetchImpl(input, init) : fetch(input, init);
+    this.onSnapshotProgress = options.onSnapshotProgress;
   }
 
   async getLatestBlockNumber(): Promise<number> {
@@ -66,7 +85,7 @@ export class OffChainBlockSource implements IBlockEventSource {
       if (res.status === 404) return null;
       throw new Error(`Indexer snapshot: ${res.status}`);
     }
-    const data = (await res.json()) as Record<string, unknown>;
+    const data = await this.readSnapshotJsonWithProgress(res);
     return this.parseSnapshot(data);
   }
 
@@ -129,5 +148,123 @@ export class OffChainBlockSource implements IBlockEventSource {
       }
     }
     return snapshot;
+  }
+
+  private emitSnapshotProgress(progress: SnapshotDownloadProgress): void {
+    if (!this.onSnapshotProgress) return;
+    const now = Date.now();
+    const forceEmit =
+      progress.done ||
+      progress.loadedBytes === 0 ||
+      progress.phase !== "downloading";
+    if (
+      !forceEmit &&
+      now - this.lastProgressEmitAt < this.progressEmitMinIntervalMs
+    ) {
+      return;
+    }
+    this.lastProgressEmitAt = now;
+    try {
+      this.onSnapshotProgress(progress);
+    } catch (err) {
+      console.warn("[OffChainBlockSource] progress callback error:", err);
+    }
+  }
+
+  private toPercent(loaded: number, total: number | null): number | null {
+    if (!total || total <= 0) return null;
+    const raw = Math.floor((loaded / total) * 100);
+    return Math.max(0, Math.min(100, raw));
+  }
+
+  private async readSnapshotJsonWithProgress(
+    res: Response
+  ): Promise<Record<string, unknown>> {
+    const totalHeader =
+      res.headers.get("x-snapshot-uncompressed-length") ??
+      res.headers.get("content-length");
+    const parsedTotal = totalHeader ? Number.parseInt(totalHeader, 10) : NaN;
+    const totalBytes =
+      Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : null;
+
+    if (!this.onSnapshotProgress) {
+      return (await res.json()) as Record<string, unknown>;
+    }
+
+    this.emitSnapshotProgress({
+      loadedBytes: 0,
+      totalBytes,
+      percent: this.toPercent(0, totalBytes),
+      phase: "downloading",
+      done: false,
+    });
+
+    if (!res.body) {
+      const buf = new Uint8Array(await res.arrayBuffer());
+      this.emitSnapshotProgress({
+        loadedBytes: buf.byteLength,
+        totalBytes,
+        percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "downloading",
+        done: false,
+      });
+
+      this.emitSnapshotProgress({
+        loadedBytes: buf.byteLength,
+        totalBytes,
+        percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "parsing",
+        done: false,
+      });
+
+      const text = new TextDecoder().decode(buf);
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      this.emitSnapshotProgress({
+        loadedBytes: buf.byteLength,
+        totalBytes,
+        percent: this.toPercent(buf.byteLength, totalBytes),
+        phase: "complete",
+        done: true,
+      });
+      return parsed;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let loadedBytes = 0;
+    let text = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      loadedBytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+      this.emitSnapshotProgress({
+        loadedBytes,
+        totalBytes,
+        percent: this.toPercent(loadedBytes, totalBytes),
+        phase: "downloading",
+        done: false,
+      });
+    }
+    text += decoder.decode();
+
+    this.emitSnapshotProgress({
+      loadedBytes,
+      totalBytes,
+      percent: this.toPercent(loadedBytes, totalBytes),
+      phase: "parsing",
+      done: false,
+    });
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    this.emitSnapshotProgress({
+      loadedBytes,
+      totalBytes,
+      percent: this.toPercent(loadedBytes, totalBytes),
+      phase: "complete",
+      done: true,
+    });
+    return parsed;
   }
 }

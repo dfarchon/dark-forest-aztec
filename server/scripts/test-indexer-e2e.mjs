@@ -23,6 +23,9 @@ function parseArgs(argv) {
     sqliteMaxLagBlocks: 2,
     coverageCheckIntervalSec: 30,
     coverageRequireAll: false,
+    highThroughput: false,
+    skipWarmup: false,
+    maxNoProgressSteps: 8,
     stepTimeoutSec: 180,
     stepRetries: 3,
     timeoutSec: 120,
@@ -30,6 +33,8 @@ function parseArgs(argv) {
     strict: false,
     serverUrl: process.env.SERVER_URL ?? "http://localhost:3001",
     contractsDir: path.join(repoRoot, "contracts"),
+    lockFile:
+      process.env.SERVER_E2E_LOCK_FILE ?? "/tmp/dfpunk-indexer-e2e.lock",
     sqlitePath:
       process.env.SQLITE_PATH ?? path.join(repoRoot, "server", "data", "indexer.db"),
   };
@@ -67,6 +72,19 @@ function parseArgs(argv) {
       args.coverageRequireAll = true;
       continue;
     }
+    if (key === "--high-throughput") {
+      args.highThroughput = true;
+      continue;
+    }
+    if (key === "--skip-warmup") {
+      args.skipWarmup = true;
+      continue;
+    }
+    if (key === "--max-no-progress-steps" && next) {
+      args.maxNoProgressSteps = Number.parseInt(next, 10);
+      i++;
+      continue;
+    }
     if (key === "--step-timeout-sec" && next) {
       args.stepTimeoutSec = Number.parseInt(next, 10);
       i++;
@@ -97,6 +115,11 @@ function parseArgs(argv) {
       i++;
       continue;
     }
+    if (key === "--lock-file" && next) {
+      args.lockFile = path.resolve(next);
+      i++;
+      continue;
+    }
     if (key === "--strict") {
       args.strict = true;
       continue;
@@ -124,8 +147,14 @@ function parseArgs(argv) {
   if (!Number.isFinite(args.stepRetries) || args.stepRetries < 1) {
     throw new Error("--step-retries must be an integer >= 1");
   }
+  if (!Number.isFinite(args.maxNoProgressSteps) || args.maxNoProgressSteps < 1) {
+    throw new Error("--max-no-progress-steps must be an integer >= 1");
+  }
   if (!Number.isFinite(args.pollMs) || args.pollMs <= 0) {
     throw new Error("--poll-ms must be a positive integer");
+  }
+  if (!args.lockFile || typeof args.lockFile !== "string") {
+    throw new Error("--lock-file must be a non-empty path");
   }
 
   return args;
@@ -137,6 +166,57 @@ function nowIso() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readLockPid(lockFile) {
+  if (!fs.existsSync(lockFile)) return null;
+  const raw = fs.readFileSync(lockFile, "utf8").trim();
+  const pid = Number.parseInt(raw, 10);
+  return Number.isFinite(pid) && pid > 0 ? pid : null;
+}
+
+function isPidAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireSingleRunnerLock(lockFile) {
+  const existing = readLockPid(lockFile);
+  if (existing && existing !== process.pid && isPidAlive(existing)) {
+    throw new Error(
+      `Another indexer-e2e runner is already active (pid=${existing}, lock=${lockFile}).`
+    );
+  }
+
+  fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+  fs.writeFileSync(lockFile, `${process.pid}\n`, "utf8");
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    const pidInLock = readLockPid(lockFile);
+    if (pidInLock === process.pid) {
+      fs.rmSync(lockFile, { force: true });
+    }
+  };
+
+  process.on("exit", release);
+  process.on("SIGINT", () => {
+    release();
+    process.exit(130);
+  });
+  process.on("SIGTERM", () => {
+    release();
+    process.exit(143);
+  });
+
+  return release;
 }
 
 function runCommand(cmd, cmdArgs, cwd, options = {}) {
@@ -304,7 +384,7 @@ async function waitForDbAtLeast(sqlitePath, minBlock, timeoutMs, pollMs) {
   );
 }
 
-function workloadPlan() {
+function workloadPlan(config) {
   const safeInitScript = path.join(
     repoRoot,
     "server",
@@ -326,12 +406,20 @@ function workloadPlan() {
 
   const warmup = [initUser1, initUser2];
 
-  const baseCycle = [
-    initUser1,
-    initUser2,
-    { name: "move user1", args: ["--experimental-transform-types", "scripts/test-move.ts", "0"] },
-    { name: "move user2", args: ["--experimental-transform-types", "scripts/test-move.ts", "1"] },
-  ];
+  const moveUser1 = {
+    name: "move user1",
+    args: ["--experimental-transform-types", "scripts/test-move.ts", "0"],
+  };
+  const moveUser2 = {
+    name: "move user2",
+    args: ["--experimental-transform-types", "scripts/test-move.ts", "1"],
+  };
+
+  // In high-throughput mode we still prepend idempotent init guards so
+  // move steps don't stall when a player is missing home-planet state.
+  const baseCycle = config.highThroughput
+    ? [initUser1, initUser2, moveUser1, moveUser2, moveUser1, moveUser2]
+    : [initUser1, initUser2, moveUser1, moveUser2];
 
   const upgradeStepUser1 = {
     name: "upgrade user1",
@@ -406,7 +494,10 @@ async function runWarmupStep(args, config) {
   return false;
 }
 
-function buildRoundCycle(plan, round) {
+function buildRoundCycle(plan, round, config) {
+  if (config.highThroughput) {
+    return [...plan.baseCycle];
+  }
   const cycle = [...plan.baseCycle];
   if (round % 3 === 0) cycle.push(plan.upgradeStepUser1);
   if (round % 4 === 0) cycle.push(plan.upgradeStepUser2);
@@ -511,7 +602,7 @@ async function runAndVerify(name, args, config, options = {}) {
         console.warn(
           `[${nowIso()}] [server-check] WARN ${name} | step timed out after ${config.stepTimeoutSec}s; child killed, skip assertions`
         );
-        return;
+        return false;
       }
 
       const transient = isTransientReorgDropError(msg);
@@ -542,7 +633,7 @@ async function runAndVerify(name, args, config, options = {}) {
       console.warn(
         `[${nowIso()}] [server-check] WARN ${name} | no new block within ${config.timeoutSec}s; skip server/sqlite assertions`
       );
-      return;
+      return false;
     }
     throw err;
   }
@@ -575,114 +666,143 @@ async function runAndVerify(name, args, config, options = {}) {
     console.log(
       `[${nowIso()}] [server-check] OK ${name} | block=${syncedBlock} | sqlite=${dbRow.blockNumber} | sqliteMin=${sqliteMinBlock}`
     );
-    return;
+    return true;
   }
 
   console.log(
     `[${nowIso()}] [server-check] OK ${name} | block=${syncedBlock} | sqlite=skip(periodic)`
   );
+  return true;
 }
 
 async function main() {
   const config = parseArgs(process.argv.slice(2));
-  const plan = workloadPlan();
+  const plan = workloadPlan(config);
+  const releaseLock = acquireSingleRunnerLock(config.lockFile);
   assertNodeSupportsTransformTypes();
+  try {
+    console.log("[server-e2e] Continuous mode");
+    console.log(`  serverUrl:    ${config.serverUrl}`);
+    console.log(`  contractsDir: ${config.contractsDir}`);
+    console.log(`  sqlitePath:   ${config.sqlitePath}`);
+    console.log(`  lockFile:     ${config.lockFile}`);
+    console.log(`  intervalSec:  ${config.intervalSec}`);
+    console.log(`  sqliteCheckIntervalSec: ${config.sqliteCheckIntervalSec}`);
+    console.log(`  sqliteMaxLagBlocks: ${config.sqliteMaxLagBlocks}`);
+    console.log(`  coverageCheckIntervalSec: ${config.coverageCheckIntervalSec}`);
+    console.log(`  coverageRequireAll: ${config.coverageRequireAll}`);
+    console.log(`  highThroughput: ${config.highThroughput}`);
+    console.log(`  skipWarmup:   ${config.skipWarmup}`);
+    console.log(`  stepTimeoutSec: ${config.stepTimeoutSec}`);
+    console.log(`  stepRetries:   ${config.stepRetries}`);
+    console.log(`  maxNoProgressSteps: ${config.maxNoProgressSteps}`);
+    console.log(`  strict:       ${config.strict}`);
 
-  console.log("[server-e2e] Continuous mode");
-  console.log(`  serverUrl:    ${config.serverUrl}`);
-  console.log(`  contractsDir: ${config.contractsDir}`);
-  console.log(`  sqlitePath:   ${config.sqlitePath}`);
-  console.log(`  intervalSec:  ${config.intervalSec}`);
-  console.log(`  sqliteCheckIntervalSec: ${config.sqliteCheckIntervalSec}`);
-  console.log(`  sqliteMaxLagBlocks: ${config.sqliteMaxLagBlocks}`);
-  console.log(`  coverageCheckIntervalSec: ${config.coverageCheckIntervalSec}`);
-  console.log(`  coverageRequireAll: ${config.coverageRequireAll}`);
-  console.log(`  stepTimeoutSec: ${config.stepTimeoutSec}`);
-  console.log(`  stepRetries:   ${config.stepRetries}`);
-  console.log(`  strict:       ${config.strict}`);
-
-  console.log("[server-e2e] Warmup (idempotent)");
-  let warmupSucceeded = 0;
-  for (const step of plan.warmup) {
-    const ok = await runWarmupStep(step.args, config);
-    if (ok) {
-      warmupSucceeded += 1;
-      continue;
-    }
-
-    console.error(`[${nowIso()}] [warmup] FAIL: ${step.name}`);
-    if (config.strict) {
-      throw new Error(`Warmup step failed: ${step.name}`);
-    }
-  }
-
-  if (warmupSucceeded === 0) {
-    const snapshot = await fetchSnapshot(config.serverUrl).catch(() => null);
-    if (snapshot && hasGameplayState(snapshot)) {
-      console.warn(
-        `[${nowIso()}] [warmup] WARN no init step succeeded, but snapshot already has gameplay state; continuing`
-      );
-    } else if (config.strict) {
-      throw new Error("Warmup failed: no player initialization step succeeded");
+    if (config.skipWarmup) {
+      console.log("[server-e2e] Warmup SKIP (--skip-warmup)");
     } else {
-      console.warn(
-        `[${nowIso()}] [warmup] WARN no init step succeeded and no gameplay state yet; continuing (non-strict)`
-      );
-    }
-  }
-  if (warmupSucceeded < plan.warmup.length) {
-    console.warn(
-      `[${nowIso()}] [warmup] PARTIAL: ${warmupSucceeded}/${plan.warmup.length} init steps succeeded`
-    );
-  } else {
-    console.log(
-      `[${nowIso()}] [warmup] OK: ${warmupSucceeded}/${plan.warmup.length} init steps succeeded`
-    );
-  }
-
-  let round = 1;
-  let nextSqliteCheckAt = Date.now();
-  let nextCoverageCheckAt = Date.now();
-  while (true) {
-    const cycle = buildRoundCycle(plan, round);
-    console.log(`\n[${nowIso()}] [server-check] ROUND ${round} | steps=${cycle.length}`);
-
-    for (const item of cycle) {
-      console.log(`[${nowIso()}] [server-check] RUN ${item.name}`);
-      try {
-        if (item.mode === "init") {
-          const ok = await runWarmupStep(item.args, config);
-          if (!ok) {
-            const msg = `${item.name} failed`;
-            if (config.strict) throw new Error(msg);
-            console.warn(`[${nowIso()}] [server-check] WARN ${msg}`);
-          }
-          await sleep(config.intervalSec * 1000);
+      console.log("[server-e2e] Warmup (idempotent)");
+      let warmupSucceeded = 0;
+      for (const step of plan.warmup) {
+        const ok = await runWarmupStep(step.args, config);
+        if (ok) {
+          warmupSucceeded += 1;
           continue;
         }
 
-        const now = Date.now();
-        const shouldCheckSqlite = now >= nextSqliteCheckAt;
-        if (shouldCheckSqlite) {
-          nextSqliteCheckAt = now + config.sqliteCheckIntervalSec * 1000;
+        console.error(`[${nowIso()}] [warmup] FAIL: ${step.name}`);
+        if (config.strict) {
+          throw new Error(`Warmup step failed: ${step.name}`);
         }
-        await runAndVerify(item.name, item.args, config, {
-          checkSqlite: shouldCheckSqlite,
-        });
-
-        const coverageNow = Date.now();
-        if (coverageNow >= nextCoverageCheckAt) {
-          nextCoverageCheckAt = coverageNow + config.coverageCheckIntervalSec * 1000;
-          await runCoverageCheck(config);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[${nowIso()}] [server-check] FAIL ${item.name}: ${msg}`);
-        if (config.strict) throw err;
       }
-      await sleep(config.intervalSec * 1000);
+
+      if (warmupSucceeded === 0) {
+        const snapshot = await fetchSnapshot(config.serverUrl).catch(() => null);
+        if (snapshot && hasGameplayState(snapshot)) {
+          console.warn(
+            `[${nowIso()}] [warmup] WARN no init step succeeded, but snapshot already has gameplay state; continuing`
+          );
+        } else if (config.strict) {
+          throw new Error("Warmup failed: no player initialization step succeeded");
+        } else {
+          console.warn(
+            `[${nowIso()}] [warmup] WARN no init step succeeded and no gameplay state yet; continuing (non-strict)`
+          );
+        }
+      }
+      if (warmupSucceeded < plan.warmup.length) {
+        console.warn(
+          `[${nowIso()}] [warmup] PARTIAL: ${warmupSucceeded}/${plan.warmup.length} init steps succeeded`
+        );
+      } else {
+        console.log(
+          `[${nowIso()}] [warmup] OK: ${warmupSucceeded}/${plan.warmup.length} init steps succeeded`
+        );
+      }
     }
-    round += 1;
+
+    let round = 1;
+    let nextSqliteCheckAt = Date.now();
+    let nextCoverageCheckAt = Date.now();
+    let noProgressSteps = 0;
+    while (true) {
+      const cycle = buildRoundCycle(plan, round, config);
+      console.log(`\n[${nowIso()}] [server-check] ROUND ${round} | steps=${cycle.length}`);
+
+      for (const item of cycle) {
+        console.log(`[${nowIso()}] [server-check] RUN ${item.name}`);
+        let progressed = false;
+        try {
+          if (item.mode === "init") {
+            const ok = await runWarmupStep(item.args, config);
+            if (!ok) {
+              const msg = `${item.name} failed`;
+              if (config.strict) throw new Error(msg);
+              console.warn(`[${nowIso()}] [server-check] WARN ${msg}`);
+            }
+            await sleep(config.intervalSec * 1000);
+            continue;
+          }
+
+          const now = Date.now();
+          const shouldCheckSqlite = now >= nextSqliteCheckAt;
+          if (shouldCheckSqlite) {
+            nextSqliteCheckAt = now + config.sqliteCheckIntervalSec * 1000;
+          }
+          progressed = await runAndVerify(item.name, item.args, config, {
+            checkSqlite: shouldCheckSqlite,
+          });
+
+          const coverageNow = Date.now();
+          if (coverageNow >= nextCoverageCheckAt) {
+            nextCoverageCheckAt = coverageNow + config.coverageCheckIntervalSec * 1000;
+            await runCoverageCheck(config);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[${nowIso()}] [server-check] FAIL ${item.name}: ${msg}`);
+          if (config.strict) throw err;
+        }
+
+        if (item.mode !== "init") {
+          if (progressed) {
+            noProgressSteps = 0;
+          } else {
+            noProgressSteps += 1;
+            if (noProgressSteps >= config.maxNoProgressSteps) {
+              throw new Error(
+                `[watchdog] no new block for ${noProgressSteps} consecutive non-init steps; restart e2e only with: bash server/scripts/test-env.sh e2e-start-fast`
+              );
+            }
+          }
+        }
+
+        await sleep(config.intervalSec * 1000);
+      }
+      round += 1;
+    }
+  } finally {
+    releaseLock();
   }
 }
 

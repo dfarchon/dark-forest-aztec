@@ -24,12 +24,14 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
 } from "../../config/connection";
+import { getProverEnabled } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
   IndexerConnection,
   type IndexerConnectionConfig,
 } from "../../Session/Indexer/IndexerConnection";
+import type { SnapshotDownloadProgress } from "../../Session/Indexer/OffChainSource";
 import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
@@ -51,6 +53,21 @@ import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function snapshotPhaseLabel(progress: SnapshotDownloadProgress): string {
+  if (progress.phase === "parsing") return "parsing";
+  if (progress.phase === "complete") return "done";
+  if (progress.percent !== null) return `${progress.percent}%`;
+  return "downloading";
+}
 
 const enum TerminalPromptStep {
   NONE,
@@ -76,6 +93,7 @@ export function GameLandingPage() {
   const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
+  const snapshotHideTokenRef = useRef(0);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(true);
@@ -85,6 +103,10 @@ export function GameLandingPage() {
   >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const [step, setStep] = useState(TerminalPromptStep.NONE);
+  const [snapshotProgress, setSnapshotProgress] =
+    useState<SnapshotDownloadProgress | null>(null);
+  const [snapshotBootstrapPending, setSnapshotBootstrapPending] =
+    useState<boolean>(Boolean(getEffectiveIndexerBootstrapUrl()));
 
   const params = new URLSearchParams(location.search);
   const selectedAddress = params.get("account");
@@ -95,12 +117,17 @@ export function GameLandingPage() {
 
   useEffect(() => {
     let destroyed = false;
+    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
+    setSnapshotBootstrapPending(Boolean(bootstrapUrl));
     (async () => {
       try {
         const nodeUrl = getEffectiveNodeUrl();
         const wm = await createWalletManager({
           nodeUrl,
           storagePrefix: "dfpunk",
+          pxeConfig: {
+            proverEnabled: getProverEnabled(),
+          },
         });
         if (destroyed) {
           wm.destroy();
@@ -114,8 +141,12 @@ export function GameLandingPage() {
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
         };
-        const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
         if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+        indexerConfig.onSnapshotProgress = (progress) => {
+          if (destroyed) return;
+          setSnapshotBootstrapPending(false);
+          setSnapshotProgress(progress);
+        };
         const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
           connection.destroy();
@@ -124,8 +155,10 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
+        setSnapshotBootstrapPending(false);
         setWalletManager(wm);
       } catch (e) {
+        setSnapshotBootstrapPending(false);
         console.error("Failed to initialize Aztec session:", e);
         alert("Error connecting to Aztec network");
       }
@@ -322,6 +355,7 @@ export function GameLandingPage() {
         }
       } else {
         const userInput = await terminal.current?.getInput();
+
         if (userInput === "a" && accounts.length > 0) {
           setStep(TerminalPromptStep.DISPLAY_ACCOUNTS);
         } else if (userInput === "n") {
@@ -349,32 +383,34 @@ export function GameLandingPage() {
       terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
 
       const selection = +((await terminal.current?.getInput()) || "");
+
       if (isNaN(selection) || selection > accounts.length) {
         terminal.current?.println("Unrecognized input. Please try again.");
         await advanceStateFromDisplayAccounts(terminal);
-      } else {
-        const account = accounts[selection - 1];
-        try {
-          terminal.current?.println("Restoring account...");
-          const result = await walletManager?.switchAccount(
-            account.address,
-            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
-          );
-          if (result?.deployed) {
-            terminal.current?.println(
-              "Deployed to new network.",
-              TerminalTextStyle.Green
-            );
-          } else {
-            terminal.current?.println("Done.", TerminalTextStyle.Green);
-          }
-          setStep(TerminalPromptStep.ACCOUNT_SET);
-        } catch (e) {
+        return;
+      }
+
+      const account = accounts[selection - 1];
+      try {
+        terminal.current?.println("Restoring account...");
+        const result = await walletManager?.switchAccount(
+          account.address,
+          (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+        );
+        if (result?.deployed) {
           terminal.current?.println(
-            "An unknown error occurred. please try again.",
-            TerminalTextStyle.Red
+            "Deployed to new network.",
+            TerminalTextStyle.Green
           );
+        } else {
+          terminal.current?.println("Done.", TerminalTextStyle.Green);
         }
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (e) {
+        terminal.current?.println(
+          "An unknown error occurred. please try again.",
+          TerminalTextStyle.Red
+        );
       }
     },
     [walletManager]
@@ -595,6 +631,7 @@ export function GameLandingPage() {
         "If you're importing an account, make sure you know what you're doing."
       );
       const userInput = await terminal.current?.getInput();
+
       if (userInput === "y") {
         setStep(TerminalPromptStep.ADD_ACCOUNT);
       } else if (userInput === "n") {
@@ -618,14 +655,14 @@ export function GameLandingPage() {
           const x = parseInt((await terminal.current?.getInput()) || "");
           terminal.current?.println("y: ", TerminalTextStyle.Blue);
           const y = parseInt((await terminal.current?.getInput()) || "");
-          if (
-            Number.isNaN(x) ||
-            Number.isNaN(y) ||
-            Math.abs(x) > 2 ** 32 ||
-            Math.abs(y) > 2 ** 32
-          ) {
+
+          const isValidCoordinate = (coord: number) =>
+            !Number.isNaN(coord) && Math.abs(coord) <= 2 ** 32;
+
+          if (!isValidCoordinate(x) || !isValidCoordinate(y)) {
             throw "Invalid home coordinates.";
           }
+
           if (await gameUIManager.addAccount({ x, y })) {
             terminal.current?.println("Successfully added account.");
             terminal.current?.println("Initializing game...");
@@ -762,7 +799,7 @@ export function GameLandingPage() {
       const input = (await terminal.current?.getInput()) || "";
       let res = "";
       try {
-        // indrect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
+        // indirect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
         // Indirect eval for global scope (avoids comma-operator lint)
         const indirectEval = globalThis.eval;
         res = indirectEval(input) as string;
@@ -837,6 +874,20 @@ export function GameLandingPage() {
   }, [initRenderState]);
 
   useEffect(() => {
+    if (!snapshotProgress || !snapshotProgress.done) return;
+    snapshotHideTokenRef.current += 1;
+    const token = snapshotHideTokenRef.current;
+    const timer = window.setTimeout(() => {
+      setSnapshotProgress((current) => {
+        if (!current || !current.done) return current;
+        if (snapshotHideTokenRef.current !== token) return current;
+        return null;
+      });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [snapshotProgress]);
+
+  useEffect(() => {
     const gameUiManager = gameUIManagerRef.current;
     if (!terminalVisible && gameUiManager) {
       const tutorialManager = TutorialManager.getInstance(gameUiManager);
@@ -883,6 +934,85 @@ export function GameLandingPage() {
           promptCharacter={"$"}
         />
       </TerminalWrapper>
+      {(snapshotProgress || snapshotBootstrapPending) && (
+        <div
+          style={{
+            position: "fixed",
+            left: "12px",
+            bottom: "12px",
+            zIndex: 1200,
+            padding: "8px 10px",
+            background: "rgba(10, 10, 10, 0.88)",
+            border: "1px solid #4d4d4d",
+            color: "#e6e6e6",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            lineHeight: 1.35,
+          }}
+        >
+          <div>snapshot download</div>
+          {snapshotProgress ? (
+            <>
+              <div>
+                {snapshotPhaseLabel(snapshotProgress)}
+                {" · "}
+                {formatBytes(snapshotProgress.loadedBytes)}
+                {snapshotProgress.totalBytes
+                  ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
+                  : ""}
+              </div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${
+                      snapshotProgress.phase === "parsing" ||
+                      snapshotProgress.phase === "complete"
+                        ? 100
+                        : snapshotProgress.percent !== null
+                          ? Math.max(0, Math.min(100, snapshotProgress.percent))
+                          : 0
+                    }%`,
+                    background: "#e6e6e6",
+                    transition: "width 120ms linear",
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>starting...</div>
+              <div
+                style={{
+                  marginTop: "6px",
+                  width: "220px",
+                  height: "4px",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: "35%",
+                    height: "100%",
+                    background: "#8a8a8a",
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );
