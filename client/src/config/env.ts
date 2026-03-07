@@ -3,7 +3,8 @@
  * Used for node URL, indexer bootstrap, and default setting behavior (VITE_APP_MODE).
  */
 
-const DEFAULT_NODE_URL = "http://localhost:8080";
+/** Aztec v4 devnet (matches SDK 4.0.0-devnet.2-patch.1). Use so the client works without a local node. */
+const AZTEC_V4_DEVNET_URL = "https://v4-devnet-2.aztec-labs.com";
 
 function getString(key: string): string | undefined {
   const value = import.meta.env[key];
@@ -14,10 +15,11 @@ function getString(key: string): string | undefined {
 }
 
 /**
- * Aztec node URL. Defaults to http://localhost:8080 when unset or empty.
+ * Aztec node URL. Defaults to v4 devnet when unset or empty so the client works without a local node.
+ * Set VITE_AZTEC_NODE_URL=http://localhost:8080 for local sandbox.
  */
 export function getNodeUrl(): string {
-  return getString("VITE_AZTEC_NODE_URL") ?? DEFAULT_NODE_URL;
+  return getString("VITE_AZTEC_NODE_URL") ?? AZTEC_V4_DEVNET_URL;
 }
 
 /**

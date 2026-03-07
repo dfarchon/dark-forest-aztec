@@ -2121,18 +2121,25 @@ class GameManager extends EventEmitter {
     }
   }
 
+  /** Revert message from Core.initialize_player when spawn planet is occupied. */
+  private static readonly INIT_PLANET_OCCUPIED_MSG =
+    "Planet is already occupied";
+
   /**
    * Attempts to join the game. Should not be called once you've already joined.
+   * On "Planet is already occupied" revert, sets searchCenter to the attempted coords and retries once.
    */
   public async joinGame(
-    beforeRetry: (e: Error) => Promise<boolean>
+    beforeRetry: (e: Error) => Promise<boolean>,
+    retriedAfterOccupied = false
   ): Promise<void> {
+    let planet: LocatablePlanet | undefined;
     try {
       if (this.checkGameHasEnded()) {
         throw new Error("game has ended");
       }
 
-      const planet = await this.findRandomHomePlanet();
+      planet = await this.findRandomHomePlanet();
       this.homeLocation = planet.location;
       this.terminal.current?.println("");
       this.terminal.current?.println(
@@ -2212,7 +2219,26 @@ class GameManager extends EventEmitter {
 
       this.emit(GameManagerEvent.InitializedPlayer);
     } catch (e) {
-      this.getNotificationsManager().txInitError("initializePlayer", e.message);
+      const msg = e instanceof Error ? e.message : String(e);
+      const isPlanetOccupied = msg.includes(
+        GameManager.INIT_PLANET_OCCUPIED_MSG
+      );
+
+      if (isPlanetOccupied && !retriedAfterOccupied && planet) {
+        // Start search near the coords we just tried (spiral will find another planet).
+        const params = new URLSearchParams(window.location.search);
+        const { x, y } = planet.location.coords;
+        params.set("searchCenter", `${x + 50},${y + 50}`);
+        const newSearch = params.toString();
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${newSearch ? `?${newSearch}` : ""}`
+        );
+        return this.joinGame(beforeRetry, true);
+      }
+
+      this.getNotificationsManager().txInitError("initializePlayer", msg);
       throw e;
     }
   }

@@ -836,6 +836,14 @@ export class StateResolver {
         );
         timestamp = maxEntityTime;
       }
+      // Cap to last known chain time so contract assert timestamp <= actual_timestamp never fails
+      const maxChainSec = BigInt(this.chainClock.lastChainTimeSec());
+      if (maxChainSec > 0n && timestamp > maxChainSec) {
+        console.warn(
+          `[StateResolver] capping move timestamp ${timestamp} to last chain time ${maxChainSec} (timestamp cannot be in the future)`
+        );
+        timestamp = maxChainSec;
+      }
     }
 
     // Client-side simulation: clamp population/silver to contract-safe ranges

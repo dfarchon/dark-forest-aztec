@@ -23,6 +23,9 @@ export class ChainClock {
   /** Wall-clock ms of the last successful sync (for throttling). */
   private lastSyncMs = 0;
 
+  /** Last known L2 block timestamp (seconds). Used to cap tx timestamps so they are never in the future. */
+  private lastChainTimestampSec = 0;
+
   private static MIN_SYNC_INTERVAL_MS = 3000;
 
   constructor(node: AztecNode) {
@@ -33,6 +36,7 @@ export class ChainClock {
   sync(chainTimestampSec: number): void {
     this.offsetMs = chainTimestampSec * 1000 - Date.now();
     this.lastSyncMs = Date.now();
+    this.lastChainTimestampSec = chainTimestampSec;
   }
 
   /**
@@ -90,5 +94,13 @@ export class ChainClock {
   /** The current offset in seconds (positive = chain ahead). */
   getOffsetSec(): number {
     return this.offsetMs / 1000;
+  }
+
+  /**
+   * Last known L2 block timestamp (seconds). Use to cap tx timestamps so they
+   * satisfy contract assert timestamp <= actual_timestamp (never in the future).
+   */
+  lastChainTimeSec(): number {
+    return this.lastChainTimestampSec;
   }
 }

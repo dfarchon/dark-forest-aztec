@@ -1489,7 +1489,9 @@ contract Core {
 
             (planet, true)
         } else {
-            // Planet already exists, verify timestamp is newer than planet's last_updated
+            // Planet already exists: must be unoccupied (owner == zero) to spawn
+            assert(planet_state.owner == AztecAddress::zero(), "Planet is already occupied");
+            // Verify timestamp is newer than planet's last_updated
             assert(
                 timestamp >= planet_state.last_updated,
                 "Timestamp must be >= planet's last_updated",
