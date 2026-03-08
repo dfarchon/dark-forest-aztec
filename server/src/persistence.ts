@@ -1,9 +1,12 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-
 import type { IndexerSnapshot } from "../../packages/indexer-server-core/src/index.ts";
-import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
+import {
+  rawToState,
+  TABLE_NAMES,
+} from "../../packages/indexer-server-core/src/index.ts";
 
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS snapshots (
@@ -89,9 +92,25 @@ export class SnapshotStore {
     }
   }
 
-  /** Get the database file path (for backup endpoint). */
-  getDatabasePath(): string {
-    return this.db.name;
+  /**
+   * Create a transactionally-consistent SQLite backup buffer.
+   * Uses SQLite backup API instead of reading the live db file directly.
+   */
+  async createBackupBuffer(): Promise<Buffer> {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "dfpunk-indexer-backup-"),
+    );
+    const backupFile = path.join(tempDir, "indexer-backup.db");
+    try {
+      await this.db.backup(backupFile);
+      return fs.readFileSync(backupFile);
+    } finally {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (err) {
+        console.warn("[Persistence] Failed to cleanup temp backup dir:", err);
+      }
+    }
   }
 
   close(): void {
@@ -125,7 +144,17 @@ export function jsonToSnapshot(data: Record<string, unknown>): IndexerSnapshot {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const map = snapshot[table] as Map<string, unknown>;
     for (const [id, state] of Object.entries(raw as Record<string, unknown>)) {
-      if (state !== null && typeof state === "object") map.set(id, state);
+      if (state === null || typeof state !== "object" || Array.isArray(state)) {
+        continue;
+      }
+      try {
+        map.set(id, rawToState(table, state as Record<string, unknown>));
+      } catch (err) {
+        console.warn(
+          `[Persistence] Failed to rehydrate ${table}:${id} from snapshot:`,
+          err,
+        );
+      }
     }
   }
 

@@ -1,43 +1,50 @@
 import { serve } from "@hono/node-server";
-import { START_BLOCK } from "@dfpunk/contracts";
 
 import {
   createAztecNodeBlockSource,
   IndexerService,
 } from "../../packages/indexer-server-core/src/index.ts";
 import { createApp } from "./api.ts";
+import { parseServerConfig } from "./config.ts";
+import { validateContractsConfig } from "./contractsConfig.ts";
 import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL ?? "http://localhost:8080";
-const PORT = Number(process.env.PORT ?? 3001);
-const SQLITE_PATH = process.env.SQLITE_PATH ?? "./data/indexer.db";
-const PERSIST_MIN_INTERVAL_SEC = Number(
-  process.env.PERSIST_MIN_INTERVAL_SEC ?? 10,
-);
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
-const CORS_ORIGINS = (
-  process.env.CORS_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173"
-)
-  .split(",")
-  .map((value) => value.trim())
-  .filter((value) => value.length > 0);
-
 async function main(): Promise<void> {
-  console.log(`[Server] Aztec node: ${AZTEC_NODE_URL}`);
-  console.log(`[Server] SQLite path: ${SQLITE_PATH}`);
+  const contracts = validateContractsConfig();
+  const config = parseServerConfig();
   console.log(
-    `[Server] CORS origins: ${CORS_ORIGINS.join(", ") || "(disabled)"}`,
+    `[Server] Aztec node: ${config.aztecNodeUrl} (${config.nodeKind})`,
   );
+  console.log(`[Server] Start block: ${config.indexerStartBlock}`);
+  console.log(`[Server] Contracts start block: ${contracts.startBlock}`);
+  console.log(`[Server] Core contract: ${contracts.addresses.core}`);
+  console.log(`[Server] SQLite path: ${config.sqlitePath}`);
+  console.log(
+    `[Server] CORS origins: ${config.corsOrigins.join(", ") || "(disabled)"}`,
+  );
+  if (config.indexerStartBlock !== contracts.startBlock) {
+    console.warn(
+      `[Server] INDEXER_START_BLOCK override ${config.indexerStartBlock} differs from @dfpunk/contracts START_BLOCK ${contracts.startBlock}.`,
+    );
+  }
+  if (config.nodeKind === "local") {
+    console.warn(
+      "[Server] AZTEC_NODE_URL points to localhost; this is local sandbox mode, not the remote devnet.",
+    );
+  }
 
   // 1. Initialize persistence
-  const store = new SnapshotStore(SQLITE_PATH, PERSIST_MIN_INTERVAL_SEC);
+  const store = new SnapshotStore(
+    config.sqlitePath,
+    config.persistMinIntervalSec,
+  );
 
   // 2. Create IndexerService
-  const source = createAztecNodeBlockSource(AZTEC_NODE_URL);
+  const source = createAztecNodeBlockSource(config.aztecNodeUrl);
   const indexer = new IndexerService({
     source,
-    startBlock: START_BLOCK,
+    startBlock: config.indexerStartBlock,
     debounceMs: 1000,
     pollIntervalMs: 2000,
     maxBlocksPerRequest: 100,
@@ -76,10 +83,10 @@ async function main(): Promise<void> {
     indexer,
     cache,
     store,
-    adminToken: ADMIN_TOKEN,
-    corsOrigins: CORS_ORIGINS,
+    adminToken: config.adminToken,
+    corsOrigins: config.corsOrigins,
   });
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
+  serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`[Server] HTTP listening on port ${info.port}`);
   });
 

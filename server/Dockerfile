@@ -8,6 +8,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY server/package.json server/
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/indexer-server-core/package.json packages/indexer-server-core/
 
 # Install only server and its workspace dependencies
 RUN pnpm install --frozen-lockfile --filter server...
@@ -15,6 +16,7 @@ RUN pnpm install --frozen-lockfile --filter server...
 # Copy source code
 COPY server/ server/
 COPY packages/contracts/ packages/contracts/
+COPY packages/indexer-server-core/ packages/indexer-server-core/
 
 # Data directory for SQLite (mount a volume here)
 RUN mkdir -p /data

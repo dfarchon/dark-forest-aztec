@@ -1,0 +1,27 @@
+.git
+.DS_Store
+node_modules
+**/node_modules
+**/dist
+**/build
+*.log
+
+# Server deployment does not need the client bundle or top-level docs.
+client
+docs
+
+# Local-only runtime state and secrets.
+contracts/.env
+contracts/scripts/.test-accounts.json
+contracts/target
+contracts/build
+contracts/.store
+contracts/pxe_data_*
+contracts/wallet_data_*
+contracts/scripts/pxe_data_*
+contracts/scripts/wallet_data_*
+
+server/.env
+server/data
+server/docs
+server/src/*.test.ts

@@ -28,11 +28,14 @@ server/
   src/
     index.ts                    # bootstrap + wiring
     api.ts                      # Hono routes
+    config.ts                   # env parsing and startup validation
     persistence.ts              # SQLite store + restore helpers
     snapshotCache.ts            # incremental JSON + gzip cache
-    indexer/                    # shared with client; may move to shared pkg
-      IndexerService.ts         # sync + lifecycle + subscriptions
-      AztecNodeSource.ts        # Aztec node adapter (events -> updates)
+packages/
+  indexer-server-core/
+    src/                        # server-consumed indexer core extracted from server/src/indexer
+      IndexerService.ts
+      AztecNodeSource.ts
       convert.ts, debounce.ts, types.ts, TableTypes/
 ```
 
@@ -57,20 +60,21 @@ In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBl
 `src/index.ts` performs this flow:
 
 1. Initialize `SnapshotStore` (SQLite, WAL mode).
-2. Create `IndexerService` with `AztecNodeSource`.
-3. Try restore snapshot from SQLite (`jsonToSnapshot` + `applySnapshot`).
-4. Sync from restored block (or `START_BLOCK`) to latest chain block.
-5. Build full `SnapshotCache`.
-6. Subscribe to indexer updates:
+2. Parse runtime config (`AZTEC_NODE_URL`, `INDEXER_START_BLOCK`, etc.).
+3. Create `IndexerService` with `AztecNodeSource`.
+4. Try restore snapshot from SQLite (`jsonToSnapshot` + `applySnapshot`).
+5. Sync from restored block (or `INDEXER_START_BLOCK` / `START_BLOCK`) to latest chain block.
+6. Build full `SnapshotCache`.
+7. Subscribe to indexer updates:
    - apply incremental cache update
    - persist JSON snapshot with interval throttling
-7. Start polling for new blocks.
-8. Start HTTP server (TLS is expected to terminate at the edge/reverse proxy in production).
-9. On shutdown (`SIGINT` / `SIGTERM`), force-save snapshot and close DB.
+8. Start polling for new blocks.
+9. Start HTTP server (TLS is expected to terminate at the edge/reverse proxy in production).
+10. On shutdown (`SIGINT` / `SIGTERM`), force-save snapshot and close DB.
 
 ## Indexing and Sync Design
 
-This server uses **IndexerService** (shared with client; see shared indexer package for sync engine and query API). Server-only usage:
+This server uses **IndexerService** from `packages/indexer-server-core/src`. Server-only usage:
 
 - **Lifecycle**: `applySnapshot`, `start()`, `subscribe(cb)`, `startPolling()`, `destroy()`.
 - **API surface**: `getProcessedBlockNumber()`, `getStatus()` for HTTP routes; `getTable()` (and `getProcessedBlockNumber()`) for `SnapshotCache`.
@@ -98,6 +102,7 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
   - `updated_at`
 - Throttled save interval (`PERSIST_MIN_INTERVAL_SEC`).
 - Force-save on shutdown.
+- Admin backup uses SQLite backup API instead of reading the live `.db` file directly.
 
 ## HTTP API
 
@@ -136,9 +141,17 @@ This server uses **IndexerService** (shared with client; see shared indexer pack
 
 ## Configuration
 
-Environment variables (`.env.example`):
+Environment variable references:
 
-- `AZTEC_NODE_URL` (default: `http://localhost:8080`)
+- `.env.example` — generic reference with all supported keys
+- `env.local.example` — recommended local devnet preset
+- `env.railway.example` — recommended Railway preset
+
+Key variables:
+
+- `AZTEC_NODE_URL` (runtime default: `https://v4-devnet-2.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
+- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app`)
+- `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
 - `PERSIST_MIN_INTERVAL_SEC` (default: `10`)
@@ -154,6 +167,12 @@ IndexerService options (hardcoded in `src/index.ts`; move to env if needed):
 
 ```bash
 corepack pnpm install
+
+# Devnet + local API (:3001)
+corepack pnpm --filter server dev
+
+# Local sandbox override
+AZTEC_NODE_URL=http://localhost:8080 \
 corepack pnpm --filter server dev
 ```
 
@@ -161,14 +180,31 @@ corepack pnpm --filter server dev
 
 - Frontend: `http://127.0.0.1:5173`
 - Indexer server: `http://localhost:3001`
-- Aztec node: `http://localhost:8080`
-- Anvil: `http://127.0.0.1:8545`
+- Aztec node: `https://v4-devnet-2.aztec-labs.com`
 
 Common local API checks:
 
 - `http://localhost:3001/health`
 - `http://localhost:3001/blocks/latest`
 - `http://localhost:3001/snapshot`
+
+If you are running the frontend from `https://df-aztec.netlify.app` against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
+
+### Local API checks
+
+```bash
+curl -fsS http://localhost:3001/health && echo
+curl -fsS http://localhost:3001/blocks/latest && echo
+curl -fsSI http://localhost:3001/snapshot
+```
+
+Admin backup check (only when `ADMIN_TOKEN` is set):
+
+```bash
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:3001/admin/backup \
+  -o /tmp/indexer-backup.db
+```
 
 ## Client Run (Latest)
 
@@ -243,10 +279,34 @@ Notes:
 ```bash
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
-  -e AZTEC_NODE_URL=http://host.docker.internal:8080 \
+  -e AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
   dfpunk-indexer-server
 ```
+
+For local sandbox instead of devnet, override:
+
+```bash
+docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
+  -e AZTEC_NODE_URL=http://host.docker.internal:8080 \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
+  dfpunk-indexer-server
+```
+
+## Railway
+
+Recommended Railway settings for the current server:
+
+- Build from the repo root with `server/Dockerfile` as the Dockerfile path
+- Mount a persistent volume at `/data`
+- Set `SQLITE_PATH=/data/indexer.db`
+- Set `AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com`
+- Set `CORS_ORIGINS=https://df-aztec.netlify.app`
+- Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
+
+The Docker image must include `server`, `packages/contracts`, and `packages/indexer-server-core`; the current Dockerfile now copies all three runtime paths.
+Because the Docker build context is the monorepo root, the ignore file for deployment uploads lives at repo root: [`.dockerignore`](/Users/pabloli/Documents/dfpunk-aztec/.dockerignore).
 
 ## Monorepo Notes
 

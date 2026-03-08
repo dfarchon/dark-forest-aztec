@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
@@ -111,7 +109,7 @@ export function createApp(deps: ApiDeps): Hono {
   });
 
   // GET /admin/backup — download SQLite database file (Authorization header protected)
-  app.get("/admin/backup", (c) => {
+  app.get("/admin/backup", async (c) => {
     if (!adminToken) {
       return c.json({ error: "Backup endpoint disabled" }, 403);
     }
@@ -121,19 +119,19 @@ export function createApp(deps: ApiDeps): Hono {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const dbPath = store.getDatabasePath();
-    if (!fs.existsSync(dbPath)) {
-      return c.json({ error: "No database file found" }, 404);
+    try {
+      const fileBuffer = await store.createBackupBuffer();
+      return new Response(Uint8Array.from(fileBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="indexer-backup.db"`,
+        },
+      });
+    } catch (err) {
+      console.error("[API] Failed to create backup:", err);
+      return c.json({ error: "Backup failed" }, 500);
     }
-
-    const fileBuffer = fs.readFileSync(dbPath);
-    return new Response(Uint8Array.from(fileBuffer), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="indexer-backup.db"`,
-      },
-    });
   });
 
   return app;
