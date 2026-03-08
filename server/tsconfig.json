@@ -8,12 +8,12 @@
     "strictPropertyInitialization": false,
     "skipLibCheck": true,
     "noEmit": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "sourceMap": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "../packages/indexer-server-core/src",
+    "../packages/contracts/src"
+  ]
 }

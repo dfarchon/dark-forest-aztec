@@ -1,9 +1,11 @@
 import { serve } from "@hono/node-server";
 import { START_BLOCK } from "@dfpunk/contracts";
 
+import {
+  createAztecNodeBlockSource,
+  IndexerService,
+} from "../../packages/indexer-server-core/src/index.ts";
 import { createApp } from "./api.ts";
-import { createAztecNodeBlockSource } from "./indexer/AztecNodeSource.ts";
-import { IndexerService } from "./indexer/IndexerService.ts";
 import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 

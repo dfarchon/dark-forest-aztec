@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { IndexerSnapshot } from "./indexer/types.ts";
-import { TABLE_NAMES } from "./indexer/types.ts";
+import type { IndexerSnapshot } from "../../packages/indexer-server-core/src/index.ts";
+import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
 
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS snapshots (

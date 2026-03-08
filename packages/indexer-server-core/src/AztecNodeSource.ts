@@ -1,6 +1,6 @@
 /**
  * IBlockEventSource that fetches public storage events from an Aztec node.
- * Uses @dfpunk/contracts for artifact event metadata and default addresses.
+ * Uses local contracts package sources for artifact event metadata and default addresses.
  */
 
 import { AztecAddress } from "@aztec/aztec.js/addresses";
@@ -19,16 +19,16 @@ import {
   PLANET_STORAGE_CONTRACT_ADDRESS,
   PLAYER_STORAGE_CONTRACT_ADDRESS,
   WORLD_STORAGE_CONTRACT_ADDRESS,
-} from "@dfpunk/contracts";
-import { ArrivalStorageContract } from "@dfpunk/contracts/artifacts/ArrivalStorage";
-import { ArtifactLocationStorageContract } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
-import { ArtifactStorageContract } from "@dfpunk/contracts/artifacts/ArtifactStorage";
-import { PlanetArtifactsStorageContract } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
-import { PlanetEventsStorageContract } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
-import { PlanetRevealedCoordsStorageContract } from "@dfpunk/contracts/artifacts/PlanetRevealedCoordsStorage";
-import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage";
-import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
-import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
+} from "../../contracts/src/index.ts";
+import { ArrivalStorageContract } from "../../contracts/src/artifacts/ArrivalStorage.ts";
+import { ArtifactLocationStorageContract } from "../../contracts/src/artifacts/ArtifactLocationStorage.ts";
+import { ArtifactStorageContract } from "../../contracts/src/artifacts/ArtifactStorage.ts";
+import { PlanetArtifactsStorageContract } from "../../contracts/src/artifacts/PlanetArtifactsStorage.ts";
+import { PlanetEventsStorageContract } from "../../contracts/src/artifacts/PlanetEventsStorage.ts";
+import { PlanetRevealedCoordsStorageContract } from "../../contracts/src/artifacts/PlanetRevealedCoordsStorage.ts";
+import { PlanetStorageContract } from "../../contracts/src/artifacts/PlanetStorage.ts";
+import { PlayerStorageContract } from "../../contracts/src/artifacts/PlayerStorage.ts";
+import { WorldStorageContract } from "../../contracts/src/artifacts/WorldStorage.ts";
 
 import type { BlockUpdates, TableName } from "./types.ts";
 

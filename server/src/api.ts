@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 
-import type { IndexerService } from "./indexer/IndexerService.ts";
+import type { IndexerService } from "../../packages/indexer-server-core/src/index.ts";
 import type { SnapshotStore } from "./persistence.ts";
 import type { SnapshotCache } from "./snapshotCache.ts";
 

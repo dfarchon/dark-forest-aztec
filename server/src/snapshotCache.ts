@@ -1,12 +1,10 @@
 import { gzipSync } from "node:zlib";
-
-import type { IndexerService } from "./indexer/IndexerService.ts";
 import type {
   IndexerChangePayload,
-  IndexerSnapshot,
+  IndexerService,
   TableName,
-} from "./indexer/types.ts";
-import { TABLE_NAMES } from "./indexer/types.ts";
+} from "../../packages/indexer-server-core/src/index.ts";
+import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
 
 type SnapshotJson = {
   lastProcessedBlock: number;
