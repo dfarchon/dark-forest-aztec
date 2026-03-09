@@ -22,7 +22,7 @@ use ::types::storage::{
 
 use crate::game_utils::{
     _default_planet, _put_artifact_on_planet, get_planet_default_space_junk,
-    get_planet_level_type_and_space_type, is_half_space_junk, location_id_valid,
+    get_planet_level_type_and_space_type, is_half_space_junk, location_id_valid, location_to_bytes,
 };
 
 use crate::lazy_update::{apply_pending_events, update_planet};
@@ -96,7 +96,6 @@ pub fn get_default_init_planet_args(
 }
 
 /// Noir port of Solidity `LibPlanet.initializePlanet`.
-/// todo: implement this
 
 /// Noir port of Solidity `LibPlanet.initializePlanetWithDefaults`.
 pub fn initialize_planet_with_defaults(
@@ -196,7 +195,7 @@ pub fn _initialize_planet(
         _planet.population = 50000;
     } else {
         _planet.space_junk = get_planet_default_space_junk(_planet, space_junk_config);
-        if is_half_space_junk(args.location) {
+        if is_half_space_junk(location_to_bytes(args.location)) {
             _planet.space_junk = _planet.space_junk / 2;
         }
     }
@@ -378,8 +377,8 @@ pub fn refresh_planet(
     let events_to_remove = result.1;
     let artifacts_to_add = result.2;
 
-    // Use fixed array size 20 as compile-time constant for loop bound
-    // Runtime count check is done inside the loop
+    let original_event_count = planet_events_state.count;
+
     for i in 0..20 {
         if i < events_to_remove.count {
             let event_id = events_to_remove.events[i].id;
@@ -424,4 +423,93 @@ pub fn refresh_planet(
     }
 
     (planet, planet_events_state, planet_artifacts_state, artifact_locations)
+}
+
+pub fn refresh_planet_v2(
+    timestamp: u64,
+    location_id: Field,
+    planet: Planet,
+    planet_events_state: PlanetEvents,
+    arrivals: [Arrival; 20],
+    arrival_artifacts: [Artifact; 20],
+    arrival_artifact_locations: [ArtifactLocation; 20],
+    planet_artifacts_state: PlanetArtifacts,
+) -> (Planet, PlanetEvents, PlanetArtifacts, u32, [Field; 20], [ArtifactLocation; 20]) {
+    let mut new_planet = planet;
+    let mut new_planet_events_state = planet_events_state;
+    // arrivals
+    // arrival_artifacts
+    // arrival_artifact_locations
+    let mut new_planet_artifacts_state = planet_artifacts_state;
+    // owned_artifacts;
+    // owned_artifact_locations;
+
+    let result = get_refreshed_planet(
+        location_id,
+        timestamp,
+        new_planet,
+        new_planet_events_state,
+        arrivals,
+        arrival_artifacts,
+        new_planet_artifacts_state,
+    );
+
+    new_planet = result.0;
+    let events_to_remove = result.1;
+    let artifacts_to_add = result.2;
+
+    for i in 0..20 {
+        if i < events_to_remove.count {
+            let event_id = events_to_remove.events[i].id;
+            let mut found: bool = false;
+            for j in 0..20 {
+                if j < new_planet_events_state.count {
+                    if !found {
+                        if new_planet_events_state.events[j].id == event_id {
+                            let last_idx = new_planet_events_state.count - 1;
+                            new_planet_events_state.events[j] =
+                                new_planet_events_state.events[last_idx];
+                            new_planet_events_state.events[last_idx] = PlanetEventMetadata::zero();
+                            new_planet_events_state.count = last_idx;
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut changed_artifact_location_count: u32 = 0;
+    let mut changed_artifact_location_ids: [Field; 20] = [0; 20];
+    let mut changed_artifact_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+
+    for i in 0..20 {
+        if i < artifacts_to_add.count {
+            let artifact_id = artifacts_to_add.ids[i];
+            let mut artifact_loc_idx: u32 = 0;
+            for j in 0..20 {
+                if arrivals[j].carried_artifact_id == artifact_id {
+                    artifact_loc_idx = j;
+                }
+            }
+            let mut artifact_location = arrival_artifact_locations[artifact_loc_idx];
+            artifact_location.voyage_id = 0;
+            let res = _put_artifact_on_planet(
+                artifact_id,
+                artifact_location,
+                location_id,
+                new_planet_artifacts_state,
+            );
+            new_planet_artifacts_state = res.3;
+
+            changed_artifact_location_ids[changed_artifact_location_count] = artifact_id;
+            changed_artifact_locations[changed_artifact_location_count] = res.1;
+            changed_artifact_location_count += 1;
+        }
+    }
+
+    (
+        new_planet, new_planet_events_state, new_planet_artifacts_state,
+        changed_artifact_location_count, changed_artifact_location_ids, changed_artifact_locations,
+    )
 }

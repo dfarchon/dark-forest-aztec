@@ -47,15 +47,14 @@ pub struct DFPCreateArrivalArgs {
     pub arrival_type: u8, // ArrivalType enum (stored as u8)
 }
 
-/// Args for creating an artifact (Noir equivalent of Solidity DFTCreateArtifactArgs).
 #[derive(Serialize, Deserialize, Packable)]
 pub struct DFTCreateArtifactArgs {
     pub id: Field,
+    pub discoverer: AztecAddress,
     pub planet_id: Field,
     pub rarity: u8,
     pub biome: u8,
     pub artifact_type: u8,
-    pub discoverer: AztecAddress,
     pub controller: AztecAddress,
 }
 
@@ -63,11 +62,6 @@ pub struct DFTCreateArtifactArgs {
 #[derive(Serialize, Deserialize, Packable)]
 pub struct DFPFindArtifactArgs {
     pub planet_id: Field,
-    pub biomebase: u128,
+    pub biomebase: u8,
     pub core_address: AztecAddress,
-    pub snark_perlin_planethash_key: u128,
-    pub snark_perlin_biomebase_key: u128,
-    pub snark_perlin_length_scale: u128,
-    pub snark_perlin_mirror_x: u8,
-    pub snark_perlin_mirror_y: u8,
 }

@@ -484,7 +484,9 @@ async function main() {
         planet_ids_count: 0n,
         revealed_planet_ids_count: 0n,
         player_ids_count: 0n,
+        initialized_planet_count_level4: 0n,
         next_change_block: 0,
+        last_updated: 0,
     };
     const worldRadiusBeforeInit = toBigint(world.radius);
     if (worldRadiusBeforeInit === 53_000n) {

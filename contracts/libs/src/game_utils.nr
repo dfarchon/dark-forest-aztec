@@ -1,5 +1,3 @@
-use ::types::args::{AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs};
-
 use ::types::config::{
     artifacts::ArtifactsConfig,
     capture_zones::CaptureZonesConfig,
@@ -28,31 +26,41 @@ use ::aztec::protocol::address::AztecAddress;
 // Game utility functions that don't require storage access
 // Pure computation functions extracted from LibGameUtils
 
-/// Noir port of Solidity `LibPlanet._calculateByteUInt`.
-/// Extract a big-endian integer from the byte slice of `location_id`.
+/// Decompose a Field into 32-byte big-endian array.
+/// Matches Solidity `bytes memory b = abi.encodePacked(uint256(location_id))`.
 ///
-/// Matches Solidity `bytes memory b = abi.encodePacked(uint256(location_id));`:
-/// - 32-byte big-endian, left-padded with zeros.
+/// This is the most expensive operation (~50-80 ACIR gates for range checks).
+/// Callers that need multiple bytes from the same location should decompose once
+/// and reuse the result via `extract_byte_uint`.
+pub fn location_to_bytes(location_id: Field) -> [u8; 32] {
+    location_id.to_be_bytes()
+}
+
+/// Extract a big-endian integer from a pre-decomposed byte array.
+/// Use with `location_to_bytes` to avoid redundant Field decompositions.
 ///
 /// Note: Returns `u128`, so `end_byte - start_byte` must be < 16.
+pub fn extract_byte_uint(bytes: [u8; 32], start_byte: u32, end_byte: u32) -> u128 {
+    assert(start_byte <= end_byte, "start_byte must be <= end_byte");
+    assert(end_byte < 32, "end_byte out of bounds (expected < 32)");
+    assert(end_byte - start_byte < 16, "byte range must fit in u128");
+
+    let mut acc: u128 = 0;
+    for i in start_byte..=end_byte {
+        acc = (acc << 8) | (bytes[i] as u128);
+    }
+    acc
+}
+
+/// Convenience wrapper: decompose + extract in one call.
+/// Prefer `location_to_bytes` + `extract_byte_uint` when extracting
+/// multiple ranges from the same location to avoid redundant decomposition.
 pub fn calculate_byte_uint_from_location_id(
     location_id: Field,
     start_byte: u32,
     end_byte: u32,
 ) -> u128 {
-    assert(start_byte <= end_byte, "start_byte must be <= end_byte");
-    assert(end_byte < 32, "end_byte out of bounds (expected < 32)");
-    assert(end_byte - start_byte < 16, "byte range must fit in u128");
-
-    // Convert Field to 32-byte big-endian array (matches Solidity abi.encodePacked)
-    let bytes: [u8; 32] = location_id.to_be_bytes();
-
-    // Extract the requested byte range as big-endian integer
-    let mut acc: u128 = 0;
-    for i in start_byte..=end_byte {
-        acc = acc * 256 + (bytes[i] as u128);
-    }
-    acc
+    extract_byte_uint(location_to_bytes(location_id), start_byte, end_byte)
 }
 
 /// Noir port of Solidity `LibGameUtils._locationIdValid`.
@@ -136,7 +144,8 @@ pub fn get_planet_level_type_and_space_type(
     planet_type_weights_tier_3: PlanetTypeWeightsTier,
 ) -> (u8, u8, u8) {
     let space_type: u8 = space_type_from_perlin(perlin, game_config_core);
-    let planet_level_uint: u128 = calculate_byte_uint_from_location_id(location_id, 4, 6);
+    let bytes = location_to_bytes(location_id);
+    let planet_level_uint: u128 = extract_byte_uint(bytes, 4, 6);
     let mut level: u8 = 0;
     let mut found_level: bool = false;
     for j in 0..10 {
@@ -163,7 +172,7 @@ pub fn get_planet_level_type_and_space_type(
         }
     }
 
-    let max_level: u8 = game_config_core.max_natural_planet_level as u8;
+    let max_level: u8 = game_config_core.max_natural_planet_level;
     if level > max_level {
         level = max_level;
     }
@@ -198,8 +207,7 @@ pub fn get_planet_level_type_and_space_type(
         type_thresholds[i] = (type_thresholds[i] * 256) / weight_sum;
     }
 
-    // Solidity: uint8 typeByte = uint8(b[8]);
-    let type_byte: u128 = calculate_byte_uint_from_location_id(location_id, 8, 8);
+    let type_byte: u128 = bytes[8] as u128;
 
     // Pick the first i where type_byte >= threshold[i].
     // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
@@ -214,28 +222,47 @@ pub fn get_planet_level_type_and_space_type(
     (level, planet_type, space_type)
 }
 
-/// Noir port of Solidity `LibGameUtils._getRadius`.
-/// Calculates the world radius based on player count and initialized planets.
-/// todo: implement this
-pub fn _get_radius(world_config: WorldConfig) -> u128 {
-    world_config.world_radius_min
+/// Integer square root via Newton's method (Babylonian method).
+/// Returns floor(sqrt(n)) for u128.
+pub fn sqrt(n: u128) -> u128 {
+    if n == 0 {
+        0
+    } else {
+        let mut x: u128 = n;
+        let mut y: u128 = (x + 1) / 2;
+        for _ in 0..128 {
+            if y < x {
+                x = y;
+                y = (x + n / x) / 2;
+            }
+        }
+        x
+    }
 }
 
-// ========== Artifact-related helpers (LibArtifactUtils / LibGameUtils ports) ==========
+/// Noir port of Solidity `LibGameUtils._getRadius`.
+/// Calculates the world radius based on player count and initialized level-4 planets.
+pub fn _get_radius(world: World, world_config: WorldConfig, cumulative_rarity_4: u128) -> u128 {
+    let n_players = world.player_ids_count;
+    let target4 = world.initialized_planet_count_level4 + 20 * n_players;
+    let target_radius_squared_4 = (target4 * cumulative_rarity_4 * 100) / 314;
+    let r4 = sqrt(target_radius_squared_4);
+    if r4 < world_config.world_radius_min {
+        world_config.world_radius_min
+    } else {
+        r4
+    }
+}
 
 /// Noir port of Solidity `LibGameUtils._randomArtifactTypeAndLevelBonus`.
-/// lastByteOfSeed = artifactSeed % 0xFF, secondLastByteOfSeed = ((artifactSeed - lastByteOfSeed) / 256) % 0xFF.
 pub fn _random_artifact_type_and_level_bonus(
     artifact_seed: Field,
     biome: u8,
-    _space_type: u8,
+    space_type: u8,
 ) -> (u8, u8) {
-    let seed_u128 = artifact_seed as u128;
-    // Solidity: lastByteOfSeed = artifactSeed % 0xFF; secondLastByteOfSeed = ((artifactSeed - lastByteOfSeed) / 256) % 0xFF;
-    let last_byte_raw: u128 = seed_u128 % 0xFF;
-    let last_byte_of_seed: u8 = last_byte_raw as u8;
-    let second_last_byte_raw: u128 = ((seed_u128 - last_byte_raw) / 256) % 0xFF;
-    let second_last_byte_of_seed: u8 = second_last_byte_raw as u8;
+    let seed_bytes: [u8; 32] = artifact_seed.to_be_bytes();
+    let last_byte_of_seed: u8 = seed_bytes[31];
+    let second_last_byte_of_seed: u8 = seed_bytes[30];
 
     let mut artifact_type: u8 = ArtifactType::Pyramid();
 
@@ -243,7 +270,11 @@ pub fn _random_artifact_type_and_level_bonus(
         artifact_type = ArtifactType::Monolith();
     } else if last_byte_of_seed < 78 {
         artifact_type = ArtifactType::Colossus();
-    } else if last_byte_of_seed < 156 {
+    }
+    // else if (lastByteOfSeed < 117) {
+    //     artifactType = ArtifactType.Spaceship;
+    // }
+    else if last_byte_of_seed < 156 {
         artifact_type = ArtifactType::Pyramid();
     } else if last_byte_of_seed < 171 {
         artifact_type = ArtifactType::Wormhole();
@@ -267,7 +298,6 @@ pub fn _random_artifact_type_and_level_bonus(
         } else {
             artifact_type = ArtifactType::Wormhole();
         }
-        // todo: verify this is correct
         artifact_type = ArtifactType::PhotoidCannon();
     }
 
@@ -284,16 +314,14 @@ pub fn _random_artifact_type_and_level_bonus(
 /// Noir port of Solidity `LibGameUtils._getBiome`.
 /// Returns the biome based on the space type and biomebase.
 /// biome: 0=Corrupted, 1=Forest, 2=Swamp, 3=Desert, 4=Tundra, 5=Volcanic, 6=Glacier, 7=Ocean, 8=Void
-pub fn _get_biome(space_type: u8, biomebase: u128, game_config_core: GameConfigCore) -> u8 {
-    let t1: u128 = game_config_core.biome_threshold_1 as u128;
-    let t2: u128 = game_config_core.biome_threshold_2 as u128;
+pub fn _get_biome(space_type: u8, biomebase: u8, game_config_core: GameConfigCore) -> u8 {
     if space_type == SpaceType::DeadSpace() {
         Biome::Corrupted()
     } else {
         let mut biome: u8 = 3 * space_type;
-        if biomebase < t1 {
+        if biomebase < game_config_core.biome_threshold_1 {
             biome += 1;
-        } else if biomebase < t2 {
+        } else if biomebase < game_config_core.biome_threshold_2 {
             biome += 2;
         } else {
             biome += 3;
@@ -443,41 +471,6 @@ pub fn artifact_rarity_from_planet_level(planet_level: u8) -> u8 {
     }
 }
 
-/// Add an artifact ID to a planet's artifact list (ids + count). PlanetArtifacts-only part of _putArtifactOnPlanet.
-/// Used by _put_artifact_on_planet and by ArtifactSystem deposit/put flows.
-pub fn push_artifact_id(artifact_id: Field, planet_artifacts: PlanetArtifacts) -> PlanetArtifacts {
-    let mut updated = planet_artifacts;
-    assert(updated.count < 5, "too many artifacts on planet");
-    updated.ids[updated.count] = artifact_id;
-    updated.count += 1;
-    updated
-}
-
-/// Remove an artifact ID from a planet's artifact list. PlanetArtifacts-only part of _takeArtifactOffPlanet.
-/// Used by _take_artifact_off_planet and by ArtifactSystem withdraw/take flows.
-pub fn remove_artifact_id(
-    artifact_id: Field,
-    planet_artifacts: PlanetArtifacts,
-) -> PlanetArtifacts {
-    let mut updated = planet_artifacts;
-    let mut found = false;
-    let mut found_index: u32 = 0;
-    for i in 0..20 {
-        if (i as u32) < updated.count {
-            if updated.ids[i] == artifact_id {
-                found = true;
-                found_index = i;
-            }
-        }
-    }
-    assert(found, "artifact not on this planet");
-    let last_index = updated.count - 1;
-    updated.ids[found_index] = updated.ids[last_index];
-    updated.ids[last_index] = 0;
-    updated.count -= 1;
-    updated
-}
-
 /// Noir port of Solidity `LibGameUtils._putArtifactOnPlanet`.
 ///
 /// planets can have multiple artifacts on them. this function updates all the
@@ -493,9 +486,9 @@ pub fn _put_artifact_on_planet(
     artifact_location.voyage_id = 0;
 
     let count: u32 = planet_artifacts.count;
-    planet_artifacts.ids[count] = artifact_id;
-    planet_artifacts.count = count + 1;
 
+    planet_artifacts.ids[count] = artifact_id;
+    planet_artifacts.count += 1;
     (artifact_id, artifact_location, location_id, planet_artifacts)
 }
 
@@ -518,21 +511,21 @@ pub fn _take_artifact_off_planet(
     let count: u32 = planet_artifacts.count;
     let mut found: bool = false;
     let mut found_index: u32 = 0;
-    // Use fixed array size 20 as compile-time constant for loop bound
+
     for i in 0..20 {
         if i < count {
             if !found {
                 if planet_artifacts.ids[i] == artifact_id {
-                    let activated: bool = is_activated(artifact);
-                    assert(!activated, "you cannot take an activated artifact off a planet");
-
                     found_index = i;
                     found = true;
                 }
             }
         }
     }
+
     assert(found, "this artifact was not present on this planet");
+    assert(!is_activated(artifact), "you cannot take an activated artifact off a planet");
+
     let last_index: u32 = count - 1;
     artifact_location.planet_id = 0 as Field;
     artifact_location.voyage_id = 0;
@@ -542,7 +535,7 @@ pub fn _take_artifact_off_planet(
     (artifact_id, artifact_location, location_id, planet_artifacts)
 }
 
-/// Noir port of Solidity `LibGameUtils._takeArtifactOffPlanet`.
+/// Noir port of Solidity `LibGameUtils.is_activated`.
 ///
 /// an artifact is only considered 'activated' if this method returns true.
 /// we do not have an `isActive` field on artifact; the times that the
@@ -553,13 +546,14 @@ pub fn is_activated(artifact: Artifact) -> bool {
 }
 
 /// Noir port of Solidity `LibGameUtils.isArtifactOnPlanet`.
+
 pub fn is_artifact_on_planet(
     location_id: Field,
     planet_artifacts: PlanetArtifacts,
     artifact_id: Field,
 ) -> bool {
     let mut found: bool = false;
-    // Use fixed array size 20 as compile-time constant for loop bound
+
     for i in 0..20 {
         if i < planet_artifacts.count {
             if !found {
@@ -620,23 +614,6 @@ pub fn get_active_artifact(
     result
 }
 
-/// Noir port of LibGameUtils.getActiveArtifact (id-only variant). Returns activated artifact id or 0.
-pub fn get_active_artifact_id(
-    planet_artifacts: PlanetArtifacts,
-    artifacts: [Artifact; 20],
-) -> Field {
-    let mut result: Field = 0;
-    for i in 0..20 {
-        if (i < planet_artifacts.count) & (result == 0) {
-            let artifact = artifacts[i as u32];
-            if is_activated(artifact) {
-                result = planet_artifacts.ids[i];
-            }
-        }
-    }
-    result
-}
-
 /// Noir port of Solidity `LibGameUtils.getPlanetDefaultSpaceJunk`.
 pub fn get_planet_default_space_junk(planet: Planet, space_junk_config: SpaceJunkConfig) -> u128 {
     if planet.is_home_planet {
@@ -667,20 +644,6 @@ pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) 
     (location_id, planet)
 }
 
-/// Apply artifact buff to planet (LibGameUtils._buffPlanet). Caller sets last_updated.
-pub fn buff_planet_with_artifact(artifact: Artifact, planet: Planet) -> Planet {
-    let upgrade = _get_upgrade_for_artifact(artifact);
-    let (_, p) = _buff_planet(0, planet, upgrade);
-    p
-}
-
-/// Remove artifact buff from planet (LibGameUtils._debuffPlanet). Caller sets last_updated.
-pub fn debuff_planet_with_artifact(artifact: Artifact, planet: Planet) -> Planet {
-    let upgrade = _get_upgrade_for_artifact(artifact);
-    let (_, p) = _debuff_planet(0, planet, upgrade);
-    p
-}
-
 /// Noir port of Solidity `LibGameUtils.checkPlanetDOS`.
 ///
 /// planets support a limited amount of incoming arrivals
@@ -688,54 +651,50 @@ pub fn debuff_planet_with_artifact(artifact: Artifact, planet: Planet) -> Planet
 /// separately, everyone other than the owner can also send a maximum
 /// of 10 arrivals in aggregate
 ///
-/// TODO: `checkPlanetDOS` needs on-chain storage (planetEvents / planetArrivals / planets[locationId].owner),
-/// so the full rate-limit check stays in the system contract (move system) instead of this pure `game_utils` lib.
-/// If we ever add a pure helper here, it should be `check_planet_dos_counts(owner_arrivals, others_arrivals, sender_is_owner)`
-/// that just mirrors the Solidity thresholds (6 / 6 / 12) using pre-counted values from the caller.
+///todo: implement this
 
 /// Noir port of Solidity `LibGameUtils.updateWorldRadius`.
-pub fn update_world_radius(mut world: World, world_config: WorldConfig) -> World {
+pub fn update_world_radius(
+    mut world: World,
+    world_config: WorldConfig,
+    cumulative_rarity_4: u128,
+) -> World {
     if !world_config.world_radius_locked {
-        let new_radius = _get_radius(world_config);
+        let new_radius = _get_radius(world, world_config, cumulative_rarity_4);
         world.radius = new_radius;
     }
     world
 }
 
-/// Noir port of Solidity `LiGameUtils.isPopCapBoost`.
-pub fn is_pop_cap_boost(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 9, 9);
-    byte < 16
+/// Noir port of Solidity `LibGameUtils.isPopCapBoost`.
+/// Takes pre-decomposed bytes to avoid redundant `to_be_bytes` calls.
+pub fn is_pop_cap_boost(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[9] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils.isPopGroBoost`.
-pub fn is_pop_gro_boost(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 10, 10);
-    byte < 16
+pub fn is_pop_gro_boost(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[10] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils.isRangeBoost`.
-pub fn is_range_boost(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 11, 11);
-    byte < 16
+pub fn is_range_boost(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[11] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils.isSpeedBoost`.
-pub fn is_speed_boost(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 12, 12);
-    byte < 16
+pub fn is_speed_boost(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[12] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils.isDefBoost`.
-pub fn is_def_boost(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 13, 13);
-    byte < 16
+pub fn is_def_boost(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[13] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils.isHalfSpaceJunk`.
-pub fn is_half_space_junk(location: Field) -> bool {
-    let byte: u128 = calculate_byte_uint_from_location_id(location, 14, 14);
-    byte < 16
+pub fn is_half_space_junk(location_bytes: [u8; 32]) -> bool {
+    (location_bytes[14] as u128) < 16
 }
 
 /// Noir port of Solidity `LibGameUtils._defaultPlanet`.
@@ -745,7 +704,7 @@ pub fn _default_planet(
     planet_type: u8,
     space_type: u8,
     time_factor_hundredths: u16,
-    planet_default_stats: PlanetDefaultStats,
+    planet_default_stats: PlanetDefaultStats, // planet_default_stats is determined by level
 ) -> Planet {
     let time_factor_hundredths = time_factor_hundredths;
 
@@ -770,19 +729,21 @@ pub fn _default_planet(
         planet.silver_growth = planet_default_stats.silver_growth;
     }
 
-    if is_pop_cap_boost(location) {
+    let loc_bytes = location_to_bytes(location);
+
+    if is_pop_cap_boost(loc_bytes) {
         planet.population_cap *= 2;
     }
-    if is_pop_gro_boost(location) {
+    if is_pop_gro_boost(loc_bytes) {
         planet.population_growth *= 2;
     }
-    if is_range_boost(location) {
+    if is_range_boost(loc_bytes) {
         planet.range *= 2;
     }
-    if is_speed_boost(location) {
+    if is_speed_boost(loc_bytes) {
         planet.speed *= 2;
     }
-    if is_def_boost(location) {
+    if is_def_boost(loc_bytes) {
         planet.defense *= 2;
     }
 

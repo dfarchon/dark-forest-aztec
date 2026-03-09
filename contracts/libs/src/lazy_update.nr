@@ -17,7 +17,10 @@ use ::aztec::protocol::address::AztecAddress;
 pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
     // This function should only be called for silver-producing planets
     // PlanetType::SilverMine = 1
-    assert(planet.planet_type == 1, "Can only update silver on silver producing planet");
+    assert(
+        planet.planet_type == PlanetType::SilverMine(),
+        "Can only update silver on silver producing planet",
+    );
 
     if planet.owner != AztecAddress::zero() {
         if planet.silver < planet.silver_cap {
@@ -68,16 +71,15 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
 
     // quasars (SilverBank) have 0 energy growth, so they have 0 energy decay as well
     // so don't allow them to become overful
-    // PlanetType::SilverBank = 4
-    if planet.planet_type == 4 {
-        if planet.population > planet.population_cap {
-            planet.population = planet.population_cap;
-        }
-    }
-    if planet.pausers > 0 {
-        if planet.population > planet.population_cap {
-            planet.population = planet.population_cap;
-        }
+    // if (planet.planet_type == PlanetType::SilverBank()) | (planet.pausers > 0) {
+    //     if planet.population > planet.population_cap {
+    //         planet.population = planet.population_cap;
+    //     }
+    // }
+
+    // If planet.population exceeds population_cap, cap it to population_cap
+    if planet.population > planet.population_cap {
+        planet.population = planet.population_cap;
     }
 
     planet
@@ -89,8 +91,7 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
 pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
     planet = update_population(update_to_time, planet);
 
-    // PlanetType::SilverMine = 1
-    if planet.planet_type == 1 {
+    if planet.planet_type == PlanetType::SilverMine() {
         planet = update_silver(update_to_time, planet);
     }
 

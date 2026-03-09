@@ -210,6 +210,7 @@ contract Move {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
+        cumulative_rarity_4: u128,
         // State inputs (to be validated via hash in public)
         source_planet: Planet,
         source_planet_events: PlanetEvents,
@@ -640,6 +641,9 @@ contract Move {
                 }
             }
             new_world.planet_ids_count += 1;
+            if new_target_planet.planet_level == 4 {
+                new_world.initialized_planet_count_level4 += 1;
+            }
         }
 
         new_world.planet_events_count += 1;
@@ -790,7 +794,7 @@ contract Move {
         new_source_planet.silver -= silver_moved;
         new_source_planet.population = remaining_origin_planet_population;
 
-        new_world = update_world_radius(new_world, world_config);
+        new_world = update_world_radius(new_world, world_config, cumulative_rarity_4);
 
         // Pack config hashes into array for batch verification
         // Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
@@ -816,6 +820,7 @@ contract Move {
             timestamp,
             config_hashes,
             planet_default_stats_hash,
+            cumulative_rarity_4,
             source_planet_hash,
             source_planet_events_hash,
             source_arrivals_ids,
@@ -863,6 +868,7 @@ contract Move {
         // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
         config_hashes: [Field; 9],
         planet_default_stats_hash: Field,
+        cumulative_rarity_4: u128,
         // State hashes from private function for verification
         source_planet_hash: Field,
         source_planet_events_hash: Field,
@@ -936,6 +942,12 @@ contract Move {
             "Config hash mismatch",
         );
 
+        // Verify cumulative_rarity_4 matches on-chain Config
+        assert(
+            cumulative_rarity_4 == self.view(config.get_cumulative_rarity(4)),
+            "Cumulative rarity 4 mismatch",
+        );
+
         // Verify source planet state hashes
         assert(
             self.view(planet_storage.verify_hash(source_loc, source_planet_hash)),
@@ -951,6 +963,7 @@ contract Move {
             self.view(arrivals_storage.verify_hashes_batch(
                 source_arrivals_ids,
                 source_arrivals_hash,
+                20, //todo: fix it
             )),
             "Source arrival hash mismatch",
         );
@@ -958,6 +971,7 @@ contract Move {
             self.view(artifact_storage.verify_hashes_batch(
                 source_artifacts_ids,
                 source_artifacts_hash,
+                20, //todo: fix it
             )),
             "Source artifact hash mismatch",
         );
@@ -965,6 +979,7 @@ contract Move {
             self.view(artifact_location_storage.verify_hashes_batch(
                 source_artifacts_ids,
                 source_artifact_locations_hash,
+                20, //todo: fix it
             )),
             "Source artifact location hash mismatch",
         );
@@ -989,6 +1004,7 @@ contract Move {
             self.view(arrivals_storage.verify_hashes_batch(
                 target_arrivals_ids,
                 target_arrivals_hash,
+                20, //todo: fix it
             )),
             "Target arrival hash mismatch",
         );
@@ -996,6 +1012,7 @@ contract Move {
             self.view(artifact_storage.verify_hashes_batch(
                 target_artifacts_ids,
                 target_artifacts_hash,
+                20, //todo: fix it
             )),
             "Target artifact hash mismatch",
         );
@@ -1003,6 +1020,7 @@ contract Move {
             self.view(artifact_location_storage.verify_hashes_batch(
                 target_artifacts_ids,
                 target_artifact_locations_hash,
+                20, //todo: fix it
             )),
             "Target artifact location hash mismatch",
         );
@@ -1037,7 +1055,7 @@ contract Move {
         self.call(planet_artifacts_storage.set(source_loc, new_source_planet_artifacts));
 
         // Batch write source artifact locations (1 call instead of up to 20)
-        self.call(artifact_location_storage.set_batch(
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             new_source_planet_artifacts.ids,
             new_source_artifact_locations,
             new_source_planet_artifacts.count,
@@ -1048,7 +1066,7 @@ contract Move {
         self.call(planet_artifacts_storage.set(target_loc, new_target_planet_artifacts));
 
         // Batch write target artifact locations (1 call instead of up to 20)
-        self.call(artifact_location_storage.set_batch(
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             new_target_planet_artifacts.ids,
             new_target_artifact_locations,
             new_target_planet_artifacts.count,
