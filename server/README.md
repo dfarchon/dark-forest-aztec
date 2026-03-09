@@ -305,6 +305,8 @@ Recommended Railway settings for the current server:
 - Set `CORS_ORIGINS=https://df-aztec.netlify.app`
 - Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
 
+Detailed setup, verification steps, and known deploy traps are documented in [`server/docs/railway-deploy.md`](/Users/pabloli/Documents/dfpunk-aztec/server/docs/railway-deploy.md).
+
 The Docker image must include `server`, `packages/contracts`, and `packages/indexer-server-core`; the current Dockerfile now copies all three runtime paths.
 Because the Docker build context is the monorepo root, the ignore file for deployment uploads lives at repo root: [`.dockerignore`](/Users/pabloli/Documents/dfpunk-aztec/.dockerignore).
 

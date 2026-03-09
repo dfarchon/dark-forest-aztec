@@ -1,6 +1,9 @@
 FROM node:24.12.0-slim AS base
 
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -15,12 +18,15 @@ RUN pnpm install --frozen-lockfile --filter server...
 
 # Copy source code
 COPY server/ server/
+COPY contracts/ contracts/
 COPY packages/contracts/ packages/contracts/
 COPY packages/indexer-server-core/ packages/indexer-server-core/
 
+# Normalize runtime artifacts inside the image build.
+RUN node server/scripts/prepare-contract-artifacts.mjs
+
 # Data directory for SQLite (mount a volume here)
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 EXPOSE 3001
 

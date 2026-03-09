@@ -65,8 +65,17 @@ export class SnapshotCache {
   }
 
   /** Restore cache from a persisted JSON object (on startup from SQLite). */
-  restoreFrom(data: SnapshotJson): void {
-    this.jsonObject = data;
+  restoreFrom(data: Record<string, unknown>): void {
+    const restored: SnapshotJson = {
+      lastProcessedBlock:
+        typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0,
+    };
+    for (const table of TABLE_NAMES) {
+      const value = data[table];
+      restored[table] =
+        value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    }
+    this.jsonObject = restored;
     this.invalidateBuffers();
   }
 

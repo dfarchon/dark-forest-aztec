@@ -1,14 +1,82 @@
 import { serve } from "@hono/node-server";
+import { pathToFileURL } from "node:url";
 
 import {
   createAztecNodeBlockSource,
   IndexerService,
 } from "../../packages/indexer-server-core/src/index.ts";
 import { createApp } from "./api.ts";
+import type { ServerRuntimeConfig } from "./config.ts";
 import { parseServerConfig } from "./config.ts";
+import type { ContractsRuntimeConfig } from "./contractsConfig.ts";
 import { validateContractsConfig } from "./contractsConfig.ts";
 import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
+
+interface ServerRuntimeDeps {
+  cache: SnapshotCache;
+  config: ServerRuntimeConfig;
+  contracts: ContractsRuntimeConfig;
+  indexer: IndexerService;
+  registerShutdownHandlers?: boolean;
+  serveFn?: typeof serve;
+  store: SnapshotStore;
+}
+
+export async function runServerRuntime({
+  cache,
+  config,
+  contracts,
+  indexer,
+  registerShutdownHandlers = true,
+  serveFn = serve,
+  store,
+}: ServerRuntimeDeps): Promise<void> {
+  const stored = store.restore();
+  if (stored) {
+    const snapshot = jsonToSnapshot(stored.data);
+    indexer.applySnapshot(snapshot);
+    cache.restoreFrom(stored.data);
+    console.log(
+      `[Server] Restored to block ${stored.blockNumber}, catching up...`,
+    );
+  }
+
+  const app = createApp({
+    adminToken: config.adminToken,
+    cache,
+    corsOrigins: config.corsOrigins,
+    indexer,
+    store,
+  });
+  serveFn({ fetch: app.fetch, port: config.port }, (info) => {
+    console.log(`[Server] HTTP listening on port ${info.port}`);
+  });
+
+  const shutdown = () => {
+    console.log("[Server] Shutting down...");
+    store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
+    indexer.destroy();
+    store.close();
+    process.exit(0);
+  };
+  if (registerShutdownHandlers) {
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }
+
+  const { syncedToBlock } = await indexer.start();
+  console.log(`[Server] Synced to block ${syncedToBlock}`);
+
+  cache.buildFull();
+  indexer.subscribe((payload) => {
+    cache.applyChange(payload);
+    store.save(cache.getProcessedBlockNumber(), cache.getJsonString());
+  });
+
+  indexer.startPolling();
+  console.log(`[Server] Live — polling for new blocks`);
+}
 
 async function main(): Promise<void> {
   const contracts = validateContractsConfig();
@@ -50,59 +118,23 @@ async function main(): Promise<void> {
     maxBlocksPerRequest: 100,
   });
 
-  // 3. Try restoring from SQLite
-  const stored = store.restore();
-  if (stored) {
-    const snapshot = jsonToSnapshot(stored.data);
-    indexer.applySnapshot(snapshot);
-    console.log(
-      `[Server] Restored to block ${stored.blockNumber}, catching up...`,
-    );
-  }
-
-  // 4. Sync to latest block
-  const { syncedToBlock } = await indexer.start();
-  console.log(`[Server] Synced to block ${syncedToBlock}`);
-
-  // 5. Initialize snapshot cache
   const cache = new SnapshotCache(indexer);
-  cache.buildFull();
-
-  // 6. Subscribe to updates: incremental cache + persistence
-  indexer.subscribe((payload) => {
-    cache.applyChange(payload);
-    store.save(cache.getProcessedBlockNumber(), cache.getJsonString());
-  });
-
-  // 7. Start real-time polling
-  indexer.startPolling();
-  console.log(`[Server] Live — polling for new blocks`);
-
-  // 8. Start HTTP server
-  const app = createApp({
-    indexer,
+  await runServerRuntime({
     cache,
+    config,
+    contracts,
+    indexer,
     store,
-    adminToken: config.adminToken,
-    corsOrigins: config.corsOrigins,
   });
-  serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(`[Server] HTTP listening on port ${info.port}`);
-  });
-
-  // Graceful shutdown: force-save on exit
-  const shutdown = () => {
-    console.log("[Server] Shutting down...");
-    store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
-    indexer.destroy();
-    store.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }
 
-main().catch((err) => {
-  console.error("[Server] Fatal error:", err);
-  process.exit(1);
-});
+const isEntrypoint =
+  process.argv[1] != null &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error("[Server] Fatal error:", err);
+    process.exit(1);
+  });
+}
