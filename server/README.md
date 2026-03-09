@@ -296,6 +296,8 @@ docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
 
 ## Railway
 
+**Devnet deployment:** https://server-production-b4e5.up.railway.app
+
 Recommended Railway settings for the current server:
 
 - Build from the repo root with `server/Dockerfile` as the Dockerfile path
