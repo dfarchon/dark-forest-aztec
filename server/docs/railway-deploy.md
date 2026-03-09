@@ -13,17 +13,20 @@ Deploy the indexer server to Railway so it:
 
 ## What To Create In Railway
 
-Use an `Empty Service` and configure it to build from this monorepo with a Dockerfile.
+Use an `Empty Service`.
+
+There are now two supported deployment sources:
+
+- `GHCR Docker Image`: preferred once you have a working image publish flow
+- local source upload plus `server/Dockerfile`: fallback for debugging or first-time setup
 
 Recommended service shape:
 
-- source: local upload with `railway up`, or a linked repo if the repo becomes fully self-contained
+- source: `ghcr.io/<github-user>/dfpunk-aztec-server:<tag>` for steady-state deploys
 - builder: `DOCKERFILE`
 - Dockerfile path: `server/Dockerfile`
 - build context: repo root
 - volume mount: `/data`
-
-`Docker Image` is not the right starting point here unless you already publish a built image elsewhere. The current flow is source upload plus Dockerfile build on Railway.
 
 ## Required Environment Variables
 
@@ -47,6 +50,59 @@ Reference presets:
 
 ## Deploy Flow
 
+### Option A: Publish Image To GHCR
+
+The normal day-to-day publish command is:
+
+```bash
+bash server/scripts/publish-devnet-image.sh
+```
+
+What this does:
+
+- prepares contract artifacts if they are missing
+- builds `linux/amd64` with `docker buildx`
+- pushes the tag to GHCR
+- defaults to `ghcr.io/0xpabloli/dfpunk-aztec-server:devnet`
+
+Equivalent package script:
+
+```bash
+pnpm --filter server run docker:publish:devnet
+```
+
+One-time GHCR login on a machine:
+
+```bash
+echo "$(gh auth token)" | docker login ghcr.io -u 0xPabloLI --password-stdin
+```
+
+Important:
+
+- `docker:publish` now defaults to `IMAGE_PLATFORMS=linux/amd64`
+- you only need to override `IMAGE_PLATFORMS` if Railway starts running on a different target architecture in the future
+
+Recommended Railway source:
+
+```text
+ghcr.io/<github-user>/dfpunk-aztec-server:devnet
+```
+
+If Railway appears to cache a bad image for a mutable tag, publish a fresh immutable tag and point Railway at that new tag once:
+
+```bash
+IMAGE_REPO=ghcr.io/<github-user>/dfpunk-aztec-server \
+IMAGE_TAG=devnet-YYYYMMDD-HHMM \
+pnpm --filter server run docker:publish
+```
+
+Tag convention used here:
+
+- mutable tag: `devnet`
+- immutable tag: `devnet-YYYYMMDD-HHMM`
+
+### Option B: Local Source Upload
+
 From the repo root:
 
 ```bash
@@ -56,6 +112,14 @@ railway up
 ```
 
 If the service already exists, `railway up` uploads the current local source tree and triggers a new deployment.
+
+## Auto Updates
+
+Railway `image auto updates` only tells Railway to redeploy when the configured image tag changes upstream.
+
+It does not build or push the image for you.
+
+Without CI, you still need to run the publish command locally whenever you want a new server release on Railway.
 
 ## Post-Deploy Checks
 
@@ -76,7 +140,12 @@ Healthy expectations:
 
 ## Current Known Caveat
 
-The currently verified Railway deployment succeeded from a local source upload, but the repo is still not fully self-contained for clean-clone deploys.
+The currently verified Railway deployment succeeded from both:
+
+- local source upload
+- GHCR image source with a published amd64 image
+
+But the repo is still not fully self-contained for clean-clone image builds.
 
 Reason:
 
@@ -85,8 +154,8 @@ Reason:
 
 Impact:
 
-- local machines that already have generated `packages/contracts/src/artifacts/*` can deploy successfully
-- a clean clone that only has committed files will fail at runtime with `ERR_MODULE_NOT_FOUND`
+- local machines that already have generated `packages/contracts/src/artifacts/*` can publish and deploy successfully
+- a clean clone that only has committed files may fail to build the image unless contract artifacts are generated first
 
 This is the remaining deploy reproducibility gap. Fixing it requires touching code or ignore rules outside `server/`.
 
@@ -99,6 +168,16 @@ Railway does not allow `VOLUME` instructions in the Dockerfile build path used h
 ### `better-sqlite3` fails to build on slim Node images
 
 The runtime image needs native build tooling during `pnpm install`. `server/Dockerfile` already includes the required `python3`, `make`, and `g++` packages for this reason.
+
+### Railway pulls the wrong architecture from a mutable tag
+
+Apple Silicon local builds will default to `arm64` unless the publish flow forces `linux/amd64`.
+
+The verified fix is:
+
+- publish through `docker buildx`
+- force `linux/amd64`
+- if Railway still serves an old cached image for the same tag, publish a fresh immutable tag and switch `source.image` once
 
 ### Service never becomes healthy during initial sync
 

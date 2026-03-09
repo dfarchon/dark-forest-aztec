@@ -8,6 +8,8 @@
     "clean": "del-cli dist node_modules data",
     "dev": "node --experimental-transform-types src/index.ts",
     "docker:build": "bash scripts/build-server-image.sh",
+    "docker:publish": "IMAGE_PUSH=1 bash scripts/build-server-image.sh",
+    "docker:publish:devnet": "bash scripts/publish-devnet-image.sh",
     "e2e:down": "bash scripts/test-env.sh stop",
     "e2e:fast": "bash scripts/test-env.sh e2e-start-fast",
     "e2e:logs": "bash scripts/test-env.sh e2e-logs",
@@ -24,8 +26,9 @@
     "prepare:contracts": "node scripts/prepare-contract-artifacts.mjs",
     "prepare:contracts:build": "node scripts/prepare-contract-artifacts.mjs --build-if-missing",
     "start": "node --experimental-transform-types src/index.ts",
-    "test:prepare:contracts": "node --test scripts/prepare-contract-artifacts.test.mjs",
-    "test:init-player:safe": "node --experimental-transform-types scripts/test-core-initialize-player-safe.mjs"
+    "test:build:image": "node --test scripts/build-server-image.test.mjs",
+    "test:init-player:safe": "node --experimental-transform-types scripts/test-core-initialize-player-safe.mjs",
+    "test:prepare:contracts": "node --test scripts/prepare-contract-artifacts.test.mjs"
   },
   "dependencies": {
     "@dfpunk/contracts": "workspace:*",
