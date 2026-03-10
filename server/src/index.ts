@@ -16,7 +16,6 @@ import { SnapshotCache } from "./snapshotCache.ts";
 interface ServerRuntimeDeps {
   cache: SnapshotCache;
   config: ServerRuntimeConfig;
-  contracts: ContractsRuntimeConfig;
   indexer: IndexerService;
   registerShutdownHandlers?: boolean;
   serveFn?: typeof serve;
@@ -26,7 +25,6 @@ interface ServerRuntimeDeps {
 export async function runServerRuntime({
   cache,
   config,
-  contracts,
   indexer,
   registerShutdownHandlers = true,
   serveFn = serve,
@@ -84,6 +82,10 @@ async function main(): Promise<void> {
   console.log(
     `[Server] Aztec node: ${config.aztecNodeUrl} (${config.nodeKind})`,
   );
+  console.log(`[Server] Network preset: ${config.networkPreset}`);
+  console.log(
+    `[Server] Polling: ${config.pollIntervalMs}ms / debounce: ${config.debounceMs}ms / persist: ${config.persistMinIntervalSec}s`,
+  );
   console.log(`[Server] Start block: ${config.indexerStartBlock}`);
   console.log(`[Server] Contracts start block: ${contracts.startBlock}`);
   console.log(`[Server] Core contract: ${contracts.addresses.core}`);
@@ -113,16 +115,15 @@ async function main(): Promise<void> {
   const indexer = new IndexerService({
     source,
     startBlock: config.indexerStartBlock,
-    debounceMs: 1000,
-    pollIntervalMs: 2000,
-    maxBlocksPerRequest: 100,
+    debounceMs: config.debounceMs,
+    pollIntervalMs: config.pollIntervalMs,
+    maxBlocksPerRequest: config.maxBlocksPerRequest,
   });
 
   const cache = new SnapshotCache(indexer);
   await runServerRuntime({
     cache,
     config,
-    contracts,
     indexer,
     store,
   });

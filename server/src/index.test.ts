@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ContractsRuntimeConfig } from "./contractsConfig.ts";
 import type { ServerRuntimeConfig } from "./config.ts";
 import { runServerRuntime } from "./index.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
@@ -11,41 +10,15 @@ function createTestConfig(): ServerRuntimeConfig {
     adminToken: "",
     aztecNodeUrl: "https://v4-devnet-2.aztec-labs.com",
     corsOrigins: ["http://localhost:5173"],
+    debounceMs: 2000,
     indexerStartBlock: 32202,
+    maxBlocksPerRequest: 100,
+    networkPreset: "devnet",
     nodeKind: "remote",
-    persistMinIntervalSec: 10,
+    persistMinIntervalSec: 30,
+    pollIntervalMs: 10000,
     port: 3001,
     sqlitePath: "/tmp/indexer.db",
-  };
-}
-
-function createTestContracts(): ContractsRuntimeConfig {
-  return {
-    startBlock: 32202,
-    addresses: {
-      admin: "0x0000000000000000000000000000000000000000000000000000000000000001",
-      arrival:
-        "0x0000000000000000000000000000000000000000000000000000000000000002",
-      artifact:
-        "0x0000000000000000000000000000000000000000000000000000000000000003",
-      artifactLocation:
-        "0x0000000000000000000000000000000000000000000000000000000000000004",
-      config:
-        "0x0000000000000000000000000000000000000000000000000000000000000005",
-      core: "0x0000000000000000000000000000000000000000000000000000000000000006",
-      move: "0x0000000000000000000000000000000000000000000000000000000000000007",
-      planet:
-        "0x0000000000000000000000000000000000000000000000000000000000000008",
-      planetArtifacts:
-        "0x0000000000000000000000000000000000000000000000000000000000000009",
-      planetEvents:
-        "0x000000000000000000000000000000000000000000000000000000000000000a",
-      planetRevealedCoords:
-        "0x000000000000000000000000000000000000000000000000000000000000000b",
-      player:
-        "0x000000000000000000000000000000000000000000000000000000000000000c",
-      world: "0x000000000000000000000000000000000000000000000000000000000000000d",
-    },
   };
 }
 
@@ -95,7 +68,6 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
   const runtimePromise = runServerRuntime({
     cache,
     config: createTestConfig(),
-    contracts: createTestContracts(),
     indexer: indexer as never,
     registerShutdownHandlers: false,
     serveFn: (_options, onListen) => {

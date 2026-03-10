@@ -71,6 +71,18 @@ Equivalent package script:
 pnpm --filter server run docker:publish:devnet
 ```
 
+Optional personal shell alias:
+
+```bash
+alias publish-server-devnet='bash ~/Documents/dfpunk-aztec/server/scripts/publish-devnet-image.sh'
+```
+
+Then your day-to-day publish command becomes:
+
+```bash
+publish-server-devnet
+```
+
 One-time GHCR login on a machine:
 
 ```bash
@@ -120,7 +132,6 @@ Railway `image auto updates` only tells Railway to redeploy when the configured 
 It does not build or push the image for you.
 
 Without CI, you still need to run the publish command locally whenever you want a new server release on Railway.
-
 ## Post-Deploy Checks
 
 Replace `<railway-url>` with the generated public domain:
@@ -178,7 +189,6 @@ The verified fix is:
 - publish through `docker buildx`
 - force `linux/amd64`
 - if Railway still serves an old cached image for the same tag, publish a fresh immutable tag and switch `source.image` once
-
 ### Service never becomes healthy during initial sync
 
 The server now opens HTTP before the initial catch-up completes, so Railway health checks can pass while indexing continues in the background. If health still fails, inspect Railway logs for startup exceptions rather than assuming sync lag is the cause.

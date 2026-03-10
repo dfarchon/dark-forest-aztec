@@ -154,14 +154,36 @@ Key variables:
 - `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
-- `PERSIST_MIN_INTERVAL_SEC` (default: `10`)
 - `ADMIN_TOKEN` (default: empty, backup endpoint disabled)
 
-IndexerService options (hardcoded in `src/index.ts`; move to env if needed):
+### Network Presets
 
-- `maxBlocksPerRequest`: 100 — max blocks per `getBlockUpdates` call when catching up.
-- `pollIntervalMs`: 2000 — interval for polling latest block number.
-- `debounceMs`: 1000 — debounce before processing new blocks after a poll.
+Indexer timing parameters (polling, debounce, persistence interval, batch size) are grouped into **network presets** defined in `src/networkPresets.ts`. Each preset is tuned for a target network's block time and node stability.
+
+Built-in presets:
+
+- `devnet` — poll 10 s, debounce 2 s, persist 30 s, batch 100 (Aztec devnet, ~30 s blocks, node occasionally 502s)
+- `testnet` — same as devnet (placeholder, tune when testnet launches)
+- `mainnet` — poll 15 s, debounce 3 s, persist 60 s, batch 50 (conservative)
+- `local` — poll 1 s, debounce 500 ms, persist 5 s, batch 200 (sandbox, fast blocks)
+
+Preset selection:
+
+- **Auto-detect** (default): `AZTEC_NODE_URL` pointing to localhost → `local`; otherwise → `devnet`.
+- **Explicit**: set `NETWORK_PRESET=mainnet` (or any preset name) to override auto-detection.
+- **Per-value override**: `POLL_INTERVAL_MS`, `DEBOUNCE_MS`, `MAX_BLOCKS_PER_REQUEST`, `PERSIST_MIN_INTERVAL_SEC` each override the corresponding preset value when set.
+
+Priority: env var override > preset value.
+
+> **Adding a new network:** When adding a new remote network (e.g. a named testnet
+> with its own node URL), you likely need to:
+> 1. Add a preset entry in `src/networkPresets.ts` with tuned parameters.
+> 2. Update `resolvePresetName()` in `src/config.ts` — currently auto-detect maps
+>    all remote URLs to `"devnet"`. If you want URL-based auto-detection for the
+>    new network (e.g. matching on hostname), extend `resolvePresetName()` or
+>    `detectNodeKind()` there.
+> 3. Alternatively, just deploy with `NETWORK_PRESET=<name>` set explicitly and
+>    skip auto-detection changes.
 
 ## Local Run
 

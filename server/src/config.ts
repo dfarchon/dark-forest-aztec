@@ -1,5 +1,12 @@
 import { START_BLOCK } from "@dfpunk/contracts";
 
+import {
+  getNetworkPreset,
+  isNetworkPresetName,
+  NETWORK_PRESET_NAMES,
+  type NetworkPresetName,
+} from "./networkPresets.ts";
+
 export const DEFAULT_AZTEC_NODE_URL = "https://v4-devnet-2.aztec-labs.com";
 
 export const DEFAULT_CORS_ORIGINS = [
@@ -11,9 +18,13 @@ export const DEFAULT_CORS_ORIGINS = [
 export interface ServerRuntimeConfig {
   aztecNodeUrl: string;
   nodeKind: "local" | "remote";
+  networkPreset: NetworkPresetName;
   port: number;
   sqlitePath: string;
   persistMinIntervalSec: number;
+  pollIntervalMs: number;
+  debounceMs: number;
+  maxBlocksPerRequest: number;
   adminToken: string;
   corsOrigins: string[];
   indexerStartBlock: number;
@@ -61,19 +72,56 @@ function parseCorsOrigins(raw: string | undefined): string[] {
     .filter((value) => value.length > 0);
 }
 
+function resolvePresetName(
+  raw: string | undefined,
+  nodeKind: "local" | "remote",
+): NetworkPresetName {
+  if (raw != null && raw.trim() !== "") {
+    const name = raw.trim().toLowerCase();
+    if (!isNetworkPresetName(name)) {
+      throw new Error(
+        `[ServerConfig] NETWORK_PRESET must be one of: ${NETWORK_PRESET_NAMES.join(", ")}`,
+      );
+    }
+    return name;
+  }
+  // Auto-detect: local sandbox → "local", remote → "devnet".
+  return nodeKind === "local" ? "local" : "devnet";
+}
+
 export function parseServerConfig(
   env: Record<string, string | undefined> = process.env,
 ): ServerRuntimeConfig {
   const aztecNodeUrl = parseAztecNodeUrl(env.AZTEC_NODE_URL);
+  const nodeKind = detectNodeKind(aztecNodeUrl);
+  const networkPreset = resolvePresetName(env.NETWORK_PRESET, nodeKind);
+  const preset = getNetworkPreset(networkPreset);
+
   return {
     aztecNodeUrl,
-    nodeKind: detectNodeKind(aztecNodeUrl),
+    nodeKind,
+    networkPreset,
     port: parseIntEnv(env.PORT, 3001, "PORT"),
     sqlitePath: env.SQLITE_PATH?.trim() || "./data/indexer.db",
     persistMinIntervalSec: parseIntEnv(
       env.PERSIST_MIN_INTERVAL_SEC,
-      10,
+      preset.persistMinIntervalSec,
       "PERSIST_MIN_INTERVAL_SEC",
+    ),
+    pollIntervalMs: parseIntEnv(
+      env.POLL_INTERVAL_MS,
+      preset.pollIntervalMs,
+      "POLL_INTERVAL_MS",
+    ),
+    debounceMs: parseIntEnv(
+      env.DEBOUNCE_MS,
+      preset.debounceMs,
+      "DEBOUNCE_MS",
+    ),
+    maxBlocksPerRequest: parseIntEnv(
+      env.MAX_BLOCKS_PER_REQUEST,
+      preset.maxBlocksPerRequest,
+      "MAX_BLOCKS_PER_REQUEST",
     ),
     adminToken: env.ADMIN_TOKEN ?? "",
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS),
