@@ -6,7 +6,7 @@
 // - Generate a specific planet hash
 // - Generate a specific perlin value
 
-use crate::circuits::perlin::multi_scale_perlin;
+use crate::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
 
 // Constants as functions

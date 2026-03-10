@@ -148,88 +148,40 @@ impl PlanetArtifacts {
 }
 
 pub mod PlanetType {
-    pub fn Planet() -> u8 {
-        0
-    }
-    pub fn SilverMine() -> u8 {
-        1
-    }
-    pub fn Ruins() -> u8 {
-        2
-    }
-    pub fn TradingPost() -> u8 {
-        3
-    }
-    pub fn SilverBank() -> u8 {
-        4
-    }
+    pub global Planet: u8 = 0;
+    pub global SilverMine: u8 = 1;
+    pub global Ruins: u8 = 2;
+    pub global TradingPost: u8 = 3;
+    pub global SilverBank: u8 = 4;
 }
 
 pub mod PlanetEventType {
-    pub fn Arrival() -> u8 {
-        0
-    }
+    pub global Arrival: u8 = 0;
 }
 
 pub mod SpaceType {
-    pub fn Nebula() -> u8 {
-        0
-    }
-    pub fn Space() -> u8 {
-        1
-    }
-    pub fn DeepSpace() -> u8 {
-        2
-    }
-    pub fn DeadSpace() -> u8 {
-        3
-    }
+    pub global Nebula: u8 = 0;
+    pub global Space: u8 = 1;
+    pub global DeepSpace: u8 = 2;
+    pub global DeadSpace: u8 = 3;
 }
 
 pub mod UpgradeBranch {
-    pub fn Defense() -> u8 {
-        0
-    }
-    pub fn Range() -> u8 {
-        1
-    }
-    pub fn Speed() -> u8 {
-        2
-    }
+    pub global Defense: u8 = 0;
+    pub global Range: u8 = 1;
+    pub global Speed: u8 = 2;
 }
 
 pub mod Biome {
-    pub fn Unknown() -> u8 {
-        0
-    }
-    pub fn Ocean() -> u8 {
-        1
-    }
-    pub fn Forest() -> u8 {
-        2
-    }
-    pub fn Grassland() -> u8 {
-        3
-    }
-    pub fn Tundra() -> u8 {
-        4
-    }
-    pub fn Swamp() -> u8 {
-        5
-    }
-    pub fn Desert() -> u8 {
-        6
-    }
-    pub fn Ice() -> u8 {
-        7
-    }
-    pub fn Wasteland() -> u8 {
-        8
-    }
-    pub fn Lava() -> u8 {
-        9
-    }
-    pub fn Corrupted() -> u8 {
-        10
-    }
+    pub global Unknown: u8 = 0;
+    pub global Ocean: u8 = 1;
+    pub global Forest: u8 = 2;
+    pub global Grassland: u8 = 3;
+    pub global Tundra: u8 = 4;
+    pub global Swamp: u8 = 5;
+    pub global Desert: u8 = 6;
+    pub global Ice: u8 = 7;
+    pub global Wasteland: u8 = 8;
+    pub global Lava: u8 = 9;
+    pub global Corrupted: u8 = 10;
 }

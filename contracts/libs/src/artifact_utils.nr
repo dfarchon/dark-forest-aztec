@@ -39,8 +39,8 @@ pub fn create_and_place_spaceship(
     ship_type: u8,
     miscNonce: u32,
 ) -> (Field, DFTCreateArtifactArgs) {
-    assert(ship_type >= ArtifactType::ShipMothership(), "ship type out of range");
-    assert(ship_type <= ArtifactType::ShipTitan(), "ship type out of range");
+    assert(ship_type >= ArtifactType::ShipMothership, "ship type out of range");
+    assert(ship_type <= ArtifactType::ShipTitan, "ship type out of range");
 
     let artifact_id = poseidon2_hash([planet_id, miscNonce as Field]);
 
@@ -48,8 +48,8 @@ pub fn create_and_place_spaceship(
         id: artifact_id,
         discoverer: owner,
         planet_id: planet_id,
-        rarity: ArtifactRarity::Unknown(),
-        biome: Biome::Unknown(),
+        rarity: ArtifactRarity::Unknown,
+        biome: Biome::Unknown,
         artifact_type: ship_type,
         controller: owner,
     };
@@ -85,7 +85,7 @@ pub fn contains_gear(
     for i in 0..20 {
         if (i < planet_artifacts.count) & !found {
             let artifact = artifacts[i as u32];
-            if (artifact.artifact_type == ArtifactType::ShipGear())
+            if (artifact.artifact_type == ArtifactType::ShipGear)
                 & (artifact.controller == controller) {
                 found = true;
             }
@@ -99,8 +99,8 @@ pub fn contains_gear(
 ///
 /// Spaceships are: ShipMothership(10), ShipCrescent(11), ShipWhale(12), ShipGear(13), ShipTitan(14)
 pub fn is_spaceship(artifact_type: u8) -> bool {
-    if artifact_type >= ArtifactType::ShipMothership() {
-        artifact_type <= ArtifactType::ShipTitan()
+    if artifact_type >= ArtifactType::ShipMothership {
+        artifact_type <= ArtifactType::ShipTitan
     } else {
         false
     }

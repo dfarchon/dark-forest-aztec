@@ -46,7 +46,7 @@ contract ArtifactAction {
     };
     use ::libs::planet::{refresh_planet, refresh_planet_v2};
 
-    use ::circuits::circuits::biomebase::biome_proof;
+    use ::circuits::biomebase::biome_proof;
 
     use ::arrival_storage::ArrivalStorage;
     use ::artifact_location_storage::ArtifactLocationStorage;
@@ -319,7 +319,7 @@ contract ArtifactAction {
 
         if is_spaceship {
             // activateSpaceshipArtifact
-            let is_crescent = new_artifact.artifact_type == ArtifactType::ShipCrescent();
+            let is_crescent = new_artifact.artifact_type == ArtifactType::ShipCrescent;
 
             if is_crescent {
                 assert(
@@ -342,7 +342,7 @@ contract ArtifactAction {
                     let default_planet = _default_planet(
                         location_id,
                         new_planet.planet_level,
-                        PlanetType::SilverMine(),
+                        PlanetType::SilverMine,
                         new_planet.space_type,
                         world_config.time_factor_hundredths,
                         planet_default_stats,
@@ -350,7 +350,7 @@ contract ArtifactAction {
 
                     new_planet.silver_growth = default_planet.silver_growth;
                 }
-                new_planet.planet_type = PlanetType::SilverMine();
+                new_planet.planet_type = PlanetType::SilverMine;
             }
         } else {
             // activateNonSpaceshipArtifact
@@ -370,7 +370,7 @@ contract ArtifactAction {
 
             new_artifact.last_activated = timestamp;
 
-            if new_artifact.artifact_type == ArtifactType::Wormhole() {
+            if new_artifact.artifact_type == ArtifactType::Wormhole {
                 assert(wormhole_to != 0, "you must provide a wormholeTo to activate a wormhole");
                 assert(
                     new_planet.owner == sender,
@@ -378,7 +378,7 @@ contract ArtifactAction {
                 );
                 assert(!new_planet.destroyed, "planet destroyed");
                 new_artifact.wormhole_to = wormhole_to;
-            } else if new_artifact.artifact_type == ArtifactType::BloomFilter() {
+            } else if new_artifact.artifact_type == ArtifactType::BloomFilter {
                 assert(
                     2 * (new_artifact.rarity as u32) >= (new_planet.planet_level as u32),
                     "artifact is not powerful enough to apply effect to this planet level",
@@ -386,7 +386,7 @@ contract ArtifactAction {
                 new_planet.population = new_planet.population_cap;
                 new_planet.silver = new_planet.silver_cap;
                 shoud_deactivate_and_burn = true;
-            } else if new_artifact.artifact_type == ArtifactType::BlackDomain() {
+            } else if new_artifact.artifact_type == ArtifactType::BlackDomain {
                 assert(
                     2 * (new_artifact.rarity as u32) >= (new_planet.planet_level as u32),
                     "artifact is not powerful enough to apply effect to this planet level",
@@ -699,8 +699,8 @@ contract ArtifactAction {
         new_artifact.last_deactivated = timestamp;
         new_artifact.wormhole_to = 0;
 
-        let should_burn = (new_artifact.artifact_type == ArtifactType::PlanetaryShield())
-            | (new_artifact.artifact_type == ArtifactType::PhotoidCannon());
+        let should_burn = (new_artifact.artifact_type == ArtifactType::PlanetaryShield)
+            | (new_artifact.artifact_type == ArtifactType::PhotoidCannon);
 
         if should_burn {
             let take_artifact_off_planet_result = _take_artifact_off_planet(

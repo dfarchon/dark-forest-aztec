@@ -119,13 +119,13 @@ pub fn revert_if_bad_snark_perlin_flags(
 /// `perlin` here is a u8 value in [0, 255].
 pub fn space_type_from_perlin(perlin: u8, game_config_core: GameConfigCore) -> u8 {
     if perlin >= game_config_core.perlin_threshold_3 {
-        SpaceType::DeadSpace()
+        SpaceType::DeadSpace
     } else if perlin >= game_config_core.perlin_threshold_2 {
-        SpaceType::DeepSpace()
+        SpaceType::DeepSpace
     } else if perlin >= game_config_core.perlin_threshold_1 {
-        SpaceType::Space()
+        SpaceType::Space
     } else {
-        SpaceType::Nebula()
+        SpaceType::Nebula
     }
 }
 
@@ -264,41 +264,41 @@ pub fn _random_artifact_type_and_level_bonus(
     let last_byte_of_seed: u8 = seed_bytes[31];
     let second_last_byte_of_seed: u8 = seed_bytes[30];
 
-    let mut artifact_type: u8 = ArtifactType::Pyramid();
+    let mut artifact_type: u8 = ArtifactType::Pyramid;
 
     if last_byte_of_seed < 39 {
-        artifact_type = ArtifactType::Monolith();
+        artifact_type = ArtifactType::Monolith;
     } else if last_byte_of_seed < 78 {
-        artifact_type = ArtifactType::Colossus();
+        artifact_type = ArtifactType::Colossus;
     }
     // else if (lastByteOfSeed < 117) {
     //     artifactType = ArtifactType.Spaceship;
     // }
     else if last_byte_of_seed < 156 {
-        artifact_type = ArtifactType::Pyramid();
+        artifact_type = ArtifactType::Pyramid;
     } else if last_byte_of_seed < 171 {
-        artifact_type = ArtifactType::Wormhole();
+        artifact_type = ArtifactType::Wormhole;
     } else if last_byte_of_seed < 186 {
-        artifact_type = ArtifactType::PlanetaryShield();
+        artifact_type = ArtifactType::PlanetaryShield;
     } else if last_byte_of_seed < 201 {
-        artifact_type = ArtifactType::PhotoidCannon();
+        artifact_type = ArtifactType::PhotoidCannon;
     } else if last_byte_of_seed < 216 {
-        artifact_type = ArtifactType::BloomFilter();
+        artifact_type = ArtifactType::BloomFilter;
     } else if last_byte_of_seed < 231 {
-        artifact_type = ArtifactType::BlackDomain();
+        artifact_type = ArtifactType::BlackDomain;
     } else {
-        if biome == Biome::Ice() {
-            artifact_type = ArtifactType::PlanetaryShield();
-        } else if biome == Biome::Lava() {
-            artifact_type = ArtifactType::PhotoidCannon();
-        } else if biome == Biome::Wasteland() {
-            artifact_type = ArtifactType::BloomFilter();
-        } else if biome == Biome::Corrupted() {
-            artifact_type = ArtifactType::BlackDomain();
+        if biome == Biome::Ice {
+            artifact_type = ArtifactType::PlanetaryShield;
+        } else if biome == Biome::Lava {
+            artifact_type = ArtifactType::PhotoidCannon;
+        } else if biome == Biome::Wasteland {
+            artifact_type = ArtifactType::BloomFilter;
+        } else if biome == Biome::Corrupted {
+            artifact_type = ArtifactType::BlackDomain;
         } else {
-            artifact_type = ArtifactType::Wormhole();
+            artifact_type = ArtifactType::Wormhole;
         }
-        artifact_type = ArtifactType::PhotoidCannon();
+        artifact_type = ArtifactType::PhotoidCannon;
     }
 
     let mut bonus: u8 = 0;
@@ -315,8 +315,8 @@ pub fn _random_artifact_type_and_level_bonus(
 /// Returns the biome based on the space type and biomebase.
 /// biome: 0=Corrupted, 1=Forest, 2=Swamp, 3=Desert, 4=Tundra, 5=Volcanic, 6=Glacier, 7=Ocean, 8=Void
 pub fn _get_biome(space_type: u8, biomebase: u8, game_config_core: GameConfigCore) -> u8 {
-    if space_type == SpaceType::DeadSpace() {
-        Biome::Corrupted()
+    if space_type == SpaceType::DeadSpace {
+        Biome::Corrupted
     } else {
         let mut biome: u8 = 3 * space_type;
         if biomebase < game_config_core.biome_threshold_1 {
@@ -346,7 +346,7 @@ pub fn default_upgrade() -> Upgrade {
 
 /// Noir port of Solidity `LibGameUtils.timeDelayUpgrade`.
 pub fn time_delay_upgrade(artifact: Artifact) -> Upgrade {
-    if artifact.artifact_type == ArtifactType::PhotoidCannon() {
+    if artifact.artifact_type == ArtifactType::PhotoidCannon {
         let range: [u128; 6] = [100, 200, 200, 200, 200, 200];
         let speed_boosts: [u128; 6] = [100, 500, 1000, 1500, 2000, 2500];
 
@@ -375,7 +375,7 @@ pub fn abandoning_upgrade(space_junk_config: SpaceJunkConfig) -> Upgrade {
 
 /// Noir port of Solidity `LibGameUtils._getUpgradeForArtifact`.
 pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
-    if artifact.artifact_type == ArtifactType::PlanetaryShield() {
+    if artifact.artifact_type == ArtifactType::PlanetaryShield {
         let defense_multipliers_per_rarity: [u128; 6] = [100, 150, 200, 300, 450, 650];
         Upgrade {
             pop_cap_multiplier: 100,
@@ -384,7 +384,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
             speed_multiplier: 20,
             def_multiplier: defense_multipliers_per_rarity[artifact.rarity as u32],
         }
-    } else if artifact.artifact_type == ArtifactType::PhotoidCannon() {
+    } else if artifact.artifact_type == ArtifactType::PhotoidCannon {
         let defense_multipliers_per_rarity: [u128; 6] = [100, 50, 40, 30, 20, 10];
         Upgrade {
             pop_cap_multiplier: 100,
@@ -393,7 +393,7 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
             speed_multiplier: 100,
             def_multiplier: defense_multipliers_per_rarity[artifact.rarity as u32],
         }
-    } else if artifact.artifact_type >= ArtifactType::Wormhole() {
+    } else if artifact.artifact_type >= ArtifactType::Wormhole {
         Upgrade {
             pop_cap_multiplier: 100,
             pop_gro_multiplier: 100,
@@ -403,44 +403,44 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
         }
     } else {
         let mut upgrade: Upgrade = default_upgrade();
-        if artifact.artifact_type == ArtifactType::Monolith() {
+        if artifact.artifact_type == ArtifactType::Monolith {
             upgrade.pop_cap_multiplier += 5;
             upgrade.pop_gro_multiplier += 5;
-        } else if artifact.artifact_type == ArtifactType::Colossus() {
+        } else if artifact.artifact_type == ArtifactType::Colossus {
             upgrade.speed_multiplier += 5;
-        } else if artifact.artifact_type == ArtifactType::Spaceship() {
+        } else if artifact.artifact_type == ArtifactType::Spaceship {
             upgrade.range_multiplier += 5;
-        } else if artifact.artifact_type == ArtifactType::Pyramid() {
+        } else if artifact.artifact_type == ArtifactType::Pyramid {
             upgrade.def_multiplier += 5;
         }
 
-        if artifact.planet_biome == Biome::Ocean() {
+        if artifact.planet_biome == Biome::Ocean {
             upgrade.speed_multiplier += 5;
             upgrade.def_multiplier += 5;
-        } else if artifact.planet_biome == Biome::Forest() {
+        } else if artifact.planet_biome == Biome::Forest {
             upgrade.def_multiplier += 5;
             upgrade.pop_cap_multiplier += 5;
             upgrade.pop_gro_multiplier += 5;
-        } else if artifact.planet_biome == Biome::Grassland() {
+        } else if artifact.planet_biome == Biome::Grassland {
             upgrade.pop_cap_multiplier += 5;
             upgrade.pop_gro_multiplier += 5;
             upgrade.range_multiplier += 5;
-        } else if artifact.planet_biome == Biome::Tundra() {
+        } else if artifact.planet_biome == Biome::Tundra {
             upgrade.def_multiplier += 5;
             upgrade.range_multiplier += 5;
-        } else if artifact.planet_biome == Biome::Swamp() {
+        } else if artifact.planet_biome == Biome::Swamp {
             upgrade.speed_multiplier += 5;
             upgrade.range_multiplier += 5;
-        } else if artifact.planet_biome == Biome::Desert() {
+        } else if artifact.planet_biome == Biome::Desert {
             upgrade.speed_multiplier += 10;
-        } else if artifact.planet_biome == Biome::Ice() {
+        } else if artifact.planet_biome == Biome::Ice {
             upgrade.range_multiplier += 10;
-        } else if artifact.planet_biome == Biome::Wasteland() {
+        } else if artifact.planet_biome == Biome::Wasteland {
             upgrade.def_multiplier += 10;
-        } else if artifact.planet_biome == Biome::Lava() {
+        } else if artifact.planet_biome == Biome::Lava {
             upgrade.pop_cap_multiplier += 10;
             upgrade.pop_gro_multiplier += 10;
-        } else if artifact.planet_biome == Biome::Corrupted() {
+        } else if artifact.planet_biome == Biome::Corrupted {
             upgrade.range_multiplier += 5;
             upgrade.speed_multiplier += 5;
             upgrade.pop_cap_multiplier += 5;
@@ -459,15 +459,15 @@ pub fn _get_upgrade_for_artifact(artifact: Artifact) -> Upgrade {
 /// Noir port of Solidity `LibGameUtils.artifactRarityFromPlanetLevel`.
 pub fn artifact_rarity_from_planet_level(planet_level: u8) -> u8 {
     if planet_level <= 1 {
-        ArtifactRarity::Common()
+        ArtifactRarity::Common
     } else if planet_level <= 3 {
-        ArtifactRarity::Rare()
+        ArtifactRarity::Rare
     } else if planet_level <= 5 {
-        ArtifactRarity::Epic()
+        ArtifactRarity::Epic
     } else if planet_level <= 7 {
-        ArtifactRarity::Legendary()
+        ArtifactRarity::Legendary
     } else {
-        ArtifactRarity::Mythic()
+        ArtifactRarity::Mythic
     }
 }
 
@@ -708,9 +708,9 @@ pub fn _default_planet(
 ) -> Planet {
     let time_factor_hundredths = time_factor_hundredths;
 
-    let dead_space: bool = space_type == SpaceType::DeadSpace();
-    let deep_space: bool = space_type == SpaceType::DeepSpace();
-    let medium_space: bool = space_type == SpaceType::Space();
+    let dead_space: bool = space_type == SpaceType::DeadSpace;
+    let deep_space: bool = space_type == SpaceType::DeepSpace;
+    let medium_space: bool = space_type == SpaceType::Space;
 
     let mut planet = Planet::zero();
 
@@ -725,7 +725,7 @@ pub fn _default_planet(
     planet.defense = planet_default_stats.defense;
     planet.silver_cap = planet_default_stats.silver_cap;
 
-    if planet_type == PlanetType::SilverMine() {
+    if planet_type == PlanetType::SilverMine {
         planet.silver_growth = planet_default_stats.silver_growth;
     }
 
@@ -785,17 +785,17 @@ pub fn _default_planet(
 
     // Apply buffs/debuffs for nonstandard planets
     // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
-    if planet_type == PlanetType::SilverMine() {
+    if planet_type == PlanetType::SilverMine {
         // PlanetType::SilverMine
         planet.silver_cap *= 2;
         planet.defense /= 2;
-    } else if planet_type == PlanetType::SilverBank() {
+    } else if planet_type == PlanetType::SilverBank {
         // PlanetType::SilverBank
         planet.speed /= 2;
         planet.silver_cap *= 10;
         planet.population_growth = 0;
         planet.population_cap *= 5;
-    } else if planet_type == PlanetType::TradingPost() {
+    } else if planet_type == PlanetType::TradingPost {
         // PlanetType::TradingPost
         planet.defense /= 2;
         planet.silver_cap *= 2;
@@ -814,13 +814,13 @@ pub fn _default_planet(
     }
 
     // planet_type: 0=Planet, 1=SilverMine, 2=Ruins, 3=TradingPost, 4=SilverBank
-    if planet_type == PlanetType::SilverBank() {
+    if planet_type == PlanetType::SilverBank {
         // PlanetType::SilverBank
         planet.population /= 2;
     }
 
     // Adjust silver cap for mine
-    if planet_type == PlanetType::SilverMine() {
+    if planet_type == PlanetType::SilverMine {
         // PlanetType::SilverMine
         planet.silver = planet.silver_cap / 2;
     }

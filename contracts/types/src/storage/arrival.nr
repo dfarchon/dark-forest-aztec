@@ -37,16 +37,8 @@ impl Arrival {
 }
 
 pub mod ArrivalType {
-    pub fn Unknown() -> u8 {
-        0
-    }
-    pub fn Normal() -> u8 {
-        1
-    }
-    pub fn Photoid() -> u8 {
-        2
-    }
-    pub fn Wormhole() -> u8 {
-        3
-    }
+    pub global Unknown: u8 = 0;
+    pub global Normal: u8 = 1;
+    pub global Photoid: u8 = 2;
+    pub global Wormhole: u8 = 3;
 }

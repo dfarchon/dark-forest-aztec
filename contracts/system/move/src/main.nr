@@ -238,7 +238,7 @@ contract Move {
             let scale = provided_snark_config.perlin_length_scale;
             // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
             // So: x_mirror = perlin_mirror_y, y_mirror = perlin_mirror_x
-            let (expected_source, expected_target, expected_perlin) = circuits::circuits::move::move_proof(
+            let (expected_source, expected_target, expected_perlin) = circuits::move::move_proof(
                 r,
                 dist_max,
                 planet_hash_key,
@@ -496,12 +496,12 @@ contract Move {
         // Check if this is a spaceship move
         let is_spaceship_move = if moved_artifact_id != 0 {
             let artifact_type = moved_artifact.artifact_type;
-            (artifact_type == ArtifactType::Spaceship())
-                | (artifact_type == ArtifactType::ShipMothership())
-                | (artifact_type == ArtifactType::ShipCrescent())
-                | (artifact_type == ArtifactType::ShipWhale())
-                | (artifact_type == ArtifactType::ShipGear())
-                | (artifact_type == ArtifactType::ShipTitan())
+            (artifact_type == ArtifactType::Spaceship)
+                | (artifact_type == ArtifactType::ShipMothership)
+                | (artifact_type == ArtifactType::ShipCrescent)
+                | (artifact_type == ArtifactType::ShipWhale)
+                | (artifact_type == ArtifactType::ShipGear)
+                | (artifact_type == ArtifactType::ShipTitan)
         } else {
             false
         };
@@ -679,7 +679,7 @@ contract Move {
         }
 
         let effectiveDistTimesHundred = args.max_dist * 100;
-        let arrival_type = ArrivalType::Normal();
+        let arrival_type = ArrivalType::Normal;
         let mut temporary_upgrade = Upgrade::zero();
         let mut dist_modifier = 1;
         let mut wormhole_present = false;
@@ -710,7 +710,7 @@ contract Move {
 
         new_target_planet_events.events[new_target_planet_events.count] = PlanetEventMetadata {
             id: new_world.planet_events_count,
-            // event_type: PlanetEventType::Arrival(),
+            // event_type: PlanetEventType::Arrival,
             // time_trigger: timestamp + travel_time,
             // time_created: timestamp,
         };

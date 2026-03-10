@@ -2,37 +2,11 @@
 // Converted from Circom to Noir
 // Proves that a planet at (x, y) has a specific biomebase value
 
-use crate::circuits::perlin::multi_scale_perlin;
+use crate::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
 use ::types::config::game::{GameConfig, GameConfigCore};
 use ::types::config::snark::SnarkConfig;
-
-// ============================================================================
-// Biome Types (matching Dark Forest v0.6)
-// ============================================================================
-
-/// Biome enum values (matching Dark Forest v0.6 Biome enum)
-pub mod Biome {
-    pub global UNKNOWN: u8 = 0;
-    pub global OCEAN: u8 = 1;
-    pub global FOREST: u8 = 2;
-    pub global GRASSLAND: u8 = 3;
-    pub global TUNDRA: u8 = 4;
-    pub global SWAMP: u8 = 5;
-    pub global DESERT: u8 = 6;
-    pub global ICE: u8 = 7;
-    pub global WASTELAND: u8 = 8;
-    pub global LAVA: u8 = 9;
-    pub global CORRUPTED: u8 = 10;
-}
-
-/// SpaceType enum values (matching Dark Forest v0.6)
-pub mod SpaceType {
-    pub global NEBULA: u8 = 0;
-    pub global SPACE: u8 = 1;
-    pub global DEEP_SPACE: u8 = 2;
-    pub global DEAD_SPACE: u8 = 3;
-}
+use ::types::storage::planet::{Biome, SpaceType};
 
 fn coord_offset() -> u128 {
     2147483648 // 2^31
@@ -59,31 +33,31 @@ pub fn get_biome(
     biome_threshold_2: u128,
 ) -> u8 {
     let biomebase_u128 = biomebase as u128;
-    if space_type == SpaceType::DEAD_SPACE {
-        Biome::CORRUPTED
-    } else if space_type == SpaceType::DEEP_SPACE {
+    if space_type == SpaceType::DeadSpace {
+        Biome::Corrupted
+    } else if space_type == SpaceType::DeepSpace {
         if biomebase_u128 < biome_threshold_1 {
-            Biome::ICE
+            Biome::Ice
         } else if biomebase_u128 < biome_threshold_2 {
-            Biome::WASTELAND
+            Biome::Wasteland
         } else {
-            Biome::LAVA
+            Biome::Lava
         }
-    } else if space_type == SpaceType::SPACE {
+    } else if space_type == SpaceType::Space {
         if biomebase_u128 < biome_threshold_1 {
-            Biome::TUNDRA
+            Biome::Tundra
         } else if biomebase_u128 < biome_threshold_2 {
-            Biome::SWAMP
+            Biome::Swamp
         } else {
-            Biome::DESERT
+            Biome::Desert
         }
     } else {
         if biomebase_u128 < biome_threshold_1 {
-            Biome::OCEAN
+            Biome::Ocean
         } else if biomebase_u128 < biome_threshold_2 {
-            Biome::FOREST
+            Biome::Forest
         } else {
-            Biome::GRASSLAND
+            Biome::Grassland
         }
     }
 }

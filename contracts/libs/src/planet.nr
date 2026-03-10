@@ -247,13 +247,13 @@ pub fn validate_upgrade_planet(
 ) -> (u8, u128) {
     assert(planet.owner == sender, "Only owner can upgrade");
     assert(planet.planet_level > 0, "Cannot upgrade level 0 planets");
-    assert(planet.planet_type == PlanetType::Planet(), "Can only upgrade regular planets");
+    assert(planet.planet_type == PlanetType::Planet, "Can only upgrade regular planets");
     assert(!planet.destroyed, "Planet is destroyed");
-    assert(branch <= UpgradeBranch::Speed(), "Invalid branch");
+    assert(branch <= UpgradeBranch::Speed, "Invalid branch");
 
-    let current_branch_level = if branch == UpgradeBranch::Defense() {
+    let current_branch_level = if branch == UpgradeBranch::Defense {
         planet.upgrade_state_0
-    } else if branch == UpgradeBranch::Range() {
+    } else if branch == UpgradeBranch::Range {
         planet.upgrade_state_1
     } else {
         planet.upgrade_state_2
@@ -261,13 +261,13 @@ pub fn validate_upgrade_planet(
     assert(current_branch_level < upgrade_config.max_branch_level, "Branch level maxed");
 
     let total_level: u8 = planet.upgrade_state_0 + planet.upgrade_state_1 + planet.upgrade_state_2;
-    let max_total_level = if planet.space_type == SpaceType::Nebula() {
+    let max_total_level = if planet.space_type == SpaceType::Nebula {
         upgrade_config.max_total_level_nebula
-    } else if planet.space_type == SpaceType::Space() {
+    } else if planet.space_type == SpaceType::Space {
         upgrade_config.max_total_level_space
-    } else if planet.space_type == SpaceType::DeepSpace() {
+    } else if planet.space_type == SpaceType::DeepSpace {
         upgrade_config.max_total_level_deep_space
-    } else if planet.space_type == SpaceType::DeadSpace() {
+    } else if planet.space_type == SpaceType::DeadSpace {
         upgrade_config.max_total_level_dead_space
     } else {
         assert(false, "Invalid space type");
@@ -286,7 +286,7 @@ pub fn validate_upgrade_planet(
 
 pub fn validate_withdraw_silver(planet: Planet, silver_to_withdraw: u128, sender: AztecAddress) {
     assert(planet.owner == sender, "Only owner can withdraw");
-    assert(planet.planet_type == PlanetType::TradingPost(), "Only trading posts can withdraw");
+    assert(planet.planet_type == PlanetType::TradingPost, "Only trading posts can withdraw");
     assert(!planet.destroyed, "Planet is destroyed");
     assert(silver_to_withdraw > 0, "Must withdraw positive silver");
     assert(planet.silver >= silver_to_withdraw, "Not enough silver");
@@ -332,17 +332,17 @@ pub fn get_refreshed_planet(
 /// Noir port of Solidity `LibPlanet.applySpaceshipArrive`.
 pub fn apply_spaceship_arrive(artifact: Artifact, mut planet: Planet) -> Planet {
     if !planet.is_home_planet {
-        if artifact.artifact_type == ArtifactType::ShipMothership() {
+        if artifact.artifact_type == ArtifactType::ShipMothership {
             if planet.energy_gro_doublers == 0 {
                 planet.population_growth = planet.population_growth * 2;
             }
             planet.energy_gro_doublers += 1;
-        } else if artifact.artifact_type == ArtifactType::ShipWhale() {
+        } else if artifact.artifact_type == ArtifactType::ShipWhale {
             if planet.silver_gro_doublers == 0 {
                 planet.silver_growth = planet.silver_growth * 2;
             }
             planet.silver_gro_doublers += 1;
-        } else if artifact.artifact_type == ArtifactType::ShipTitan() {
+        } else if artifact.artifact_type == ArtifactType::ShipTitan {
             planet.pausers += 1;
         }
     }

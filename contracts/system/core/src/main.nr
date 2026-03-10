@@ -601,9 +601,9 @@ contract Core {
 
         let mut new_planet = refreshed_planet;
         new_planet.silver -= silver_cost;
-        if branch == UpgradeBranch::Defense() {
+        if branch == UpgradeBranch::Defense {
             new_planet.upgrade_state_0 += 1;
-        } else if branch == UpgradeBranch::Range() {
+        } else if branch == UpgradeBranch::Range {
             new_planet.upgrade_state_1 += 1;
         } else {
             new_planet.upgrade_state_2 += 1;
@@ -1053,7 +1053,7 @@ contract Core {
             let space_type_key = provided_snark_config.spacetype_key as Field;
             let scale = provided_snark_config.perlin_length_scale;
             // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
-            let (expected_hash, expected_perlin) = circuits::circuits::reveal::reveal_proof(
+            let (expected_hash, expected_perlin) = circuits::reveal::reveal_proof(
                 x,
                 y,
                 planet_hash_key,
@@ -1394,7 +1394,7 @@ contract Core {
             let space_type_key = provided_snark_config.spacetype_key as Field;
             let scale = provided_snark_config.perlin_length_scale;
             // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
-            let (expected_hash, expected_perlin) = circuits::circuits::init::init_proof(
+            let (expected_hash, expected_perlin) = circuits::init::init_proof(
                 radius as Field,
                 planet_hash_key,
                 space_type_key,

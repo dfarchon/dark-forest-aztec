@@ -18,7 +18,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
     // This function should only be called for silver-producing planets
     // PlanetType::SilverMine = 1
     assert(
-        planet.planet_type == PlanetType::SilverMine(),
+        planet.planet_type == PlanetType::SilverMine,
         "Can only update silver on silver producing planet",
     );
 
@@ -71,7 +71,7 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
 
     // quasars (SilverBank) have 0 energy growth, so they have 0 energy decay as well
     // so don't allow them to become overful
-    // if (planet.planet_type == PlanetType::SilverBank()) | (planet.pausers > 0) {
+    // if (planet.planet_type == PlanetType::SilverBank) | (planet.pausers > 0) {
     //     if planet.population > planet.population_cap {
     //         planet.population = planet.population_cap;
     //     }
@@ -91,7 +91,7 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
 pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
     planet = update_population(update_to_time, planet);
 
-    if planet.planet_type == PlanetType::SilverMine() {
+    if planet.planet_type == PlanetType::SilverMine {
         planet = update_silver(update_to_time, planet);
     }
 
@@ -106,7 +106,7 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Returns (carried_artifact_id, updated_planet).
 pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
     // ArrivalType enum values: Unknown=0, Normal=1, Photoid=2, Wormhole=3
-    let wormhole_type: u8 = ArrivalType::Wormhole();
+    let wormhole_type: u8 = ArrivalType::Wormhole;
 
     // checks whether the planet is owned by the player sending ships
     if arrival.player == planet.owner {

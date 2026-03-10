@@ -2,7 +2,7 @@
 // Converted from Circom to Noir
 // Proves that public coordinates (x, y) match a known planet hash and perlin value
 
-use crate::circuits::perlin::multi_scale_perlin;
+use crate::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
 
 // Constants as functions

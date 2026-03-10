@@ -46,7 +46,7 @@ contract ArtifactProspect {
     };
     use ::libs::planet::{refresh_planet, refresh_planet_v2};
 
-    use ::circuits::circuits::biomebase::biome_proof;
+    use ::circuits::biomebase::biome_proof;
 
     use ::arrival_storage::ArrivalStorage;
     use ::artifact_location_storage::ArtifactLocationStorage;
@@ -313,7 +313,7 @@ contract ArtifactProspect {
         }
 
         assert(!new_planet.destroyed, "planet is destroyed");
-        assert(new_planet.planet_type == PlanetType::Ruins(), "not a ruins");
+        assert(new_planet.planet_type == PlanetType::Ruins, "not a ruins");
         assert(new_planet.owner == sender, "you must own this planet");
         assert(new_planet.prospected_block_number == 0, "this planet has already been prospected");
 

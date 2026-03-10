@@ -62,71 +62,29 @@ impl ArtifactLocation {
 }
 
 pub mod ArtifactType {
-    pub fn Unknown() -> u8 {
-        0
-    }
-    pub fn Monolith() -> u8 {
-        1
-    }
-    pub fn Colossus() -> u8 {
-        2
-    }
-    pub fn Spaceship() -> u8 {
-        3
-    }
-    pub fn Pyramid() -> u8 {
-        4
-    }
-    pub fn Wormhole() -> u8 {
-        5
-    }
-    pub fn PlanetaryShield() -> u8 {
-        6
-    }
-    pub fn PhotoidCannon() -> u8 {
-        7
-    }
-    pub fn BloomFilter() -> u8 {
-        8
-    }
-    pub fn BlackDomain() -> u8 {
-        9
-    }
-    pub fn ShipMothership() -> u8 {
-        10
-    }
-    pub fn ShipCrescent() -> u8 {
-        11
-    }
-    pub fn ShipWhale() -> u8 {
-        12
-    }
-    pub fn ShipGear() -> u8 {
-        13
-    }
-    pub fn ShipTitan() -> u8 {
-        14
-    }
+    pub global Unknown: u8 = 0;
+    pub global Monolith: u8 = 1;
+    pub global Colossus: u8 = 2;
+    pub global Spaceship: u8 = 3;
+    pub global Pyramid: u8 = 4;
+    pub global Wormhole: u8 = 5;
+    pub global PlanetaryShield: u8 = 6;
+    pub global PhotoidCannon: u8 = 7;
+    pub global BloomFilter: u8 = 8;
+    pub global BlackDomain: u8 = 9;
+    pub global ShipMothership: u8 = 10;
+    pub global ShipCrescent: u8 = 11;
+    pub global ShipWhale: u8 = 12;
+    pub global ShipGear: u8 = 13;
+    pub global ShipTitan: u8 = 14;
 }
 
 /// ArtifactRarity namespace with numeric helpers.
 pub mod ArtifactRarity {
-    pub fn Unknown() -> u8 {
-        0
-    }
-    pub fn Common() -> u8 {
-        1
-    }
-    pub fn Rare() -> u8 {
-        2
-    }
-    pub fn Epic() -> u8 {
-        3
-    }
-    pub fn Legendary() -> u8 {
-        4
-    }
-    pub fn Mythic() -> u8 {
-        5
-    }
+    pub global Unknown: u8 = 0;
+    pub global Common: u8 = 1;
+    pub global Rare: u8 = 2;
+    pub global Epic: u8 = 3;
+    pub global Legendary: u8 = 4;
+    pub global Mythic: u8 = 5;
 }

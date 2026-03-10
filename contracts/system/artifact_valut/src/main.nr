@@ -331,7 +331,7 @@ contract ArtifactValut {
         assert(!new_planet.destroyed, "planet is destroyed");
 
         assert(
-            new_planet.planet_type == PlanetType::TradingPost(),
+            new_planet.planet_type == PlanetType::TradingPost,
             "can only deposit on trading posts",
         );
 
@@ -579,7 +579,7 @@ contract ArtifactValut {
         assert(!new_planet.destroyed, "planet is destroyed");
 
         assert(
-            new_planet.planet_type == PlanetType::TradingPost(),
+            new_planet.planet_type == PlanetType::TradingPost,
             "can only withdraw from trading posts",
         );
 
@@ -835,11 +835,11 @@ contract ArtifactValut {
             spaceships_config.titan,
         ];
         let ship_types: [u8; 5] = [
-            ArtifactType::ShipMothership(),
-            ArtifactType::ShipCrescent(),
-            ArtifactType::ShipWhale(),
-            ArtifactType::ShipGear(),
-            ArtifactType::ShipTitan(),
+            ArtifactType::ShipMothership,
+            ArtifactType::ShipCrescent,
+            ArtifactType::ShipWhale,
+            ArtifactType::ShipGear,
+            ArtifactType::ShipTitan,
         ];
 
         let mut nonce: u32 = 1;
