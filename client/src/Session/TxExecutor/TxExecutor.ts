@@ -38,6 +38,7 @@ import type {
   ConcurrentQueueConfiguration,
   DiagnosticUpdater,
 } from "./types";
+import { waitForReceiptWithRetry } from "./waitForReceiptWithRetry";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,6 +76,7 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 const TX_SUBMIT_TIMEOUT = 120_000; // 2 minutes
+const TX_CONFIRM_TIMEOUT_SEC = 120;
 
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
   invocationIntervalMs: 500,
@@ -240,9 +242,14 @@ export class TxExecutor {
     tx.hash = ser.hash;
     tx.onTransactionResponse(ser.hash);
 
-    waitForTx(this.node, ser.hash, {
-      timeout: 120,
-      dontThrowOnRevert: true,
+    waitForReceiptWithRetry({
+      methodName: ser.intent.methodName,
+      timeoutSeconds: TX_CONFIRM_TIMEOUT_SEC,
+      waitForReceipt: () =>
+        waitForTx(this.node, ser.hash, {
+          timeout: TX_CONFIRM_TIMEOUT_SEC,
+          dontThrowOnRevert: true,
+        }),
     })
       .then((receipt) => {
         if (receipt.hasExecutionSucceeded()) {
@@ -373,9 +380,14 @@ export class TxExecutor {
 
         // 7. Wait for confirmation — v0.6 line 385
         //    Aztec equivalent of ethConnection.waitForTransaction(hash)
-        const receipt = await waitForTx(this.node, submitted, {
-          timeout: 120,
-          dontThrowOnRevert: true,
+        const receipt = await waitForReceiptWithRetry({
+          methodName: tx.intent.methodName,
+          timeoutSeconds: TX_CONFIRM_TIMEOUT_SEC,
+          waitForReceipt: () =>
+            waitForTx(this.node, submitted, {
+              timeout: TX_CONFIRM_TIMEOUT_SEC,
+              dontThrowOnRevert: true,
+            }),
         });
 
         // 8. Check result — v0.6 lines 386-397
