@@ -6,23 +6,28 @@ use ::types::storage::{
     arrival::Arrival,
     artifact::{Artifact, ArtifactLocation},
     planet::{Planet, PlanetArtifacts, PlanetEvents},
+    world::World,
 };
 
-/// Assert that timestamp is >= all relevant last_updated fields for refresh inputs.
-pub fn assert_refresh_timestamp_monotonicity(
+pub fn assert_planet_timestamp_freshness(
     timestamp: u64,
     planet: Planet,
+    planet_artifacts_state: PlanetArtifacts,
     planet_events_state: PlanetEvents,
     arrivals: [Arrival; 20],
     artifacts: [Artifact; 20],
     artifact_locations: [ArtifactLocation; 20],
-    planet_artifacts: PlanetArtifacts,
 ) {
     assert(timestamp >= planet.last_updated, "Timestamp must be >= planet's last_updated");
     assert(
-        timestamp >= planet_events_state.last_updated,
-        "Timestamp must be >= planet_events' last_updated",
+        timestamp >= planet_artifacts_state.last_updated,
+        "Timestamp must be >= planet_artifacts_state' last_updated",
     );
+    assert(
+        timestamp >= planet_events_state.last_updated,
+        "Timestamp must be >= planet_events_state' last_updated",
+    );
+
     for i in 0..20 {
         if i < planet_events_state.count {
             assert(
@@ -41,92 +46,168 @@ pub fn assert_refresh_timestamp_monotonicity(
             }
         }
     }
-    assert(
-        timestamp >= planet_artifacts.last_updated,
-        "Timestamp must be >= planet_artifacts' last_updated",
-    );
 }
 
-/// Call refresh_planet then set last_updated on all four outputs.
-pub fn refresh_planet_and_apply_timestamp(
+pub fn assert_artifact_timestamp_freshness(
     timestamp: u64,
-    location_id: Field,
-    planet: Planet,
-    planet_events_state: PlanetEvents,
-    arrivals: [Arrival; 20],
-    artifacts: [Artifact; 20],
-    artifact_locations: [ArtifactLocation; 20],
-    planet_artifacts: PlanetArtifacts,
-) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactLocation; 20]) {
-    let refresh_result = refresh_planet(
-        timestamp,
-        location_id,
-        planet,
-        planet_events_state,
-        arrivals,
-        artifacts,
-        artifact_locations,
-        planet_artifacts,
+    artifact: Artifact,
+    artifact_location: ArtifactLocation,
+) {
+    assert(timestamp >= artifact.last_updated, "Timestamp must be >= artifact's last_updated");
+    assert(
+        timestamp >= artifact_location.last_updated,
+        "Timestamp must be >= artifact_location's last_updated",
     );
-    let mut new_planet = refresh_result.0;
-    let mut new_planet_events = refresh_result.1;
-    let mut new_planet_artifacts = refresh_result.2;
-    let mut new_artifact_locations = refresh_result.3;
-    new_planet.last_updated = timestamp;
-    new_planet_events.last_updated = timestamp;
-    new_planet_artifacts.last_updated = timestamp;
-    for i in 0..20 {
-        if i < planet_events_state.count {
-            new_artifact_locations[i].last_updated = timestamp;
-        }
-    }
-    (new_planet, new_planet_events, new_planet_artifacts, new_artifact_locations)
 }
 
-/// Build arrival_ids, arrivals_hash, artifact_ids, artifacts_hash, artifact_locations_hash for refresh hash verification.
-pub fn build_refresh_event_hashes(
+pub fn assert_owned_artifacts_timestamp_freshness(
+    timestamp: u64,
+    planet_artifacts_state: PlanetArtifacts,
+    owned_artifacts: [Artifact; 20],
+    owned_artifact_locations: [ArtifactLocation; 20],
+) {
+    for i in 0..20 {
+        if i < planet_artifacts_state.count {
+            assert(
+                timestamp >= owned_artifacts[i].last_updated,
+                "Timestamp must be >= owned artifact's last_updated",
+            );
+            assert(
+                timestamp >= owned_artifact_locations[i].last_updated,
+                "Timestamp must be >= owned artifact_location's last_updated",
+            );
+        }
+    }
+}
+
+pub fn compute_planet_hashes(
+    planet_id: Field,
+    planet: Planet,
+    planet_artifacts_state: PlanetArtifacts,
     planet_events_state: PlanetEvents,
     arrivals: [Arrival; 20],
     artifacts: [Artifact; 20],
     artifact_locations: [ArtifactLocation; 20],
-) -> ([Field; 20], [Field; 20], [Field; 20], [Field; 20], [Field; 20]) {
+    ) -> (Field, Field, Field, Field, [Field; 20], [Field; 20], [Field; 20], [Field; 20], [Field; 20], u32) {
+    let origin_arrivals_count = planet_events_state.count;
+
+    let planet_hash = if planet == Planet::zero() {
+        0
+    } else {
+        poseidon2_hash(planet.serialize())
+    };
+    let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
+        0
+    } else {
+        poseidon2_hash(planet_artifacts_state.serialize())
+    };
+    let planet_events_state_hash = if planet_events_state == PlanetEvents::zero() {
+        0
+    } else {
+        poseidon2_hash(planet_events_state.serialize())
+    };
+
     let mut arrival_ids: [Field; 20] = [0; 20];
-    let mut arrivals_hash: [Field; 20] = [0; 20];
+    let mut arrival_hashes: [Field; 20] = [0; 20];
     let mut artifact_ids: [Field; 20] = [0; 20];
-    let mut artifacts_hash: [Field; 20] = [0; 20];
-    let mut artifact_locations_hash: [Field; 20] = [0; 20];
+    let mut artifact_hashes: [Field; 20] = [0; 20];
+    let mut artifact_location_hashes: [Field; 20] = [0; 20];
+
     for i in 0..20 {
         if i < planet_events_state.count {
-            arrival_ids[i] = planet_events_state.events[i].id;
-            artifact_ids[i] = arrivals[i].carried_artifact_id;
-            if arrival_ids[i] != 0 {
-                arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+            let arrival_id = planet_events_state.events[i].id;
+            let arrival = arrivals[i];
+            let artifact_id = arrival.carried_artifact_id;
+
+            arrival_ids[i] = arrival_id;
+            artifact_ids[i] = artifact_id;
+            if arrival_id != 0 {
+                arrival_hashes[i] = poseidon2_hash(arrival.serialize());
             }
-            if artifact_ids[i] != 0 {
-                artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
-                artifact_locations_hash[i] = poseidon2_hash(artifact_locations[i].serialize());
+            if artifact_id != 0 {
+                artifact_hashes[i] = poseidon2_hash(artifacts[i].serialize());
+                artifact_location_hashes[i] = poseidon2_hash(artifact_locations[i].serialize());
             }
         }
     }
-    (arrival_ids, arrivals_hash, artifact_ids, artifacts_hash, artifact_locations_hash)
+
+    (
+        planet_id, planet_hash, planet_artifacts_state_hash, planet_events_state_hash, arrival_ids,
+        arrival_hashes, artifact_ids, artifact_hashes, artifact_location_hashes,
+        origin_arrivals_count,
+    )
 }
 
-/// Pack non-zero artifact_ids and their locations into a compact batch array.
-pub fn pack_artifact_location_batch(
+pub fn compute_owned_artifact_hashes(
+    planet_artifacts_state: PlanetArtifacts,
+    owned_artifacts: [Artifact; 20],
+    owned_artifact_locations: [ArtifactLocation; 20],
+) -> ([Field; 20], [Field; 20], [Field; 20], u32) {
+    let mut artifact_ids: [Field; 20] = [0; 20];
+    let mut artifact_hashes: [Field; 20] = [0; 20];
+    let mut artifact_location_hashes: [Field; 20] = [0; 20];
+
+    for i in 0..20 {
+        if i < planet_artifacts_state.count {
+            let artifact_id = planet_artifacts_state.ids[i];
+            artifact_ids[i] = artifact_id;
+            if artifact_id != 0 {
+                artifact_hashes[i] = poseidon2_hash(owned_artifacts[i].serialize());
+                artifact_location_hashes[i] =
+                    poseidon2_hash(owned_artifact_locations[i].serialize());
+            }
+        }
+    }
+
+    (artifact_ids, artifact_hashes, artifact_location_hashes, planet_artifacts_state.count)
+}
+
+pub fn compute_artifact_hashes(
+    artifact_id: Field,
+    artifact: Artifact,
+    artifact_location: ArtifactLocation,
+) -> (Field, Field, Field) {
+    let artifact_hash = if artifact == Artifact::zero() {
+        0
+    } else {
+        poseidon2_hash(artifact.serialize())
+    };
+    let artifact_location_hash = if artifact_location == ArtifactLocation::zero() {
+        0
+    } else {
+        poseidon2_hash(artifact_location.serialize())
+    };
+    (artifact_id, artifact_hash, artifact_location_hash)
+}
+
+pub fn compute_world_hash(world: World) -> Field {
+    if world == World::zero() {
+        0
+    } else {
+        poseidon2_hash(world.serialize())
+    }
+}
+
+pub fn assert_public_timestamp(timestamp: u64, actual_timestamp: u64) {
+    assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+    let max_time_drift: u64 = 300;
+    assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
+}
+
+pub fn compact_artifact_locations(
     artifact_ids: [Field; 20],
     artifact_locations: [ArtifactLocation; 20],
     count: u32,
 ) -> ([Field; 20], [ArtifactLocation; 20], u32) {
-    let mut batch_ids: [Field; 20] = [0; 20];
-    let mut batch_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
-    let mut batch_count: u32 = 0;
+    let mut out_ids: [Field; 20] = [0; 20];
+    let mut out_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+    let mut out_count: u32 = 0;
     for i in 0..20 {
         if (i < count) & (artifact_ids[i] != 0) {
-            let idx = batch_count;
-            batch_ids[idx] = artifact_ids[i];
-            batch_locations[idx] = artifact_locations[i];
-            batch_count += 1;
+            out_ids[out_count] = artifact_ids[i];
+            out_locations[out_count] = artifact_locations[i];
+            out_count += 1;
         }
     }
-    (batch_ids, batch_locations, batch_count)
+    (out_ids, out_locations, out_count)
 }

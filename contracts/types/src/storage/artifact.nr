@@ -16,6 +16,7 @@ pub struct Artifact {
     pub last_activated: u64,
     pub last_deactivated: u64,
     pub wormhole_to: Field,
+    pub owner: AztecAddress,
     pub controller: AztecAddress,
     pub last_updated: u64,
 }
@@ -34,6 +35,7 @@ impl Artifact {
             last_activated: 0,
             last_deactivated: 0,
             wormhole_to: 0 as Field,
+            owner: AztecAddress::zero(),
             controller: AztecAddress::zero(),
             last_updated: 0,
         }

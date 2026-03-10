@@ -15,7 +15,9 @@ members = [
     "storage/world",
     "system/admin",
     "system/artifact_action",
-    "system/artifact_valut",
+    "system/artifact_valut", 
+    "system/artifact_prospect", 
+    "system/artifact_find",
     "system/core",
     "system/move",
 ]

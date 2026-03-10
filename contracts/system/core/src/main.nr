@@ -1383,6 +1383,7 @@ contract Core {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
+        cumulative_rarity_4: u128,
         // State inputs (to be validated via hash in public)
         planet_state: Planet,
         player_state: Player,
@@ -1518,8 +1519,11 @@ contract Core {
         new_world.player_ids_count += 1;
         if initialize_planet {
             new_world.planet_ids_count += 1;
+            if new_planet.planet_level == 4 {
+                new_world.initialized_planet_count_level4 += 1;
+            }
         }
-        new_world = update_world_radius(new_world, world_config);
+        new_world = update_world_radius(new_world, world_config, cumulative_rarity_4);
 
         // Enqueue public function call with all hashes and new states
         self.enqueue_self.initialize_player_public(
@@ -1536,6 +1540,7 @@ contract Core {
             planet_type_weights_tier_1_hash,
             planet_type_weights_tier_2_hash,
             planet_type_weights_tier_3_hash,
+            cumulative_rarity_4,
             planet_state_hash,
             player_state_hash,
             world_hash,
@@ -1563,6 +1568,7 @@ contract Core {
         planet_type_weights_tier_1_hash: Field,
         planet_type_weights_tier_2_hash: Field,
         planet_type_weights_tier_3_hash: Field,
+        cumulative_rarity_4: u128,
         // State hashes for verification
         planet_state_hash: Field,
         player_state_hash: Field,
@@ -1641,6 +1647,12 @@ contract Core {
                 planet_type_weights_tier_3_hash,
             )),
             "Planet type weights tier 3 hash mismatch",
+        );
+
+        // Verify cumulative_rarity_4 matches on-chain Config
+        assert(
+            cumulative_rarity_4 == self.view(config.get_cumulative_rarity(4)),
+            "Cumulative rarity 4 mismatch",
         );
 
         // Verify state hashes match on-chain state

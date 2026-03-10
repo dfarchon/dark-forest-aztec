@@ -92,12 +92,16 @@ pub fn get_biome_default(space_type: u8, biomebase: u8) -> u8 {
     get_biome(space_type, biomebase, 15, 17)
 }
 
-pub fn get_biome_with_config(space_type: u8, biomebase: u8, config: GameConfigCore) -> u8 {
+pub fn get_biome_with_config(
+    space_type: u8,
+    biomebase: u8,
+    game_config_core: GameConfigCore,
+) -> u8 {
     get_biome(
         space_type,
         biomebase,
-        config.biome_threshold_1 as u128,
-        config.biome_threshold_2 as u128,
+        game_config_core.biome_threshold_1 as u128,
+        game_config_core.biome_threshold_2 as u128,
     )
 }
 
@@ -148,13 +152,13 @@ pub fn biomebase_proof_default(x: Field, y: Field) -> (Field, u8) {
 
 pub fn biome_proof(
     snark: SnarkConfig,
-    game_config: GameConfigCore,
+    game_config_core: GameConfigCore,
     space_type: u8,
     x: Field,
     y: Field,
 ) -> (Field, u8, u8) {
     let (planet_hash, biomebase) = biomebase_proof_with_config(snark, x, y);
-    let biome = get_biome_with_config(space_type, biomebase, game_config);
+    let biome = get_biome_with_config(space_type, biomebase, game_config_core);
     (planet_hash, biomebase, biome)
 }
 

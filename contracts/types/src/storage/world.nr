@@ -11,6 +11,7 @@ pub struct World {
     pub planet_ids_count: u128,
     pub revealed_planet_ids_count: u128,
     pub player_ids_count: u128,
+    pub initialized_planet_count_level4: u128,
     pub next_change_block: u32,
 }
 
@@ -24,6 +25,7 @@ impl World {
             planet_ids_count: 0,
             revealed_planet_ids_count: 0,
             player_ids_count: 0,
+            initialized_planet_count_level4: 0,
             next_change_block: 0,
         }
     }

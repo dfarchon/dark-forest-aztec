@@ -94,7 +94,7 @@ impl GameConfig {
 /// Aztec protocol: MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX = 63 (@aztec/constants).
 #[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct GameConfigCore {
-    pub max_natural_planet_level: u128,
+    pub max_natural_planet_level: u8,
     pub perlin_threshold_1: u8,
     pub perlin_threshold_2: u8,
     pub perlin_threshold_3: u8,

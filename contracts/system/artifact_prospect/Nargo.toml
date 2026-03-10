@@ -1,0 +1,22 @@
+[package]
+name = "artifact_prospect"
+type = "contract"
+authors = [""]
+
+[dependencies]
+aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v4.0.0-devnet.2-patch.1", directory = "aztec" }
+
+circuits = { path = "../../circuits" }
+config = { path = "../../config" }
+libs = { path = "../../libs" }
+types = { path = "../../types" }
+
+arrival_storage = { path = "../../storage/arrival" }
+artifact_storage = { path = "../../storage/artifact" }
+artifact_location_storage = { path = "../../storage/artifact_location" }
+planet_storage = { path = "../../storage/planet" }
+planet_artifacts_storage = { path = "../../storage/planet_artifacts" }
+planet_events_storage = { path = "../../storage/planet_events" }
+planet_revealed_coords_storage = { path = "../../storage/planet_revealed_coords" }
+player_storage = { path = "../../storage/player" }
+world_storage = { path = "../../storage/world" }

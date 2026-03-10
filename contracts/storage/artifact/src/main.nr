@@ -68,6 +68,21 @@ pub contract ArtifactStorage {
         self.emit(ArtifactUpdate { id: id, block_number: block_number, state: state });
     }
 
+    #[external("public")]
+    fn set_spaceships_max5(ids: [Field; 5], states: [Artifact; 5], count: u32) {
+        self.internal.assert_authorized();
+        let block_number = self.context.block_number();
+        for i in 0..5 {
+            if i < count {
+                let root = poseidon2_hash(states[i].serialize());
+                self.storage.state_roots.at(ids[i]).write(root);
+                self.emit(
+                    ArtifactUpdate { id: ids[i], block_number: block_number, state: states[i] },
+                );
+            }
+        }
+    }
+
     // ================== ADMIN ==================
 
     #[external("public")]
@@ -171,9 +186,9 @@ pub contract ArtifactStorage {
 
     #[external("public")]
     #[view]
-    fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20]) -> bool {
+    fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20], count: u32) -> bool {
         let mut result = true;
-        for i in 0..20 {
+        for i in 0..count {
             let stored_hash = self.storage.state_roots.at(ids[i]).read();
             if stored_hash != hashes[i] {
                 result = false;
