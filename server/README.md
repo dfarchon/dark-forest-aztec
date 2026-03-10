@@ -296,6 +296,8 @@ docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
 
 ## Railway
 
+**Devnet deployment:** https://server-production-b4e5.up.railway.app
+
 Recommended Railway settings for the current server:
 
 - Build from the repo root with `server/Dockerfile` as the Dockerfile path
@@ -304,6 +306,8 @@ Recommended Railway settings for the current server:
 - Set `AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com`
 - Set `CORS_ORIGINS=https://df-aztec.netlify.app`
 - Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
+
+Detailed setup, verification steps, and known deploy traps are documented in [`server/docs/railway-deploy.md`](/Users/pabloli/Documents/dfpunk-aztec/server/docs/railway-deploy.md).
 
 The Docker image must include `server`, `packages/contracts`, and `packages/indexer-server-core`; the current Dockerfile now copies all three runtime paths.
 Because the Docker build context is the monorepo root, the ignore file for deployment uploads lives at repo root: [`.dockerignore`](/Users/pabloli/Documents/dfpunk-aztec/.dockerignore).

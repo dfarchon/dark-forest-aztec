@@ -5,6 +5,10 @@
 
 const DEFAULT_NODE_URL = "http://localhost:8080";
 
+/** Default indexer bootstrap URL (devnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in devnet builds. */
+const DEFAULT_INDEXER_BOOTSTRAP_URL =
+  "https://server-production-b4e5.up.railway.app";
+
 function getString(key: string): string | undefined {
   const value = import.meta.env[key];
   if (typeof value === "string" && value.length > 0) {
@@ -23,9 +27,12 @@ export function getNodeUrl(): string {
 /**
  * Optional off-chain indexer API base URL for bootstrap snapshot.
  * When undefined, client syncs from node starting at START_BLOCK.
+ * In devnet builds, defaults to the devnet server when env is unset.
  */
 export function getIndexerBootstrapUrl(): string | undefined {
-  return getString("VITE_INDEXER_BOOTSTRAP_URL");
+  const fromEnv = getString("VITE_INDEXER_BOOTSTRAP_URL");
+  if (fromEnv !== undefined) return fromEnv;
+  return isProductionLike() ? DEFAULT_INDEXER_BOOTSTRAP_URL : undefined;
 }
 
 /**
