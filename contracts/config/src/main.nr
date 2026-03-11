@@ -901,14 +901,14 @@ pub contract Config {
     }
 
     /// Verifies config hashes needed for the move function.
-    /// Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
+    /// Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
     /// Also verifies planet_default_stats_hash for the given level.
     #[external("public")]
     #[view]
     fn verify_move_config_hashes(
         level: u8,
         planet_default_stats_hash: Field,
-        hashes: [Field; 9],
+        hashes: [Field; 10],
     ) -> bool {
         (self.storage.snark_config_hash.read() == hashes[0])
             & (self.storage.world_config_hash.read() == hashes[1])
@@ -919,6 +919,7 @@ pub contract Config {
             & (self.storage.planet_type_weights_tier_1_hash.read() == hashes[6])
             & (self.storage.planet_type_weights_tier_2_hash.read() == hashes[7])
             & (self.storage.planet_type_weights_tier_3_hash.read() == hashes[8])
+            & (self.storage.artifacts_config_hash.read() == hashes[9])
             & (self.storage.planet_default_stats_hash.at(level).read() == planet_default_stats_hash)
     }
 

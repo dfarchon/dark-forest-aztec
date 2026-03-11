@@ -349,6 +349,32 @@ pub fn apply_spaceship_arrive(artifact: Artifact, mut planet: Planet) -> Planet 
     planet
 }
 
+/// Noir port of Solidity `DFMoveFacet.applySpaceshipDepart`.
+/// Reverses the effects applied by `apply_spaceship_arrive` when a ship leaves a planet.
+pub fn apply_spaceship_depart(artifact: Artifact, mut planet: Planet, timestamp: u64) -> Planet {
+    if !planet.is_home_planet {
+        if artifact.artifact_type == ArtifactType::ShipMothership {
+            if planet.energy_gro_doublers == 1 {
+                planet.energy_gro_doublers -= 1;
+                planet.population_growth /= 2;
+            } else if planet.energy_gro_doublers > 1 {
+                planet.energy_gro_doublers -= 1;
+            }
+        } else if artifact.artifact_type == ArtifactType::ShipWhale {
+            if planet.silver_gro_doublers == 1 {
+                planet.silver_gro_doublers -= 1;
+                planet.silver_growth /= 2;
+            } else if planet.silver_gro_doublers > 1 {
+                planet.silver_gro_doublers -= 1;
+            }
+        } else if artifact.artifact_type == ArtifactType::ShipTitan {
+            planet.last_updated = timestamp;
+            planet.pausers -= 1;
+        }
+    }
+    planet
+}
+
 /// Noir port of Solidity `LibPlanet.refreshPlanet`.
 /// artifacts[i] and artifact_locations[i] correspond to arrivals[i].carried_artifact_id.
 pub fn refresh_planet(

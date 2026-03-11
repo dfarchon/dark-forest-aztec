@@ -298,10 +298,10 @@ contract Core {
 
         // Extract arrival_ids and artifact_ids by order: [id_0, id_1, ..., id_19]
         let mut arrival_ids: [Field; 20] = [0; 20];
-        let mut arrivals_hash: [Field; 20] = [0; 20];
+        let mut arrival_hashes: [Field; 20] = [0; 20];
         let mut artifact_ids: [Field; 20] = [0; 20];
-        let mut artifacts_hash: [Field; 20] = [0; 20];
-        let mut artifact_locations_hash: [Field; 20] = [0; 20];
+        let mut artifact_hashes: [Field; 20] = [0; 20];
+        let mut artifact_location_hashes: [Field; 20] = [0; 20];
         // Use fixed array size 20 as compile-time constant for loop bound
         for i in 0..20 {
             if i < planet_events_state.count {
@@ -312,11 +312,11 @@ contract Core {
                 let arrival_id = arrival_ids[i];
                 let artifact_id = artifact_ids[i];
                 if arrival_id != 0 {
-                    arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+                    arrival_hashes[i] = poseidon2_hash(arrivals[i].serialize());
 
                     if artifact_id != 0 {
-                        artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
-                        artifact_locations_hash[i] =
+                        artifact_hashes[i] = poseidon2_hash(artifacts[i].serialize());
+                        artifact_location_hashes[i] =
                             poseidon2_hash(artifact_locations[i].serialize());
                     }
                 }
@@ -362,10 +362,10 @@ contract Core {
             planet_events_state_hash,
             planet_events_state.count as u8,
             arrival_ids,
-            arrivals_hash,
+            arrival_hashes,
             artifact_ids,
-            artifacts_hash,
-            artifact_locations_hash,
+            artifact_hashes,
+            artifact_location_hashes,
             planet_artifacts_state_hash,
             new_planet,
             new_planet_events_state,
@@ -382,11 +382,11 @@ contract Core {
         planet_state_hash: Field,
         planet_events_state_hash: Field,
         planet_event_count: u8,
-        arrivals_ids: [Field; 20],
-        arrivals_hash: [Field; 20],
-        artifacts_ids: [Field; 20],
-        artifacts_hash: [Field; 20],
-        artifact_locations_hash: [Field; 20],
+        arrival_ids: [Field; 20],
+        arrival_hashes: [Field; 20],
+        artifact_ids: [Field; 20],
+        artifact_hashes: [Field; 20],
+        artifact_location_hashes: [Field; 20],
         planet_artifacts_state_hash: Field,
         // Computed results to write
         new_planet: Planet,
@@ -434,23 +434,23 @@ contract Core {
         // Use fixed array size 20 as compile-time constant for loop bound
         for i in 0..20 {
             if (i as u8) < planet_event_count {
-                let arrival_id = arrivals_ids[i];
-                let artifact_id = artifacts_ids[i];
+                let arrival_id = arrival_ids[i];
+                let artifact_id = artifact_ids[i];
                 if arrival_id != 0 {
                     assert(
-                        self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])),
+                        self.view(arrival_storage.verify_hash(arrival_id, arrival_hashes[i])),
                         "Arrival hash mismatch",
                     );
                 }
                 if artifact_id != 0 {
                     assert(
-                        self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])),
+                        self.view(artifact_storage.verify_hash(artifact_id, artifact_hashes[i])),
                         "Artifact hash mismatch",
                     );
                     assert(
                         self.view(artifact_location_storage.verify_hash(
                             artifact_id,
-                            artifact_locations_hash[i],
+                            artifact_location_hashes[i],
                         )),
                         "Artifact location hash mismatch",
                     );
@@ -472,8 +472,8 @@ contract Core {
         // Write artifact_locations for arrivals that have artifacts
         // Use fixed array size 20 as compile-time constant for loop bound
         for i in 0..20 {
-            if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
-                self.call(artifact_location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+            if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
+                self.call(artifact_location_storage.set(artifact_ids[i], new_artifact_locations[i]));
             }
         }
     }
@@ -540,25 +540,25 @@ contract Core {
             poseidon2_hash(planet_events_state.serialize())
         };
 
-        let mut arrivals_ids: [Field; 20] = [0; 20];
-        let mut arrivals_hash: [Field; 20] = [0; 20];
-        let mut artifacts_ids: [Field; 20] = [0; 20];
-        let mut artifacts_hash: [Field; 20] = [0; 20];
-        let mut artifact_locations_hash: [Field; 20] = [0; 20];
+        let mut arrival_ids: [Field; 20] = [0; 20];
+        let mut arrival_hashes: [Field; 20] = [0; 20];
+        let mut artifact_ids: [Field; 20] = [0; 20];
+        let mut artifact_hashes: [Field; 20] = [0; 20];
+        let mut artifact_location_hashes: [Field; 20] = [0; 20];
         for i in 0..20 {
             if i < planet_events_state.count {
                 let arrival_id = planet_events_state.events[i].id;
                 let arrival = arrivals[i];
                 let artifact_id = arrival.carried_artifact_id;
 
-                arrivals_ids[i] = arrival_id;
-                artifacts_ids[i] = artifact_id;
+                arrival_ids[i] = arrival_id;
+                artifact_ids[i] = artifact_id;
                 if arrival_id != 0 {
-                    arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+                    arrival_hashes[i] = poseidon2_hash(arrivals[i].serialize());
 
                     if artifact_id != 0 {
-                        artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
-                        artifact_locations_hash[i] =
+                        artifact_hashes[i] = poseidon2_hash(artifacts[i].serialize());
+                        artifact_location_hashes[i] =
                             poseidon2_hash(artifact_locations[i].serialize());
                     }
                 }
@@ -623,11 +623,11 @@ contract Core {
             planet_state_hash,
             planet_events_state_hash,
             planet_events_state.count as u8,
-            arrivals_ids,
-            arrivals_hash,
-            artifacts_ids,
-            artifacts_hash,
-            artifact_locations_hash,
+            arrival_ids,
+            arrival_hashes,
+            artifact_ids,
+            artifact_hashes,
+            artifact_location_hashes,
             planet_artifacts_state_hash,
             upgrade_config_hash,
             upgrade_hash,
@@ -649,11 +649,11 @@ contract Core {
         planet_state_hash: Field,
         planet_events_state_hash: Field,
         planet_event_count: u8,
-        arrivals_ids: [Field; 20],
-        arrivals_hash: [Field; 20],
-        artifacts_ids: [Field; 20],
-        artifacts_hash: [Field; 20],
-        artifact_locations_hash: [Field; 20],
+        arrival_ids: [Field; 20],
+        arrival_hashes: [Field; 20],
+        artifact_ids: [Field; 20],
+        artifact_hashes: [Field; 20],
+        artifact_location_hashes: [Field; 20],
         planet_artifacts_state_hash: Field,
         upgrade_config_hash: Field,
         upgrade_hash: Field,
@@ -691,25 +691,25 @@ contract Core {
             ArtifactLocationStorage::at(artifact_location_storage_address);
         for i in 0..20 {
             if (i as u8) < planet_event_count {
-                let arrival_id = arrivals_ids[i];
-                let artifact_id = artifacts_ids[i];
+                let arrival_id = arrival_ids[i];
+                let artifact_id = artifact_ids[i];
 
                 if arrival_id != 0 {
                     assert(
-                        self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])),
+                        self.view(arrival_storage.verify_hash(arrival_id, arrival_hashes[i])),
                         "Arrival hash mismatch",
                     );
                 }
 
                 if artifact_id != 0 {
                     assert(
-                        self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])),
+                        self.view(artifact_storage.verify_hash(artifact_id, artifact_hashes[i])),
                         "Artifact hash mismatch",
                     );
                     assert(
                         self.view(artifact_location_storage.verify_hash(
                             artifact_id,
-                            artifact_locations_hash[i],
+                            artifact_location_hashes[i],
                         )),
                         "Artifact location hash mismatch",
                     );
@@ -745,8 +745,8 @@ contract Core {
         self.call(planet_events_storage.set(location, new_planet_events_state));
         self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
         for i in 0..20 {
-            if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
-                self.call(artifact_location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+            if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
+                self.call(artifact_location_storage.set(artifact_ids[i], new_artifact_locations[i]));
             }
         }
     }
@@ -818,25 +818,25 @@ contract Core {
             poseidon2_hash(planet_events_state.serialize())
         };
 
-        let mut arrivals_ids: [Field; 20] = [0; 20];
-        let mut arrivals_hash: [Field; 20] = [0; 20];
-        let mut artifacts_ids: [Field; 20] = [0; 20];
-        let mut artifacts_hash: [Field; 20] = [0; 20];
-        let mut artifact_locations_hash: [Field; 20] = [0; 20];
+        let mut arrival_ids: [Field; 20] = [0; 20];
+        let mut arrival_hashes: [Field; 20] = [0; 20];
+        let mut artifact_ids: [Field; 20] = [0; 20];
+        let mut artifact_hashes: [Field; 20] = [0; 20];
+        let mut artifact_location_hashes: [Field; 20] = [0; 20];
         for i in 0..20 {
             if i < planet_events_state.count {
                 let arrival_id = planet_events_state.events[i].id;
                 let arrival = arrivals[i];
                 let artifact_id = arrival.carried_artifact_id;
 
-                arrivals_ids[i] = arrival_id;
-                artifacts_ids[i] = artifact_id;
+                arrival_ids[i] = arrival_id;
+                artifact_ids[i] = artifact_id;
                 if arrival_id != 0 {
-                    arrivals_hash[i] = poseidon2_hash(arrivals[i].serialize());
+                    arrival_hashes[i] = poseidon2_hash(arrivals[i].serialize());
 
                     if artifact_id != 0 {
-                        artifacts_hash[i] = poseidon2_hash(artifacts[i].serialize());
-                        artifact_locations_hash[i] =
+                        artifact_hashes[i] = poseidon2_hash(artifacts[i].serialize());
+                        artifact_location_hashes[i] =
                             poseidon2_hash(artifact_locations[i].serialize());
                     }
                 }
@@ -895,11 +895,11 @@ contract Core {
             planet_state_hash,
             planet_events_state_hash,
             planet_events_state.count as u8,
-            arrivals_ids,
-            arrivals_hash,
-            artifacts_ids,
-            artifacts_hash,
-            artifact_locations_hash,
+            arrival_ids,
+            arrival_hashes,
+            artifact_ids,
+            artifact_hashes,
+            artifact_location_hashes,
             planet_artifacts_state_hash,
             player_state_hash,
             world_config_hash,
@@ -920,11 +920,11 @@ contract Core {
         planet_state_hash: Field,
         planet_events_state_hash: Field,
         planet_event_count: u8,
-        arrivals_ids: [Field; 20],
-        arrivals_hash: [Field; 20],
-        artifacts_ids: [Field; 20],
-        artifacts_hash: [Field; 20],
-        artifact_locations_hash: [Field; 20],
+        arrival_ids: [Field; 20],
+        arrival_hashes: [Field; 20],
+        artifact_ids: [Field; 20],
+        artifact_hashes: [Field; 20],
+        artifact_location_hashes: [Field; 20],
         planet_artifacts_state_hash: Field,
         player_state_hash: Field,
         world_config_hash: Field,
@@ -970,25 +970,25 @@ contract Core {
             ArtifactLocationStorage::at(artifact_location_storage_address);
         for i in 0..20 {
             if (i as u8) < planet_event_count {
-                let arrival_id = arrivals_ids[i];
-                let artifact_id = artifacts_ids[i];
+                let arrival_id = arrival_ids[i];
+                let artifact_id = artifact_ids[i];
 
                 if arrival_id != 0 {
                     assert(
-                        self.view(arrival_storage.verify_hash(arrival_id, arrivals_hash[i])),
+                        self.view(arrival_storage.verify_hash(arrival_id, arrival_hashes[i])),
                         "Arrival hash mismatch",
                     );
                 }
 
                 if artifact_id != 0 {
                     assert(
-                        self.view(artifact_storage.verify_hash(artifact_id, artifacts_hash[i])),
+                        self.view(artifact_storage.verify_hash(artifact_id, artifact_hashes[i])),
                         "Artifact hash mismatch",
                     );
                     assert(
                         self.view(artifact_location_storage.verify_hash(
                             artifact_id,
-                            artifact_locations_hash[i],
+                            artifact_location_hashes[i],
                         )),
                         "Artifact location hash mismatch",
                     );
@@ -1014,8 +1014,8 @@ contract Core {
         self.call(planet_events_storage.set(location, new_planet_events_state));
         self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
         for i in 0..20 {
-            if (i < planet_event_count as u32) & (artifacts_ids[i] != 0) {
-                self.call(artifact_location_storage.set(artifacts_ids[i], new_artifact_locations[i]));
+            if (i < planet_event_count as u32) & (artifact_ids[i] != 0) {
+                self.call(artifact_location_storage.set(artifact_ids[i], new_artifact_locations[i]));
             }
         }
         self.call(player_storage.set(sender, new_player));

@@ -35,8 +35,9 @@ contract ArtifactProspect {
     };
 
     use ::libs::batch_utils::{
-        assert_artifact_timestamp_freshness, assert_owned_artifacts_timestamp_freshness,
-        assert_planet_timestamp_freshness, assert_public_timestamp, compute_artifact_hashes,
+        assert_artifact_and_location_timestamp_freshness, assert_artifact_timestamp_freshness,
+        assert_owned_artifacts_timestamp_freshness, assert_planet_timestamp_freshness,
+        assert_public_timestamp, compute_artifact_and_location_hashes,
         compute_owned_artifact_hashes, compute_planet_hashes, compute_world_hash,
     };
     use ::libs::game_utils::{
@@ -267,12 +268,12 @@ contract ArtifactProspect {
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
         let artifact_ids: [Field; 20] = planet_hashes_result.6;
         let artifact_hashes: [Field; 20] = planet_hashes_result.7;
-        let artifact_locations_hashes: [Field; 20] = planet_hashes_result.8;
+        let artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
         let origin_arrivals_count = planet_hashes_result.9;
 
         let owned_artifact_ids: [Field; 20] = owned_artifact_hashes_result.0;
         let owned_artifact_hashes: [Field; 20] = owned_artifact_hashes_result.1;
-        let owned_artifact_locations_hashes: [Field; 20] = owned_artifact_hashes_result.2;
+        let owned_artifact_location_hashes: [Field; 20] = owned_artifact_hashes_result.2;
         let owned_artifact_count = owned_artifact_hashes_result.3;
 
         let world_hash: Field = world_hash_result;
@@ -344,7 +345,7 @@ contract ArtifactProspect {
             arrival_hashes,
             artifact_ids,
             artifact_hashes,
-            artifact_locations_hashes,
+            artifact_location_hashes,
             world_hash,
             new_planet,
             new_planet_artifacts_state,
@@ -354,7 +355,7 @@ contract ArtifactProspect {
             change_artifact_locations,
             owned_artifact_ids,
             owned_artifact_hashes,
-            owned_artifact_locations_hashes,
+            owned_artifact_location_hashes,
             owned_artifact_count,
         );
     }
@@ -372,7 +373,7 @@ contract ArtifactProspect {
         arrival_hashes: [Field; 20],
         artifact_ids: [Field; 20],
         artifact_hashes: [Field; 20],
-        artifact_locations_hashes: [Field; 20],
+        artifact_location_hashes: [Field; 20],
         world_hash: Field,
         new_planet: Planet,
         new_planet_artifacts_state: PlanetArtifacts,
@@ -382,7 +383,7 @@ contract ArtifactProspect {
         change_artifact_locations: [ArtifactLocation; 20],
         owned_artifact_ids: [Field; 20],
         owned_artifact_hashes: [Field; 20],
-        owned_artifact_locations_hashes: [Field; 20],
+        owned_artifact_location_hashes: [Field; 20],
         owned_artifact_count: u32,
     ) {
         let actual_timestamp = self.context.timestamp();
@@ -432,7 +433,7 @@ contract ArtifactProspect {
         assert(
             self.view(artifact_location_storage.verify_hashes_batch(
                 artifact_ids,
-                artifact_locations_hashes,
+                artifact_location_hashes,
                 origin_arrivals_count as u32,
             )),
             "artifact locations hash mismatch",
@@ -450,7 +451,7 @@ contract ArtifactProspect {
         assert(
             self.view(artifact_location_storage.verify_hashes_batch(
                 owned_artifact_ids,
-                owned_artifact_locations_hashes,
+                owned_artifact_location_hashes,
                 owned_artifact_count as u32,
             )),
             "owned artifact locations hash mismatch",

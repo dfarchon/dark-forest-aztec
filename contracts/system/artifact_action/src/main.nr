@@ -35,8 +35,9 @@ contract ArtifactAction {
     };
 
     use ::libs::batch_utils::{
-        assert_artifact_timestamp_freshness, assert_owned_artifacts_timestamp_freshness,
-        assert_planet_timestamp_freshness, assert_public_timestamp, compute_artifact_hashes,
+        assert_artifact_and_location_timestamp_freshness,
+        assert_owned_artifacts_timestamp_freshness, assert_planet_timestamp_freshness,
+        assert_public_timestamp, compute_artifact_and_location_hashes,
         compute_owned_artifact_hashes, compute_planet_hashes, compute_world_hash,
     };
     use ::libs::game_utils::{
@@ -245,7 +246,7 @@ contract ArtifactAction {
             arrival_artifact_locations,
         );
 
-        assert_artifact_timestamp_freshness(timestamp, artifact, artifact_location);
+        assert_artifact_and_location_timestamp_freshness(timestamp, artifact, artifact_location);
 
         let planet_hashes_result = compute_planet_hashes(
             location_id,
@@ -258,7 +259,7 @@ contract ArtifactAction {
         );
 
         let artifact_hashes_result =
-            compute_artifact_hashes(artifact_id, artifact, artifact_location);
+            compute_artifact_and_location_hashes(artifact_id, artifact, artifact_location);
 
         let world_hash_result = compute_world_hash(world);
 
@@ -268,7 +269,7 @@ contract ArtifactAction {
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
         let arrival_artifact_ids: [Field; 20] = planet_hashes_result.6;
         let arrival_artifact_hashes: [Field; 20] = planet_hashes_result.7;
-        let arrival_artifact_locations_hashes: [Field; 20] = planet_hashes_result.8;
+        let arrival_artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
         let origin_arrivals_count = planet_hashes_result.9;
         let planet_artifacts_state_hash = planet_hashes_result.2;
         let artifact_hash = artifact_hashes_result.1;
@@ -445,7 +446,7 @@ contract ArtifactAction {
             arrival_hashes,
             arrival_artifact_ids,
             arrival_artifact_hashes,
-            arrival_artifact_locations_hashes,
+            arrival_artifact_location_hashes,
             origin_arrivals_count,
             planet_artifacts_state_hash,
             artifact_hash,
@@ -477,7 +478,7 @@ contract ArtifactAction {
         arrival_hashes: [Field; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
-        arrival_artifact_locations_hashes: [Field; 20],
+        arrival_artifact_location_hashes: [Field; 20],
         origin_arrivals_count: u32,
         planet_artifacts_state_hash: Field,
         artifact_hash: Field,
@@ -543,7 +544,7 @@ contract ArtifactAction {
         assert(
             self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
-                arrival_artifact_locations_hashes,
+                arrival_artifact_location_hashes,
                 origin_arrivals_count,
             )),
             "arrival artifact locations hash mismatch",
@@ -620,7 +621,7 @@ contract ArtifactAction {
             arrival_artifact_locations,
         );
 
-        assert_artifact_timestamp_freshness(timestamp, artifact, artifact_location);
+        assert_artifact_and_location_timestamp_freshness(timestamp, artifact, artifact_location);
 
         let planet_hashes_result = compute_planet_hashes(
             location_id,
@@ -633,7 +634,7 @@ contract ArtifactAction {
         );
 
         let artifact_hashes_result =
-            compute_artifact_hashes(artifact_id, artifact, artifact_location);
+            compute_artifact_and_location_hashes(artifact_id, artifact, artifact_location);
 
         let world_hash_result = compute_world_hash(world);
 
@@ -643,7 +644,7 @@ contract ArtifactAction {
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
         let arrival_artifact_ids: [Field; 20] = planet_hashes_result.6;
         let arrival_artifact_hashes: [Field; 20] = planet_hashes_result.7;
-        let arrival_artifact_locations_hashes: [Field; 20] = planet_hashes_result.8;
+        let arrival_artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
         let origin_arrivals_count = planet_hashes_result.9;
         let planet_artifacts_state_hash = planet_hashes_result.2;
         let artifact_hash = artifact_hashes_result.1;
@@ -742,7 +743,7 @@ contract ArtifactAction {
             arrival_hashes,
             arrival_artifact_ids,
             arrival_artifact_hashes,
-            arrival_artifact_locations_hashes,
+            arrival_artifact_location_hashes,
             origin_arrivals_count,
             planet_artifacts_state_hash,
             artifact_hash,
@@ -771,7 +772,7 @@ contract ArtifactAction {
         arrival_hashes: [Field; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
-        arrival_artifact_locations_hashes: [Field; 20],
+        arrival_artifact_location_hashes: [Field; 20],
         origin_arrivals_count: u32,
         planet_artifacts_state_hash: Field,
         artifact_hash: Field,
@@ -832,7 +833,7 @@ contract ArtifactAction {
         assert(
             self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
-                arrival_artifact_locations_hashes,
+                arrival_artifact_location_hashes,
                 origin_arrivals_count,
             )),
             "arrival artifact locations hash mismatch",

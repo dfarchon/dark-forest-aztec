@@ -73,7 +73,7 @@ pub contract ArtifactLocationStorage {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
         for i in 0..20 {
-            if i < count {
+            if (i < count) & (ids[i] != 0) {
                 let root = poseidon2_hash(states[i].serialize());
                 self.storage.state_roots.at(ids[i]).write(root);
                 self.emit(
@@ -91,8 +91,8 @@ pub contract ArtifactLocationStorage {
     fn set_spaceship_locations_max5(ids: [Field; 5], states: [ArtifactLocation; 5], count: u32) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        for i in 0..20 {
-            if i < count {
+        for i in 0..5 {
+            if (i < count) & (ids[i] != 0) {
                 let root = poseidon2_hash(states[i].serialize());
                 self.storage.state_roots.at(ids[i]).write(root);
                 self.emit(

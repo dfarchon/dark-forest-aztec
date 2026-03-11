@@ -2,6 +2,15 @@ use ::aztec::protocol::{hash::poseidon2_hash, traits::Serialize};
 
 use crate::planet::refresh_planet;
 
+use ::types::config::{
+    artifacts::ArtifactsConfig,
+    default_stats::PlanetDefaultStats,
+    game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
+    snark::SnarkConfig,
+    space_junk::SpaceJunkConfig,
+    world::WorldConfig,
+};
+
 use ::types::storage::{
     arrival::Arrival,
     artifact::{Artifact, ArtifactLocation},
@@ -15,8 +24,8 @@ pub fn assert_planet_timestamp_freshness(
     planet_artifacts_state: PlanetArtifacts,
     planet_events_state: PlanetEvents,
     arrivals: [Arrival; 20],
-    artifacts: [Artifact; 20],
-    artifact_locations: [ArtifactLocation; 20],
+    arrival_artifacts: [Artifact; 20],
+    arrival_artifact_locations: [ArtifactLocation; 20],
 ) {
     assert(timestamp >= planet.last_updated, "Timestamp must be >= planet's last_updated");
     assert(
@@ -36,11 +45,11 @@ pub fn assert_planet_timestamp_freshness(
             );
             if arrivals[i].carried_artifact_id != 0 {
                 assert(
-                    timestamp >= artifacts[i].last_updated,
+                    timestamp >= arrival_artifacts[i].last_updated,
                     "Timestamp must be >= artifact's last_updated",
                 );
                 assert(
-                    timestamp >= artifact_locations[i].last_updated,
+                    timestamp >= arrival_artifact_locations[i].last_updated,
                     "Timestamp must be >= artifact_location's last_updated",
                 );
             }
@@ -48,7 +57,11 @@ pub fn assert_planet_timestamp_freshness(
     }
 }
 
-pub fn assert_artifact_timestamp_freshness(
+pub fn assert_artifact_timestamp_freshness(timestamp: u64, artifact: Artifact) {
+    assert(timestamp >= artifact.last_updated, "Timestamp must be >= artifact's last_updated");
+}
+
+pub fn assert_artifact_and_location_timestamp_freshness(
     timestamp: u64,
     artifact: Artifact,
     artifact_location: ArtifactLocation,
@@ -89,7 +102,7 @@ pub fn compute_planet_hashes(
     artifacts: [Artifact; 20],
     artifact_locations: [ArtifactLocation; 20],
     ) -> (Field, Field, Field, Field, [Field; 20], [Field; 20], [Field; 20], [Field; 20], [Field; 20], u32) {
-    let origin_arrivals_count = planet_events_state.count;
+    let original_arrivals_count = planet_events_state.count;
 
     let planet_hash = if planet == Planet::zero() {
         0
@@ -134,7 +147,7 @@ pub fn compute_planet_hashes(
     (
         planet_id, planet_hash, planet_artifacts_state_hash, planet_events_state_hash, arrival_ids,
         arrival_hashes, artifact_ids, artifact_hashes, artifact_location_hashes,
-        origin_arrivals_count,
+        original_arrivals_count,
     )
 }
 
@@ -162,7 +175,7 @@ pub fn compute_owned_artifact_hashes(
     (artifact_ids, artifact_hashes, artifact_location_hashes, planet_artifacts_state.count)
 }
 
-pub fn compute_artifact_hashes(
+pub fn compute_artifact_and_location_hashes(
     artifact_id: Field,
     artifact: Artifact,
     artifact_location: ArtifactLocation,
@@ -178,6 +191,16 @@ pub fn compute_artifact_hashes(
         poseidon2_hash(artifact_location.serialize())
     };
     (artifact_id, artifact_hash, artifact_location_hash)
+}
+
+pub fn compute_artifact_hash(artifact_id: Field, artifact: Artifact) -> (Field) {
+    let artifact_hash = if artifact == Artifact::zero() {
+        0
+    } else {
+        poseidon2_hash(artifact.serialize())
+    };
+
+    artifact_hash
 }
 
 pub fn compute_world_hash(world: World) -> Field {
@@ -210,4 +233,36 @@ pub fn compact_artifact_locations(
         }
     }
     (out_ids, out_locations, out_count)
+}
+
+/// Compute config hashes for the move transaction.
+/// Returns (planet_default_stats_hash, config_hashes) where config_hashes is
+/// [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts].
+pub fn compute_move_config_hashes(
+    snark_config: SnarkConfig,
+    planet_default_stats: PlanetDefaultStats,
+    world_config: WorldConfig,
+    game_config_core: GameConfigCore,
+    planet_level_thresholds: PlanetLevelThresholds,
+    space_junk_config: SpaceJunkConfig,
+    planet_type_weights_tier_0: PlanetTypeWeightsTier,
+    planet_type_weights_tier_1: PlanetTypeWeightsTier,
+    planet_type_weights_tier_2: PlanetTypeWeightsTier,
+    planet_type_weights_tier_3: PlanetTypeWeightsTier,
+    artifacts_config: ArtifactsConfig,
+) -> (Field, [Field; 10]) {
+    let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+    let config_hashes: [Field; 10] = [
+        poseidon2_hash(snark_config.serialize()),
+        poseidon2_hash(world_config.serialize()),
+        poseidon2_hash(game_config_core.serialize()),
+        poseidon2_hash(planet_level_thresholds.serialize()),
+        poseidon2_hash(space_junk_config.serialize()),
+        poseidon2_hash(planet_type_weights_tier_0.serialize()),
+        poseidon2_hash(planet_type_weights_tier_1.serialize()),
+        poseidon2_hash(planet_type_weights_tier_2.serialize()),
+        poseidon2_hash(planet_type_weights_tier_3.serialize()),
+        poseidon2_hash(artifacts_config.serialize()),
+    ];
+    (planet_default_stats_hash, config_hashes)
 }

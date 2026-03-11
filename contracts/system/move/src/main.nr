@@ -40,10 +40,19 @@ contract Move {
     };
 
     use ::libs::game_utils::{
-        _buff_planet, _debuff_planet, _take_artifact_off_planet, revert_if_bad_snark_perlin_flags,
+        _buff_planet, _debuff_planet, _get_upgrade_for_artifact, _take_artifact_off_planet,
+        is_activated, is_artifact_on_planet, revert_if_bad_snark_perlin_flags,
     };
 
-    use ::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
+    use ::libs::batch_utils::{
+        assert_artifact_timestamp_freshness, assert_planet_timestamp_freshness,
+        assert_public_timestamp, compute_artifact_and_location_hashes, compute_artifact_hash,
+        compute_move_config_hashes, compute_planet_hashes, compute_world_hash,
+    };
+    use ::libs::planet::{
+        apply_spaceship_depart, check_player_init, initialize_planet_with_defaults, refresh_planet,
+        refresh_planet_v2,
+    };
 
     use ::arrival_storage::ArrivalStorage;
     use ::artifact_location_storage::ArtifactLocationStorage;
@@ -58,13 +67,18 @@ contract Move {
     #[storage]
     struct Storage<Context> {
         admin: PublicMutable<AztecAddress, Context>,
+        // Global
         config_storage_address: PublicMutable<AztecAddress, Context>,
         world_storage_address: PublicMutable<AztecAddress, Context>,
+        // Actor
         player_storage_address: PublicMutable<AztecAddress, Context>,
+        // Planet and its sub-entities
         planet_storage_address: PublicMutable<AztecAddress, Context>,
         planet_events_storage_address: PublicMutable<AztecAddress, Context>,
         planet_artifacts_storage_address: PublicMutable<AztecAddress, Context>,
+        // Voyages between planets
         arrivals_storage_address: PublicMutable<AztecAddress, Context>,
+        // Artifacts and their locations
         artifact_storage_address: PublicMutable<AztecAddress, Context>,
         artifact_location_storage_address: PublicMutable<AztecAddress, Context>,
     }
@@ -72,21 +86,6 @@ contract Move {
     #[internal("public")]
     fn assert_admin() {
         assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
-    }
-
-    // Returns all storage addresses in a single internal call to minimize gas.
-    // Order: (config, world, player, planet, planet_events, planet_artifacts, arrivals, artifact, artifact_location)
-    #[internal("public")]
-    fn get_all_storage_addresses() -> (AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress) {
-        (
-            self.storage.config_storage_address.read(), self.storage.world_storage_address.read(),
-            self.storage.player_storage_address.read(), self.storage.planet_storage_address.read(),
-            self.storage.planet_events_storage_address.read(),
-            self.storage.planet_artifacts_storage_address.read(),
-            self.storage.arrivals_storage_address.read(),
-            self.storage.artifact_storage_address.read(),
-            self.storage.artifact_location_storage_address.read(),
-        )
     }
 
     #[external("public")]
@@ -182,24 +181,27 @@ contract Move {
 
     #[external("private")]
     fn move(
+        // --- Location & target properties ---
         source_loc: Field,
         target_loc: Field,
         target_perlin: u8,
         target_level: u8,
-        target_radius: u128,
         max_dist: u128,
-        x1: Field, // private
-        y1: Field, // private
-        x2: Field, // private
-        y2: Field, // private
+        // --- Private coordinates (ZK proof inputs) ---
+        x1: Field,
+        y1: Field,
+        x2: Field,
+        y2: Field,
+        // --- Move action parameters ---
         pop_moved: u128,
         silver_moved: u128,
         moved_artifact_id: Field,
-        activated_artifact_id: Field,
+        source_activated_artifact_id: Field,
+        target_activated_artifact_id: Field,
         is_abandoning: bool,
         timestamp: u64,
-        // Config inputs (to be validated via hash in public)
-        provided_snark_config: SnarkConfig,
+        // --- Config inputs (validated via hash in public) ---
+        snark_config: SnarkConfig,
         planet_default_stats: PlanetDefaultStats,
         world_config: WorldConfig,
         game_config_core: GameConfigCore,
@@ -209,41 +211,42 @@ contract Move {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
-        // State inputs (to be validated via hash in public)
+        artifacts_config: ArtifactsConfig,
+        // --- Source planet state (validated via hash in public) ---
         source_planet: Planet,
-        source_planet_events: PlanetEvents,
+        source_planet_artifacts_state: PlanetArtifacts,
+        source_planet_events_state: PlanetEvents,
         source_arrivals: [Arrival; 20],
-        source_artifacts: [Artifact; 20],
-        source_artifact_locations: [ArtifactLocation; 20],
-        source_planet_artifacts: PlanetArtifacts,
+        source_arrival_artifacts: [Artifact; 20],
+        source_arrival_artifact_locations: [ArtifactLocation; 20],
+        // --- Target planet state (validated via hash in public) ---
         target_planet: Planet,
-        target_planet_events: PlanetEvents,
+        target_planet_artifacts_state: PlanetArtifacts,
+        target_planet_events_state: PlanetEvents,
         target_arrivals: [Arrival; 20],
-        target_artifacts: [Artifact; 20],
-        target_artifact_locations: [ArtifactLocation; 20],
-        target_planet_artifacts: PlanetArtifacts,
+        target_arrival_artifacts: [Artifact; 20],
+        target_arrival_artifact_locations: [ArtifactLocation; 20],
+        // --- World & artifact state (validated via hash in public) ---
         world: World,
         moved_artifact: Artifact,
-        moved_artifact_location: ArtifactLocation,
-        activated_artifact: Artifact,
+        source_activated_artifact: Artifact,
+        target_activated_artifact: Artifact,
     ) {
-        if !provided_snark_config.disable_zk_checks {
+        if !snark_config.disable_zk_checks {
             // Verify move proof: coords (x1,y1)->(x2,y2) produce source_loc, target_loc, target_perlin
             let r = world.radius as Field;
             let dist_max = max_dist as Field;
-            let planet_hash_key = provided_snark_config.planethash_key as Field;
-            let space_type_key = provided_snark_config.spacetype_key as Field;
-            let scale = provided_snark_config.perlin_length_scale;
-            // Client: mirrorY affects x, mirrorX affects y. Circuit: x_mirror affects x, y_mirror affects y.
-            // So: x_mirror = perlin_mirror_y, y_mirror = perlin_mirror_x
+            let planet_hash_key = snark_config.planethash_key as Field;
+            let space_type_key = snark_config.spacetype_key as Field;
+            let scale = snark_config.perlin_length_scale;
             let (expected_source, expected_target, expected_perlin) = circuits::move::move_proof(
                 r,
                 dist_max,
                 planet_hash_key,
                 space_type_key,
                 scale,
-                provided_snark_config.perlin_mirror_y,
-                provided_snark_config.perlin_mirror_x,
+                snark_config.perlin_mirror_x,
+                snark_config.perlin_mirror_y,
                 x1,
                 y1,
                 x2,
@@ -256,323 +259,129 @@ contract Move {
 
         let sender = self.msg_sender();
 
-        assert(target_radius <= world.radius, "Attempting to move out of bounds");
-
-        // Verify timestamp
-        assert(
-            timestamp >= source_planet.last_updated,
-            "Timestamp must be >= source planet's last_updated",
-        );
-        assert(
-            timestamp >= source_planet_events.last_updated,
-            "Timestamp must be >= source planet events' last_updated",
-        );
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < source_planet_events.count {
-                let arrival = source_arrivals[i];
-                assert(
-                    timestamp >= arrival.departure_time,
-                    "Timestamp must be >= source arrivals' departure_time",
-                );
-                if arrival.carried_artifact_id != 0 {
-                    let artifact = source_artifacts[i];
-                    let artifact_location = source_artifact_locations[i];
-                    assert(
-                        timestamp >= artifact.last_updated,
-                        "Timestamp must be >= source arrivals' last_updated",
-                    );
-                    assert(
-                        timestamp >= artifact_location.last_updated,
-                        "Timestamp must be >= source artifact locations' last_updated",
-                    );
-                }
-            }
-        }
-        assert(
-            timestamp >= source_planet_artifacts.last_updated,
-            "Source planet artifacts state is newer than timestamp",
+        // Verify timestamp freshness for source planet
+        assert_planet_timestamp_freshness(
+            timestamp,
+            source_planet,
+            source_planet_artifacts_state,
+            source_planet_events_state,
+            source_arrivals,
+            source_arrival_artifacts,
+            source_arrival_artifact_locations,
         );
 
-        assert(
-            timestamp >= target_planet.last_updated,
-            "Timestamp must be >= target planet's last_updated",
-        );
-        assert(
-            timestamp >= target_planet_events.last_updated,
-            "Timestamp must be >= target planet events' last_updated",
-        );
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < target_planet_events.count {
-                let arrival = target_arrivals[i];
-                assert(
-                    timestamp >= arrival.departure_time,
-                    "Timestamp must be >= target arrivals' departure_time",
-                );
-                if arrival.carried_artifact_id != 0 {
-                    let artifact = target_artifacts[i];
-                    let artifact_location = target_artifact_locations[i];
-                    assert(
-                        timestamp >= artifact.last_updated,
-                        "Timestamp must be >= target arrivals' last_updated",
-                    );
-                    assert(
-                        timestamp >= artifact_location.last_updated,
-                        "Timestamp must be >= target artifact locations' last_updated",
-                    );
-                }
-            }
-        }
-        assert(
-            timestamp >= target_planet_artifacts.last_updated,
-            "Target planet artifacts state is newer than timestamp",
+        // Verify timestamp freshness for target planet
+        assert_planet_timestamp_freshness(
+            timestamp,
+            target_planet,
+            target_planet_artifacts_state,
+            target_planet_events_state,
+            target_arrivals,
+            target_arrival_artifacts,
+            target_arrival_artifact_locations,
         );
 
         if moved_artifact_id != 0 {
-            assert(
-                timestamp > moved_artifact.last_updated,
-                "Timestamp must be > moved artifact's last_updated",
-            );
-            assert(
-                timestamp > moved_artifact_location.last_updated,
-                "Timestamp must be > moved artifact location's last_updated",
-            );
+            assert_artifact_timestamp_freshness(timestamp, moved_artifact);
         }
 
-        if activated_artifact_id != 0 {
-            assert(
-                timestamp > activated_artifact.last_updated,
-                "Timestamp must be > activated artifact's last_updated",
-            );
+        if source_activated_artifact_id != 0 {
+            assert_artifact_timestamp_freshness(timestamp, source_activated_artifact);
+        }
+
+        if target_activated_artifact_id != 0 {
+            assert_artifact_timestamp_freshness(timestamp, target_activated_artifact);
         }
 
         // Compute config hashes for public verification
-        let snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
-        let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
-        let world_config_hash = poseidon2_hash(world_config.serialize());
-        let game_config_core_hash = poseidon2_hash(game_config_core.serialize());
-        let planet_level_thresholds_hash = poseidon2_hash(planet_level_thresholds.serialize());
-        let space_junk_config_hash = poseidon2_hash(space_junk_config.serialize());
-        let planet_type_weights_tier_0_hash =
-            poseidon2_hash(planet_type_weights_tier_0.serialize());
-        let planet_type_weights_tier_1_hash =
-            poseidon2_hash(planet_type_weights_tier_1.serialize());
-        let planet_type_weights_tier_2_hash =
-            poseidon2_hash(planet_type_weights_tier_2.serialize());
-        let planet_type_weights_tier_3_hash =
-            poseidon2_hash(planet_type_weights_tier_3.serialize());
+        let (planet_default_stats_hash, config_hashes) = compute_move_config_hashes(
+            snark_config,
+            planet_default_stats,
+            world_config,
+            game_config_core,
+            planet_level_thresholds,
+            space_junk_config,
+            planet_type_weights_tier_0,
+            planet_type_weights_tier_1,
+            planet_type_weights_tier_2,
+            planet_type_weights_tier_3,
+            artifacts_config,
+        );
 
         // Compute state hashes for public verification
-        let source_planet_hash = if source_planet == Planet::zero() {
-            0
-        } else {
-            poseidon2_hash(source_planet.serialize())
-        };
+        let (_, source_planet_hash, source_planet_artifacts_state_hash, source_planet_events_state_hash, source_arrival_ids, source_arrival_hashes, source_arrival_artifact_ids, source_arrival_artifact_hashes, source_arrival_artifact_location_hashes, original_source_arrivals_count) = compute_planet_hashes(
+            source_loc,
+            source_planet,
+            source_planet_artifacts_state,
+            source_planet_events_state,
+            source_arrivals,
+            source_arrival_artifacts,
+            source_arrival_artifact_locations,
+        );
 
-        let source_planet_events_hash = if source_planet_events == PlanetEvents::zero() {
-            0
-        } else {
-            poseidon2_hash(source_planet_events.serialize())
-        };
+        let (_, target_planet_hash, target_planet_artifacts_state_hash, target_planet_events_state_hash, target_arrival_ids, target_arrival_hashes, target_arrival_artifact_ids, target_arrival_artifact_hashes, target_arrival_artifact_location_hashes, original_target_arrivals_count) = compute_planet_hashes(
+            target_loc,
+            target_planet,
+            target_planet_artifacts_state,
+            target_planet_events_state,
+            target_arrivals,
+            target_arrival_artifacts,
+            target_arrival_artifact_locations,
+        );
 
-        let mut source_arrivals_ids: [Field; 20] = [0; 20];
-        let mut source_arrivals_hash: [Field; 20] = [0; 20];
-        let mut source_artifacts_ids: [Field; 20] = [0; 20];
-        let mut source_artifacts_hash: [Field; 20] = [0; 20];
-        let mut source_artifact_locations_hash: [Field; 20] = [0; 20];
+        let world_hash = compute_world_hash(world);
 
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < source_planet_events.count {
-                let source_arrival_id = source_planet_events.events[i].id;
-                let source_arrival = source_arrivals[i];
-                let source_artifact_id = source_arrival.carried_artifact_id;
-
-                source_arrivals_ids[i] = source_arrival_id;
-                source_artifacts_ids[i] = source_artifact_id;
-                if source_arrival_id != 0 {
-                    source_arrivals_hash[i] = poseidon2_hash(source_arrivals[i].serialize());
-
-                    if source_artifact_id != 0 {
-                        source_artifacts_hash[i] = poseidon2_hash(source_artifacts[i].serialize());
-                        source_artifact_locations_hash[i] =
-                            poseidon2_hash(source_artifact_locations[i].serialize());
-                    }
-                }
-            }
-        }
-
-        let source_planet_artifacts_hash = if source_planet_artifacts == PlanetArtifacts::zero() {
-            0
-        } else {
-            poseidon2_hash(source_planet_artifacts.serialize())
-        };
-
-        let target_planet_hash = if target_planet == Planet::zero() {
-            0
-        } else {
-            poseidon2_hash(target_planet.serialize())
-        };
-
-        let target_planet_events_hash = if target_planet_events == PlanetEvents::zero() {
-            0
-        } else {
-            poseidon2_hash(target_planet_events.serialize())
-        };
-
-        let mut target_arrivals_ids: [Field; 20] = [0; 20];
-        let mut target_arrivals_hash: [Field; 20] = [0; 20];
-        let mut target_artifacts_ids: [Field; 20] = [0; 20];
-        let mut target_artifacts_hash: [Field; 20] = [0; 20];
-        let mut target_artifact_locations_hash: [Field; 20] = [0; 20];
-
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < target_planet_events.count {
-                let target_arrival_id = target_planet_events.events[i].id;
-                let target_arrival = target_arrivals[i];
-                let target_artifact_id = target_arrival.carried_artifact_id;
-
-                target_arrivals_ids[i] = target_arrival_id;
-                target_artifacts_ids[i] = target_artifact_id;
-                if target_arrival_id != 0 {
-                    target_arrivals_hash[i] = poseidon2_hash(target_arrivals[i].serialize());
-
-                    if target_artifact_id != 0 {
-                        target_artifacts_hash[i] = poseidon2_hash(target_artifacts[i].serialize());
-                        target_artifact_locations_hash[i] =
-                            poseidon2_hash(target_artifact_locations[i].serialize());
-                    }
-                }
-            }
-        }
-
-        let target_planet_artifacts_hash = if target_planet_artifacts == PlanetArtifacts::zero() {
-            0
-        } else {
-            poseidon2_hash(target_planet_artifacts.serialize())
-        };
-
-        let world_hash = if world == World::zero() {
-            0
-        } else {
-            poseidon2_hash(world.serialize())
-        };
-
-        let moved_artifact_hash = if moved_artifact == Artifact::zero() {
-            0
-        } else {
-            poseidon2_hash(moved_artifact.serialize())
-        };
-
-        let moved_artifact_location_hash = if moved_artifact_location == ArtifactLocation::zero() {
-            0
-        } else {
-            poseidon2_hash(moved_artifact_location.serialize())
-        };
-
-        let activated_artifact_hash = if activated_artifact == Artifact::zero() {
-            0
-        } else {
-            poseidon2_hash(activated_artifact.serialize())
-        };
-
-        let mut args: DFPMoveArgs = DFPMoveArgs {
-            old_loc: source_loc,
-            new_loc: target_loc,
-            max_dist,
-            pop_moved,
-            silver_moved,
-            moved_artifact_id,
-            is_abandoning,
-            sender,
-        };
-
-        // todo: modify args when moving artifact is spaceship
-
-        // Check if this is a spaceship move
-        let is_spaceship_move = if moved_artifact_id != 0 {
-            let artifact_type = moved_artifact.artifact_type;
-            (artifact_type == ArtifactType::Spaceship)
-                | (artifact_type == ArtifactType::ShipMothership)
-                | (artifact_type == ArtifactType::ShipCrescent)
-                | (artifact_type == ArtifactType::ShipWhale)
-                | (artifact_type == ArtifactType::ShipGear)
-                | (artifact_type == ArtifactType::ShipTitan)
-        } else {
-            false
-        };
-
-        if is_spaceship_move {
-            args.sender = AztecAddress::zero();
-        }
+        let moved_artifact_hash = compute_artifact_hash(moved_artifact_id, moved_artifact);
+        let source_activated_artifact_hash =
+            compute_artifact_hash(source_activated_artifact_id, source_activated_artifact);
+        let target_activated_artifact_hash =
+            compute_artifact_hash(target_activated_artifact_id, target_activated_artifact);
 
         let source_planet_is_initialized = source_planet != Planet::zero();
         assert(source_planet_is_initialized, "Source planet is not initialized");
 
-        let new_source_states = refresh_planet(
+        let new_source_planet_state = refresh_planet(
             timestamp,
             source_loc,
             source_planet,
-            source_planet_events,
+            source_planet_events_state,
             source_arrivals,
-            source_artifacts,
-            source_artifact_locations,
-            source_planet_artifacts,
+            source_arrival_artifacts,
+            source_arrival_artifact_locations,
+            source_planet_artifacts_state,
         );
 
-        let mut new_source_planet = new_source_states.0;
-        let mut new_source_planet_events = new_source_states.1;
-        let mut new_source_planet_artifacts = new_source_states.2;
-        let mut new_source_artifact_locations = new_source_states.3;
+        let mut new_source_planet = new_source_planet_state.0;
+        let mut new_source_planet_events_state = new_source_planet_state.1;
+        let mut new_source_planet_artifacts_state = new_source_planet_state.2;
+        let mut new_source_arrival_artifact_locations = new_source_planet_state.3;
 
-        new_source_planet.last_updated = timestamp;
-        new_source_planet_events.last_updated = timestamp;
-        new_source_planet_artifacts.last_updated = timestamp;
-
-        // Update artifact_locations for arrivals (input count, not output artifacts count)
-        // Use fixed array size 20 as compile-time constant for loop bound
-        for i in 0..20 {
-            if i < source_planet_events.count {
-                new_source_artifact_locations[i].last_updated = timestamp;
-            }
-        }
+        let mut new_source_activated_artifact = source_activated_artifact;
+        let mut new_source_activated_artifact_location = ArtifactLocation::zero();
 
         let target_planet_is_initialized = target_planet != Planet::zero();
 
         let mut new_target_planet = target_planet;
-        let mut new_target_planet_events = target_planet_events;
-        let mut new_target_planet_artifacts = target_planet_artifacts;
-        let mut new_target_artifact_locations = target_artifact_locations;
+        let mut new_target_planet_events_state = target_planet_events_state;
+        let mut new_target_planet_artifacts_state = target_planet_artifacts_state;
+        let mut new_target_arrival_artifact_locations = target_arrival_artifact_locations;
 
         if target_planet_is_initialized {
             let new_target_states = refresh_planet(
                 timestamp,
                 target_loc,
                 target_planet,
-                target_planet_events,
+                target_planet_events_state,
                 target_arrivals,
-                target_artifacts,
-                target_artifact_locations,
-                target_planet_artifacts,
+                target_arrival_artifacts,
+                target_arrival_artifact_locations,
+                target_planet_artifacts_state,
             );
 
             new_target_planet = new_target_states.0;
-            new_target_planet_events = new_target_states.1;
-            new_target_planet_artifacts = new_target_states.2;
-            new_target_artifact_locations = new_target_states.3;
-
-            new_target_planet.last_updated = timestamp;
-            new_target_planet_events.last_updated = timestamp;
-            new_target_planet_artifacts.last_updated = timestamp;
-            // Update artifact_locations for arrivals (input count, not output artifacts count)
-            // Use fixed array size 20 as compile-time constant for loop bound
-            for i in 0..20 {
-                if i < target_planet_events.count {
-                    new_target_artifact_locations[i].last_updated = timestamp;
-                }
-            }
+            new_target_planet_events_state = new_target_states.1;
+            new_target_planet_artifacts_state = new_target_states.2;
+            new_target_arrival_artifact_locations = new_target_states.3;
 
             // checkPlanetDOS - Rate limiting check for planet arrivals
             let mut arrivals_from_owner: u8 = 0;
@@ -582,16 +391,20 @@ contract Move {
             // swap-and-pop. Look up each remaining event's arrival by matching
             // event id against the arrivals array instead of using index directly.
             for i in 0..20 {
-                if i < new_target_planet_events.count {
-                    let event_id = new_target_planet_events.events[i].id;
-                    let mut arrival_player = AztecAddress::zero();
+                if i < new_target_planet_events_state.count {
+                    let event_id: Field = new_target_planet_events_state.events[i].id;
+                    let mut arrival_player_address = AztecAddress::zero();
+
+                    let mut found = false;
                     for j in 0..20 {
-                        if target_arrivals[j].id == event_id {
-                            arrival_player = target_arrivals[j].player;
+                        if (target_arrivals[j].id == event_id) & (found == false) {
+                            arrival_player_address = target_arrivals[j].player;
+                            found = true;
                         }
                     }
+                    assert(found, "Arrival not found for event");
 
-                    if arrival_player == new_target_planet.owner {
+                    if arrival_player_address == new_target_planet.owner {
                         arrivals_from_owner += 1;
                     } else {
                         arrivals_from_others += 1;
@@ -626,17 +439,87 @@ contract Move {
                 planet_type_weights_tier_2,
                 planet_type_weights_tier_3,
             );
+        }
 
-            new_target_planet.last_updated = timestamp;
-            new_target_planet_events.last_updated = timestamp;
-            new_target_planet_artifacts.last_updated = timestamp;
-            // For newly initialized planet, artifact_locations count should be 0
-            // Use fixed array size 20 as compile-time constant for loop bound
+        // Verify moved artifact is on the (refreshed) source planet
+        if moved_artifact_id != 0 {
+            assert(
+                is_artifact_on_planet(
+                    source_loc,
+                    new_source_planet_artifacts_state,
+                    moved_artifact_id,
+                ),
+                "Moved artifact is not on source planet",
+            );
+        }
+
+        // Verify activated artifact is on the (refreshed) source planet
+        if source_activated_artifact_id != 0 {
+            assert(
+                is_artifact_on_planet(
+                    source_loc,
+                    new_source_planet_artifacts_state,
+                    source_activated_artifact_id,
+                ),
+                "Activated artifact is not on source planet",
+            );
+        }
+
+        // Verify target activated artifact is on the (refreshed) target planet
+        if target_activated_artifact_id != 0 {
+            assert(
+                is_artifact_on_planet(
+                    target_loc,
+                    new_target_planet_artifacts_state,
+                    target_activated_artifact_id,
+                ),
+                "Target activated artifact is not on target planet",
+            );
+        }
+
+        // Target planet artifact count limit - fixes Solidity bug where only
+        // on-planet artifacts were checked, ignoring in-transit ones carried by
+        // pending arrivals. Uses pre-refresh state so we can iterate arrivals
+        // directly without the 20x20 event-to-arrival lookup.
+        if moved_artifact_id != 0 {
+            let mut carried_artifacts: u32 = 0;
             for i in 0..20 {
-                if i < new_target_planet_artifacts.count {
-                    new_target_artifact_locations[i].last_updated = timestamp;
+                if target_arrivals[i].carried_artifact_id != 0 {
+                    carried_artifacts += 1;
                 }
             }
+            assert(
+                target_planet_artifacts_state.count + carried_artifacts + 1 < 6,
+                "Too many artifacts on target planet",
+            );
+        }
+
+        let mut args: DFPMoveArgs = DFPMoveArgs {
+            old_loc: source_loc,
+            new_loc: target_loc,
+            max_dist,
+            pop_moved,
+            silver_moved,
+            moved_artifact_id,
+            is_abandoning,
+            sender,
+        };
+
+        // Check if this is a spaceship move
+        let is_spaceship_move = if moved_artifact_id != 0 {
+            let artifact_type = moved_artifact.artifact_type;
+
+            (artifact_type == ArtifactType::ShipMothership)
+                | (artifact_type == ArtifactType::ShipCrescent)
+                | (artifact_type == ArtifactType::ShipWhale)
+                | (artifact_type == ArtifactType::ShipGear)
+                | (artifact_type == ArtifactType::ShipTitan)
+        } else {
+            false
+        };
+
+        if is_spaceship_move {
+            args.sender = AztecAddress::zero();
         }
 
         // Check move validity
@@ -645,11 +528,6 @@ contract Move {
             assert(silver_moved == 0, "ship moves must move 0 silver");
             assert(moved_artifact.controller == sender, "you can only move your own ships");
         } else {
-            // we want strict > so that the population can't go to 0
-            assert(
-                new_source_planet.population > pop_moved,
-                "Tried to move more population that what exists",
-            );
             assert(
                 !new_target_planet.destroyed & !new_source_planet.destroyed,
                 "planet is destroyed",
@@ -658,54 +536,147 @@ contract Move {
                 new_source_planet.owner == sender,
                 "Only owner account can perform that operation on planet.",
             );
+
+            // note: this is fine because energy and silver now grow linearly
+            assert(
+                new_source_planet.population >= pop_moved,
+                "Tried to move more population that what exists",
+            );
+
+            assert(
+                new_source_planet.silver >= silver_moved,
+                "Tried to move more silver than what exists",
+            );
         }
 
-        assert(
-            new_source_planet.silver >= silver_moved,
-            "Tried to move more silver than what exists",
-        );
-
-        if moved_artifact_id != 0 {
-            assert(new_target_planet_artifacts.count < 5, "too many artifacts on this planet");
-        }
-
-        let effectiveDistTimesHundred = args.max_dist * 100;
-        let arrival_type = ArrivalType::Normal;
+        let mut effectiveDistTimesHundred: u128 = args.max_dist * 100;
+        let mut arrival_type = ArrivalType::Normal;
         let mut temporary_upgrade = Upgrade::zero();
-        let mut dist_modifier = 1;
-        let mut wormhole_present = false;
-        let mut photoid_present = false;
-        let mut new_temp_upgrade = Upgrade::zero();
 
-        // todo: handle with _checkWormhole and _checkPhotoid
+        // _checkWormhole: if an active Wormhole artifact on either planet
+        // points to the other, shorten effective distance based on rarity.
+        let source_has_wormhole = if source_activated_artifact_id != 0 {
+            is_activated(source_activated_artifact)
+                & (source_activated_artifact.artifact_type == ArtifactType::Wormhole)
+                & (source_activated_artifact.wormhole_to == target_loc)
+        } else {
+            false
+        };
 
-        // todo: _removeSpaceshipEffectsFromOriginPlanet
+        let target_has_wormhole = if target_activated_artifact_id != 0 {
+            is_activated(target_activated_artifact)
+                & (target_activated_artifact.artifact_type == ArtifactType::Wormhole)
+                & (target_activated_artifact.wormhole_to == source_loc)
+        } else {
+            false
+        };
+
+        if source_has_wormhole | target_has_wormhole {
+            let wormhole_rarity = if source_has_wormhole {
+                source_activated_artifact.rarity
+            } else {
+                target_activated_artifact.rarity
+            };
+            let speed_boosts: [u128; 6] = [1, 2, 4, 8, 16, 32];
+            effectiveDistTimesHundred /= speed_boosts[wormhole_rarity as u32];
+            arrival_type = ArrivalType::Wormhole;
+        }
+
+        // _checkPhotoid: if the source planet has an active PhotoidCannon whose
+        // activation delay has elapsed, apply a temporary speed/range boost and
+        // deactivate it. Only applies to non-spaceship moves.
+        if !is_spaceship_move & (source_activated_artifact_id != 0) {
+            let is_photoid = is_activated(source_activated_artifact)
+                & (source_activated_artifact.artifact_type == ArtifactType::PhotoidCannon)
+                & (
+                    timestamp - source_activated_artifact.last_activated
+                        >= artifacts_config.photoid_activation_delay
+                );
+
+            if is_photoid {
+                let r = source_activated_artifact.rarity as u32;
+                let range_boosts: [u128; 6] = [100, 200, 200, 200, 200, 200];
+                let speed_boosts: [u128; 6] = [100, 500, 1000, 1500, 2000, 2500];
+                temporary_upgrade = Upgrade {
+                    pop_cap_multiplier: 100,
+                    pop_gro_multiplier: 100,
+                    range_multiplier: range_boosts[r],
+                    speed_multiplier: speed_boosts[r],
+                    def_multiplier: 100,
+                };
+                arrival_type = ArrivalType::Photoid;
+
+                // Deactivate the photoid artifact
+                new_source_activated_artifact.last_deactivated = timestamp;
+                new_source_activated_artifact.last_updated = timestamp;
+
+                // Burn: remove from source planet artifacts (swap-and-pop)
+                let art_count = new_source_planet_artifacts_state.count;
+                let mut burn_index: u32 = 0;
+                let mut burn_found = false;
+                for i in 0..20 {
+                    if (i < art_count) & !burn_found {
+                        if new_source_planet_artifacts_state.ids[i] == source_activated_artifact_id {
+                            burn_index = i;
+                            burn_found = true;
+                        }
+                    }
+                }
+                assert(burn_found, "Photoid artifact not found on source planet");
+                let burn_last = art_count - 1;
+                new_source_planet_artifacts_state.ids[burn_index] =
+                    new_source_planet_artifacts_state.ids[burn_last];
+                new_source_planet_artifacts_state.ids[burn_last] = 0;
+                new_source_planet_artifacts_state.count -= 1;
+
+                // Clear artifact location (no longer on any planet)
+                new_source_activated_artifact_location = ArtifactLocation {
+                    planet_id: 0 as Field,
+                    voyage_id: 0 as Field,
+                    last_updated: timestamp,
+                };
+
+                // Reverse the permanent artifact buff (defense reduction) that was
+                // applied when the PhotoidCannon was activated on this planet.
+                let permanent_upgrade = _get_upgrade_for_artifact(new_source_activated_artifact);
+                let debuff_result =
+                    _debuff_planet(args.old_loc, new_source_planet, permanent_upgrade);
+                new_source_planet = debuff_result.1;
+            }
+        }
+
+        // Remove spaceship effects from origin planet when a ship departs
+        if is_spaceship_move {
+            new_source_planet =
+                apply_spaceship_depart(moved_artifact, new_source_planet, timestamp);
+        }
 
         let pop_moved = args.pop_moved;
         let silver_moved = args.silver_moved;
         let remaining_origin_planet_population = new_source_planet.population - pop_moved;
 
-        // todo: think about SPACE_JUNK_ENABLED and is_spaceship_move
+        // todo: how to handle SPACE_JUNK_ENABLE = true
 
         let buff_planet_result = _buff_planet(args.old_loc, new_source_planet, temporary_upgrade);
         new_source_planet = buff_planet_result.1;
 
         let mut travel_time: u64 = (effectiveDistTimesHundred / new_source_planet.speed) as u64;
+
         if travel_time == 0 {
             travel_time = 1;
         }
 
         // All checks pass. Execute move
         // Push the new event into the planetEvents array for target location
-        assert(new_target_planet_events.count < 20, "Too many events on target planet");
+        assert(new_target_planet_events_state.count < 20, "Too many events on target planet");
 
-        new_target_planet_events.events[new_target_planet_events.count] = PlanetEventMetadata {
+        new_target_planet_events_state.events[new_target_planet_events_state.count] = PlanetEventMetadata {
             id: 0, // placeholder; allocated atomically in move_public
             // event_type: PlanetEventType::Arrival,
             // time_trigger: timestamp + travel_time,
             // time_created: timestamp,
         };
-        new_target_planet_events.count += 1;
+        new_target_planet_events_state.count += 1;
 
         // _createArrival - Enter the arrival data for event id
 
@@ -754,27 +725,25 @@ contract Move {
             distance: args.max_dist,
         };
 
-        let mut new_moved_artifact_location = moved_artifact_location;
+        let mut new_moved_artifact_location = ArtifactLocation::zero();
 
         // Handle artifact movement
         if moved_artifact_id != 0 {
             // Take artifact off the source planet
             let take_artifact_result = _take_artifact_off_planet(
                 moved_artifact_id,
-                moved_artifact_location,
+                new_moved_artifact_location,
                 moved_artifact,
                 source_loc,
-                new_source_planet_artifacts,
+                new_source_planet_artifacts_state,
             );
 
             // Unpack the results
             new_moved_artifact_location = take_artifact_result.1;
-            new_source_planet_artifacts = take_artifact_result.3;
+            new_source_planet_artifacts_state = take_artifact_result.3;
 
             // voyage_id is patched in move_public after event ID allocation
             new_moved_artifact_location.last_updated = timestamp;
-
-            // TODO: Store new_moved_artifact_location and new_source_planet_artifacts to storage in public function
         }
 
         let debuff_planet_result =
@@ -784,19 +753,27 @@ contract Move {
         new_source_planet.silver -= silver_moved;
         new_source_planet.population = remaining_origin_planet_population;
 
-        // Pack config hashes into array for batch verification
-        // Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
-        let config_hashes: [Field; 9] = [
-            snark_config_hash,
-            world_config_hash,
-            game_config_core_hash,
-            planet_level_thresholds_hash,
-            space_junk_config_hash,
-            planet_type_weights_tier_0_hash,
-            planet_type_weights_tier_1_hash,
-            planet_type_weights_tier_2_hash,
-            planet_type_weights_tier_3_hash,
-        ];
+        // Set last_updated on all new state tables before passing to public
+        new_source_planet.last_updated = timestamp;
+        new_source_planet_events_state.last_updated = timestamp;
+        new_source_planet_artifacts_state.last_updated = timestamp;
+        for i in 0..20 {
+            if source_arrivals[i].carried_artifact_id != 0 {
+                new_source_arrival_artifact_locations[i].last_updated = timestamp;
+            }
+        }
+
+        new_target_planet.last_updated = timestamp;
+        new_target_planet_events_state.last_updated = timestamp;
+        new_target_planet_artifacts_state.last_updated = timestamp;
+        for i in 0..20 {
+            if target_arrivals[i].carried_artifact_id != 0 {
+                new_target_arrival_artifact_locations[i].last_updated = timestamp;
+            }
+        }
+
+        new_source_activated_artifact.last_updated = timestamp;
+        new_source_activated_artifact_location.last_updated = timestamp;
 
         // Pass hashes and computed results to public for verification and storage
         self.enqueue_self.move_public(
@@ -804,40 +781,47 @@ contract Move {
             target_loc,
             target_level,
             moved_artifact_id,
-            activated_artifact_id,
+            source_activated_artifact_id,
+            target_activated_artifact_id,
             timestamp,
+            // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
             config_hashes,
             planet_default_stats_hash,
+            // State hashes from private function for verification
             source_planet_hash,
-            source_planet_events_hash,
-            source_arrivals_ids,
-            source_arrivals_hash,
-            source_artifacts_ids,
-            source_artifacts_hash,
-            source_artifact_locations_hash,
-            source_planet_artifacts_hash,
+            source_planet_artifacts_state_hash,
+            source_planet_events_state_hash,
+            source_arrival_ids,
+            source_arrival_hashes,
+            source_arrival_artifact_ids,
+            source_arrival_artifact_hashes,
+            source_arrival_artifact_location_hashes,
+            original_source_arrivals_count,
             target_planet_hash,
-            target_planet_events_hash,
-            target_arrivals_ids,
-            target_arrivals_hash,
-            target_artifacts_ids,
-            target_artifacts_hash,
-            target_artifact_locations_hash,
-            target_planet_artifacts_hash,
+            target_planet_artifacts_state_hash,
+            target_planet_events_state_hash,
+            target_arrival_ids,
+            target_arrival_hashes,
+            target_arrival_artifact_ids,
+            target_arrival_artifact_hashes,
+            target_arrival_artifact_location_hashes,
+            original_target_arrivals_count,
             world_hash,
             moved_artifact_hash,
-            moved_artifact_location_hash,
-            activated_artifact_hash,
+            source_activated_artifact_hash,
+            target_activated_artifact_hash,
             new_source_planet,
-            new_source_planet_events,
-            new_source_planet_artifacts,
-            new_source_artifact_locations,
+            new_source_planet_artifacts_state,
+            new_source_planet_events_state,
+            new_source_arrival_artifact_locations,
             new_target_planet,
-            new_target_planet_events,
-            new_target_planet_artifacts,
-            new_target_artifact_locations,
+            new_target_planet_artifacts_state,
+            new_target_planet_events_state,
+            new_target_arrival_artifact_locations,
             new_arrival,
             new_moved_artifact_location,
+            new_source_activated_artifact,
+            new_source_activated_artifact_location,
         );
     }
 
@@ -849,76 +833,68 @@ contract Move {
         target_loc: Field,
         target_level: u8,
         moved_artifact_id: Field,
-        activated_artifact_id: Field,
+        source_activated_artifact_id: Field,
+        target_activated_artifact_id: Field,
         timestamp: u64,
-        // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
-        config_hashes: [Field; 9],
+        // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
+        config_hashes: [Field; 10],
         planet_default_stats_hash: Field,
         // State hashes from private function for verification
         source_planet_hash: Field,
-        source_planet_events_hash: Field,
-        source_arrivals_ids: [Field; 20],
-        source_arrivals_hash: [Field; 20],
-        source_artifacts_ids: [Field; 20],
-        source_artifacts_hash: [Field; 20],
-        source_artifact_locations_hash: [Field; 20],
-        source_planet_artifacts_hash: Field,
+        source_planet_artifacts_state_hash: Field,
+        source_planet_events_state_hash: Field,
+        source_arrival_ids: [Field; 20],
+        source_arrival_hashes: [Field; 20],
+        source_arrival_artifact_ids: [Field; 20],
+        source_arrival_artifact_hashes: [Field; 20],
+        source_arrival_artifact_location_hashes: [Field; 20],
+        original_source_arrivals_count: u32,
         target_planet_hash: Field,
-        target_planet_events_hash: Field,
-        target_arrivals_ids: [Field; 20],
-        target_arrivals_hash: [Field; 20],
-        target_artifacts_ids: [Field; 20],
-        target_artifacts_hash: [Field; 20],
-        target_artifact_locations_hash: [Field; 20],
-        target_planet_artifacts_hash: Field,
+        target_planet_artifacts_state_hash: Field,
+        target_planet_events_state_hash: Field,
+        target_arrival_ids: [Field; 20],
+        target_arrival_hashes: [Field; 20],
+        target_arrival_artifact_ids: [Field; 20],
+        target_arrival_artifact_hashes: [Field; 20],
+        target_arrival_artifact_location_hashes: [Field; 20],
+        original_target_arrivals_count: u32,
         world_hash: Field,
         moved_artifact_hash: Field,
-        moved_artifact_location_hash: Field,
-        activated_artifact_hash: Field,
+        source_activated_artifact_hash: Field,
+        target_activated_artifact_hash: Field,
         // New states to write (computed in private function)
         new_source_planet: Planet,
-        new_source_planet_events: PlanetEvents,
-        new_source_planet_artifacts: PlanetArtifacts,
-        new_source_artifact_locations: [ArtifactLocation; 20],
+        new_source_planet_artifacts_state: PlanetArtifacts,
+        new_source_planet_events_state: PlanetEvents,
+        new_source_arrival_artifact_locations: [ArtifactLocation; 20],
         new_target_planet: Planet,
-        new_target_planet_events_input: PlanetEvents,
-        new_target_planet_artifacts: PlanetArtifacts,
-        new_target_artifact_locations: [ArtifactLocation; 20],
+        new_target_planet_artifacts_state: PlanetArtifacts,
+        new_target_planet_events_state_input: PlanetEvents,
+        new_target_arrival_artifact_locations: [ArtifactLocation; 20],
         new_arrival_input: Arrival,
         new_moved_artifact_location_input: ArtifactLocation,
+        new_source_activated_artifact: Artifact,
+        new_source_activated_artifact_location: ArtifactLocation,
     ) {
-        let mut new_target_planet_events = new_target_planet_events_input;
+        let mut new_target_planet_events_state = new_target_planet_events_state_input;
         let mut new_arrival = new_arrival_input;
         let mut new_moved_artifact_location = new_moved_artifact_location_input;
 
         // Verify timestamp
         let actual_timestamp = self.context.timestamp();
-        assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
+        assert_public_timestamp(timestamp, actual_timestamp);
 
-        let max_time_drift: u64 = 300;
-        assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
-
-        // Get all storage addresses in a single internal call
-        let addrs = self.internal.get_all_storage_addresses();
-        let config_storage_address = addrs.0;
-        let world_storage_address = addrs.1;
-        // addrs.2 = player_storage_address (unused in move_public)
-        let planet_storage_address = addrs.3;
-        let planet_events_storage_address = addrs.4;
-        let planet_artifacts_storage_address = addrs.5;
-        let arrivals_storage_address = addrs.6;
-        let artifact_storage_address = addrs.7;
-        let artifact_location_storage_address = addrs.8;
-
-        let config = Config::at(config_storage_address);
-        let world_storage = WorldStorage::at(world_storage_address);
-        let planet_storage = PlanetStorage::at(planet_storage_address);
-        let planet_events_storage = PlanetEventsStorage::at(planet_events_storage_address);
-        let planet_artifacts_storage = PlanetArtifactsStorage::at(planet_artifacts_storage_address);
-        let arrivals_storage = ArrivalStorage::at(arrivals_storage_address);
+        let config = Config::at(self.storage.config_storage_address.read());
+        let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
+        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
+        let planet_events_storage =
+            PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
+        let planet_artifacts_storage =
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
+        let arrivals_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_location_storage =
-            ArtifactLocationStorage::at(artifact_location_storage_address);
-        let artifact_storage = ArtifactStorage::at(artifact_storage_address);
+            ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
+        let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
 
         // Verify all config hashes in a single cross-contract call
         assert(
@@ -935,40 +911,43 @@ contract Move {
             self.view(planet_storage.verify_hash(source_loc, source_planet_hash)),
             "Source planet hash mismatch",
         );
+
         assert(
-            self.view(planet_events_storage.verify_hash(source_loc, source_planet_events_hash)),
+            self.view(planet_artifacts_storage.verify_hash(
+                source_loc,
+                source_planet_artifacts_state_hash,
+            )),
+            "Source planet artifacts hash mismatch",
+        );
+
+        assert(
+            self.view(planet_events_storage.verify_hash(source_loc, source_planet_events_state_hash)),
             "Source planet events hash mismatch",
         );
 
-        // Batch verify source arrivals, artifacts, artifact_locations (3 calls instead of 60)
         assert(
             self.view(arrivals_storage.verify_hashes_batch(
-                source_arrivals_ids,
-                source_arrivals_hash,
-                20, //todo: fix it
+                source_arrival_ids,
+                source_arrival_hashes,
+                original_source_arrivals_count,
             )),
             "Source arrival hash mismatch",
         );
         assert(
             self.view(artifact_storage.verify_hashes_batch(
-                source_artifacts_ids,
-                source_artifacts_hash,
-                20, //todo: fix it
+                source_arrival_artifact_ids,
+                source_arrival_artifact_hashes,
+                original_source_arrivals_count,
             )),
             "Source artifact hash mismatch",
         );
         assert(
             self.view(artifact_location_storage.verify_hashes_batch(
-                source_artifacts_ids,
-                source_artifact_locations_hash,
-                20, //todo: fix it
+                source_arrival_artifact_ids,
+                source_arrival_artifact_location_hashes,
+                original_source_arrivals_count,
             )),
             "Source artifact location hash mismatch",
-        );
-
-        assert(
-            self.view(planet_artifacts_storage.verify_hash(source_loc, source_planet_artifacts_hash)),
-            "Source planet artifacts hash mismatch",
         );
 
         // Verify target planet state hashes
@@ -976,40 +955,46 @@ contract Move {
             self.view(planet_storage.verify_hash(target_loc, target_planet_hash)),
             "Target planet hash mismatch",
         );
+
         assert(
-            self.view(planet_events_storage.verify_hash(target_loc, target_planet_events_hash)),
+            self.view(planet_artifacts_storage.verify_hash(
+                target_loc,
+                target_planet_artifacts_state_hash,
+            )),
+            "Target planet artifacts hash mismatch",
+        );
+
+        assert(
+            self.view(planet_events_storage.verify_hash(target_loc, target_planet_events_state_hash)),
             "Target planet events hash mismatch",
         );
 
         // Batch verify target arrivals, artifacts, artifact_locations (3 calls instead of 60)
         assert(
             self.view(arrivals_storage.verify_hashes_batch(
-                target_arrivals_ids,
-                target_arrivals_hash,
-                20, //todo: fix it
+                target_arrival_ids,
+                target_arrival_hashes,
+                original_target_arrivals_count,
             )),
             "Target arrival hash mismatch",
         );
+
         assert(
             self.view(artifact_storage.verify_hashes_batch(
-                target_artifacts_ids,
-                target_artifacts_hash,
-                20, //todo: fix it
+                target_arrival_artifact_ids,
+                target_arrival_artifact_hashes,
+                original_target_arrivals_count,
             )),
             "Target artifact hash mismatch",
         );
-        assert(
-            self.view(artifact_location_storage.verify_hashes_batch(
-                target_artifacts_ids,
-                target_artifact_locations_hash,
-                20, //todo: fix it
-            )),
-            "Target artifact location hash mismatch",
-        );
 
         assert(
-            self.view(planet_artifacts_storage.verify_hash(target_loc, target_planet_artifacts_hash)),
-            "Target planet artifacts hash mismatch",
+            self.view(artifact_location_storage.verify_hashes_batch(
+                target_arrival_artifact_ids,
+                target_arrival_artifact_location_hashes,
+                original_target_arrivals_count,
+            )),
+            "Target artifact location hash mismatch",
         );
 
         // Verify world, moved artifact, and activated artifact hashes
@@ -1019,16 +1004,21 @@ contract Move {
             self.view(artifact_storage.verify_hash(moved_artifact_id, moved_artifact_hash)),
             "Moved artifact hash mismatch",
         );
+
         assert(
-            self.view(artifact_location_storage.verify_hash(
-                moved_artifact_id,
-                moved_artifact_location_hash,
+            self.view(artifact_storage.verify_hash(
+                source_activated_artifact_id,
+                source_activated_artifact_hash,
             )),
-            "Moved artifact location hash mismatch",
-        );
-        assert(
-            self.view(artifact_storage.verify_hash(activated_artifact_id, activated_artifact_hash)),
             "Activated artifact hash mismatch",
+        );
+
+        assert(
+            self.view(artifact_storage.verify_hash(
+                target_activated_artifact_id,
+                target_activated_artifact_hash,
+            )),
+            "Target activated artifact hash mismatch",
         );
 
         // Allocate a unique event ID from the atomic counter in ArrivalStorage,
@@ -1037,8 +1027,9 @@ contract Move {
         new_arrival.id = event_id;
 
         // Patch the last event in target planet events (the one just added in private)
-        assert(new_target_planet_events.count > 0, "Expected at least one planet event");
-        new_target_planet_events.events[new_target_planet_events.count - 1].id = event_id;
+        assert(new_target_planet_events_state.count > 0, "Expected at least one planet event");
+        new_target_planet_events_state.events[new_target_planet_events_state.count - 1].id =
+            event_id;
 
         if moved_artifact_id != 0 {
             new_moved_artifact_location.voyage_id = event_id;
@@ -1046,33 +1037,54 @@ contract Move {
 
         // Write new states to storage
         self.call(planet_storage.set(source_loc, new_source_planet));
-        self.call(planet_events_storage.set(source_loc, new_source_planet_events));
-        self.call(planet_artifacts_storage.set(source_loc, new_source_planet_artifacts));
+        self.call(planet_artifacts_storage.set(source_loc, new_source_planet_artifacts_state));
+        self.call(planet_events_storage.set(source_loc, new_source_planet_events_state));
 
-        // Batch write source artifact locations (1 call instead of up to 20)
+        // Batch write source arrival artifact locations (1 call instead of up to 20)
         self.call(artifact_location_storage.set_arrival_locations_max20(
-            new_source_planet_artifacts.ids,
-            new_source_artifact_locations,
-            new_source_planet_artifacts.count,
+            source_arrival_artifact_ids,
+            new_source_arrival_artifact_locations,
+            original_source_arrivals_count,
         ));
 
         self.call(planet_storage.set(target_loc, new_target_planet));
-        self.call(planet_events_storage.set(target_loc, new_target_planet_events));
-        self.call(planet_artifacts_storage.set(target_loc, new_target_planet_artifacts));
+        self.call(planet_artifacts_storage.set(target_loc, new_target_planet_artifacts_state));
+        self.call(planet_events_storage.set(target_loc, new_target_planet_events_state));
 
-        // Batch write target artifact locations (1 call instead of up to 20)
+        // Batch write target arrival artifact locations (1 call instead of up to 20)
         self.call(artifact_location_storage.set_arrival_locations_max20(
-            new_target_planet_artifacts.ids,
-            new_target_artifact_locations,
-            new_target_planet_artifacts.count,
+            target_arrival_artifact_ids,
+            new_target_arrival_artifact_locations,
+            original_target_arrivals_count,
         ));
 
-        // todo: fix this later
-        // self.call(world_storage.set(0, world));
-
         self.call(arrivals_storage.set(new_arrival.id, new_arrival));
+
         if moved_artifact_id != 0 {
             self.call(artifact_location_storage.set(moved_artifact_id, new_moved_artifact_location));
+        }
+
+        // Write back deactivated/burned source activated artifact
+        if source_activated_artifact_id != 0 {
+            self.call(artifact_storage.set(
+                source_activated_artifact_id,
+                new_source_activated_artifact,
+            ));
+
+            // PhotoidCannon and PlanetaryShield are burned on deactivation
+            let is_burn_type = (
+                new_source_activated_artifact.artifact_type == ArtifactType::PhotoidCannon
+            )
+                | (new_source_activated_artifact.artifact_type == ArtifactType::PlanetaryShield);
+
+            let was_deactivated = new_source_activated_artifact.last_deactivated
+                >= new_source_activated_artifact.last_activated;
+            if is_burn_type & was_deactivated {
+                self.call(artifact_location_storage.set(
+                    source_activated_artifact_id,
+                    new_source_activated_artifact_location,
+                ));
+            }
         }
     }
 }
