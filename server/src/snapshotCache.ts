@@ -1,4 +1,4 @@
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, gzipSync, constants } from "node:zlib";
 import type {
   IndexerChangePayload,
   IndexerService,
@@ -14,10 +14,11 @@ type SnapshotJson = {
 /**
  * Maintains a JSON-serializable mirror of IndexerService's Maps.
  * Updated incrementally on each block (only changed rows).
- * Caches the gzipped Buffer for HTTP responses.
+ * Caches both Brotli and gzip compressed Buffers for HTTP responses.
  */
 export class SnapshotCache {
   private jsonObject: SnapshotJson = { lastProcessedBlock: 0 };
+  private brotliBuffer: Buffer | null = null;
   private gzipBuffer: Buffer | null = null;
   private jsonString: string | null = null;
   private jsonByteLength: number | null = null;
@@ -83,7 +84,18 @@ export class SnapshotCache {
     this.invalidateBuffers();
   }
 
-  /** Get the cached gzip Buffer for HTTP response. */
+  /** Get the cached Brotli Buffer for HTTP response. */
+  getBrotliBuffer(): Buffer {
+    if (!this.brotliBuffer) {
+      const str = this.getJsonString();
+      this.brotliBuffer = brotliCompressSync(Buffer.from(str), {
+        params: { [constants.BROTLI_PARAM_QUALITY]: 6 },
+      });
+    }
+    return this.brotliBuffer;
+  }
+
+  /** Get the cached gzip Buffer for HTTP response (fallback). */
   getGzipBuffer(): Buffer {
     if (!this.gzipBuffer) {
       const str = this.getJsonString();
@@ -118,6 +130,7 @@ export class SnapshotCache {
   private invalidateBuffers(): void {
     this.jsonString = null;
     this.jsonByteLength = null;
+    this.brotliBuffer = null;
     this.gzipBuffer = null;
   }
 }

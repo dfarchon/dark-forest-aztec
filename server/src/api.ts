@@ -46,16 +46,19 @@ export function createApp(deps: ApiDeps): Hono {
   app.use("/blocks/*", compress());
   app.use("/health", compress());
 
-  // GET /snapshot — returns pre-gzipped snapshot Buffer
-  app.get("/snapshot", () => {
-    const buf = cache.getGzipBuffer();
+  // GET /snapshot — returns pre-compressed snapshot Buffer (Brotli preferred, gzip fallback)
+  app.get("/snapshot", (c) => {
+    const accept = c.req.header("accept-encoding") ?? "";
+    const useBrotli = accept.includes("br");
+    const buf = useBrotli ? cache.getBrotliBuffer() : cache.getGzipBuffer();
+    const encoding = useBrotli ? "br" : "gzip";
     const jsonBytes = cache.getJsonByteLength();
     const snapshotBlock = cache.getProcessedBlockNumber();
     return new Response(Uint8Array.from(buf), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Content-Encoding": "gzip",
+        "Content-Encoding": encoding,
         "Content-Length": String(buf.byteLength),
         "X-Snapshot-Block": String(snapshotBlock),
         // Uncompressed JSON bytes help clients compute a meaningful progress
@@ -74,7 +77,7 @@ export function createApp(deps: ApiDeps): Hono {
         blockNumber: indexer.getProcessedBlockNumber(),
         snapshotBlock,
         snapshotBytes: cache.getJsonByteLength(),
-        snapshotEncoding: "gzip",
+        snapshotEncoding: "br, gzip",
       }),
       {
         status: 200,
