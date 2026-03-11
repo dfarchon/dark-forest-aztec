@@ -11,12 +11,8 @@ export type Numberish = string | number | bigint;
 
 export interface WorldState {
   paused: boolean;
-  planet_events_count: Numberish;
   radius: Numberish;
   misc_nonce: Numberish;
-  planet_ids_count: Numberish;
-  revealed_planet_ids_count: Numberish;
-  player_ids_count: Numberish;
   next_change_block: number;
 }
 

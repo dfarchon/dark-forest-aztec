@@ -10,15 +10,9 @@ const AZTEC_ZERO =
 export function worldZero(): Record<string, unknown> {
   return {
     paused: false,
-    planet_events_count: 0n,
     radius: 53_000n,
     misc_nonce: 0n,
-    planet_ids_count: 0n,
-    revealed_planet_ids_count: 0n,
-    player_ids_count: 0n,
-    initialized_planet_count_level4: 0n,
     next_change_block: 0,
-    last_updated: 0,
   };
 }
 

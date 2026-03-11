@@ -28,6 +28,10 @@ pub contract ArrivalStorage {
         state_roots: Map<Field, PublicMutable<Field, Context>, Context>,
         // arrival id (as Field) -> full Arrival data (for on-chain storage and off-chain read)
         stored_arrivals: Map<Field, PublicMutable<Arrival, Context>, Context>,
+        // Atomic counter for generating unique event/arrival IDs.
+        // Stored independently from the World state hash to avoid
+        // per-block write contention.
+        event_id_counter: PublicMutable<Field, Context>,
     }
 
     #[event]
@@ -42,6 +46,7 @@ pub contract ArrivalStorage {
     fn constructor(admin: AztecAddress) {
         self.storage.admin.write(admin);
         self.storage.authorized_count.write(0);
+        self.storage.event_id_counter.write(0);
     }
 
     // ================== INTERNAL AUTH ==================
@@ -69,6 +74,18 @@ pub contract ArrivalStorage {
         self.storage.state_roots.at(id).write(root);
         self.storage.stored_arrivals.at(id).write(state);
         self.emit(ArrivalUpdate { id: id, block_number: block_number, state: state });
+    }
+
+    /// Atomically increment the event ID counter and return the new value.
+    /// Used by move_public to allocate unique IDs for arrivals/events
+    /// without touching the World state hash.
+    #[external("public")]
+    fn allocate_event_id() -> Field {
+        self.internal.assert_authorized();
+        let current = self.storage.event_id_counter.read();
+        let next = current + 1;
+        self.storage.event_id_counter.write(next);
+        next
     }
 
     // ================== ADMIN ==================
@@ -254,6 +271,11 @@ pub contract ArrivalStorage {
     #[external("utility")]
     unconstrained fn get_arrival_unconstrained(id: Field) -> Arrival {
         self.storage.stored_arrivals.at(id).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_event_id_counter_unconstrained() -> Field {
+        self.storage.event_id_counter.read()
     }
 
     // ================== PUBLIC VIEWS (AUTH) ==================

@@ -41,7 +41,6 @@ contract Move {
 
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _take_artifact_off_planet, revert_if_bad_snark_perlin_flags,
-        update_world_radius,
     };
 
     use ::libs::planet::{check_player_init, initialize_planet_with_defaults, refresh_planet};
@@ -210,7 +209,6 @@ contract Move {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
-        cumulative_rarity_4: u128,
         // State inputs (to be validated via hash in public)
         source_planet: Planet,
         source_planet_events: PlanetEvents,
@@ -547,7 +545,6 @@ contract Move {
         let mut new_target_planet_events = target_planet_events;
         let mut new_target_planet_artifacts = target_planet_artifacts;
         let mut new_target_artifact_locations = target_artifact_locations;
-        let mut new_world = world;
 
         if target_planet_is_initialized {
             let new_target_states = refresh_planet(
@@ -640,13 +637,7 @@ contract Move {
                     new_target_artifact_locations[i].last_updated = timestamp;
                 }
             }
-            new_world.planet_ids_count += 1;
-            if new_target_planet.planet_level == 4 {
-                new_world.initialized_planet_count_level4 += 1;
-            }
         }
-
-        new_world.planet_events_count += 1;
 
         // Check move validity
         if is_spaceship_move {
@@ -709,7 +700,7 @@ contract Move {
         assert(new_target_planet_events.count < 20, "Too many events on target planet");
 
         new_target_planet_events.events[new_target_planet_events.count] = PlanetEventMetadata {
-            id: new_world.planet_events_count,
+            id: 0, // placeholder; allocated atomically in move_public
             // event_type: PlanetEventType::Arrival,
             // time_trigger: timestamp + travel_time,
             // time_created: timestamp,
@@ -748,9 +739,9 @@ contract Move {
         assert(pop_arriving > 0 | is_spaceship_move, "Not enough forces to make move");
         assert(!is_spaceship_move | (pop_moved == 0), "spaceship moves must be 0 energy moves");
 
-        // Create the new arrival
+        // Create the new arrival (id is a placeholder; allocated in move_public)
         let new_arrival = Arrival {
-            id: new_world.planet_events_count,
+            id: 0,
             player: sender,
             from_planet: source_loc,
             to_planet: target_loc,
@@ -780,8 +771,7 @@ contract Move {
             new_moved_artifact_location = take_artifact_result.1;
             new_source_planet_artifacts = take_artifact_result.3;
 
-            // Update artifact location to indicate it's in transit
-            new_moved_artifact_location.voyage_id = new_arrival.id;
+            // voyage_id is patched in move_public after event ID allocation
             new_moved_artifact_location.last_updated = timestamp;
 
             // TODO: Store new_moved_artifact_location and new_source_planet_artifacts to storage in public function
@@ -793,8 +783,6 @@ contract Move {
 
         new_source_planet.silver -= silver_moved;
         new_source_planet.population = remaining_origin_planet_population;
-
-        new_world = update_world_radius(new_world, world_config, cumulative_rarity_4);
 
         // Pack config hashes into array for batch verification
         // Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
@@ -820,7 +808,6 @@ contract Move {
             timestamp,
             config_hashes,
             planet_default_stats_hash,
-            cumulative_rarity_4,
             source_planet_hash,
             source_planet_events_hash,
             source_arrivals_ids,
@@ -849,7 +836,6 @@ contract Move {
             new_target_planet_events,
             new_target_planet_artifacts,
             new_target_artifact_locations,
-            new_world,
             new_arrival,
             new_moved_artifact_location,
         );
@@ -868,7 +854,6 @@ contract Move {
         // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
         config_hashes: [Field; 9],
         planet_default_stats_hash: Field,
-        cumulative_rarity_4: u128,
         // State hashes from private function for verification
         source_planet_hash: Field,
         source_planet_events_hash: Field,
@@ -896,13 +881,16 @@ contract Move {
         new_source_planet_artifacts: PlanetArtifacts,
         new_source_artifact_locations: [ArtifactLocation; 20],
         new_target_planet: Planet,
-        new_target_planet_events: PlanetEvents,
+        new_target_planet_events_input: PlanetEvents,
         new_target_planet_artifacts: PlanetArtifacts,
         new_target_artifact_locations: [ArtifactLocation; 20],
-        new_world: World,
-        new_arrival: Arrival,
-        new_moved_artifact_location: ArtifactLocation,
+        new_arrival_input: Arrival,
+        new_moved_artifact_location_input: ArtifactLocation,
     ) {
+        let mut new_target_planet_events = new_target_planet_events_input;
+        let mut new_arrival = new_arrival_input;
+        let mut new_moved_artifact_location = new_moved_artifact_location_input;
+
         // Verify timestamp
         let actual_timestamp = self.context.timestamp();
         assert(timestamp <= actual_timestamp, "Timestamp cannot be in the future");
@@ -940,12 +928,6 @@ contract Move {
                 config_hashes,
             )),
             "Config hash mismatch",
-        );
-
-        // Verify cumulative_rarity_4 matches on-chain Config
-        assert(
-            cumulative_rarity_4 == self.view(config.get_cumulative_rarity(4)),
-            "Cumulative rarity 4 mismatch",
         );
 
         // Verify source planet state hashes
@@ -1049,6 +1031,19 @@ contract Move {
             "Activated artifact hash mismatch",
         );
 
+        // Allocate a unique event ID from the atomic counter in ArrivalStorage,
+        // then patch the placeholder IDs in arrival, planet events, and artifact location.
+        let event_id: Field = self.call(arrivals_storage.allocate_event_id());
+        new_arrival.id = event_id;
+
+        // Patch the last event in target planet events (the one just added in private)
+        assert(new_target_planet_events.count > 0, "Expected at least one planet event");
+        new_target_planet_events.events[new_target_planet_events.count - 1].id = event_id;
+
+        if moved_artifact_id != 0 {
+            new_moved_artifact_location.voyage_id = event_id;
+        }
+
         // Write new states to storage
         self.call(planet_storage.set(source_loc, new_source_planet));
         self.call(planet_events_storage.set(source_loc, new_source_planet_events));
@@ -1072,7 +1067,8 @@ contract Move {
             new_target_planet_artifacts.count,
         ));
 
-        self.call(world_storage.set(0, new_world));
+        // todo: fix this later
+        // self.call(world_storage.set(0, world));
 
         self.call(arrivals_storage.set(new_arrival.id, new_arrival));
         if moved_artifact_id != 0 {

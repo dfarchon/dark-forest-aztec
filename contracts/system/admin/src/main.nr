@@ -232,7 +232,6 @@ contract Admin {
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
         // State inputs (to be validated via hash in public)
         planet_state: Planet,
-        world: World,
     ) {
         if !provided_snark_config.disable_zk_checks {
             let planet_hash_key = provided_snark_config.planethash_key as Field;
@@ -281,16 +280,10 @@ contract Admin {
         } else {
             poseidon2_hash(planet_state.serialize())
         };
-        let world_hash = if world == World::zero() {
-            0
-        } else {
-            poseidon2_hash(world.serialize())
-        };
 
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
 
-        // Perform computation in private using the provided timestamp
-        let (new_planet, new_world, update_world) = if !planet_state_is_initialized {
+        let new_planet = if !planet_state_is_initialized {
             let mut planet: Planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,
@@ -313,12 +306,8 @@ contract Admin {
             planet.population = planet.population_cap;
             planet.owner = new_owner;
 
-            let mut updated_world = world;
-            updated_world.planet_events_count += 1;
-
-            (planet, updated_world, true)
+            planet
         } else {
-            // Planet already exists, verify timestamp is newer than planet's last_updated
             assert(
                 timestamp >= planet_state.last_updated,
                 "Timestamp must be >= planet's last_updated",
@@ -330,7 +319,7 @@ contract Admin {
             new_planet_state.silver = new_planet_state.silver_cap;
             new_planet_state.last_updated = timestamp;
 
-            (new_planet_state, world, false)
+            new_planet_state
         };
 
         // Pass hashes and computed results to public for verification and storage
@@ -338,7 +327,7 @@ contract Admin {
             sender,
             location_id,
             level,
-            timestamp, // Pass timestamp for verification in public
+            timestamp,
             // Config hashes for verification
             snark_config_hash,
             planet_default_stats_hash,
@@ -352,11 +341,8 @@ contract Admin {
             planet_type_weights_tier_3_hash,
             // State hashes for verification
             planet_state_hash,
-            world_hash,
             // Computed results to write
             new_planet,
-            new_world,
-            update_world,
         );
     }
 
@@ -368,7 +354,7 @@ contract Admin {
         sender: AztecAddress,
         location_id: Field,
         level: u8,
-        timestamp: u64, // timestamp from private computation for verification
+        timestamp: u64,
         // Config hashes for verification
         snark_config_hash: Field,
         planet_default_stats_hash: Field,
@@ -382,11 +368,8 @@ contract Admin {
         planet_type_weights_tier_3_hash: Field,
         // State hashes for verification
         planet_state_hash: Field,
-        world_hash: Field,
         // Computed results to write
         new_planet: Planet,
-        new_world: World,
-        update_world: bool,
     ) {
         // Verify sender is admin
         assert(sender == self.storage.admin.read(), "Only admin");
@@ -471,19 +454,6 @@ contract Admin {
 
         // Write new planet state
         self.call(planet_storage.set(location_id, new_planet));
-
-        // Update world if needed (for newly initialized planets)
-        if update_world {
-            let world_storage_address = self.internal.get_world_storage_address();
-            let world_storage = WorldStorage::at(world_storage_address);
-
-            assert(
-                self.view(world_storage.verify_hash(0, world_hash)),
-                "World state hash mismatch",
-            );
-
-            self.call(world_storage.set(0, new_world));
-        }
     }
 
     #[external("public")]
@@ -550,13 +520,12 @@ contract Admin {
     }
 
     #[external("public")]
-    fn admin_initialize_planet(location_id: Field, perlin: u8, level: u8, world: World) {
+    fn admin_initialize_planet(location_id: Field, perlin: u8, level: u8) {
         self.internal.assert_admin();
         let sender = self.msg_sender();
 
         let planet_storage_address = self.internal.get_planet_storage_address();
         let planet_storage = PlanetStorage::at(planet_storage_address);
-        // verify(location_id, Planet::zero()) is true when planet is uninitialized (stored hash is 0)
         let planet_is_uninitialized: bool =
             self.view(planet_storage.verify(location_id, Planet::zero()));
         assert(planet_is_uninitialized, "Planet is already initialized");
@@ -573,7 +542,7 @@ contract Admin {
         let planet_type_weights_tier_2 = self.view(config.get_planet_type_weights_tier(2));
         let planet_type_weights_tier_3 = self.view(config.get_planet_type_weights_tier(3));
 
-        let mut planet: Planet = initialize_planet_with_defaults(
+        let planet: Planet = initialize_planet_with_defaults(
             location_id,
             perlin,
             false,
@@ -591,16 +560,6 @@ contract Admin {
             planet_type_weights_tier_3,
         );
 
-        let planet_storage_address = self.internal.get_planet_storage_address();
-        let planet_storage = PlanetStorage::at(planet_storage_address);
         self.call(planet_storage.set(location_id, planet));
-
-        let world_storage_address = self.internal.get_world_storage_address();
-        let world_storage = WorldStorage::at(world_storage_address);
-        let world_valid: bool = self.view(world_storage.verify(0, world));
-        assert(world_valid, "World state is not valid");
-        let mut new_world = world;
-        new_world.revealed_planet_ids_count += 1;
-        self.call(world_storage.set(0, new_world));
     }
 }

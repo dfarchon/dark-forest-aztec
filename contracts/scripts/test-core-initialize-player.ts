@@ -34,27 +34,15 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 // World shape (types/storage/world.nr)
 function worldZero(): {
     paused: boolean;
-    planet_events_count: bigint;
     radius: bigint;
     misc_nonce: bigint;
-    planet_ids_count: bigint;
-    revealed_planet_ids_count: bigint;
-    player_ids_count: bigint;
-    initialized_planet_count_level4: bigint;
     next_change_block: number;
-    last_updated: number;
 } {
     return {
         paused: false,
-        planet_events_count: 0n,
         radius: 53_000n,
         misc_nonce: 0n,
-        planet_ids_count: 0n,
-        revealed_planet_ids_count: 0n,
-        player_ids_count: 0n,
-        initialized_planet_count_level4: 0n,
         next_change_block: 0,
-        last_updated: 0,
     };
 }
 
@@ -171,17 +159,9 @@ async function loadWorldFromEvents(
               : BigInt(String(v ?? 0));
     return {
         paused: Boolean(s.paused),
-        planet_events_count: toBigint(s.planet_events_count),
         radius: toBigint(s.radius),
         misc_nonce: toBigint(s.misc_nonce),
-        planet_ids_count: toBigint(s.planet_ids_count),
-        revealed_planet_ids_count: toBigint(s.revealed_planet_ids_count),
-        player_ids_count: toBigint(s.player_ids_count),
-        initialized_planet_count_level4: toBigint(
-            s.initialized_planet_count_level4
-        ),
         next_change_block: Number(s.next_change_block ?? 0),
-        last_updated: Number(s.last_updated ?? 0),
     };
 }
 

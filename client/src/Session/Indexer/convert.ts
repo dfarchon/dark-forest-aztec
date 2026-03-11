@@ -81,12 +81,8 @@ function toBool(v: unknown): boolean {
 export function rawToWorldState(r: Raw): WorldState {
   return {
     paused: toBool(r.paused),
-    planet_events_count: toStr(r.planet_events_count),
     radius: toBigInt(r.radius),
     misc_nonce: toBigInt(r.misc_nonce),
-    planet_ids_count: toBigInt(r.planet_ids_count),
-    revealed_planet_ids_count: toBigInt(r.revealed_planet_ids_count),
-    player_ids_count: toBigInt(r.player_ids_count),
     next_change_block: toSafeNum(r.next_change_block),
   };
 }

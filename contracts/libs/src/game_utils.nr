@@ -18,7 +18,6 @@ use ::types::storage::{
         PlanetType, SpaceType, UpgradeBranch,
     },
     player::Player,
-    world::World,
 };
 
 use ::aztec::protocol::address::AztecAddress;
@@ -240,18 +239,9 @@ pub fn sqrt(n: u128) -> u128 {
     }
 }
 
-/// Noir port of Solidity `LibGameUtils._getRadius`.
-/// Calculates the world radius based on player count and initialized level-4 planets.
-pub fn _get_radius(world: World, world_config: WorldConfig, cumulative_rarity_4: u128) -> u128 {
-    let n_players = world.player_ids_count;
-    let target4 = world.initialized_planet_count_level4 + 20 * n_players;
-    let target_radius_squared_4 = (target4 * cumulative_rarity_4 * 100) / 314;
-    let r4 = sqrt(target_radius_squared_4);
-    if r4 < world_config.world_radius_min {
-        world_config.world_radius_min
-    } else {
-        r4
-    }
+/// Always returns `world_radius_min` (dynamic radius expansion disabled).
+pub fn _get_radius(world_config: WorldConfig) -> u128 {
+    world_config.world_radius_min
 }
 
 /// Noir port of Solidity `LibGameUtils._randomArtifactTypeAndLevelBonus`.
@@ -652,19 +642,6 @@ pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) 
 /// of 10 arrivals in aggregate
 ///
 ///todo: implement this
-
-/// Noir port of Solidity `LibGameUtils.updateWorldRadius`.
-pub fn update_world_radius(
-    mut world: World,
-    world_config: WorldConfig,
-    cumulative_rarity_4: u128,
-) -> World {
-    if !world_config.world_radius_locked {
-        let new_radius = _get_radius(world, world_config, cumulative_rarity_4);
-        world.radius = new_radius;
-    }
-    world
-}
 
 /// Noir port of Solidity `LibGameUtils.isPopCapBoost`.
 /// Takes pre-decomposed bytes to avoid redundant `to_be_bytes` calls.

@@ -192,12 +192,8 @@ export function serializePlayer(p: Record<string, unknown>): Fieldable[] {
 export function serializeWorld(w: Record<string, unknown>): Fieldable[] {
   return [
     bool(w.paused),
-    big(w.planet_events_count),
     big(w.radius),
     big(w.misc_nonce),
-    big(w.planet_ids_count),
-    big(w.revealed_planet_ids_count),
-    big(w.player_ids_count),
     num(w.next_change_block),
   ];
 }

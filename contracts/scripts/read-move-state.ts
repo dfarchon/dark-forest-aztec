@@ -83,12 +83,12 @@ async function printWorld(
     const s = ev.state;
     console.log('\n  📦 World (on-chain):');
     console.log(
-        '     planet_events_count:',
-        toStr(s.planet_events_count),
+        '     paused:',
+        Boolean(s.paused),
         '| radius:',
         toStr(s.radius),
-        '| player_ids_count:',
-        toStr(s.player_ids_count)
+        '| misc_nonce:',
+        toStr(s.misc_nonce)
     );
     console.log('     full:', JSON.stringify(s, jsonReplacer, 2));
 }

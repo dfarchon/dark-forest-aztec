@@ -15,12 +15,8 @@ export type AddressString = string;
 
 export interface WorldState {
   paused: boolean;
-  planet_events_count: string;
   radius: bigint;
   misc_nonce: bigint;
-  planet_ids_count: bigint;
-  revealed_planet_ids_count: bigint;
-  player_ids_count: bigint;
   next_change_block: number;
 }
 

@@ -59,12 +59,8 @@ function padArray(
 export function worldToContract(s: WorldState): Record<string, unknown> {
   return {
     paused: s.paused,
-    planet_events_count: toBigint(s.planet_events_count),
     radius: toBigint(s.radius),
     misc_nonce: toBigint(s.misc_nonce),
-    planet_ids_count: toBigint(s.planet_ids_count),
-    revealed_planet_ids_count: toBigint(s.revealed_planet_ids_count),
-    player_ids_count: toBigint(s.player_ids_count),
     next_change_block: toNumber(s.next_change_block),
   };
 }

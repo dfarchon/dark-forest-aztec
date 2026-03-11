@@ -95,12 +95,8 @@ async function printWorldFromEvents(
         Boolean(s.paused),
         '| radius:',
         toStr(s.radius),
-        '| planet_ids_count:',
-        toStr(s.planet_ids_count),
-        '| player_ids_count:',
-        toStr(s.player_ids_count),
-        '| revealed_planet_ids_count:',
-        toStr(s.revealed_planet_ids_count)
+        '| misc_nonce:',
+        toStr(s.misc_nonce)
     );
     console.log('     full:', JSON.stringify(s, jsonReplacer, 2));
 }

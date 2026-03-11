@@ -375,29 +375,9 @@ export function IndexerTestPage() {
               </div>
             </div>
             <div className="test-page__stat">
-              <div className="test-page__stat-label">planet_ids_count</div>
+              <div className="test-page__stat-label">misc_nonce</div>
               <div className="test-page__stat-value">
-                {String(world.planet_ids_count)}
-              </div>
-            </div>
-            <div className="test-page__stat">
-              <div className="test-page__stat-label">player_ids_count</div>
-              <div className="test-page__stat-value">
-                {String(world.player_ids_count)}
-              </div>
-            </div>
-            <div className="test-page__stat">
-              <div className="test-page__stat-label">planet_events_count</div>
-              <div className="test-page__stat-value">
-                {world.planet_events_count}
-              </div>
-            </div>
-            <div className="test-page__stat">
-              <div className="test-page__stat-label">
-                revealed_planet_ids_count
-              </div>
-              <div className="test-page__stat-value">
-                {String(world.revealed_planet_ids_count)}
+                {String(world.misc_nonce)}
               </div>
             </div>
           </div>

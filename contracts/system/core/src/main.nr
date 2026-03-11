@@ -39,7 +39,7 @@ contract Core {
         world::World,
     };
 
-    use ::libs::game_utils::{_buff_planet, revert_if_bad_snark_perlin_flags, update_world_radius};
+    use ::libs::game_utils::{_buff_planet, revert_if_bad_snark_perlin_flags};
 
     use ::libs::planet::{
         check_player_init, initialize_planet_with_defaults, refresh_planet, validate_upgrade_planet,
@@ -1120,8 +1120,8 @@ contract Core {
         assert(!planet_revealed_coords_is_initialized, "Planet revealed coords");
         assert(world_is_initialized, "World is not valid");
 
-        let result = if !planet_state_is_initialized {
-            let mut planet: Planet = initialize_planet_with_defaults(
+        let new_planet = if !planet_state_is_initialized {
+            initialize_planet_with_defaults(
                 location,
                 perlin,
                 false, // is_home_planet
@@ -1137,14 +1137,8 @@ contract Core {
                 planet_type_weights_tier_1,
                 planet_type_weights_tier_2,
                 planet_type_weights_tier_3,
-            );
-
-            let mut new_world = world;
-            new_world.planet_events_count += 1;
-
-            (planet, new_world, true)
+            )
         } else {
-            // Planet already exists, verify timestamp is newer than planet's last_updated
             assert(
                 timestamp >= planet_state.last_updated,
                 "Timestamp must be >= planet's last_updated",
@@ -1153,12 +1147,10 @@ contract Core {
             let mut new_planet_state = planet_state;
             new_planet_state.last_updated = timestamp;
 
-            (new_planet_state, world, false)
+            new_planet_state
         };
 
-        let mut new_planet = result.0;
-        let mut new_world = result.1;
-        let mut update_world = result.2;
+        let mut new_planet = new_planet;
 
         if !is_admin {
             assert(
@@ -1203,8 +1195,6 @@ contract Core {
             new_planet,
             new_planet_revealed_coords,
             new_player_state,
-            new_world,
-            update_world,
         );
     }
 
@@ -1235,8 +1225,6 @@ contract Core {
         new_planet: Planet,
         new_planet_revealed_coords: PlanetRevealedCoords,
         new_player_state: Player,
-        new_world: World,
-        update_world: bool,
     ) {
         // Verify timestamp is within a reasonable time window
         let actual_timestamp = self.context.timestamp();
@@ -1356,10 +1344,6 @@ contract Core {
         self.call(planet_revealed_coords_storage.set(location, new_planet_revealed_coords));
 
         self.call(player_storage.set(sender, new_player_state));
-
-        if update_world {
-            self.call(world_storage.set(0, new_world));
-        }
     }
 
     /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
@@ -1383,7 +1367,6 @@ contract Core {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
-        cumulative_rarity_4: u128,
         // State inputs (to be validated via hash in public)
         planet_state: Planet,
         player_state: Player,
@@ -1514,17 +1497,6 @@ contract Core {
             last_updated: timestamp,
         };
 
-        // Update world
-        let mut new_world = world;
-        new_world.player_ids_count += 1;
-        if initialize_planet {
-            new_world.planet_ids_count += 1;
-            if new_planet.planet_level == 4 {
-                new_world.initialized_planet_count_level4 += 1;
-            }
-        }
-        new_world = update_world_radius(new_world, world_config, cumulative_rarity_4);
-
         // Enqueue public function call with all hashes and new states
         self.enqueue_self.initialize_player_public(
             sender,
@@ -1540,13 +1512,11 @@ contract Core {
             planet_type_weights_tier_1_hash,
             planet_type_weights_tier_2_hash,
             planet_type_weights_tier_3_hash,
-            cumulative_rarity_4,
             planet_state_hash,
             player_state_hash,
             world_hash,
             new_planet,
             new_player,
-            new_world,
             initialize_planet,
         );
     }
@@ -1568,7 +1538,6 @@ contract Core {
         planet_type_weights_tier_1_hash: Field,
         planet_type_weights_tier_2_hash: Field,
         planet_type_weights_tier_3_hash: Field,
-        cumulative_rarity_4: u128,
         // State hashes for verification
         planet_state_hash: Field,
         player_state_hash: Field,
@@ -1576,7 +1545,6 @@ contract Core {
         // Computed results to write
         new_planet: Planet,
         new_player: Player,
-        new_world: World,
         initialize_planet: bool,
     ) {
         // Verify timestamp is within a reasonable time window
@@ -1649,12 +1617,6 @@ contract Core {
             "Planet type weights tier 3 hash mismatch",
         );
 
-        // Verify cumulative_rarity_4 matches on-chain Config
-        assert(
-            cumulative_rarity_4 == self.view(config.get_cumulative_rarity(4)),
-            "Cumulative rarity 4 mismatch",
-        );
-
         // Verify state hashes match on-chain state
         // Planet state (may be zero if not initialized)
         if planet_state_hash != 0 {
@@ -1685,6 +1647,5 @@ contract Core {
         }
 
         self.call(player_storage.set(sender, new_player));
-        self.call(world_storage.set(0, new_world));
     }
 }
