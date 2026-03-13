@@ -30,14 +30,92 @@ const PlanetTypeNames = {
   [PlanetType.SILVER_BANK]: "Quasar",
 };
 
-// Minimal artifact/ship/biome enums for dropdowns (no CDN)
-const MIN_ARTIFACT_RARITY = 0;
-const MAX_ARTIFACT_RARITY = 5;
-const MIN_ARTIFACT_TYPE = 0;
-const MIN_SPACESHIP_TYPE = 6;
-const MAX_SPACESHIP_TYPE = 9;
-const MIN_BIOME = 0;
-const MAX_BIOME = 10;
+const ArtifactType = {
+  Unknown: 0,
+  Monolith: 1,
+  Colossus: 2,
+  Spaceship: 3,
+  Pyramid: 4,
+  Wormhole: 5,
+  PlanetaryShield: 6,
+  PhotoidCannon: 7,
+  BloomFilter: 8,
+  BlackDomain: 9,
+  ShipMothership: 10,
+  ShipCrescent: 11,
+  ShipWhale: 12,
+  ShipGear: 13,
+  ShipTitan: 14,
+};
+const ArtifactTypeNames = {
+  [ArtifactType.Unknown]: "Unknown",
+  [ArtifactType.Monolith]: "Monolith",
+  [ArtifactType.Colossus]: "Colossus",
+  [ArtifactType.Spaceship]: "Spaceship",
+  [ArtifactType.Pyramid]: "Pyramid",
+  [ArtifactType.Wormhole]: "Wormhole",
+  [ArtifactType.PlanetaryShield]: "Planetary Shield",
+  [ArtifactType.PhotoidCannon]: "Photoid Cannon",
+  [ArtifactType.BloomFilter]: "Bloom Filter",
+  [ArtifactType.BlackDomain]: "Black Domain",
+  [ArtifactType.ShipMothership]: "Mothership",
+  [ArtifactType.ShipCrescent]: "Crescent",
+  [ArtifactType.ShipWhale]: "Whale",
+  [ArtifactType.ShipGear]: "Gear",
+  [ArtifactType.ShipTitan]: "Titan",
+};
+
+const ArtifactRarity = {
+  Unknown: 0,
+  Common: 1,
+  Rare: 2,
+  Epic: 3,
+  Legendary: 4,
+  Mythic: 5,
+};
+const ArtifactRarityNames = {
+  [ArtifactRarity.Unknown]: "Unknown",
+  [ArtifactRarity.Common]: "Common",
+  [ArtifactRarity.Rare]: "Rare",
+  [ArtifactRarity.Epic]: "Epic",
+  [ArtifactRarity.Legendary]: "Legendary",
+  [ArtifactRarity.Mythic]: "Mythic",
+};
+
+const Biome = {
+  UNKNOWN: 0,
+  OCEAN: 1,
+  FOREST: 2,
+  GRASSLAND: 3,
+  TUNDRA: 4,
+  SWAMP: 5,
+  DESERT: 6,
+  ICE: 7,
+  WASTELAND: 8,
+  LAVA: 9,
+  CORRUPTED: 10,
+};
+const BiomeNames = {
+  [Biome.UNKNOWN]: "Unknown",
+  [Biome.OCEAN]: "Ocean",
+  [Biome.FOREST]: "Forest",
+  [Biome.GRASSLAND]: "Grassland",
+  [Biome.TUNDRA]: "Tundra",
+  [Biome.SWAMP]: "Swamp",
+  [Biome.DESERT]: "Desert",
+  [Biome.ICE]: "Ice",
+  [Biome.WASTELAND]: "Wasteland",
+  [Biome.LAVA]: "Lava",
+  [Biome.CORRUPTED]: "Corrupted",
+};
+
+const MIN_ARTIFACT_TYPE = ArtifactType.Monolith;
+const MIN_SPACESHIP_TYPE = ArtifactType.ShipMothership;
+const MAX_SPACESHIP_TYPE = ArtifactType.ShipTitan;
+const MIN_ARTIFACT_RARITY = ArtifactRarity.Common;
+const MAX_ARTIFACT_RARITY = ArtifactRarity.Mythic;
+const MIN_BIOME = Biome.OCEAN;
+const MAX_BIOME = Biome.CORRUPTED;
 
 function getPlanetLabel(planetId) {
   if (!planetId) return "(none)";
@@ -57,7 +135,7 @@ function formatSpeedMultiplier(hundredths) {
 // ---------------------------------------------------------------------------
 // Styles — lean overrides; base button/input/select styling from PluginElements
 // ---------------------------------------------------------------------------
-const wrapperStyle = { display: "flex", flexDirection: "column", gap: "4px" };
+const wrapperStyle = { display: "flex", flexDirection: "column", gap: "8px" };
 const sectionStyle = {
   borderTop: "1px solid #333",
   paddingTop: "12px",
@@ -71,12 +149,7 @@ const headingStyle = {
   color: "#ddd",
   margin: "0 0 8px 0",
 };
-const rowStyle = {
-  display: "flex",
-  gap: "8px",
-  alignItems: "center",
-  flexWrap: "wrap",
-};
+const rowStyle = { display: "flex", gap: "8px", alignItems: "center" };
 const linkStyle = {
   cursor: "pointer",
   textDecoration: "underline",
@@ -92,10 +165,9 @@ const addressStyle = {
   color: "#888",
   verticalAlign: "bottom",
 };
-const fullWidthBtn = { width: "100%" };
 const flexInput = { flex: "1", minWidth: "80px" };
 const narrowInput = { width: "80px" };
-const selectFlex = { flex: "1", minWidth: "100px" };
+const selectFlex = { flex: "1", minWidth: "0" };
 const greenStyle = { color: "#00DC82" };
 const redStyle = { color: "#FF6492" };
 const bannerBase = {
@@ -187,10 +259,10 @@ function accountOptions(players) {
   );
 }
 
-function rangeOptions(min, max, label) {
+function rangeOptions(min, max, names) {
   const opts = [];
   for (let i = min; i <= max; i++)
-    opts.push(html`<option value=${i}>${label ? `${label} ${i}` : i}</option>`);
+    opts.push(html`<option value=${i}>${names?.[i] ?? i}</option>`);
   return opts;
 }
 
@@ -297,7 +369,6 @@ function PlanetCreator({ statusCallback, errorCallback }) {
       <div style=${{ ...rowStyle, marginTop: "6px" }}>
         ${!choosingLocation
           ? html`<button
-              style=${fullWidthBtn}
               onClick=${() => setChoosingLocation(true)}
               disabled=${creating}
             >
@@ -479,26 +550,53 @@ function App() {
   }, [whitelistAddress]);
 
   const onSpawnSpaceship = useCallback(async () => {
-    if (!selectedPlanet || !targetAccount) return;
+    if (!selectedPlanet) return;
     setError(undefined);
     setStatus(undefined);
     try {
-      await notAvailable();
+      const tx = await df.giveSpaceships?.(selectedPlanet.locationId);
+      if (tx?.confirmedPromise) {
+        tx.confirmedPromise.then(() => {
+          df.hardRefreshPlanet?.(selectedPlanet.locationId);
+          setStatus("Spaceship spawned.");
+        });
+      }
+      setStatus("Spawn spaceship submitted.");
     } catch (e) {
-      setStatus("Spawn spaceship not available in this client.");
+      setErr(e);
     }
-  }, [selectedPlanet, targetAccount]);
+  }, [selectedPlanet, setErr]);
 
   const onGiveArtifact = useCallback(async () => {
     if (!selectedPlanet || !targetAccount) return;
     setError(undefined);
     setStatus(undefined);
     try {
-      await notAvailable();
+      const tx = await df.adminGiveArtifact?.(
+        selectedPlanet.locationId,
+        Number(artifactRarity),
+        Number(artifactBiome),
+        selectedArtifact,
+        targetAccount
+      );
+      if (tx?.confirmedPromise) {
+        tx.confirmedPromise.then(() => {
+          df.hardRefreshPlanet?.(selectedPlanet.locationId);
+          setStatus("Artifact given.");
+        });
+      }
+      setStatus("Give artifact submitted.");
     } catch (e) {
-      setStatus("Give artifact not available in this client.");
+      setErr(e);
     }
-  }, [selectedPlanet, targetAccount]);
+  }, [
+    selectedPlanet,
+    targetAccount,
+    artifactRarity,
+    artifactBiome,
+    selectedArtifact,
+    setErr,
+  ]);
 
   const speedChanged = worldConfig
     ? clampSpeed(Number(worldConfig.time_factor_hundredths) || 100) !==
@@ -537,7 +635,6 @@ function App() {
         >
       </div>
       <button
-        style=${fullWidthBtn}
         disabled=${loadingConfig ||
         updatingSpeed ||
         updatingPause ||
@@ -555,7 +652,6 @@ function App() {
         >
       </div>
       <button
-        style=${fullWidthBtn}
         disabled=${loadingConfig || updatingPause || updatingSpeed}
         onClick=${togglePause}
       >
@@ -593,22 +689,26 @@ function App() {
         >
           ${accountOptions(allPlayers)}
         </select>
+        <button
+          onClick=${onGivePlanet}
+          disabled=${!selectedPlanet || !targetAccount}
+        >
+          Give planet
+        </button>
       </div>
-      <button
-        style=${fullWidthBtn}
-        onClick=${onGivePlanet}
-        disabled=${!selectedPlanet || !targetAccount}
-      >
-        Give planet
-      </button>
 
       <${Heading} title="Give spaceships" />
       <div style=${rowStyle}>
         <select
+          style=${selectFlex}
           value=${selectedShip}
           onChange=${(e) => setSelectedShip(Number(e.target?.value))}
         >
-          ${rangeOptions(MIN_SPACESHIP_TYPE, MAX_SPACESHIP_TYPE, "Ship")}
+          ${rangeOptions(
+            MIN_SPACESHIP_TYPE,
+            MAX_SPACESHIP_TYPE,
+            ArtifactTypeNames
+          )}
         </select>
         <span>to</span>
         <select
@@ -619,7 +719,7 @@ function App() {
           ${accountOptions(allPlayers)}
         </select>
       </div>
-      <div style=${rowStyle}>
+      <div style=${{ ...rowStyle, justifyContent: "space-between" }}>
         <span
           >On planet: <${PlanetLink} planetId=${selectedPlanet?.locationId}
         /></span>
@@ -634,25 +734,34 @@ function App() {
       <${Heading} title="Give artifacts" />
       <div style=${rowStyle}>
         <select
+          style=${selectFlex}
           value=${artifactRarity}
           onChange=${(e) => setArtifactRarity(e.target?.value)}
         >
-          ${rangeOptions(MIN_ARTIFACT_RARITY, MAX_ARTIFACT_RARITY, "Rarity")}
+          ${rangeOptions(
+            MIN_ARTIFACT_RARITY,
+            MAX_ARTIFACT_RARITY,
+            ArtifactRarityNames
+          )}
         </select>
         <select
+          style=${selectFlex}
           value=${artifactBiome}
           onChange=${(e) => setArtifactBiome(e.target?.value)}
         >
-          ${rangeOptions(MIN_BIOME, MAX_BIOME, "Biome")}
+          ${rangeOptions(MIN_BIOME, MAX_BIOME, BiomeNames)}
         </select>
         <select
+          style=${selectFlex}
           value=${selectedArtifact}
           onChange=${(e) => setSelectedArtifact(Number(e.target?.value))}
         >
-          ${rangeOptions(MIN_ARTIFACT_TYPE, MIN_SPACESHIP_TYPE - 1, "Type")}
+          ${rangeOptions(
+            MIN_ARTIFACT_TYPE,
+            MIN_SPACESHIP_TYPE - 1,
+            ArtifactTypeNames
+          )}
         </select>
-      </div>
-      <div style=${rowStyle}>
         <span>to</span>
         <select
           style=${selectFlex}
@@ -662,7 +771,7 @@ function App() {
           ${accountOptions(allPlayers)}
         </select>
       </div>
-      <div style=${rowStyle}>
+      <div style=${{ ...rowStyle, justifyContent: "space-between" }}>
         <span
           >On planet: <${PlanetLink} planetId=${selectedPlanet?.locationId}
         /></span>
@@ -690,8 +799,7 @@ function App() {
 
 export default class Plugin {
   async render(container) {
-    container.style.width = "450px";
-    container.style.minHeight = "500px";
+    container.style.width = "525px";
     render(html`<${App} />`, container);
   }
 }

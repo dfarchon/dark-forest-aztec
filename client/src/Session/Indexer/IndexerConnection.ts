@@ -410,6 +410,11 @@ export class IndexerConnection {
     return this.indexer.getArtifactIdsByOwner(playerId);
   }
 
+  /** Artifact ids controlled by the given player (via controller field, for spaceships). */
+  public getControlledArtifactIds(playerId: string): string[] {
+    return this.indexer.getArtifactIdsByController(playerId);
+  }
+
   /** All artifacts owned by the given player (via owner field). */
   public getPlayerArtifacts(playerId: string): ArtifactState[] {
     const ids = this.indexer.getArtifactIdsByOwner(playerId);

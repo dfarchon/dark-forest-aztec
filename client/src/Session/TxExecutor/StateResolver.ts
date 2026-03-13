@@ -33,15 +33,22 @@ import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type {
   TxIntent,
+  UnconfirmedActivateArtifact,
   UnconfirmedCreatePlanet,
+  UnconfirmedDeactivateArtifact,
+  UnconfirmedDepositArtifact,
+  UnconfirmedFindArtifact,
+  UnconfirmedGetShips,
   UnconfirmedInit,
   UnconfirmedMove,
   UnconfirmedPauseGame,
+  UnconfirmedProspectPlanet,
   UnconfirmedReveal,
   UnconfirmedSafeSetOwner,
   UnconfirmedSetWorldConfig,
   UnconfirmedUnpauseGame,
   UnconfirmedUpgrade,
+  UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
 } from "@dfpunk/types";
 import {
@@ -61,6 +68,15 @@ import {
   getRefreshedPopulationAndSilver,
   validateMoveForSubmit,
 } from "./MoveSimulation";
+import { resolveActivateArtifact } from "./resolveActivateArtifact";
+import { resolveAdminGiveArtifact } from "./resolveAdminGiveArtifact";
+import { resolveDeactivateArtifact } from "./resolveDeactivateArtifact";
+import { resolveDepositArtifact } from "./resolveDepositArtifact";
+import { resolveFindArtifact } from "./resolveFindArtifact";
+import { resolveGiveSpaceships } from "./resolveGiveSpaceships";
+import { resolveProspectPlanet } from "./resolveProspectPlanet";
+import type { ResolverDeps } from "./resolverHelpers";
+import { resolveWithdrawArtifact } from "./resolveWithdrawArtifact";
 import {
   arrivalToContract,
   artifactLocationToContract,
@@ -249,6 +265,16 @@ export class StateResolver {
     this.lastConfirmedBlock = Math.max(this.lastConfirmedBlock, block);
   }
 
+  /** Bundle shared deps for external resolve functions. */
+  private getDeps(): ResolverDeps {
+    return {
+      indexer: this.indexer,
+      configCache: this.configCache,
+      chainClock: this.chainClock,
+      getPlayerAddress: this.getPlayerAddress,
+    };
+  }
+
   /**
    * Resolve a TxIntent into the full contract argument array.
    * Waits for indexer to sync to lastConfirmedBlock (if set), then reads indexer state, loads config, gets timestamp, and assembles args.
@@ -278,6 +304,45 @@ export class StateResolver {
         return this.resolveCreatePlanet(intent as UnconfirmedCreatePlanet);
       case "safeSetOwner":
         return this.resolveSafeSetOwner(intent as UnconfirmedSafeSetOwner);
+
+      // Artifact operations — delegated to separate files
+      case "prospectPlanet":
+        return resolveProspectPlanet(
+          intent as UnconfirmedProspectPlanet,
+          this.getDeps()
+        );
+      case "findArtifact":
+        return resolveFindArtifact(
+          intent as UnconfirmedFindArtifact,
+          this.getDeps()
+        );
+      case "activateArtifact":
+        return resolveActivateArtifact(
+          intent as UnconfirmedActivateArtifact,
+          this.getDeps()
+        );
+      case "deactivateArtifact":
+        return resolveDeactivateArtifact(
+          intent as UnconfirmedDeactivateArtifact,
+          this.getDeps()
+        );
+      case "depositArtifact":
+        return resolveDepositArtifact(
+          intent as UnconfirmedDepositArtifact,
+          this.getDeps()
+        );
+      case "withdrawArtifact":
+        return resolveWithdrawArtifact(
+          intent as UnconfirmedWithdrawArtifact,
+          this.getDeps()
+        );
+      case "giveSpaceShips":
+        return resolveGiveSpaceships(
+          intent as UnconfirmedGetShips,
+          this.getDeps()
+        );
+      case "adminGiveArtifact":
+        return resolveAdminGiveArtifact(intent, this.getDeps());
 
       default:
         throw new Error(
@@ -620,7 +685,9 @@ export class StateResolver {
     // Contract expects raw u128 values, so multiply back.
     let popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
     let silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
-    const movedArtifactId = intent.artifact ? BigInt(intent.artifact) : 0n;
+    const movedArtifactId = intent.artifact
+      ? BigInt(`0x${intent.artifact}`)
+      : 0n;
     const sourceActivatedArtifactId = 0n; // TODO: support activated artifact
     const targetActivatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;

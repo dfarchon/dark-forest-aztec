@@ -2,6 +2,7 @@ import type {
   Transaction,
   TxIntent,
   UnconfirmedActivateArtifact,
+  UnconfirmedAdminGiveArtifact,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedDeactivateArtifact,
@@ -273,4 +274,16 @@ export function isUnconfirmedSafeSetOwnerTx(
   tx: Transaction,
 ): tx is Transaction<UnconfirmedSafeSetOwner> {
   return isUnconfirmedSafeSetOwner(tx.intent);
+}
+
+export function isUnconfirmedAdminGiveArtifact(
+  txIntent: TxIntent,
+): txIntent is UnconfirmedAdminGiveArtifact {
+  return txIntent.methodName === "adminGiveArtifact";
+}
+
+export function isUnconfirmedAdminGiveArtifactTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedAdminGiveArtifact> {
+  return isUnconfirmedAdminGiveArtifact(tx.intent);
 }

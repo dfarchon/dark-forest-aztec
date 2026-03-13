@@ -261,11 +261,11 @@ export function gameConfigToContractConstants(
       core.capture_zones_per_5000_world_radius
     ),
     SPACESHIPS: {
-      GEAR: bool((core.spaceships as any)?.gear),
-      MOTHERSHIP: bool((core.spaceships as any)?.mothership),
-      TITAN: bool((core.spaceships as any)?.titan),
-      CRESCENT: bool((core.spaceships as any)?.crescent),
-      WHALE: bool((core.spaceships as any)?.whale),
+      GEAR: bool((config.spaceshipsConfig as any)?.gear),
+      MOTHERSHIP: bool((config.spaceshipsConfig as any)?.mothership),
+      TITAN: bool((config.spaceshipsConfig as any)?.titan),
+      CRESCENT: bool((config.spaceshipsConfig as any)?.crescent),
+      WHALE: bool((config.spaceshipsConfig as any)?.whale),
     },
   };
 }

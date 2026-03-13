@@ -13,6 +13,7 @@
 
 import { EMPTY_LOCATION_ID } from "@dfpunk/constants";
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
+import { isSpaceShip } from "@dfpunk/gamelogic";
 import {
   decodeArrival,
   decodeArtifact,
@@ -178,6 +179,21 @@ export class ContractsAPI extends EventEmitter {
           hexId,
           revealer as EthAddress
         );
+      },
+      PlanetEventsUpdate: (planetId: string) => {
+        this.emit(
+          ContractsAPIEvent.PlanetUpdate,
+          locationIdFromDecStr(planetId)
+        );
+      },
+      PlanetArtifactsUpdate: (planetId: string) => {
+        this.emit(
+          ContractsAPIEvent.PlanetUpdate,
+          locationIdFromDecStr(planetId)
+        );
+      },
+      ArtifactLocationUpdate: (artifactId: string) => {
+        this.emit(ContractsAPIEvent.ArtifactUpdate, artifactId);
       },
     });
   }
@@ -520,6 +536,28 @@ export class ContractsAPI extends EventEmitter {
       },
       onProgress
     );
+    return result;
+  }
+
+  public async getPlayerSpaceships(playerId: EthAddress): Promise<Artifact[]> {
+    const ids = this.indexerConnection.getControlledArtifactIds(playerId);
+    const result: Artifact[] = [];
+    for (const id of ids) {
+      const state = this.indexerConnection.getArtifact(id as ArtifactId);
+      if (!state) continue;
+      const location = this.indexerConnection.getArtifactLocation(
+        id as ArtifactId
+      );
+      const artifact = decodeArtifact(
+        id as ArtifactId,
+        state,
+        undefined,
+        location ?? undefined
+      );
+      if (isSpaceShip(artifact.artifactType)) {
+        result.push(artifact);
+      }
+    }
     return result;
   }
 

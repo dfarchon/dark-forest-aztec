@@ -430,7 +430,11 @@ export class GameObjects {
     const localArtifact = this.artifacts.get(artifact.id);
     if (localArtifact) {
       artifact.transactions = localArtifact.transactions;
-      artifact.onPlanetId = localArtifact.onPlanetId;
+
+      // note: not sure if the logic here is correct
+      if (artifact.onPlanetId === undefined) {
+        artifact.onPlanetId = localArtifact.onPlanetId;
+      }
     }
 
     this.setArtifact(artifact);

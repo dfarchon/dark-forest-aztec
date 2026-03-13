@@ -33,7 +33,8 @@ export type ContractMethodName =
   | "pauseGame"
   | "unpauseGame"
   | "createPlanet"
-  | "safeSetOwner";
+  | "safeSetOwner"
+  | "adminGiveArtifact";
 
 /**
  * Client-side transaction status (UI/executor lifecycle). Aztec counterpart of EthTxStatus.
@@ -204,4 +205,13 @@ export type UnconfirmedSafeSetOwner = TxIntent & {
   locationId: LocationId;
   location: WorldLocation;
   newOwner: EthAddress;
+};
+
+export type UnconfirmedAdminGiveArtifact = TxIntent & {
+  methodName: "adminGiveArtifact";
+  locationId: LocationId;
+  rarity: number;
+  biome: number;
+  artifactType: number;
+  owner: EthAddress;
 };

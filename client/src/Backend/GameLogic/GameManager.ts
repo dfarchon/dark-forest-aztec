@@ -72,6 +72,7 @@ import {
   Transaction,
   TxIntent,
   UnconfirmedActivateArtifact,
+  UnconfirmedAdminGiveArtifact,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedClaimReward,
@@ -483,8 +484,9 @@ class GameManager extends EventEmitter {
     this.playerInterval = setInterval(() => {
       if (this.account) {
         this.hardRefreshPlayer(this.account);
+        this.hardRefreshPlayerSpaceships(this.account);
       }
-    }, 5000);
+    }, 10_000);
 
     this.contractsAPI.indexerConnection.blockNumber$.subscribe(() => {
       this.chainClock.resync().then(() => {
@@ -1055,6 +1057,46 @@ class GameManager extends EventEmitter {
     const artifact = await this.contractsAPI.getArtifactById(artifactId);
     if (!artifact) return;
     this.entityStore.replaceArtifactFromContractData(artifact);
+  }
+
+  private async hardRefreshPlayerSpaceships(
+    address?: EthAddress,
+    show?: boolean
+  ): Promise<void> {
+    if (!address) return;
+    const spaceships = await this.contractsAPI.getPlayerSpaceships(address);
+    if (show) {
+      console.log("spaceships");
+      console.log(spaceships);
+    }
+
+    for (const ship of spaceships) {
+      await this.hardRefreshArtifact(ship.id);
+
+      if (ship.onPlanetId) {
+        const localPlanet = this.entityStore.getPlanetWithId(ship.onPlanetId);
+        if (localPlanet && isLocatable(localPlanet)) {
+          await this.hardRefreshPlanet(ship.onPlanetId);
+        }
+      }
+
+      if (ship.onVoyageId !== undefined) {
+        const arrival = await this.contractsAPI.getArrival(
+          Number(ship.onVoyageId)
+        );
+        if (arrival) {
+          if (show) {
+            console.log("Arrival ID:", ship.onVoyageId);
+            console.log(arrival);
+          }
+
+          await this.bulkHardRefreshPlanets([
+            arrival.fromPlanet,
+            arrival.toPlanet,
+          ]);
+        }
+      }
+    }
   }
 
   private onTxSubmit(tx: Transaction): void {
@@ -2232,7 +2274,9 @@ class GameManager extends EventEmitter {
     if (this.getGameObjects().isGettingSpaceships()) return;
     const tx = await this.contractsAPI.submitTransaction({
       methodName: "giveSpaceShips",
-      args: Promise.resolve(["0x" + this.homeLocation?.hash]),
+      args: Promise.resolve([
+        locationIdToDecStr(this.homeLocation.hash as LocationId),
+      ]),
     });
     await tx.confirmedPromise;
     this.hardRefreshPlanet(this.homeLocation?.hash);
@@ -2538,7 +2582,12 @@ class GameManager extends EventEmitter {
       const txIntent: UnconfirmedFindArtifact = {
         methodName: "findArtifact",
         planetId: planet.locationId,
-        args: Promise.resolve([]), // TODO: implement findArtifact args
+        args: Promise.resolve([
+          locationIdToDecStr(planetId),
+          planet.location.coords.x,
+          planet.location.coords.y,
+          planet.location.biomebase,
+        ]),
       };
 
       const tx =
@@ -3341,6 +3390,39 @@ class GameManager extends EventEmitter {
       return await this.contractsAPI.submitTransaction(txIntent);
     } catch (e) {
       this.getNotificationsManager().txInitError("safeSetOwner", e.message);
+      throw e;
+    }
+  }
+
+  public async adminGiveArtifact(
+    locationId: LocationId,
+    rarity: number,
+    biome: number,
+    artifactType: number,
+    owner: EthAddress
+  ): Promise<Transaction<UnconfirmedAdminGiveArtifact>> {
+    try {
+      const txIntent: UnconfirmedAdminGiveArtifact = {
+        methodName: "adminGiveArtifact",
+        locationId,
+        rarity,
+        biome,
+        artifactType,
+        owner,
+        args: Promise.resolve([
+          locationIdToDecStr(locationId),
+          rarity,
+          biome,
+          artifactType,
+          owner,
+        ]),
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError(
+        "adminGiveArtifact",
+        e.message
+      );
       throw e;
     }
   }
