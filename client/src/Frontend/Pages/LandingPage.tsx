@@ -162,33 +162,33 @@ export default function LandingPage() {
               href="https://blog.zkga.me/hosting-a-dark-forest-community-round"
               style={{
                 backgroundImage:
-                  "url('/public/get_involved/community_round.png')",
+                  "url('/get_involved/community_round.png')",
               }}
             ></InvolvedItem>
             <InvolvedItem
               href="https://github.com/darkforest-eth/plugins#adding-your-plugin"
               style={{
-                backgroundImage: "url('/public/get_involved/write_plugin.png')",
+                backgroundImage: "url('/get_involved/write_plugin.png')",
               }}
             ></InvolvedItem>
             <InvolvedItem
               href="https://github.com/darkforest-eth/plugins#reviewer-guidelines"
               style={{
                 backgroundImage:
-                  "url('/public/get_involved/reveiw_plugin.png')",
+                  "url('/get_involved/reveiw_plugin.png')",
               }}
             ></InvolvedItem>
             <InvolvedItem
               href="https://blog.zkga.me/renderer-plugin-contest"
               style={{
                 backgroundImage:
-                  "url('/public/get_involved/plugin_render.png')",
+                  "url('/get_involved/plugin_render.png')",
               }}
             ></InvolvedItem>
             <InvolvedItem
               href="https://blog.zkga.me/introducing-dark-forest-lobbies"
               style={{
-                backgroundImage: "url('/public/get_involved/lobby.png')",
+                backgroundImage: "url('/get_involved/lobby.png')",
               }}
             ></InvolvedItem>
           </Involved> */}
