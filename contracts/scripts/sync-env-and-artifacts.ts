@@ -1,5 +1,5 @@
 /**
- * Sync .env (ACCOUNT_ADDRESS, START_BLOCK, and contract addresses only) to packages/contracts/src/index.ts,
+ * Sync deployments.json (ACCOUNT_ADDRESS, START_BLOCK, and contract addresses) to packages/contracts/src/index.ts,
  * and copy all contents of contracts/scripts/artifacts/ to packages/contracts/src/artifacts/.
  * Run from contracts: pnpm run sync-env-and-artifacts
  */
@@ -9,12 +9,14 @@ import path from 'path';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 
+import { readDeployments } from './utils/deployments.ts';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Paths: script lives in contracts/scripts/ */
 const CONTRACTS_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const ENV_PATH = path.join(CONTRACTS_DIR, '.env');
+const DEPLOYMENTS_PATH = path.join(CONTRACTS_DIR, 'deployments.json');
 const INDEX_TS_PATH = path.join(
     REPO_ROOT,
     'packages',
@@ -31,17 +33,6 @@ const ARTIFACTS_DEST = path.join(
     'src',
     'artifacts'
 );
-
-/** Only write ACCOUNT_ADDRESS, START_BLOCK, contract addresses, and deploy params (for PXE registration). */
-function isAllowedKey(key: string): boolean {
-    return (
-        key === 'ACCOUNT_ADDRESS' ||
-        key === 'START_BLOCK' ||
-        key.endsWith('_CONTRACT_ADDRESS') ||
-        key.endsWith('_DEPLOYER_ADDRESS') ||
-        key.endsWith('_DEPLOYMENT_SALT')
-    );
-}
 
 /** Human-readable comment for known keys */
 const KEY_COMMENTS: Record<string, string> = {
@@ -100,35 +91,22 @@ function commentForKey(key: string): string {
     return KEY_COMMENTS[key] ?? key;
 }
 
-function parseEnv(content: string): Array<{ key: string; value: string }> {
-    const lines = content.split(/\r?\n/);
-    const map = new Map<string, string>();
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const eq = trimmed.indexOf('=');
-        if (eq <= 0) continue;
-        const key = trimmed.slice(0, eq).trim();
-        const value = trimmed.slice(eq + 1).trim();
-        if (key) map.set(key, value);
-    }
-    return Array.from(map, ([key, value]) => ({ key, value }));
-}
-
-function formatValue(value: string): string {
+function formatValue(value: string | number | boolean): string {
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') return String(value);
     const lower = value.toLowerCase();
     if (lower === 'true' || lower === 'false') return lower;
     if (/^\d+$/.test(value)) return value;
     return `"${value.replace(/"/g, '\\"')}"`;
 }
 
-function generateIndexTs(
-    entries: Array<{ key: string; value: string }>
-): string {
+type ExportEntry = { key: string; value: string | number | boolean };
+
+function generateIndexTs(entries: ExportEntry[]): string {
     const lines: string[] = [
         '',
         '/**',
-        ' * ACCOUNT_ADDRESS, START_BLOCK, and contract addresses. Generated from contracts/.env by sync-env-and-artifacts.ts',
+        ' * ACCOUNT_ADDRESS, START_BLOCK, and contract addresses. Generated from contracts/deployments.json by sync-env-and-artifacts.ts',
         ' */',
         '',
     ];
@@ -152,20 +130,45 @@ const PXE_REGISTRATION_KEYS = [
     'ADMIN_DEPLOYMENT_SALT',
 ] as const;
 
-function syncEnvToIndexTs(): void {
-    if (!fs.existsSync(ENV_PATH)) {
-        throw new Error(`.env not found at ${ENV_PATH}`);
+function syncDeploymentsToIndexTs(): void {
+    if (!fs.existsSync(DEPLOYMENTS_PATH)) {
+        throw new Error(`deployments.json not found at ${DEPLOYMENTS_PATH}`);
     }
-    const envContent = fs.readFileSync(ENV_PATH, 'utf-8');
-    const allEntries = parseEnv(envContent);
-    const byKey = Object.fromEntries(allEntries.map((e) => [e.key, e.value]));
-    const entries = allEntries.filter((e) => isAllowedKey(e.key));
-    // Ensure PXE registration keys are always present (use '' when missing in .env)
+
+    const deployments = readDeployments(DEPLOYMENTS_PATH);
+    const entries: ExportEntry[] = [
+        {
+            key: 'ACCOUNT_ADDRESS',
+            value: deployments.accountAddress,
+        },
+        {
+            key: 'START_BLOCK',
+            value: deployments.startBlock,
+        },
+    ];
+
+    for (const [key, contract] of Object.entries(deployments.contracts)) {
+        entries.push({
+            key: `${key}_CONTRACT_ADDRESS`,
+            value: contract.contractAddress,
+        });
+        entries.push({
+            key: `${key}_DEPLOYER_ADDRESS`,
+            value: contract.deployerAddress,
+        });
+        entries.push({
+            key: `${key}_DEPLOYMENT_SALT`,
+            value: contract.deploymentSalt,
+        });
+    }
+
+    const byKey = Object.fromEntries(entries.map((e) => [e.key, e.value]));
     for (const key of PXE_REGISTRATION_KEYS) {
         if (!entries.some((e) => e.key === key)) {
             entries.push({ key, value: byKey[key] ?? '' });
         }
     }
+
     entries.sort((a, b) => a.key.localeCompare(b.key));
     const tsContent = generateIndexTs(entries);
     const destDir = path.dirname(INDEX_TS_PATH);
@@ -210,7 +213,7 @@ async function copyArtifacts(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-    syncEnvToIndexTs();
+    syncDeploymentsToIndexTs();
     await copyArtifacts();
 }
 

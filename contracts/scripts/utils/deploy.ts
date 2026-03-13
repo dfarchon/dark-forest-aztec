@@ -16,12 +16,12 @@ import { PublicKeys } from '@aztec/aztec.js/keys';
 import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec/stdlib/abi';
 import { getDefaultInitializer } from '@aztec/stdlib/abi';
-import fs from 'fs';
-import path from 'path';
 
+import {
+    readDeployments,
+    writeDeployments as writeDeploymentsFile,
+} from './deployments.ts';
 import { getSponsoredPFCContract } from './wallet.ts';
-
-const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
 
 /** SponsoredFPC instance (has .address). Pass from getSponsoredPFCContract() to reuse. */
 export type SponsoredFpcInstance = { address: AztecAddress };
@@ -46,7 +46,7 @@ export type DeploymentResult = {
 export type ContractDeployConfig = {
     /** Unique key to reference this contract in ctx.addresses (e.g. "Config", "Main"). */
     name: string;
-    /** Env key prefix for writing to .env (e.g. "CONFIG" -> CONFIG_CONTRACT_ADDRESS, CONFIG_DEPLOYMENT_SALT). */
+    /** Deployments key prefix (e.g. "CONFIG" -> deployments.contracts.CONFIG). */
     envPrefix: string;
     /** Compiled contract artifact (e.g. ConfigContract.artifact). */
     artifact: ContractArtifact;
@@ -55,10 +55,10 @@ export type ContractDeployConfig = {
 };
 
 export type DeployContractsOptions = {
-    /** Where to append deployment env vars (default: contracts/.env). */
-    envFilePath?: string;
-    /** If false, do not write to .env (default: true). */
-    writeEnv?: boolean;
+    /** Where to write deployments JSON (default: contracts/deployments.json). */
+    deploymentsPath?: string;
+    /** If false, do not write to deployments.json (default: true). */
+    writeDeployments?: boolean;
     /** Timeout per deploy in ms (default: 120_000). */
     timeoutMs?: number;
     /** SponsoredFPC instance for gas/fees. If set, used for every deploy; else getSponsoredPFCContract() per contract. */
@@ -77,21 +77,22 @@ export type DeployContractsOptions = {
     ) => void;
 };
 
-function appendDeploymentToEnv(
+function appendDeploymentToJson(
     envPrefix: string,
     result: DeploymentResult,
-    envFilePath: string
+    deploymentsPath?: string
 ) {
-    const block = [
-        `${envPrefix}_CONTRACT_ADDRESS=${result.contractAddress}`,
-        `${envPrefix}_DEPLOYER_ADDRESS=${result.deployerAddress}`,
-        `${envPrefix}_DEPLOYMENT_SALT=${result.deploymentSalt}`,
-    ].join('\n');
-    fs.appendFileSync(envFilePath, '\n\n' + block);
+    const deployments = readDeployments(deploymentsPath);
+    deployments.contracts[envPrefix] = {
+        contractAddress: result.contractAddress,
+        deployerAddress: result.deployerAddress,
+        deploymentSalt: result.deploymentSalt,
+    };
+    writeDeploymentsFile(deployments, deploymentsPath);
 }
 
 /**
- * Deploy a single contract and optionally append its deployment info to .env.
+ * Deploy a single contract and optionally append its deployment info to deployments.json.
  * Uses SponsoredFPC for gas (SponsoredFeePaymentMethod). Caller must have registered
  * SponsoredFPC with the wallet before calling.
  * @param ctx - DeployContext (deployer + addresses of already-deployed contracts) for getConstructorArgs.
@@ -102,16 +103,16 @@ export async function deployOneContract(
     config: ContractDeployConfig,
     ctx: DeployContext,
     options: {
-        writeEnv?: boolean;
-        envFilePath?: string;
+        writeDeployments?: boolean;
+        deploymentsPath?: string;
         timeoutMs?: number;
         /** SponsoredFPC instance for gas. If omitted, getSponsoredPFCContract() is called. */
         sponsoredFpc?: SponsoredFpcInstance;
     } = {}
 ): Promise<DeploymentResult> {
     const {
-        writeEnv = true,
-        envFilePath = DEFAULT_ENV_PATH,
+        writeDeployments = true,
+        deploymentsPath,
         timeoutMs = 120_000,
         sponsoredFpc: sponsoredFpcOpt,
     } = options;
@@ -158,9 +159,8 @@ export async function deployOneContract(
         deploymentSalt: salt.toString(),
     };
 
-    if (writeEnv) {
-        appendDeploymentToEnv(config.envPrefix, result, envFilePath);
-    }
+    if (writeDeployments)
+        appendDeploymentToJson(config.envPrefix, result, deploymentsPath);
 
     return result;
 }
@@ -168,7 +168,7 @@ export async function deployOneContract(
 /**
  * Deploy multiple contracts in config order. Each contract's getConstructorArgs receives
  * a context with deployer and addresses of all previously deployed contracts (by config.name).
- * Writes each deployment to .env using config.envPrefix.
+ * Writes each deployment to deployments.json using config.envPrefix as the JSON key.
  *
  * @example
  * const configs: ContractDeployConfig[] = [
@@ -194,8 +194,8 @@ export async function deployContracts(
     options: DeployContractsOptions = {}
 ): Promise<Record<string, DeploymentResult>> {
     const {
-        envFilePath = DEFAULT_ENV_PATH,
-        writeEnv = process.env.WRITE_ENV_FILE !== 'false',
+        deploymentsPath,
+        writeDeployments = process.env.WRITE_ENV_FILE !== 'false',
         timeoutMs = 120_000,
         sponsoredFpc,
         scriptStartTime,
@@ -213,8 +213,8 @@ export async function deployContracts(
         const stepStart = Date.now();
         const ctx: DeployContext = { deployer, addresses: { ...addresses } };
         const result = await deployOneContract(wallet, deployer, config, ctx, {
-            writeEnv,
-            envFilePath,
+            writeDeployments,
+            deploymentsPath,
             timeoutMs,
             sponsoredFpc,
         });

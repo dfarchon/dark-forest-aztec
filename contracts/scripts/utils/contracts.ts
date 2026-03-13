@@ -12,6 +12,8 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
+import { readDeployments } from './deployments.ts';
+
 export type ContractSpec = {
     name: string;
     modulePath: string;
@@ -74,30 +76,25 @@ export function addressesFromDeployResults(
 
 /**
  * Register contract instances with the wallet (PXE) so simulate() can run their code.
- * Uses *_DEPLOYER_ADDRESS and *_DEPLOYMENT_SALT from env (same prefix as *_CONTRACT_ADDRESS).
+ * Uses deployerAddress/deploymentSalt values from deployments.json.
  * Constructor args are assumed to be [admin] for all contracts.
  */
 export async function registerContractsWithWallet(
     wallet: Wallet,
     admin: AztecAddress,
     specs: ContractSpec[],
-    envKeys: Array<[string, string]>
+    envKeys: Array<[string, string]>,
+    options: { deploymentsPath?: string } = {}
 ): Promise<void> {
+    const { deploymentsPath } = options;
+    const deployments = readDeployments(deploymentsPath);
     const addressKeyBySpec = Object.fromEntries(envKeys);
     for (const spec of specs) {
         const addressKey = addressKeyBySpec[spec.name];
-        if (!addressKey) continue;
-        const deployerKey = addressKey.replace(
-            '_CONTRACT_ADDRESS',
-            '_DEPLOYER_ADDRESS'
-        );
-        const saltKey = addressKey.replace(
-            '_CONTRACT_ADDRESS',
-            '_DEPLOYMENT_SALT'
-        );
-        const deployerStr = process.env[deployerKey];
-        const saltStr = process.env[saltKey];
-        if (!deployerStr || !saltStr) continue;
+        if (!addressKey || !addressKey.endsWith('_CONTRACT_ADDRESS')) continue;
+        const contractKey = addressKey.replace('_CONTRACT_ADDRESS', '');
+        const contract = deployments.contracts[contractKey];
+        if (!contract) continue;
         const resolvedPath = path.resolve(SCRIPTS_DIR, spec.modulePath);
         const moduleUrl = pathToFileURL(resolvedPath).href;
         const mod = await import(/* @vite-ignore */ moduleUrl);
@@ -112,8 +109,8 @@ export async function registerContractsWithWallet(
             const instance = await getContractInstanceFromInstantiationParams(
                 artifact as import('@aztec/stdlib/abi').ContractArtifact,
                 {
-                    deployer: AztecAddress.fromString(deployerStr),
-                    salt: Fr.fromString(saltStr),
+                    deployer: AztecAddress.fromString(contract.deployerAddress),
+                    salt: Fr.fromString(contract.deploymentSalt),
                     constructorArgs: [admin],
                 }
             );

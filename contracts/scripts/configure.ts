@@ -1,12 +1,7 @@
 /**
- * Run post-deploy interactions using contract addresses from .env.
+ * Run post-deploy interactions using contract addresses from deployments.json.
  * Use after deploy: pnpm configure (or node --experimental-transform-types scripts/configure.ts)
- * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS, ADMIN_CONTRACT_ADDRESS, CORE_CONTRACT_ADDRESS,
- * MOVE_CONTRACT_ADDRESS, WORLD_STORAGE_CONTRACT_ADDRESS, PLAYER_STORAGE_CONTRACT_ADDRESS,
- * PLANET_STORAGE_CONTRACT_ADDRESS, PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
- * PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS, PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
- * ARRIVAL_STORAGE_CONTRACT_ADDRESS, ARTIFACT_STORAGE_CONTRACT_ADDRESS,
- * ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS.
+ * Requires: .env with ACCOUNT_* secrets and deployments.json with contract addresses.
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractBase } from '@aztec/aztec.js/contracts';
@@ -14,11 +9,14 @@ import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import * as dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import {
     getContractInstances,
     getSponsoredPFCContract,
     loadAccountFromEnv,
+    readDeployments,
     setupWallet,
 } from './utils/index.ts';
 
@@ -27,6 +25,8 @@ dotenv.config();
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 /** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true only for proof benchmarking. */
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEPLOYMENTS_PATH = path.join(__dirname, '..', 'deployments.json');
 
 const CONTRACT_SPECS = [
     {
@@ -106,35 +106,36 @@ const CONTRACT_SPECS = [
     },
 ];
 
-function addressesFromEnv(): Record<string, string> {
-    const envKeys: Array<[string, string]> = [
-        ['Config', 'CONFIG_CONTRACT_ADDRESS'],
-        ['WorldStorage', 'WORLD_STORAGE_CONTRACT_ADDRESS'],
-        ['PlayerStorage', 'PLAYER_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetStorage', 'PLANET_STORAGE_CONTRACT_ADDRESS'],
-        [
-            'PlanetRevealedCoordsStorage',
-            'PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS',
-        ],
-        ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS'],
-        ['PlanetArtifactsStorage', 'PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS'],
-        ['ArrivalStorage', 'ARRIVAL_STORAGE_CONTRACT_ADDRESS'],
-        ['ArtifactStorage', 'ARTIFACT_STORAGE_CONTRACT_ADDRESS'],
-        [
-            'ArtifactLocationStorage',
-            'ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS',
-        ],
-        ['Admin', 'ADMIN_CONTRACT_ADDRESS'],
-        ['Core', 'CORE_CONTRACT_ADDRESS'],
-        ['Move', 'MOVE_CONTRACT_ADDRESS'],
-        ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
-        ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
+function addressesFromDeployments(
+    deploymentsPath: string
+): Record<string, string> {
+    const deploymentKeys: Array<[string, string]> = [
+        ['Config', 'CONFIG'],
+        ['WorldStorage', 'WORLD_STORAGE'],
+        ['PlayerStorage', 'PLAYER_STORAGE'],
+        ['PlanetStorage', 'PLANET_STORAGE'],
+        ['PlanetRevealedCoordsStorage', 'PLANET_REVEALED_COORDS_STORAGE'],
+        ['PlanetEventsStorage', 'PLANET_EVENTS_STORAGE'],
+        ['PlanetArtifactsStorage', 'PLANET_ARTIFACTS_STORAGE'],
+        ['ArrivalStorage', 'ARRIVAL_STORAGE'],
+        ['ArtifactStorage', 'ARTIFACT_STORAGE'],
+        ['ArtifactLocationStorage', 'ARTIFACT_LOCATION_STORAGE'],
+        ['Admin', 'ADMIN'],
+        ['Core', 'CORE'],
+        ['Move', 'MOVE'],
+        ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM'],
+        ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM'],
     ];
+    const deployments = readDeployments(deploymentsPath);
     const out: Record<string, string> = {};
-    for (const [name, key] of envKeys) {
-        const v = process.env[key];
-        if (!v) throw new Error(`Missing ${key} in .env (run deploy first)`);
-        out[name] = v;
+    for (const [name, key] of deploymentKeys) {
+        const contract = deployments.contracts[key];
+        if (!contract) {
+            throw new Error(
+                `Missing deployments.contracts.${key} in deployments.json (run deploy first)`
+            );
+        }
+        out[name] = contract.contractAddress;
     }
     return out;
 }
@@ -152,8 +153,8 @@ function formatElapsed(ms: number): string {
 async function main() {
     const scriptStartTime = Date.now();
 
-    const addresses = addressesFromEnv();
-    console.log('✅ All required environment variables are present');
+    const addresses = addressesFromDeployments(DEPLOYMENTS_PATH);
+    console.log('✅ All required deployments are present');
     console.log(`📋 Config: ${addresses['Config']}`);
     console.log(`📋 Admin: ${addresses['Admin']}`);
     console.log(`📋 Core: ${addresses['Core']}`);
@@ -188,13 +189,15 @@ async function main() {
     console.log('📝 Registering SponsoredFPC contract...');
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
-        proverEnabled: false, // Always false for fast configure
+        proverEnabled: PROVER_ENABLED,
     });
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Loading account from .env...');
-    const deployer = await loadAccountFromEnv(wallet, aztecNode);
+    const deployer = await loadAccountFromEnv(wallet, aztecNode, {
+        deploymentsPath: DEPLOYMENTS_PATH,
+    });
     console.log(`✅ Account loaded: ${deployer.toString()}\n`);
 
     console.log('📄 Connecting to contracts...');

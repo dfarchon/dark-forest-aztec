@@ -1,5 +1,5 @@
 /**
- * Deploy all contracts (Config, storage contracts, Admin) and write deployment info to .env.
+ * Deploy all contracts (Config, storage contracts, Admin) and write deployment info to deployments.json.
  * Run: pnpm deploy-contracts  (builds first) or node --experimental-transform-types scripts/deploy.ts
  * Requires: AZTEC_NODE_URL (optional, default http://localhost:8080). Optional: WRITE_ENV_FILE, PROVER_ENABLED.
  */
@@ -7,21 +7,26 @@
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import * as dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import {
     type ContractDeployConfig,
     deployContracts,
     getOrCreateAccount,
     getSponsoredPFCContract,
+    readDeployments,
     setupWallet,
+    writeDeployments,
 } from './utils/index.ts';
 
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ENV_PATH = path.join(__dirname, '..', '.env');
+const DEPLOYMENTS_PATH = path.join(__dirname, '..', 'deployments.json');
 
 /** Wallet options for deploy: fresh store, prover off for fast local deploy. */
 const WALLET_SETUP_OPTIONS = {
@@ -206,6 +211,7 @@ function formatElapsed(ms: number): string {
 
 async function main() {
     const scriptStartTime = Date.now();
+    const shouldWriteFiles = process.env.WRITE_ENV_FILE !== 'false';
 
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
     console.log(
@@ -229,17 +235,22 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Getting or creating deployer account...');
-    const deployer = await getOrCreateAccount(wallet, aztecNode);
+    const deployer = await getOrCreateAccount(wallet, aztecNode, {
+        envFilePath: ENV_PATH,
+        deploymentsPath: DEPLOYMENTS_PATH,
+        writeEnv: shouldWriteFiles,
+        writeDeployments: shouldWriteFiles,
+    });
     console.log(`✅ Deployer: ${deployer.toString()}\n`);
-
-    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-    const envPath = path.join(scriptDir, '..', '.env');
 
     // Record START_BLOCK before deploying the first contract
     const startBlock = Number(await aztecNode.getBlockNumber());
     console.log(`📌 START_BLOCK: ${startBlock}`);
-    if (process.env.WRITE_ENV_FILE !== 'false') {
-        fs.appendFileSync(envPath, `\n\nSTART_BLOCK=${startBlock}\n`);
+    if (shouldWriteFiles) {
+        const deployments = readDeployments(DEPLOYMENTS_PATH);
+        deployments.startBlock = startBlock;
+        deployments.accountAddress = deployer.toString();
+        writeDeployments(deployments, DEPLOYMENTS_PATH);
     }
 
     console.log('📦 Loading contract artifacts...');
@@ -247,7 +258,8 @@ async function main() {
     console.log(`🚀 Deploying ${configs.length} contracts...\n`);
 
     const results = await deployContracts(wallet, deployer, configs, {
-        writeEnv: process.env.WRITE_ENV_FILE !== 'false',
+        deploymentsPath: DEPLOYMENTS_PATH,
+        writeDeployments: shouldWriteFiles,
         timeoutMs: 120_000,
         sponsoredFpc: sponsoredFPC,
         scriptStartTime,
@@ -271,7 +283,13 @@ async function main() {
     for (const [name, r] of Object.entries(results)) {
         console.log(`   ${name}: ${r.contractAddress}`);
     }
-    console.log(`\n📄 Deployment info appended to ${envPath}`);
+    if (shouldWriteFiles) {
+        console.log(`\n📄 Deployment info written to ${DEPLOYMENTS_PATH}`);
+    } else {
+        console.log(
+            '\n📄 WRITE_ENV_FILE=false, skipped writing deployments.json'
+        );
+    }
     console.log(
         `⏱️  Total time: ${formatElapsed(totalElapsed)} (${totalElapsed}ms)`
     );

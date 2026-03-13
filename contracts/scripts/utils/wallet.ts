@@ -10,6 +10,11 @@ import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 
+import {
+    readDeployments,
+    writeDeployments as writeDeploymentsFile,
+} from './deployments.ts';
+
 const DEFAULT_PXE_STORE_DIR = path.join(
     import.meta.dirname,
     '..',
@@ -141,7 +146,7 @@ async function hasLocalAccount(
 }
 
 /**
- * Load an account that was previously registered (e.g. after deploy wrote .env).
+ * Load an account that was previously registered.
  * Reads ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY from process.env,
  * recreates the same ECDSAR account in the wallet, and returns its address.
  *
@@ -150,16 +155,28 @@ async function hasLocalAccount(
  * - You are on a new machine / new run and need to "attach" the same on-chain account.
  *
  * If you did NOT clear the store (setupWallet(..., { clearStore: false })), the wallet
- * already has the account; you can get the address from process.env.ACCOUNT_ADDRESS
+ * already has the account; you can get the address from deployments.json
  * or wallet.getAccounts() and use it as `from` without calling this.
  */
+export type LoadAccountFromEnvOptions = {
+    ensureDeployed?: boolean;
+    deployTimeoutMs?: number;
+    deploymentsPath?: string;
+};
+
 export async function loadAccountFromEnv(
     wallet: EmbeddedWallet,
     aztecNode: AztecNode,
-    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
+    options: LoadAccountFromEnvOptions = {}
 ): Promise<AztecAddress> {
-    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
-    const envAddress = process.env.ACCOUNT_ADDRESS;
+    const {
+        ensureDeployed = true,
+        deployTimeoutMs = 120_000,
+        deploymentsPath,
+    } = options;
+    const deployments = readDeployments(deploymentsPath);
+    const configuredAddress =
+        process.env.ACCOUNT_ADDRESS || deployments.accountAddress;
     const salt = process.env.ACCOUNT_SALT;
     const secretKey = process.env.ACCOUNT_SECRET_KEY;
     const signingKeyHex = process.env.ACCOUNT_SIGNING_KEY;
@@ -169,8 +186,8 @@ export async function loadAccountFromEnv(
         );
     }
 
-    if (envAddress) {
-        const accountAddress = AztecAddress.fromString(envAddress);
+    if (configuredAddress) {
+        const accountAddress = AztecAddress.fromString(configuredAddress);
         if (await hasLocalAccount(wallet, accountAddress)) {
             if (!ensureDeployed) return accountAddress;
             const deployed = await aztecNode.getContract(accountAddress);
@@ -184,6 +201,17 @@ export async function loadAccountFromEnv(
         Buffer.from(signingKeyHex, 'hex')
     );
 
+    if (
+        configuredAddress &&
+        !accountManager.address.equals(
+            AztecAddress.fromString(configuredAddress)
+        )
+    ) {
+        throw new Error(
+            'Configured account address does not match ACCOUNT_* credentials.'
+        );
+    }
+
     if (ensureDeployed) {
         await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
     }
@@ -192,32 +220,44 @@ export async function loadAccountFromEnv(
 }
 
 export type GetOrCreateAccountOptions = {
-    /** Where to write account vars when creating (default: contracts/.env) */
+    /** Where to write account secrets when creating (default: contracts/.env) */
     envFilePath?: string;
-    /** If false, do not append to .env after creating (default: true) */
+    /** Where to write deployments JSON (default: contracts/deployments.json) */
+    deploymentsPath?: string;
+    /** If false, do not append account secrets to .env after creating (default: true) */
     writeEnv?: boolean;
+    /** If false, do not write accountAddress to deployments.json (default: true) */
+    writeDeployments?: boolean;
     /** Deploy timeout in ms (default: 120_000) */
     deployTimeoutMs?: number;
 };
 
-function appendAccountToEnv(
+function appendAccountSecretsToEnv(
     salt: Fr,
     secretKey: Fr,
     signingKey: Buffer,
-    accountAddress: AztecAddress,
     envFilePath: string
 ) {
     const config = [
         `ACCOUNT_SALT=${salt.toString()}`,
         `ACCOUNT_SECRET_KEY=${secretKey.toString()}`,
         `ACCOUNT_SIGNING_KEY=${signingKey.toString('hex')}`,
-        `ACCOUNT_ADDRESS=${accountAddress.toString()}`,
     ].join('\n');
     fs.appendFileSync(envFilePath, '\n\n' + config);
 }
 
+function writeAccountAddressToDeployments(
+    accountAddress: AztecAddress,
+    deploymentsPath?: string
+) {
+    const deployments = readDeployments(deploymentsPath);
+    deployments.accountAddress = accountAddress.toString();
+    writeDeploymentsFile(deployments, deploymentsPath);
+}
+
 /**
- * Create a new ECDSAR account, deploy it with sponsored fee, and optionally write to .env.
+ * Create a new ECDSAR account, deploy it with sponsored fee, and optionally
+ * write secrets to .env plus accountAddress to deployments.json.
  * Caller must have already registered SponsoredFPC with the wallet.
  */
 export async function createAccount(
@@ -227,6 +267,8 @@ export async function createAccount(
     const {
         envFilePath = DEFAULT_ENV_PATH,
         writeEnv = process.env.WRITE_ENV_FILE !== 'false',
+        deploymentsPath,
+        writeDeployments = process.env.WRITE_ENV_FILE !== 'false',
         deployTimeoutMs = 120_000,
     } = options;
 
@@ -253,20 +295,20 @@ export async function createAccount(
     await deployMethod.send(deployOpts);
 
     if (writeEnv) {
-        appendAccountToEnv(
-            salt,
-            secretKey,
-            signingKey,
+        appendAccountSecretsToEnv(salt, secretKey, signingKey, envFilePath);
+    }
+    if (writeDeployments) {
+        writeAccountAddressToDeployments(
             accountManager.address,
-            envFilePath
+            deploymentsPath
         );
     }
     return accountManager.address;
 }
 
 /**
- * Get account address: load from .env if present, otherwise create a new account,
- * deploy it, write to .env, and return the address.
+ * Get account address: load from ACCOUNT_* secrets if present, otherwise create
+ * a new account, persist secrets/address, and return the address.
  * Caller must have registered SponsoredFPC with the wallet before calling this.
  */
 export async function getOrCreateAccount(
@@ -279,9 +321,20 @@ export async function getOrCreateAccount(
         process.env.ACCOUNT_SECRET_KEY &&
         process.env.ACCOUNT_SIGNING_KEY;
     if (hasAccount) {
-        return loadAccountFromEnv(wallet, aztecNode, {
+        const accountAddress = await loadAccountFromEnv(wallet, aztecNode, {
             deployTimeoutMs: options.deployTimeoutMs,
+            deploymentsPath: options.deploymentsPath,
         });
+        if (
+            options.writeDeployments ??
+            process.env.WRITE_ENV_FILE !== 'false'
+        ) {
+            writeAccountAddressToDeployments(
+                accountAddress,
+                options.deploymentsPath
+            );
+        }
+        return accountAddress;
     }
     return createAccount(wallet, options);
 }
