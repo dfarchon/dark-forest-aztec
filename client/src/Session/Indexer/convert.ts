@@ -197,6 +197,7 @@ export function rawToArtifactState(r: Raw): ArtifactState {
     last_activated: toBigInt(r.last_activated),
     last_deactivated: toBigInt(r.last_deactivated),
     wormhole_to: toStr(r.wormhole_to),
+    owner: toStr(r.owner),
     controller: toStr(r.controller),
     last_updated: toBigInt(r.last_updated),
   };

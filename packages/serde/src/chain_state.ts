@@ -110,6 +110,7 @@ export interface ArtifactState {
   last_activated: Numberish;
   last_deactivated: Numberish;
   wormhole_to: string;
+  owner: string;
   controller: string;
   last_updated: Numberish;
 }

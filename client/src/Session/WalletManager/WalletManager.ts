@@ -23,10 +23,18 @@ import {
   ADMIN_DEPLOYMENT_SALT,
   ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
   ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_ACTION_SYSTEM_DEPLOYER_ADDRESS,
+  ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT,
+  ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS,
+  ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT,
   ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS,
+  ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT,
   ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
   ARTIFACT_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
+  ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
   CORE_DEPLOYER_ADDRESS,
   CORE_DEPLOYMENT_SALT,
   MOVE_DEPLOYER_ADDRESS,
@@ -44,8 +52,12 @@ import {
 } from "@dfpunk/contracts";
 import { AdminContractArtifact } from "@dfpunk/contracts/artifacts/Admin";
 import { ArrivalStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArrivalStorage";
+import { ArtifactActionContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactAction";
+import { ArtifactFindContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactFind";
 import { ArtifactLocationStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
+import { ArtifactProspectContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactProspect";
 import { ArtifactStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactStorage";
+import { ArtifactValutContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactValut";
 import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
 import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
@@ -193,6 +205,30 @@ async function registerGameContractsWithPxe(
       salt: WORLD_STORAGE_DEPLOYMENT_SALT,
       artifact: WorldStorageContractArtifact,
       name: "WorldStorage",
+    },
+    {
+      deployer: ARTIFACT_ACTION_SYSTEM_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT,
+      artifact: ArtifactActionContractArtifact,
+      name: "ArtifactAction",
+    },
+    {
+      deployer: ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT,
+      artifact: ArtifactFindContractArtifact,
+      name: "ArtifactFind",
+    },
+    {
+      deployer: ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT,
+      artifact: ArtifactProspectContractArtifact,
+      name: "ArtifactProspect",
+    },
+    {
+      deployer: ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
+      salt: ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
+      artifact: ArtifactValutContractArtifact,
+      name: "ArtifactVault",
     },
   ];
   for (const { deployer, salt, artifact, name } of specs) {

@@ -206,6 +206,7 @@ export function artifactToContract(s: ArtifactState): Record<string, unknown> {
     last_activated: toNumber(s.last_activated),
     last_deactivated: toNumber(s.last_deactivated),
     wormhole_to: toBigint(s.wormhole_to),
+    owner: s.owner,
     controller: s.controller,
     last_updated: toNumber(s.last_updated),
   };

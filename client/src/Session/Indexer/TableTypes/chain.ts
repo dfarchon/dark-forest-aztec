@@ -142,6 +142,7 @@ export interface ArtifactState {
   last_activated: bigint;
   last_deactivated: bigint;
   wormhole_to: string;
+  owner: string;
   controller: string;
   last_updated: bigint;
 }

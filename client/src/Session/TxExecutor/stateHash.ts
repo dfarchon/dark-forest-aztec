@@ -165,6 +165,7 @@ export function serializeArtifact(a: Record<string, unknown>): Fieldable[] {
     num(a.last_activated),
     num(a.last_deactivated),
     big(a.wormhole_to),
+    addressToField(a.owner),
     addressToField(a.controller),
     num(a.last_updated),
   ];

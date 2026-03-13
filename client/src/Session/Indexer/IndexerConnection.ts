@@ -381,6 +381,16 @@ export class IndexerConnection {
     return this.indexer.getArtifactIds();
   }
 
+  /** Total number of artifacts tracked by the indexer. */
+  public getArtifactCount(): number {
+    return this.indexer.getArtifactCount();
+  }
+
+  /** Whether an artifact with the given id exists in state. */
+  public doesArtifactExist(id: TableId): boolean {
+    return this.indexer.getArtifact(id) !== undefined;
+  }
+
   /** Artifact ids on a planet (from planet_artifacts table). */
   public getArtifactsOnPlanet(planetId: TableId): string[] {
     const pa: PlanetArtifactsState | undefined =
@@ -389,14 +399,29 @@ export class IndexerConnection {
     return pa.ids.slice(0, pa.count);
   }
 
-  /** All artifacts whose controller matches the given player address. */
+  /** Artifact ids owned by the given player (via owner field, mirrors v0.6 ERC721 ownerOf). */
+  public getPlayerArtifactIds(playerId: string): string[] {
+    return this.indexer.getArtifactIdsByOwner(playerId);
+  }
+
+  /** All artifacts owned by the given player (via owner field). */
   public getPlayerArtifacts(playerId: string): ArtifactState[] {
+    const ids = this.indexer.getArtifactIdsByOwner(playerId);
     const result: ArtifactState[] = [];
-    for (const id of this.indexer.getArtifactIds()) {
+    for (const id of ids) {
       const a = this.indexer.getArtifact(id);
-      if (a && a.controller === playerId) {
-        result.push(a);
-      }
+      if (a) result.push(a);
+    }
+    return result;
+  }
+
+  /** All artifacts controlled by the given player (via controller field, for spaceships). */
+  public getControlledArtifacts(playerId: string): ArtifactState[] {
+    const ids = this.indexer.getArtifactIdsByController(playerId);
+    const result: ArtifactState[] = [];
+    for (const id of ids) {
+      const a = this.indexer.getArtifact(id);
+      if (a) result.push(a);
     }
     return result;
   }

@@ -262,9 +262,7 @@ export function decodeArtifact(
     lastDeactivated: Number(state.last_deactivated),
     controller: address(state.controller),
     wormholeTo,
-    currentOwner: currentOwner
-      ? address(currentOwner)
-      : address(state.controller),
+    currentOwner: currentOwner ? address(currentOwner) : address(state.owner),
     onPlanetId: undefined,
     onVoyageId: undefined,
     upgrade: defaultUpgrade(),

@@ -499,18 +499,19 @@ export class ContractsAPI extends EventEmitter {
     return result;
   }
 
+  /** Artifacts owned by the given player (via owner field, mirrors v0.6 ERC721 ownerOf). */
   public async getPlayerArtifacts(
     playerId?: EthAddress,
     onProgress?: (percent: number) => void
   ): Promise<Artifact[]> {
     if (!playerId) return [];
-    const artIds = this.indexerConnection.getArtifactIds();
+    const artIds = this.indexerConnection.getPlayerArtifactIds(playerId);
     const result: Artifact[] = [];
     await forEachWithProgress(
       artIds,
       (artId) => {
         const state = this.indexerConnection.getArtifact(artId);
-        if (state && state.controller === playerId) {
+        if (state) {
           const location = this.indexerConnection.getArtifactLocation(artId);
           result.push(
             decodeArtifact(artId, state, undefined, location ?? undefined)
@@ -520,6 +521,38 @@ export class ContractsAPI extends EventEmitter {
       onProgress
     );
     return result;
+  }
+
+  /** Whether an artifact with the given id exists. Mirrors v0.6 doesArtifactExist. */
+  public doesArtifactExist(artifactId: ArtifactId): boolean {
+    return this.indexerConnection.doesArtifactExist(artifactId);
+  }
+
+  // =========================================================================
+  // Read API — convenience getters
+  // =========================================================================
+
+  /** Space junk limit for a player. Mirrors v0.6 getPlayerSpaceJunkLimit. */
+  public getPlayerSpaceJunkLimit(playerId: EthAddress): number {
+    const state = this.indexerConnection.getPlayer(playerId);
+    if (!state) return 0;
+    return Number(state.space_junk_limit);
+  }
+
+  /** Reveal cooldown in seconds from game config. Mirrors v0.6 getRevealCooldown. */
+  public async getRevealCooldown(): Promise<number> {
+    const config = await this.configCache.getConfig();
+    const core = config.gameConfigCore as Record<string, unknown>;
+    return Number(core?.location_reveal_cooldown ?? 0);
+  }
+
+  /** Artifact point values by rarity. Mirrors v0.6 getArtifactPointValues. */
+  public async getArtifactPointValues(): Promise<number[]> {
+    const config = await this.configCache.getConfig();
+    const core = config.gameConfigCore as Record<string, unknown>;
+    const raw = core?.artifact_point_values;
+    if (Array.isArray(raw)) return raw.map((v) => Number(v ?? 0));
+    return [0, 0, 0, 0, 0, 0];
   }
 }
 

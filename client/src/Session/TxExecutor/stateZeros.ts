@@ -115,6 +115,7 @@ export function artifactZero(): Record<string, unknown> {
     last_activated: 0,
     last_deactivated: 0,
     wormhole_to: 0n,
+    owner: AZTEC_ZERO,
     controller: AZTEC_ZERO,
     last_updated: 0,
   };

@@ -62,7 +62,6 @@ export class ConfigCache {
     const from = this.senderAddress;
     const c = this.configContract;
 
-    // Load all config objects in parallel where possible
     const [
       admin,
       snarkConfig,
@@ -75,49 +74,49 @@ export class ConfigCache {
       tier1,
       tier2,
       tier3,
+      planetDefaultStatsArr,
+      upgradesArr,
+      ...cumulativeRaritiesRaw
     ] = await Promise.all([
-      c.methods.get_admin().simulate({ from }),
-      c.methods.get_snark_config().simulate({ from }),
-      c.methods.get_world_config().simulate({ from }),
-      c.methods.get_game_config_core().simulate({ from }),
-      c.methods.get_upgrade_config().simulate({ from }),
-      c.methods.get_planet_level_thresholds().simulate({ from }),
-      c.methods.get_space_junk_config().simulate({ from }),
-      c.methods.get_planet_type_weights_tier(0).simulate({ from }),
-      c.methods.get_planet_type_weights_tier(1).simulate({ from }),
-      c.methods.get_planet_type_weights_tier(2).simulate({ from }),
-      c.methods.get_planet_type_weights_tier(3).simulate({ from }),
+      c.methods.get_admin_unconstrained().simulate({ from }),
+      c.methods.get_snark_config_unconstrained().simulate({ from }),
+      c.methods.get_world_config_unconstrained().simulate({ from }),
+      c.methods.get_game_config_core_unconstrained().simulate({ from }),
+      c.methods.get_upgrade_config_unconstrained().simulate({ from }),
+      c.methods.get_planet_level_thresholds_unconstrained().simulate({ from }),
+      c.methods.get_space_junk_config_unconstrained().simulate({ from }),
+      c.methods
+        .get_planet_type_weights_tier_unconstrained(0)
+        .simulate({ from }),
+      c.methods
+        .get_planet_type_weights_tier_unconstrained(1)
+        .simulate({ from }),
+      c.methods
+        .get_planet_type_weights_tier_unconstrained(2)
+        .simulate({ from }),
+      c.methods
+        .get_planet_type_weights_tier_unconstrained(3)
+        .simulate({ from }),
+      c.methods.get_default_stats_unconstrained().simulate({ from }),
+      c.methods.get_upgrades_unconstrained().simulate({ from }),
+      ...Array.from({ length: 10 }, (_, i) =>
+        c.methods.get_cumulative_rarity_unconstrained(i).simulate({ from })
+      ),
     ]);
 
-    // Load planet default stats for levels 0-9
-    const planetDefaultStats = await Promise.all(
-      Array.from({ length: 10 }, (_, level) =>
-        c.methods.get_planet_default_stats(level).simulate({ from })
-      )
-    );
+    const planetDefaultStats = Array.isArray(planetDefaultStatsArr)
+      ? [...planetDefaultStatsArr]
+      : [planetDefaultStatsArr];
 
-    // Load upgrades: 3 branches × 4 levels (key = branch * 10 + level)
-    const upgradesPromises: Promise<RawUpgrade>[][] = [
-      [0, 1, 2, 3].map((level) =>
-        c.methods.get_upgrade_by_branch_level(0, level).simulate({ from })
-      ) as Promise<RawUpgrade>[],
-      [0, 1, 2, 3].map((level) =>
-        c.methods.get_upgrade_by_branch_level(1, level).simulate({ from })
-      ) as Promise<RawUpgrade>[],
-      [0, 1, 2, 3].map((level) =>
-        c.methods.get_upgrade_by_branch_level(2, level).simulate({ from })
-      ) as Promise<RawUpgrade>[],
-    ];
-    const upgrades = await Promise.all(
-      upgradesPromises.map((branch) => Promise.all(branch))
-    );
+    const upgrades: RawUpgrade[][] = Array.isArray(upgradesArr)
+      ? (upgradesArr as RawUpgrade[][]).map((branch) =>
+          Array.isArray(branch) ? [...branch] : [branch]
+        )
+      : [[upgradesArr as RawUpgrade]];
 
-    // Load cumulative rarities for levels 0-9
-    const planetCumulativeRarities = await Promise.all(
-      Array.from({ length: 10 }, (_, i) =>
-        c.methods.get_cumulative_rarity(i).simulate({ from })
-      )
-    ).then((vals) => vals.map((v) => Number(v ?? 0)));
+    const planetCumulativeRarities = cumulativeRaritiesRaw.map((v) =>
+      Number(v ?? 0)
+    );
 
     return {
       admin: admin != null ? String(admin) : "",

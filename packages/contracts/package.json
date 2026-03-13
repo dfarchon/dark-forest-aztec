@@ -76,6 +76,26 @@
       "types": "./src/artifacts/Admin.ts",
       "import": "./src/artifacts/Admin.ts",
       "default": "./src/artifacts/Admin.ts"
+    },
+    "./artifacts/ArtifactAction": {
+      "types": "./src/artifacts/ArtifactAction.ts",
+      "import": "./src/artifacts/ArtifactAction.ts",
+      "default": "./src/artifacts/ArtifactAction.ts"
+    },
+    "./artifacts/ArtifactFind": {
+      "types": "./src/artifacts/ArtifactFind.ts",
+      "import": "./src/artifacts/ArtifactFind.ts",
+      "default": "./src/artifacts/ArtifactFind.ts"
+    },
+    "./artifacts/ArtifactProspect": {
+      "types": "./src/artifacts/ArtifactProspect.ts",
+      "import": "./src/artifacts/ArtifactProspect.ts",
+      "default": "./src/artifacts/ArtifactProspect.ts"
+    },
+    "./artifacts/ArtifactValut": {
+      "types": "./src/artifacts/ArtifactValut.ts",
+      "import": "./src/artifacts/ArtifactValut.ts",
+      "default": "./src/artifacts/ArtifactValut.ts"
     }
   },
   "main": "src/index.ts",

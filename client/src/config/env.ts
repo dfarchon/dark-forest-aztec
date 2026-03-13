@@ -6,8 +6,7 @@
 const DEFAULT_NODE_URL = "http://localhost:8080";
 
 /** Default indexer bootstrap URL (devnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in devnet builds. */
-const DEFAULT_INDEXER_BOOTSTRAP_URL =
-  "https://server-production-b4e5.up.railway.app";
+const DEFAULT_INDEXER_BOOTSTRAP_URL = "";
 
 function getString(key: string): string | undefined {
   const value = import.meta.env[key];
