@@ -363,9 +363,7 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    let timestamp = intent.uiTimestamp
-      ? BigInt(Math.floor(intent.uiTimestamp))
-      : BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {
@@ -504,7 +502,7 @@ export class StateResolver {
       perlin = planetRaw ? planetRaw.perlin : 0;
     }
 
-    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {
@@ -607,8 +605,6 @@ export class StateResolver {
     const activatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
 
-    // Resync clock before computing timestamp to minimize drift
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     // Indexer stores by decimal string key; rawSourceLoc/rawTargetLoc are hex LocationIds
@@ -799,12 +795,8 @@ export class StateResolver {
     const levelIndex = Math.min(9, Math.max(0, targetLevelResolved));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-    // Use UI-provided timestamp when available so the refreshed population
-    // matches the energy the user saw at move time.  Fall back to the
-    // chain-clock for backward compatibility.
-    let timestamp = intent.uiTimestamp
-      ? BigInt(Math.floor(intent.uiTimestamp))
-      : BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
+
     {
       const entityTimes: bigint[] = [];
       if (sourcePlanetRaw) entityTimes.push(sourcePlanetRaw.last_updated);
@@ -1005,7 +997,6 @@ export class StateResolver {
       );
     }
 
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     const planetRaw = this.indexer.getPlanet(String(locationIdDec));
@@ -1036,7 +1027,7 @@ export class StateResolver {
       );
     }
 
-    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
     {
       const entityTimes: bigint[] = [];
       if (planetRaw) entityTimes.push(planetRaw.last_updated);
@@ -1082,7 +1073,6 @@ export class StateResolver {
     const location = BigInt(String(locationIdDec));
     const silverToWithdraw = BigInt(String(amount));
 
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     const planetRaw = this.indexer.getPlanet(String(locationIdDec));
@@ -1106,7 +1096,7 @@ export class StateResolver {
     const playerRaw = this.indexer.getPlayer(playerAddr);
     const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
 
-    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
     {
       const entityTimes: bigint[] = [];
       if (planetRaw) entityTimes.push(planetRaw.last_updated);
@@ -1257,7 +1247,7 @@ export class StateResolver {
 
     const r = BigInt(world.radius as bigint | number);
 
-    let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
+    let timestamp = await this.chainClock.getLastBlockTimestampSec();
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {

@@ -20,6 +20,9 @@ export class ChainClock {
   /** Chain time minus client time, in milliseconds. */
   private offsetMs = 0;
 
+  /** Last synced block timestamp in seconds (no interpolation). */
+  private lastBlockTimestampSec = 0n;
+
   /** Wall-clock ms of the last successful sync (for throttling). */
   private lastSyncMs = 0;
 
@@ -32,6 +35,7 @@ export class ChainClock {
   /** Sync the clock from a known chain timestamp (seconds). */
   sync(chainTimestampSec: number): void {
     this.offsetMs = chainTimestampSec * 1000 - Date.now();
+    this.lastBlockTimestampSec = BigInt(chainTimestampSec);
     this.lastSyncMs = Date.now();
   }
 
@@ -75,6 +79,17 @@ export class ChainClock {
     } catch {
       // keep current offset (0 = use system clock)
     }
+  }
+
+  /**
+   * Return a conservative block timestamp safe for contract submission.
+   * Subtracts a small buffer to avoid racing ahead of what simulate() uses
+   * as actual_timestamp (which may lag behind getBlock("latest") on remote devnets).
+   * The 300s contract tolerance window makes this safe.
+   */
+  async getLastBlockTimestampSec(): Promise<bigint> {
+    await this.syncFromNode();
+    return this.lastBlockTimestampSec;
   }
 
   /** Current chain-adjusted time in milliseconds. */
