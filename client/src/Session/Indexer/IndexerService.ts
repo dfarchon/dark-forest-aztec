@@ -89,10 +89,7 @@ export class IndexerService {
   private readonly debounceMs: number;
   private readonly pollIntervalMs: number;
   private readonly maxBlocksPerRequest: number;
-  private readonly onBlockProcessed?: (
-    fromBlock: number,
-    toBlock: number
-  ) => void;
+  private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
   private snapshot: IndexerSnapshot = emptySnapshot();
   private latestKnownBlock: number = 0;
@@ -132,6 +129,11 @@ export class IndexerService {
   }
 
   private onLatestBlock: (latest: number) => void;
+
+  /** Override the onBlockProcessed callback after construction. */
+  setOnBlockProcessed(cb: (fromBlock: number, toBlock: number) => void): void {
+    this.onBlockProcessed = cb;
+  }
 
   /**
    * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of

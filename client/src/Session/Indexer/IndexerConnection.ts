@@ -60,6 +60,12 @@ export interface IndexerConnectionConfig {
   bootstrapUrl?: string;
   /** Optional callback for bootstrap snapshot download progress. */
   onSnapshotProgress?: (progress: SnapshotDownloadProgress) => void;
+  /** Optional callback for block sync progress during initial catch-up. */
+  onBlockSyncProgress?: (
+    fromBlock: number,
+    toBlock: number,
+    latestBlock: number
+  ) => void;
   /** Override default contract addresses from @dfpunk/contracts. */
   contractAddresses?: StorageContractAddresses;
   /** Start block when no bootstrap is used. */
@@ -482,6 +488,13 @@ export async function createIndexerConnection(
   };
 
   const indexer = new IndexerService(serviceOpts);
+
+  if (config.onBlockSyncProgress) {
+    const cb = config.onBlockSyncProgress;
+    indexer.setOnBlockProcessed((from, to) => {
+      cb(from, to, indexer.getLatestKnownBlock());
+    });
+  }
   const connection = new IndexerConnection(indexer);
   const { syncedToBlock } = await connection.initialize();
   return { connection, syncedToBlock };

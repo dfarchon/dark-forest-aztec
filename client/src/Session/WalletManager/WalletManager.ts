@@ -35,6 +35,8 @@ import {
   ARTIFACT_STORAGE_DEPLOYMENT_SALT,
   ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
   ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
+  CONFIG_DEPLOYER_ADDRESS,
+  CONFIG_DEPLOYMENT_SALT,
   CORE_DEPLOYER_ADDRESS,
   CORE_DEPLOYMENT_SALT,
   MOVE_DEPLOYER_ADDRESS,
@@ -58,6 +60,7 @@ import { ArtifactLocationStorageContractArtifact } from "@dfpunk/contracts/artif
 import { ArtifactProspectContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactProspect";
 import { ArtifactStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactStorage";
 import { ArtifactValutContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactValut";
+import { ConfigContractArtifact } from "@dfpunk/contracts/artifacts/Config";
 import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
 import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
@@ -140,6 +143,12 @@ async function registerGameContractsWithPxe(
     artifact: typeof CoreContractArtifact;
     name: string;
   }> = [
+    {
+      deployer: CONFIG_DEPLOYER_ADDRESS,
+      salt: CONFIG_DEPLOYMENT_SALT,
+      artifact: ConfigContractArtifact,
+      name: "Config",
+    },
     {
       deployer: CORE_DEPLOYER_ADDRESS,
       salt: CORE_DEPLOYMENT_SALT,

@@ -31,7 +31,6 @@ import {
   IndexerConnection,
   type IndexerConnectionConfig,
 } from "../../Session/Indexer/IndexerConnection";
-import type { SnapshotDownloadProgress } from "../../Session/Indexer/OffChainSource";
 import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
@@ -62,11 +61,128 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
-function snapshotPhaseLabel(progress: SnapshotDownloadProgress): string {
-  if (progress.phase === "parsing") return "parsing";
-  if (progress.phase === "complete") return "done";
-  if (progress.percent !== null) return `${progress.percent}%`;
-  return "downloading";
+interface LoadingPhase {
+  step:
+    | "connecting"
+    | "wallet"
+    | "snapshot"
+    | "syncing"
+    | "contracts"
+    | "gamestate"
+    | "done";
+  detail?: string;
+  percent?: number;
+}
+
+const LOADING_STEP_LABELS: Record<LoadingPhase["step"], string> = {
+  connecting: "Connecting to node",
+  wallet: "Initializing wallet",
+  snapshot: "Downloading snapshot",
+  syncing: "Syncing blocks",
+  contracts: "Building contracts",
+  gamestate: "Loading game data",
+  done: "Done",
+};
+
+const LOADING_STEP_ORDER: LoadingPhase["step"][] = [
+  "connecting",
+  "wallet",
+  "snapshot",
+  "syncing",
+  "contracts",
+  "gamestate",
+];
+
+function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
+  const currentIdx = LOADING_STEP_ORDER.indexOf(phase.step);
+  const hasPercent = phase.percent != null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: "12px",
+        bottom: "12px",
+        zIndex: 1200,
+        padding: "10px 14px",
+        background: "rgba(10, 10, 10, 0.92)",
+        border: "1px solid #4d4d4d",
+        color: "#e6e6e6",
+        fontSize: "12px",
+        fontFamily: "monospace",
+        lineHeight: 1.6,
+        minWidth: "260px",
+      }}
+    >
+      <div style={{ marginBottom: "6px", color: "#999" }}>Initializing...</div>
+      {LOADING_STEP_ORDER.map((s, i) => {
+        const isCurrent = s === phase.step;
+        const isDone = i < currentIdx;
+        const isPending = i > currentIdx;
+        let marker: string;
+        let color: string;
+        if (isDone) {
+          marker = "\u2713";
+          color = "#5b5";
+        } else if (isCurrent) {
+          marker = "\u25b8";
+          color = "#fff";
+        } else {
+          marker = "\u00b7";
+          color = "#555";
+        }
+        const label = LOADING_STEP_LABELS[s];
+        return (
+          <div
+            key={s}
+            style={{
+              color,
+              opacity: isPending ? 0.5 : 1,
+            }}
+          >
+            <span style={{ display: "inline-block", width: "16px" }}>
+              {marker}
+            </span>
+            {label}
+            {isCurrent && phase.detail ? (
+              <span style={{ color: "#aaa" }}> — {phase.detail}</span>
+            ) : null}
+          </div>
+        );
+      })}
+      <div
+        style={{
+          marginTop: "8px",
+          width: "100%",
+          height: "4px",
+          background: "#2a2a2a",
+          border: "1px solid #3a3a3a",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: hasPercent
+              ? `${Math.max(0, Math.min(100, phase.percent!))}%`
+              : undefined,
+            background: hasPercent ? "#e6e6e6" : "#8a8a8a",
+            transition: hasPercent ? "width 120ms linear" : "none",
+            animation: hasPercent
+              ? undefined
+              : "loadingIndeterminate 1.2s ease-in-out infinite",
+          }}
+        />
+      </div>
+      <style>{`
+        @keyframes loadingIndeterminate {
+          0% { width: 0%; margin-left: 0%; }
+          50% { width: 40%; margin-left: 30%; }
+          100% { width: 0%; margin-left: 100%; }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 const enum TerminalPromptStep {
@@ -93,7 +209,6 @@ export function GameLandingPage() {
   const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
-  const snapshotHideTokenRef = useRef(0);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(true);
@@ -103,10 +218,9 @@ export function GameLandingPage() {
   >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const [step, setStep] = useState(TerminalPromptStep.NONE);
-  const [snapshotProgress, setSnapshotProgress] =
-    useState<SnapshotDownloadProgress | null>(null);
-  const [snapshotBootstrapPending, setSnapshotBootstrapPending] =
-    useState<boolean>(Boolean(getEffectiveIndexerBootstrapUrl()));
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>({
+    step: "connecting",
+  });
 
   const params = new URLSearchParams(location.search);
   const selectedAddress = params.get("account");
@@ -118,10 +232,12 @@ export function GameLandingPage() {
   useEffect(() => {
     let destroyed = false;
     const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
-    setSnapshotBootstrapPending(Boolean(bootstrapUrl));
+    setLoadingPhase({ step: "connecting" });
     (async () => {
       try {
         const nodeUrl = getEffectiveNodeUrl();
+
+        setLoadingPhase({ step: "wallet" });
         const wm = await createWalletManager({
           nodeUrl,
           storagePrefix: "dfpunk",
@@ -141,12 +257,33 @@ export function GameLandingPage() {
           pollIntervalMs: 2000,
           maxBlocksPerRequest: 100,
         };
-        if (bootstrapUrl) indexerConfig.bootstrapUrl = bootstrapUrl;
+        if (bootstrapUrl) {
+          indexerConfig.bootstrapUrl = bootstrapUrl;
+          setLoadingPhase({ step: "snapshot" });
+        }
         indexerConfig.onSnapshotProgress = (progress) => {
           if (destroyed) return;
-          setSnapshotBootstrapPending(false);
-          setSnapshotProgress(progress);
+          const pct = progress.percent ?? undefined;
+          const detail =
+            progress.phase === "parsing"
+              ? "Parsing..."
+              : progress.phase === "complete"
+                ? "Complete"
+                : `${formatBytes(progress.loadedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ""}`;
+          setLoadingPhase({ step: "snapshot", detail, percent: pct });
         };
+        indexerConfig.onBlockSyncProgress = (_from, to, latest) => {
+          if (destroyed) return;
+          const pct = latest > 0 ? Math.round((to / latest) * 100) : undefined;
+          setLoadingPhase({
+            step: "syncing",
+            detail: `Block ${to} / ${latest}`,
+            percent: pct,
+          });
+        };
+        if (!bootstrapUrl) {
+          setLoadingPhase({ step: "syncing", detail: "Preparing..." });
+        }
         const { connection } = await createIndexerConnection(indexerConfig);
         if (destroyed) {
           connection.destroy();
@@ -155,10 +292,10 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
-        setSnapshotBootstrapPending(false);
+        setLoadingPhase({ step: "done" });
         setWalletManager(wm);
       } catch (e) {
-        setSnapshotBootstrapPending(false);
+        setLoadingPhase({ step: "done" });
         console.error("Failed to initialize Aztec session:", e);
         alert("Error connecting to Aztec network");
       }
@@ -534,6 +671,10 @@ export function GameLandingPage() {
         const indexerConnection = indexerRef.current;
         if (!indexerConnection) throw new Error("no indexer connection");
 
+        setLoadingPhase({
+          step: "contracts",
+          detail: "Syncing chain clock...",
+        });
         terminal.current?.println("Building ContractsAPI...");
 
         const node = createAztecNodeClient(getEffectiveNodeUrl());
@@ -549,6 +690,10 @@ export function GameLandingPage() {
           `Chain clock synced (offset: ${chainClock.getOffsetSec().toFixed(0)}s)`
         );
 
+        setLoadingPhase({
+          step: "contracts",
+          detail: "Building contracts interface...",
+        });
         const configCache = new ConfigCache(
           configContract,
           walletManager.getActiveAddress()!
@@ -568,6 +713,10 @@ export function GameLandingPage() {
         });
         contractsAPI.setupEventListeners();
 
+        setLoadingPhase({
+          step: "gamestate",
+          detail: "Downloading game data...",
+        });
         newGameManager = await GameManager.create({
           contractsAPI,
           terminal,
@@ -587,6 +736,7 @@ export function GameLandingPage() {
         return;
       }
 
+      setLoadingPhase({ step: "done" });
       setGameManager(newGameManager);
 
       window.df = newGameManager;
@@ -874,20 +1024,6 @@ export function GameLandingPage() {
   }, [initRenderState]);
 
   useEffect(() => {
-    if (!snapshotProgress || !snapshotProgress.done) return;
-    snapshotHideTokenRef.current += 1;
-    const token = snapshotHideTokenRef.current;
-    const timer = window.setTimeout(() => {
-      setSnapshotProgress((current) => {
-        if (!current || !current.done) return current;
-        if (snapshotHideTokenRef.current !== token) return current;
-        return null;
-      });
-    }, 2500);
-    return () => window.clearTimeout(timer);
-  }, [snapshotProgress]);
-
-  useEffect(() => {
     const gameUiManager = gameUIManagerRef.current;
     if (!terminalVisible && gameUiManager) {
       const tutorialManager = TutorialManager.getInstance(gameUiManager);
@@ -934,85 +1070,7 @@ export function GameLandingPage() {
           promptCharacter={"$"}
         />
       </TerminalWrapper>
-      {(snapshotProgress || snapshotBootstrapPending) && (
-        <div
-          style={{
-            position: "fixed",
-            left: "12px",
-            bottom: "12px",
-            zIndex: 1200,
-            padding: "8px 10px",
-            background: "rgba(10, 10, 10, 0.88)",
-            border: "1px solid #4d4d4d",
-            color: "#e6e6e6",
-            fontSize: "12px",
-            fontFamily: "monospace",
-            lineHeight: 1.35,
-          }}
-        >
-          <div>snapshot download</div>
-          {snapshotProgress ? (
-            <>
-              <div>
-                {snapshotPhaseLabel(snapshotProgress)}
-                {" · "}
-                {formatBytes(snapshotProgress.loadedBytes)}
-                {snapshotProgress.totalBytes
-                  ? ` / ${formatBytes(snapshotProgress.totalBytes)}`
-                  : ""}
-              </div>
-              <div
-                style={{
-                  marginTop: "6px",
-                  width: "220px",
-                  height: "4px",
-                  background: "#2a2a2a",
-                  border: "1px solid #3a3a3a",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${
-                      snapshotProgress.phase === "parsing" ||
-                      snapshotProgress.phase === "complete"
-                        ? 100
-                        : snapshotProgress.percent !== null
-                          ? Math.max(0, Math.min(100, snapshotProgress.percent))
-                          : 0
-                    }%`,
-                    background: "#e6e6e6",
-                    transition: "width 120ms linear",
-                  }}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div>starting...</div>
-              <div
-                style={{
-                  marginTop: "6px",
-                  width: "220px",
-                  height: "4px",
-                  background: "#2a2a2a",
-                  border: "1px solid #3a3a3a",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: "35%",
-                    height: "100%",
-                    background: "#8a8a8a",
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {loadingPhase.step !== "done" && <LoadingOverlay phase={loadingPhase} />}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );
