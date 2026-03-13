@@ -150,6 +150,7 @@ function artifactZero(): Record<string, unknown> {
         last_activated: 0,
         last_deactivated: 0,
         wormhole_to: 0n,
+        owner: aztecZero,
         controller: aztecZero,
         last_updated: 0,
     };

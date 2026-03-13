@@ -8,10 +8,6 @@ pub contract Config {
     };
     use ::aztec::state_vars::{Map, PublicMutable};
 
-    use ::types::args::{
-        AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
-    };
-
     use ::types::config::{
         artifacts::ArtifactsConfig,
         capture_zones::CaptureZonesConfig,
@@ -92,14 +88,6 @@ pub contract Config {
     }
 
     #[external("public")]
-    fn set_default_world_config() {
-        self.internal.assert_admin();
-        let config = WorldConfig::zero();
-        self.storage.world_config.write(config);
-        self.storage.world_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
     fn set_world_config(config: WorldConfig) {
         self.internal.assert_admin();
         self.storage.world_config.write(config);
@@ -107,30 +95,10 @@ pub contract Config {
     }
 
     #[external("public")]
-    fn set_default_snark_config() {
-        self.internal.assert_admin();
-        let config = SnarkConfig::zero();
-        self.storage.snark_config.write(config);
-        self.storage.snark_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
     fn set_snark_config(config: SnarkConfig) {
         self.internal.assert_admin();
         self.storage.snark_config.write(config);
         self.storage.snark_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
-    fn set_default_game_config() {
-        self.internal.assert_admin();
-        // Only sets the small parts of game config that fit under the SSTORE limit.
-        let core = GameConfigCore::zero();
-        let thresholds = PlanetLevelThresholds::zero();
-        self.storage.game_config_core.write(core);
-        self.storage.planet_level_thresholds.write(thresholds);
-        self.storage.game_config_core_hash.write(poseidon2_hash(core.serialize()));
-        self.storage.planet_level_thresholds_hash.write(poseidon2_hash(thresholds.serialize()));
     }
 
     #[external("public")]
@@ -191,26 +159,10 @@ pub contract Config {
     }
 
     #[external("public")]
-    fn set_default_artifacts_config() {
-        self.internal.assert_admin();
-        let config = ArtifactsConfig::zero();
-        self.storage.artifacts_config.write(config);
-        self.storage.artifacts_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
     fn set_artifacts_config(config: ArtifactsConfig) {
         self.internal.assert_admin();
         self.storage.artifacts_config.write(config);
         self.storage.artifacts_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
-    fn set_default_spaceships_config() {
-        self.internal.assert_admin();
-        let config = SpaceshipsConfig::zero();
-        self.storage.spaceships_config.write(config);
-        self.storage.spaceships_config_hash.write(poseidon2_hash(config.serialize()));
     }
 
     #[external("public")]
@@ -221,26 +173,10 @@ pub contract Config {
     }
 
     #[external("public")]
-    fn set_default_space_junk_config() {
-        self.internal.assert_admin();
-        let config = SpaceJunkConfig::zero();
-        self.storage.space_junk_config.write(config);
-        self.storage.space_junk_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
     fn set_space_junk_config(config: SpaceJunkConfig) {
         self.internal.assert_admin();
         self.storage.space_junk_config.write(config);
         self.storage.space_junk_config_hash.write(poseidon2_hash(config.serialize()));
-    }
-
-    #[external("public")]
-    fn set_default_capture_zones_config() {
-        self.internal.assert_admin();
-        let config = CaptureZonesConfig::zero();
-        self.storage.capture_zones_config.write(config);
-        self.storage.capture_zones_config_hash.write(poseidon2_hash(config.serialize()));
     }
 
     #[external("public")]
@@ -751,97 +687,6 @@ pub contract Config {
             self.storage.planet_default_stats_hash.at(8).read(),
             self.storage.planet_default_stats_hash.at(9).read(),
         ]
-    }
-
-    // ========== Config Verification Functions (on-chain) ==========
-
-    /// Verifies that the given WorldConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_world_config(config: WorldConfig) -> bool {
-        self.storage.world_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given SnarkConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_snark_config(config: SnarkConfig) -> bool {
-        self.storage.snark_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given GameConfigCore matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_game_config_core(config: GameConfigCore) -> bool {
-        self.storage.game_config_core_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given PlanetLevelThresholds matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_planet_level_thresholds(config: PlanetLevelThresholds) -> bool {
-        self.storage.planet_level_thresholds_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given PlanetTypeWeightsTier matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_planet_type_weights_tier(tier: u8, config: PlanetTypeWeightsTier) -> bool {
-        let stored_hash = if tier == 0 {
-            self.storage.planet_type_weights_tier_0_hash.read()
-        } else if tier == 1 {
-            self.storage.planet_type_weights_tier_1_hash.read()
-        } else if tier == 2 {
-            self.storage.planet_type_weights_tier_2_hash.read()
-        } else if tier == 3 {
-            self.storage.planet_type_weights_tier_3_hash.read()
-        } else {
-            assert(false, "tier must be 0..=3");
-            0
-        };
-        stored_hash == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given ArtifactsConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_artifacts_config(config: ArtifactsConfig) -> bool {
-        self.storage.artifacts_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given SpaceshipsConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_spaceships_config(config: SpaceshipsConfig) -> bool {
-        self.storage.spaceships_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given SpaceJunkConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_space_junk_config(config: SpaceJunkConfig) -> bool {
-        self.storage.space_junk_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given CaptureZonesConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_capture_zones_config(config: CaptureZonesConfig) -> bool {
-        self.storage.capture_zones_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given UpgradeConfig matches the stored hash.
-    #[external("public")]
-    #[view]
-    fn verify_upgrade_config(config: UpgradeConfig) -> bool {
-        self.storage.upgrade_config_hash.read() == poseidon2_hash(config.serialize())
-    }
-
-    /// Verifies that the given PlanetDefaultStats matches the stored hash for the given level.
-    #[external("public")]
-    #[view]
-    fn verify_planet_default_stats(level: u8, stats: PlanetDefaultStats) -> bool {
-        self.storage.planet_default_stats_hash.at(level).read() == poseidon2_hash(stats.serialize())
     }
 
     // ========== Config Hash Verification Functions (direct hash comparison) ==========

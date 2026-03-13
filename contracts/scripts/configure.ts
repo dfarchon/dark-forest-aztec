@@ -2,7 +2,9 @@
  * Run post-deploy interactions using contract addresses from .env.
  * Use after deploy: pnpm configure (or node --experimental-transform-types scripts/configure.ts)
  * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS, ADMIN_CONTRACT_ADDRESS, CORE_CONTRACT_ADDRESS,
- * MOVE_CONTRACT_ADDRESS, WORLD_STORAGE_CONTRACT_ADDRESS, PLAYER_STORAGE_CONTRACT_ADDRESS,
+ * MOVE_CONTRACT_ADDRESS, ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS, ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS,
+ * ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS, ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS,
+ * WORLD_STORAGE_CONTRACT_ADDRESS, PLAYER_STORAGE_CONTRACT_ADDRESS,
  * PLANET_STORAGE_CONTRACT_ADDRESS, PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
  * PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS, PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
  * ARRIVAL_STORAGE_CONTRACT_ADDRESS, ARTIFACT_STORAGE_CONTRACT_ADDRESS,
@@ -100,7 +102,17 @@ const CONTRACT_SPECS = [
         exportName: 'ArtifactActionContract',
     },
     {
-        name: 'ArtifactVault',
+        name: 'ArtifactFind',
+        modulePath: './artifacts/ArtifactFind.ts',
+        exportName: 'ArtifactFindContract',
+    },
+    {
+        name: 'ArtifactProspect',
+        modulePath: './artifacts/ArtifactProspect.ts',
+        exportName: 'ArtifactProspectContract',
+    },
+    {
+        name: 'ArtifactValut',
         modulePath: './artifacts/ArtifactValut.ts',
         exportName: 'ArtifactValutContract',
     },
@@ -128,7 +140,9 @@ function addressesFromEnv(): Record<string, string> {
         ['Core', 'CORE_CONTRACT_ADDRESS'],
         ['Move', 'MOVE_CONTRACT_ADDRESS'],
         ['ArtifactAction', 'ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS'],
-        ['ArtifactVault', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactFind', 'ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactProspect', 'ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS'],
+        ['ArtifactValut', 'ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS'],
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
@@ -173,6 +187,10 @@ async function main() {
         `📋 ArtifactLocationStorage: ${addresses['ArtifactLocationStorage']}`
     );
     console.log(`📋 Move: ${addresses['Move']}`);
+    console.log(`📋 ArtifactAction: ${addresses['ArtifactAction']}`);
+    console.log(`📋 ArtifactFind: ${addresses['ArtifactFind']}`);
+    console.log(`📋 ArtifactProspect: ${addresses['ArtifactProspect']}`);
+    console.log(`📋 ArtifactValut: ${addresses['ArtifactValut']}`);
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
     console.log(`⚡ Prover: ${PROVER_ENABLED ? 'ON (slow)' : 'OFF (fast)'}\n`);
 
@@ -208,7 +226,9 @@ async function main() {
     const core = contracts['Core'];
     const move = contracts['Move'];
     const artifactActionSystem = contracts['ArtifactAction'];
-    const artifactVaultSystem = contracts['ArtifactVault'];
+    const artifactFindSystem = contracts['ArtifactFind'];
+    const artifactProspectSystem = contracts['ArtifactProspect'];
+    const artifactVaultSystem = contracts['ArtifactValut'];
 
     const worldStorage = contracts['WorldStorage'];
     const playerStorage = contracts['PlayerStorage'];
@@ -224,8 +244,15 @@ async function main() {
     if (!config || !admin) throw new Error('Config or Admin instance missing');
     if (!core) throw new Error('Core instance missing');
     if (!move) throw new Error('Move instance missing');
-    if (!artifactActionSystem || !artifactVaultSystem) {
-        throw new Error('ArtifactAction or ArtifactVault instance missing');
+    if (
+        !artifactActionSystem ||
+        !artifactFindSystem ||
+        !artifactProspectSystem ||
+        !artifactVaultSystem
+    ) {
+        throw new Error(
+            'One or more artifact system contracts missing (ArtifactAction, ArtifactFind, ArtifactProspect, ArtifactValut)'
+        );
     }
 
     if (
@@ -249,7 +276,7 @@ async function main() {
         },
     };
 
-    /** Batch authorize contracts on a storage contract (idempotent for re-runs). */
+    /** Batch authorize contracts on a storage contract (idempotent, handles >3 via multiple batches). */
     const addAuthorizedBatchIfNeeded = async (
         storage: ContractBase,
         contractAddrs: AztecAddress[]
@@ -266,7 +293,6 @@ async function main() {
             };
         };
 
-        // Filter out already-authorized addresses
         const toAuthorize: AztecAddress[] = [];
         for (const addr of contractAddrs) {
             const isAuth = await methods
@@ -276,18 +302,20 @@ async function main() {
         }
         if (toAuthorize.length === 0) return;
 
-        // Pad to fixed array of 3
-        const padded: [AztecAddress, AztecAddress, AztecAddress] = [
-            toAuthorize[0] ?? AztecAddress.zero(),
-            toAuthorize[1] ?? AztecAddress.zero(),
-            toAuthorize[2] ?? AztecAddress.zero(),
-        ];
-        await methods
-            .add_authorized_contracts_batch(padded, toAuthorize.length)
-            .send(opts);
+        for (let i = 0; i < toAuthorize.length; i += 3) {
+            const chunk = toAuthorize.slice(i, i + 3);
+            const padded: [AztecAddress, AztecAddress, AztecAddress] = [
+                chunk[0] ?? AztecAddress.zero(),
+                chunk[1] ?? AztecAddress.zero(),
+                chunk[2] ?? AztecAddress.zero(),
+            ];
+            await methods
+                .add_authorized_contracts_batch(padded, chunk.length)
+                .send(opts);
+        }
     };
 
-    const TOTAL_STEPS = 32;
+    const TOTAL_STEPS = 36;
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
@@ -303,7 +331,7 @@ async function main() {
         );
     };
 
-    console.log('\n🔍 Configuring contracts (32 steps)...\n');
+    console.log('\n🔍 Configuring contracts (36 steps)...\n');
 
     // ---- Phase 1: Config initialization (10 calls) ----
 
@@ -635,110 +663,60 @@ async function main() {
         }
     );
 
-    // ---- Phase 4: ArtifactAction & ArtifactVault setup ----
+    // ---- Phase 4: Artifact system contracts setup ----
 
-    await run('ArtifactAction.set_all_storage_addresses()', async () => {
-        await artifactActionSystem.methods
-            .set_all_storage_addresses(
-                config.address,
-                worldStorage.address,
-                playerStorage.address,
-                planetStorage.address,
-                planetArtifactsStorage.address,
-                planetEventsStorage.address,
-                arrivalStorage.address,
-                artifactStorage.address,
-                artifactLocationStorage.address
-            )
-            .send(opts);
-    });
+    const artifactSystems = [
+        { name: 'ArtifactAction', instance: artifactActionSystem },
+        { name: 'ArtifactFind', instance: artifactFindSystem },
+        { name: 'ArtifactProspect', instance: artifactProspectSystem },
+        { name: 'ArtifactValut', instance: artifactVaultSystem },
+    ];
 
-    await run('ArtifactVault.set_all_storage_addresses()', async () => {
-        await artifactVaultSystem.methods
-            .set_all_storage_addresses(
-                config.address,
-                worldStorage.address,
-                playerStorage.address,
-                planetStorage.address,
-                planetArtifactsStorage.address,
-                planetEventsStorage.address,
-                arrivalStorage.address,
-                artifactStorage.address,
-                artifactLocationStorage.address
-            )
-            .send(opts);
-    });
+    const artifactStorageArgs = [
+        config.address,
+        arrivalStorage.address,
+        artifactStorage.address,
+        artifactLocationStorage.address,
+        planetStorage.address,
+        planetArtifactsStorage.address,
+        planetEventsStorage.address,
+        playerStorage.address,
+        worldStorage.address,
+    ] as const;
 
-    // Authorize both artifact systems on storages (batch where supported)
-    await run(
-        'WorldStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(worldStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
+    for (const sys of artifactSystems) {
+        await run(`${sys.name}.set_all_storage_addresses()`, async () => {
+            await sys.instance.methods
+                .set_all_storage_addresses(...artifactStorageArgs)
+                .send(opts);
+        });
+    }
+
+    const artifactSystemAddresses = artifactSystems.map(
+        (s) => s.instance.address
     );
 
-    await run(
-        'PlayerStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(playerStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
+    const artifactAuthStorages: Array<[string, ContractBase]> = [
+        ['WorldStorage', worldStorage],
+        ['PlayerStorage', playerStorage],
+        ['PlanetStorage', planetStorage],
+        ['PlanetArtifactsStorage', planetArtifactsStorage],
+        ['PlanetEventsStorage', planetEventsStorage],
+        ['ArtifactStorage', artifactStorage],
+        ['ArtifactLocationStorage', artifactLocationStorage],
+    ];
 
-    await run(
-        'PlanetStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
-
-    await run(
-        'PlanetArtifactsStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
-
-    await run(
-        'PlanetEventsStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetEventsStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
-
-    await run(
-        'ArtifactStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(artifactStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
-
-    await run(
-        'ArtifactLocationStorage.add_authorized_contracts_batch(artifact systems)',
-        async () => {
-            await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
-                artifactActionSystem.address,
-                artifactVaultSystem.address,
-            ]);
-        }
-    );
+    for (const [storageName, storage] of artifactAuthStorages) {
+        await run(
+            `${storageName}.add_authorized_contracts_batch(artifact systems)`,
+            async () => {
+                await addAuthorizedBatchIfNeeded(
+                    storage,
+                    artifactSystemAddresses
+                );
+            }
+        );
+    }
 
     const elapsedMs = Date.now() - scriptStartTime;
     console.log('\n✅ Configure done.');

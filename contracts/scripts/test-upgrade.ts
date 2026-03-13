@@ -264,6 +264,7 @@ function artifactZero(): Record<string, unknown> {
         last_activated: 0,
         last_deactivated: 0,
         wormhole_to: 0n,
+        owner: aztecZero,
         controller: aztecZero,
         last_updated: 0,
     };
@@ -531,6 +532,9 @@ async function main() {
     const tier3 = await Config.methods
         .get_planet_type_weights_tier(3)
         .simulate({ from: user });
+    const artifactsConfig = await Config.methods
+        .get_artifacts_config()
+        .simulate({ from: user });
 
     let playerState = await loadPlayerFromEvents(ctx, user.toString());
     if (!playerState || toBigint(playerState.init_timestamp) === 0n) {
@@ -762,17 +766,17 @@ async function main() {
 
     const targetPerlin = 13;
     const targetLevel = 1;
-    const targetRadius = toBigint(worldForMove.radius);
     const x1 = 0n;
     const y1 = 0n;
     const x2 = maxDist;
     const y2 = 0n;
     const movedArtifactId = 0n;
-    const activatedArtifactId = 0n;
+    const sourceActivatedArtifactId = 0n;
+    const targetActivatedArtifactId = 0n;
     const isAbandoning = false;
     const movedArtifact = artifactZero();
-    const movedArtifactLocation = artifactLocationZero();
-    const activatedArtifact = artifactZero();
+    const sourceActivatedArtifact = artifactZero();
+    const targetActivatedArtifact = artifactZero();
 
     const buildMoveArgs = (timestamp: bigint) =>
         [
@@ -780,7 +784,6 @@ async function main() {
             location,
             targetPerlin,
             targetLevel,
-            targetRadius,
             maxDist,
             x1,
             y1,
@@ -789,7 +792,8 @@ async function main() {
             popMoved,
             silverMoved,
             movedArtifactId,
-            activatedArtifactId,
+            sourceActivatedArtifactId,
+            targetActivatedArtifactId,
             isAbandoning,
             timestamp,
             snarkConfig,
@@ -802,22 +806,23 @@ async function main() {
             tier1,
             tier2,
             tier3,
+            artifactsConfig,
             sourceState.planet,
+            sourceState.planetArtifacts,
             sourceState.planetEvents,
             sourceState.arrivals,
             sourceState.artifacts,
             sourceState.artifactLocations,
-            sourceState.planetArtifacts,
             targetState.planet,
+            targetState.planetArtifacts,
             targetState.planetEvents,
             targetState.arrivals,
             targetState.artifacts,
             targetState.artifactLocations,
-            targetState.planetArtifacts,
             worldForMove,
             movedArtifact,
-            movedArtifactLocation,
-            activatedArtifact,
+            sourceActivatedArtifact,
+            targetActivatedArtifact,
         ] as const;
 
     let moveCompleted = false;
@@ -886,11 +891,11 @@ async function main() {
             upgradeConfig,
             upgrade,
             state.planet,
+            state.planetArtifacts,
             state.planetEvents,
             state.arrivals,
             state.artifacts,
             state.artifactLocations,
-            state.planetArtifacts,
             worldForUpgrade,
         ] as const;
 

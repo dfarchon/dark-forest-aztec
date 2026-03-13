@@ -207,13 +207,13 @@ function appendAccountToEnv(
     accountAddress: AztecAddress,
     envFilePath: string
 ) {
-    const config = [
+    const block = [
         `ACCOUNT_SALT=${salt.toString()}`,
         `ACCOUNT_SECRET_KEY=${secretKey.toString()}`,
         `ACCOUNT_SIGNING_KEY=${signingKey.toString('hex')}`,
         `ACCOUNT_ADDRESS=${accountAddress.toString()}`,
     ].join('\n');
-    fs.appendFileSync(envFilePath, '\n\n' + config);
+    fs.appendFileSync(envFilePath, '\n\n' + block);
 }
 
 /**

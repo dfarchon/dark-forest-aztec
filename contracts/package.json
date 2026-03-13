@@ -33,6 +33,7 @@
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
         "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",
         "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts",
+        "test:env": "node --experimental-transform-types scripts/test-env.ts",
         "test:moveProof": "pnpm exec tsx scripts/test-moveProof.ts",
         "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts"
     },

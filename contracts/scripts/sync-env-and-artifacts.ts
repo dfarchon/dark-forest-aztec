@@ -71,6 +71,10 @@ const KEY_COMMENTS: Record<string, string> = {
     MOVE_CONTRACT_ADDRESS: 'The address for the Move contract.',
     ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS:
         'The address for the ArtifactAction system contract.',
+    ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS:
+        'The address for the ArtifactFind system contract.',
+    ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS:
+        'The address for the ArtifactProspect system contract.',
     ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS:
         'The address for the ArtifactVault system contract.',
     ARTIFACT_SYSTEM_CONTRACT_ADDRESS:
@@ -90,6 +94,14 @@ const KEY_COMMENTS: Record<string, string> = {
         'Deployer address for ArtifactAction (for PXE registration).',
     ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT:
         'Deployment salt for ArtifactAction (for PXE registration).',
+    ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS:
+        'Deployer address for ArtifactFind (for PXE registration).',
+    ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT:
+        'Deployment salt for ArtifactFind (for PXE registration).',
+    ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS:
+        'Deployer address for ArtifactProspect (for PXE registration).',
+    ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT:
+        'Deployment salt for ArtifactProspect (for PXE registration).',
     ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS:
         'Deployer address for ArtifactVault (for PXE registration).',
     ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT:

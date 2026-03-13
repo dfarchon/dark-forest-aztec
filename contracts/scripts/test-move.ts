@@ -241,6 +241,7 @@ function artifactZero(): Record<string, unknown> {
         last_activated: 0,
         last_deactivated: 0,
         wormhole_to: 0n,
+        owner: aztecZero,
         controller: aztecZero,
         last_updated: 0,
     };
@@ -395,7 +396,6 @@ async function main() {
         throw new Error(
             'Could not load World from events. Run test-core-initialize-player first.'
         );
-    const worldRadius = toBigint(world.radius);
 
     console.log('\n📥 Loading config...');
     const snarkConfig = await Config.methods
@@ -427,6 +427,9 @@ async function main() {
         .simulate({ from: user });
     const tier3 = await Config.methods
         .get_planet_type_weights_tier(3)
+        .simulate({ from: user });
+    const artifactsConfig = await Config.methods
+        .get_artifacts_config()
         .simulate({ from: user });
 
     const sourcePlanet = await loadPlanetFromEvents(ctx, sourceLoc);
@@ -491,11 +494,6 @@ async function main() {
 
     console.log('\n📊 Move parameters:');
     console.log(`   maxDist=${maxDist}, range=${range}`);
-
-    // Check #1: target_radius <= world.radius
-    console.log(
-        `   worldRadius=${worldRadius}, targetRadius will be=${worldRadius} (same) ✓`
-    );
 
     // Find minimum popMoved that yields pop_arriving > 0 (binary search)
     let minPopForArrival = 1n;
@@ -584,12 +582,11 @@ async function main() {
     const targetArtifacts = targetArrivalData.artifacts;
     const targetArtifactLocations = targetArrivalData.artifactLocations;
     const movedArtifact = artifactZero();
-    const movedArtifactLocation = artifactLocationZero();
-    const activatedArtifact = artifactZero();
+    const sourceActivatedArtifact = artifactZero();
+    const targetActivatedArtifact = artifactZero();
 
     const targetPerlin = 13;
     const targetLevel = 0;
-    const targetRadius = worldRadius;
     // Coordinates: (x1,y1) source, (x2,y2) target. max_dist must be the actual distance (used for decay & travel time).
     const x1 = 0n;
     const y1 = 0n;
@@ -597,7 +594,8 @@ async function main() {
     const y2 = 0n;
     const silverMoved = 0n;
     const movedArtifactId = 0n;
-    const activatedArtifactId = 0n;
+    const sourceActivatedArtifactId = 0n;
+    const targetActivatedArtifactId = 0n;
     const isAbandoning = false;
 
     // Send a no-op tx to refresh block timestamp before the main test tx.
@@ -611,7 +609,6 @@ async function main() {
         targetLoc,
         targetPerlin,
         targetLevel,
-        targetRadius,
         maxDist,
         x1,
         y1,
@@ -620,7 +617,8 @@ async function main() {
         popMoved,
         silverMoved,
         movedArtifactId,
-        activatedArtifactId,
+        sourceActivatedArtifactId,
+        targetActivatedArtifactId,
         isAbandoning,
         timestamp,
         snarkConfig,
@@ -633,22 +631,23 @@ async function main() {
         tier1,
         tier2,
         tier3,
+        artifactsConfig,
         sourcePlanet,
+        sourcePlanetArtifacts,
         sourcePlanetEvents,
         sourceArrivals,
         sourceArtifacts,
         sourceArtifactLocations,
-        sourcePlanetArtifacts,
         targetPlanet,
+        targetPlanetArtifacts,
         targetPlanetEvents,
         targetArrivals,
         targetArtifacts,
         targetArtifactLocations,
-        targetPlanetArtifacts,
         world,
         movedArtifact,
-        movedArtifactLocation,
-        activatedArtifact,
+        sourceActivatedArtifact,
+        targetActivatedArtifact,
     ] as const;
 
     console.log('\n🎮 Calling Move.move() (private)...');
