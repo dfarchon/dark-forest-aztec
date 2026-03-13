@@ -145,8 +145,8 @@ export function planetToContract(s: PlanetState): Record<string, unknown> {
 export function planetEventsToContract(
   s: PlanetEventsState
 ): Record<string, unknown> {
-  const events = (s.events ?? []).map((e) => ({ id: toNumber(e.id) }));
-  while (events.length < 20) events.push({ id: 0 });
+  const events = (s.events ?? []).map((e) => ({ id: toBigint(e.id) }));
+  while (events.length < 20) events.push({ id: 0n });
   return {
     events: events.slice(0, 20),
     count: s.count,
@@ -176,7 +176,7 @@ export function planetArtifactsToContract(
 
 export function arrivalToContract(s: ArrivalState): Record<string, unknown> {
   return {
-    id: toNumber(s.id),
+    id: toBigint(s.id),
     player: s.player,
     from_planet: toBigint(s.from_planet),
     to_planet: toBigint(s.to_planet),

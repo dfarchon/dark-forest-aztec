@@ -185,6 +185,36 @@ function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
   );
 }
 
+function BlockSyncStatus({ connection }: { connection: IndexerConnection }) {
+  const [blockNum, setBlockNum] = useState<number>(
+    connection.getCurrentBlockNumber()
+  );
+
+  useEffect(() => {
+    const sub = connection.blockNumber$.subscribe((n) => setBlockNum(n));
+    return () => sub.unsubscribe();
+  }, [connection]);
+
+  return (
+    <div
+      style={{
+        flexShrink: 0,
+        borderTop: "1px solid #333",
+        padding: "4px 8px",
+        fontSize: "11px",
+        fontFamily: "monospace",
+        color: "#666",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+      }}
+    >
+      <span style={{ color: "#5b5" }}>●</span>
+      Block {blockNum}
+    </div>
+  );
+}
+
 const enum TerminalPromptStep {
   NONE,
   COMPATIBILITY_CHECKS_PASSED,
@@ -217,6 +247,7 @@ export function GameLandingPage() {
     WalletManager | undefined
   >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
+  const initialSyncDoneRef = useRef(false);
   const [step, setStep] = useState(TerminalPromptStep.NONE);
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>({
     step: "connecting",
@@ -273,7 +304,7 @@ export function GameLandingPage() {
           setLoadingPhase({ step: "snapshot", detail, percent: pct });
         };
         indexerConfig.onBlockSyncProgress = (_from, to, latest) => {
-          if (destroyed) return;
+          if (destroyed || initialSyncDoneRef.current) return;
           const pct = latest > 0 ? Math.round((to / latest) * 100) : undefined;
           setLoadingPhase({
             step: "syncing",
@@ -292,6 +323,7 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
+        initialSyncDoneRef.current = true;
         setLoadingPhase({ step: "done" });
         setWalletManager(wm);
       } catch (e) {
@@ -1069,8 +1101,14 @@ export function GameLandingPage() {
           ref={terminalHandle as React.Ref<TerminalHandle>}
           promptCharacter={"$"}
         />
+        {initRenderState === InitRenderState.COMPLETE && indexerRef.current && (
+          <BlockSyncStatus connection={indexerRef.current} />
+        )}
       </TerminalWrapper>
-      {loadingPhase.step !== "done" && <LoadingOverlay phase={loadingPhase} />}
+      {loadingPhase.step !== "done" &&
+        initRenderState !== InitRenderState.COMPLETE && (
+          <LoadingOverlay phase={loadingPhase} />
+        )}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );

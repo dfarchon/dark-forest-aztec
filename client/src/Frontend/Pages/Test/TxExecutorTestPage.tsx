@@ -151,7 +151,6 @@ export function TxExecutorTestPage() {
   const [moveTgtLoc, setMoveTgtLoc] = React.useState("");
   const [moveTgtPerlin, setMoveTgtPerlin] = React.useState("");
   const [moveTgtLevel, setMoveTgtLevel] = React.useState("");
-  const [moveTgtRadius, setMoveTgtRadius] = React.useState("");
   const [moveMaxDist, setMoveMaxDist] = React.useState("");
   const [moveX1, setMoveX1] = React.useState("");
   const [moveY1, setMoveY1] = React.useState("");
@@ -404,7 +403,6 @@ export function TxExecutorTestPage() {
         BigInt(moveTgtLoc || "0"),
         BigInt(moveTgtPerlin || "0"),
         BigInt(moveTgtLevel || "0"),
-        BigInt(moveTgtRadius || "0"),
         BigInt(moveMaxDist || "0"),
         BigInt(moveX1 || "0"),
         BigInt(moveY1 || "0"),
@@ -419,7 +417,6 @@ export function TxExecutorTestPage() {
     setMoveTgtLoc("200");
     setMoveTgtPerlin("10");
     setMoveTgtLevel("0");
-    setMoveTgtRadius("50000");
     setMoveMaxDist("100000");
     setMoveX1("100");
     setMoveY1("200");
@@ -668,15 +665,6 @@ export function TxExecutorTestPage() {
             className="test-page__form-input test-page__form-input--short"
             value={moveTgtLevel}
             onChange={(e) => setMoveTgtLevel(e.target.value)}
-          />
-        </div>
-        <div className="test-page__form-group">
-          <label className="test-page__form-label">targetRadius</label>
-          <input
-            type="text"
-            className="test-page__form-input test-page__form-input--short"
-            value={moveTgtRadius}
-            onChange={(e) => setMoveTgtRadius(e.target.value)}
           />
         </div>
         <div className="test-page__form-group">

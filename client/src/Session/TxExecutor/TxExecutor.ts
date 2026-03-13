@@ -323,6 +323,7 @@ export class TxExecutor {
         const invocation = methodFn(...contractArgs);
 
         if (
+          tx.intent.methodName === "initializePlayer" ||
           tx.intent.methodName === "revealLocation" ||
           tx.intent.methodName === "move"
         ) {

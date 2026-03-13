@@ -287,11 +287,13 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // initializePlayer — 22 args
+  // initializePlayer — 25 args
   // [x, y, radius, locationId, perlin, level, timestamp,
   //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
   //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
-  //  planetState, playerState, world]
+  //  planetState, planetEventsState, planetArtifactsState,
+  //  arrivals[20], arrivalArtifacts[20], arrivalArtifactLocations[20],
+  //  playerState, world]
   // -------------------------------------------------------------------------
 
   private async resolveInitializePlayer(
@@ -357,6 +359,18 @@ export class StateResolver {
     const planetRaw = this.indexer.getPlanet(locationIdDec);
     const planetState = planetRaw ? planetToContract(planetRaw) : planetZero();
 
+    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
+    const planetEventsState = planetEventsRaw
+      ? planetEventsToContract(planetEventsRaw)
+      : planetEventsZero();
+
+    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
+    const planetArtifactsState = planetArtifactsRaw
+      ? planetArtifactsToContract(planetArtifactsRaw)
+      : planetArtifactsZero();
+
+    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
     const playerRaw = this.indexer.getPlayer(playerAddr);
     const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
 
@@ -408,6 +422,11 @@ export class StateResolver {
       tier2,
       tier3,
       planetState,
+      planetEventsState,
+      planetArtifactsState,
+      arrivalData.arrivals,
+      arrivalData.artifacts,
+      arrivalData.artifactLocations,
       playerState,
       world,
     ];
@@ -558,38 +577,36 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // move — 36+ args
-  // [sourceLoc, targetLoc, targetPerlin, targetLevel, targetRadius, maxDist,
+  // move — 37 args
+  // [sourceLoc, targetLoc, targetPerlin, targetLevel, maxDist,
   //  x1, y1, x2, y2, popMoved, silverMoved,
-  //  movedArtifactId, activatedArtifactId, isAbandoning, timestamp,
+  //  movedArtifactId, sourceActivatedArtifactId, targetActivatedArtifactId,
+  //  isAbandoning, timestamp,
   //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
   //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
-  //  sourcePlanet, sourcePlanetEvents,
+  //  artifactsConfig,
+  //  sourcePlanet, sourcePlanetArtifacts, sourcePlanetEvents,
   //  sourceArrivals[20], sourceArtifacts[20], sourceArtifactLocations[20],
-  //  sourcePlanetArtifacts,
-  //  targetPlanet, targetPlanetEvents,
+  //  targetPlanet, targetPlanetArtifacts, targetPlanetEvents,
   //  targetArrivals[20], targetArtifacts[20], targetArtifactLocations[20],
-  //  targetPlanetArtifacts,
-  //  world, movedArtifact, movedArtifactLocation, activatedArtifact]
+  //  world, movedArtifact, sourceActivatedArtifact, targetActivatedArtifact]
   // -------------------------------------------------------------------------
 
   private async resolveMove(intent: UnconfirmedMove): Promise<unknown[]> {
     const intentArgs = await intent.args;
     // intentArgs = [sourceLoc, targetLoc, targetPerlin, targetLevel,
-    //               targetRadius, maxDist, x1, y1, x2, y2]
+    //               maxDist, x1, y1, x2, y2]
     const [
       rawSourceLoc,
       rawTargetLoc,
       targetPerlinFromIntent,
       targetLevel,
-      targetRadius,
       maxDist,
       rawX1,
       rawY1,
       rawX2,
       rawY2,
     ] = intentArgs;
-    // When ZK checks are on, we use Poseidon2 perlin/level; intent may have stale values from entity store.
     let targetPerlin = Number(targetPerlinFromIntent);
     let targetLevelResolved = Number(targetLevel);
     const sourceLoc = hexIdToField(rawSourceLoc);
@@ -604,7 +621,8 @@ export class StateResolver {
     let popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
     let silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
     const movedArtifactId = intent.artifact ? BigInt(intent.artifact) : 0n;
-    const activatedArtifactId = 0n; // TODO: support activated artifact
+    const sourceActivatedArtifactId = 0n; // TODO: support activated artifact
+    const targetActivatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
 
     // Resync clock before computing timestamp to minimize drift
@@ -671,13 +689,13 @@ export class StateResolver {
       movedArtifactId !== 0n
         ? this.loadArtifactOrZero(String(movedArtifactId))
         : artifactZero();
-    const movedArtifactLocation =
-      movedArtifactId !== 0n
-        ? this.loadArtifactLocationOrZero(String(movedArtifactId))
-        : artifactLocationZero();
-    const activatedArtifact =
-      activatedArtifactId !== 0n
-        ? this.loadArtifactOrZero(String(activatedArtifactId))
+    const sourceActivatedArtifact =
+      sourceActivatedArtifactId !== 0n
+        ? this.loadArtifactOrZero(String(sourceActivatedArtifactId))
+        : artifactZero();
+    const targetActivatedArtifact =
+      targetActivatedArtifactId !== 0n
+        ? this.loadArtifactOrZero(String(targetActivatedArtifactId))
         : artifactZero();
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
@@ -697,9 +715,10 @@ export class StateResolver {
         world,
         movedArtifactId,
         movedArtifact,
-        movedArtifactLocation,
-        activatedArtifactId,
-        activatedArtifact
+        sourceActivatedArtifactId,
+        sourceActivatedArtifact,
+        targetActivatedArtifactId,
+        targetActivatedArtifact
       );
     }
 
@@ -925,12 +944,12 @@ export class StateResolver {
         y2: y2.toString(),
       },
       targetLevel: targetLevelResolved,
-      targetRadius,
       maxDist,
       popMoved: popMoved.toString(),
       silverMoved: silverMoved.toString(),
       movedArtifactId: movedArtifactId.toString(),
-      activatedArtifactId: activatedArtifactId.toString(),
+      sourceActivatedArtifactId: sourceActivatedArtifactId.toString(),
+      targetActivatedArtifactId: targetActivatedArtifactId.toString(),
       isAbandoning,
       timestamp: timestamp.toString(),
       snarkConfig: snarkCfg
@@ -950,7 +969,6 @@ export class StateResolver {
       targetLoc,
       targetPerlin,
       targetLevelResolved,
-      targetRadius,
       maxDist,
       x1,
       y1,
@@ -959,7 +977,8 @@ export class StateResolver {
       popMoved,
       silverMoved,
       movedArtifactId,
-      activatedArtifactId,
+      sourceActivatedArtifactId,
+      targetActivatedArtifactId,
       isAbandoning,
       timestamp,
       config.snarkConfig,
@@ -972,22 +991,23 @@ export class StateResolver {
       tier1,
       tier2,
       tier3,
+      config.artifactsConfig,
       sourcePlanet,
+      sourcePlanetArtifacts,
       sourcePlanetEvents,
       sourceArrivalData.arrivals,
       sourceArrivalData.artifacts,
       sourceArrivalData.artifactLocations,
-      sourcePlanetArtifacts,
       targetPlanet,
+      targetPlanetArtifacts,
       targetPlanetEvents,
       targetArrivalData.arrivals,
       targetArrivalData.artifacts,
       targetArrivalData.artifactLocations,
-      targetPlanetArtifacts,
       world,
       movedArtifact,
-      movedArtifactLocation,
-      activatedArtifact,
+      sourceActivatedArtifact,
+      targetActivatedArtifact,
     ];
   }
 
@@ -1024,6 +1044,9 @@ export class StateResolver {
       : planetArtifactsZero();
 
     const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
     let currentLevel = 0;
     if (branch === 0) currentLevel = planetRaw?.upgrade_state_0 ?? 0;
@@ -1065,11 +1088,12 @@ export class StateResolver {
       config.upgradeConfig,
       upgrade,
       planet,
+      planetArtifacts,
       planetEvents,
       arrivalData.arrivals,
       arrivalData.artifacts,
       arrivalData.artifactLocations,
-      planetArtifacts,
+      world,
     ];
   }
 
@@ -1106,6 +1130,9 @@ export class StateResolver {
     const playerRaw = this.indexer.getPlayer(playerAddr);
     const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
 
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+
     let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
     {
       const entityTimes: bigint[] = [];
@@ -1141,6 +1168,7 @@ export class StateResolver {
       arrivalData.artifactLocations,
       planetArtifacts,
       playerState,
+      world,
     ];
   }
 
@@ -1189,11 +1217,11 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // safeSetOwner — 20 args
-  // [x, y, r, locationId, perlin, level, newOwner, timestamp,
+  // safeSetOwner — 19 args
+  // [x, y, locationId, perlin, level, newOwner, timestamp,
   //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
   //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
-  //  planetState, world]
+  //  world, planetState]
   // -------------------------------------------------------------------------
 
   private async resolveSafeSetOwner(
@@ -1255,8 +1283,6 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    const r = BigInt(world.radius as bigint | number);
-
     let timestamp = BigInt(Math.floor(this.chainClock.nowSec()));
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
@@ -1275,7 +1301,6 @@ export class StateResolver {
     return [
       x,
       y,
-      r,
       locationId,
       perlin,
       level,
@@ -1291,8 +1316,8 @@ export class StateResolver {
       tier1,
       tier2,
       tier3,
-      planetState,
       world,
+      planetState,
     ];
   }
 
@@ -1395,9 +1420,10 @@ export class StateResolver {
     world: Record<string, unknown>,
     movedArtifactId: bigint,
     movedArtifact: Record<string, unknown>,
-    movedArtifactLocation: Record<string, unknown>,
-    activatedArtifactId: bigint,
-    activatedArtifact: Record<string, unknown>
+    sourceActivatedArtifactId: bigint,
+    sourceActivatedArtifact: Record<string, unknown>,
+    targetActivatedArtifactId: bigint,
+    targetActivatedArtifact: Record<string, unknown>
   ): Promise<void> {
     const ps = this.planetStorage;
     const pes = this.planetEventsStorage;
@@ -1568,25 +1594,29 @@ export class StateResolver {
             .simulate({ from })
         )
       );
+    }
+
+    // Source activated artifact
+    if (sourceActivatedArtifactId !== 0n) {
       checks.push(
         check(
-          "moved artifact_location",
-          computeArtifactLocationHash(movedArtifactLocation),
-          als.methods
-            .get_state_root_unconstrained(movedArtifactId)
+          "source activated artifact",
+          computeArtifactHash(sourceActivatedArtifact),
+          arts.methods
+            .get_state_root_unconstrained(sourceActivatedArtifactId)
             .simulate({ from })
         )
       );
     }
 
-    // Activated artifact
-    if (activatedArtifactId !== 0n) {
+    // Target activated artifact
+    if (targetActivatedArtifactId !== 0n) {
       checks.push(
         check(
-          "activated artifact",
-          computeArtifactHash(activatedArtifact),
+          "target activated artifact",
+          computeArtifactHash(targetActivatedArtifact),
           arts.methods
-            .get_state_root_unconstrained(activatedArtifactId)
+            .get_state_root_unconstrained(targetActivatedArtifactId)
             .simulate({ from })
         )
       );

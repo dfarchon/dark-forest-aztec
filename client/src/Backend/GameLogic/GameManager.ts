@@ -3029,14 +3029,11 @@ class GameManager extends EventEmitter {
         const targetPerlin = newLocation.perlin;
         const targetPlanet = this.entityStore.getPlanetWithId(to);
         const targetLevel = targetPlanet?.planetLevel ?? 0;
-        const targetRadius =
-          Math.floor(Math.sqrt(newX * newX + newY * newY)) + 1;
         const args: unknown[] = [
           sourceLoc,
           targetLoc,
           targetPerlin,
           targetLevel,
-          targetRadius,
           distMax,
           oldX,
           oldY,
@@ -3044,7 +3041,7 @@ class GameManager extends EventEmitter {
           newY,
         ];
         this.terminal.current?.println(
-          "MOVE: args [sourceLoc, targetLoc, targetPerlin, targetLevel, targetRadius, maxDist, x1, y1, x2, y2]:",
+          "MOVE: args [sourceLoc, targetLoc, targetPerlin, targetLevel, maxDist, x1, y1, x2, y2]:",
           TerminalTextStyle.Sub
         );
         this.terminal.current?.println(

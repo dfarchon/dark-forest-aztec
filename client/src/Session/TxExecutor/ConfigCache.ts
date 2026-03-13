@@ -27,6 +27,7 @@ export interface GameConfig {
   planetTypeWeightsTiers: [unknown, unknown, unknown, unknown];
   /** [branch][level] — 3 branches × 4 levels, from get_upgrade_by_branch_level */
   upgrades: RawUpgrade[][];
+  artifactsConfig: unknown;
   /** Cumulative rarities for levels 0-9, from get_cumulative_rarity */
   planetCumulativeRarities: number[];
 }
@@ -76,6 +77,7 @@ export class ConfigCache {
       tier3,
       planetDefaultStatsArr,
       upgradesArr,
+      artifactsConfig,
       ...cumulativeRaritiesRaw
     ] = await Promise.all([
       c.methods.get_admin_unconstrained().simulate({ from }),
@@ -99,6 +101,7 @@ export class ConfigCache {
         .simulate({ from }),
       c.methods.get_default_stats_unconstrained().simulate({ from }),
       c.methods.get_upgrades_unconstrained().simulate({ from }),
+      c.methods.get_artifacts_config_unconstrained().simulate({ from }),
       ...Array.from({ length: 10 }, (_, i) =>
         c.methods.get_cumulative_rarity_unconstrained(i).simulate({ from })
       ),
@@ -129,6 +132,7 @@ export class ConfigCache {
       spaceJunkConfig,
       planetTypeWeightsTiers: [tier0, tier1, tier2, tier3],
       upgrades,
+      artifactsConfig,
       planetCumulativeRarities,
     };
   }

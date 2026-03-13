@@ -73,7 +73,7 @@ export function planetZero(): Record<string, unknown> {
 
 export function planetEventsZero(): Record<string, unknown> {
   return {
-    events: Array.from({ length: 20 }, () => ({ id: 0 })),
+    events: Array.from({ length: 20 }, () => ({ id: 0n })),
     count: 0,
     last_updated: 0,
   };
@@ -89,7 +89,7 @@ export function planetArtifactsZero(): Record<string, unknown> {
 
 export function arrivalZero(): Record<string, unknown> {
   return {
-    id: 0,
+    id: 0n,
     player: AZTEC_ZERO,
     from_planet: 0n,
     to_planet: 0n,

@@ -347,7 +347,8 @@ const InputTextArea = styled.textarea`
 
 const TerminalContainer = styled.div`
   width: 100%;
-  max-height: calc(100vh - 4em);
+  flex: 1;
+  min-height: 0;
   margin: 0 auto;
   overflow: auto;
   white-space: pre-wrap;
