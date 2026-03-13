@@ -45,7 +45,7 @@ contract ArtifactAction {
         _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
         artifact_rarity_from_planet_level, is_artifact_on_planet,
     };
-    use ::libs::planet::{refresh_planet, refresh_planet_v2};
+    use ::libs::planet::{refresh_planet_v1, refresh_planet_v2};
 
     use ::circuits::biomebase::biome_proof;
 
@@ -76,51 +76,6 @@ contract ArtifactAction {
     #[internal("public")]
     fn assert_admin() {
         assert(self.msg_sender() == self.storage.admin.read(), "Only admin");
-    }
-
-    #[internal("public")]
-    fn get_config_storage_address() -> AztecAddress {
-        self.storage.config_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_arrivals_storage_address() -> AztecAddress {
-        self.storage.arrivals_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_artifact_storage_address() -> AztecAddress {
-        self.storage.artifact_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_artifact_location_storage_address() -> AztecAddress {
-        self.storage.artifact_location_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_storage_address() -> AztecAddress {
-        self.storage.planet_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_artifacts_storage_address() -> AztecAddress {
-        self.storage.planet_artifacts_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_planet_events_storage_address() -> AztecAddress {
-        self.storage.planet_events_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_player_storage_address() -> AztecAddress {
-        self.storage.player_storage_address.read()
-    }
-
-    #[internal("public")]
-    fn get_world_storage_address() -> AztecAddress {
-        self.storage.world_storage_address.read()
     }
 
     #[external("public")]
@@ -498,17 +453,17 @@ contract ArtifactAction {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
 
-        let planet_storage = PlanetStorage::at(self.internal.get_planet_storage_address());
+        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_artifacts_storage =
-            PlanetArtifactsStorage::at(self.internal.get_planet_artifacts_storage_address());
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
         let planet_events_storage =
-            PlanetEventsStorage::at(self.internal.get_planet_events_storage_address());
+            PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
         let artifact_location_storage =
-            ArtifactLocationStorage::at(self.internal.get_artifact_location_storage_address());
-        let arrival_storage = ArrivalStorage::at(self.internal.get_arrivals_storage_address());
-        let artifact_storage = ArtifactStorage::at(self.internal.get_artifact_storage_address());
-        let world_storage = WorldStorage::at(self.internal.get_world_storage_address());
-        let config = Config::at(self.internal.get_config_storage_address());
+            ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
+        let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
+        let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
+        let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
+        let config = Config::at(self.storage.config_storage_address.read());
 
         // Verify planet state hashes
         assert(
@@ -790,16 +745,16 @@ contract ArtifactAction {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
 
-        let planet_storage = PlanetStorage::at(self.internal.get_planet_storage_address());
+        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_artifacts_storage =
-            PlanetArtifactsStorage::at(self.internal.get_planet_artifacts_storage_address());
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
         let planet_events_storage =
-            PlanetEventsStorage::at(self.internal.get_planet_events_storage_address());
+            PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
         let artifact_location_storage =
-            ArtifactLocationStorage::at(self.internal.get_artifact_location_storage_address());
-        let arrival_storage = ArrivalStorage::at(self.internal.get_arrivals_storage_address());
-        let artifact_storage = ArtifactStorage::at(self.internal.get_artifact_storage_address());
-        let world_storage = WorldStorage::at(self.internal.get_world_storage_address());
+            ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
+        let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
+        let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
+        let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
         assert(
             self.view(planet_storage.verify_hash(location_id, planet_hash)),

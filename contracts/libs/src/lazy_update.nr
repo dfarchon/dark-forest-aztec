@@ -22,7 +22,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
         "Can only update silver on silver producing planet",
     );
 
-    if planet.owner != AztecAddress::zero() {
+    if (planet.owner != AztecAddress::zero()) & (planet.pausers == 0) {
         if planet.silver < planet.silver_cap {
             let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
             let silver_mined: u128 = planet.silver_growth * time_diff;
@@ -36,7 +36,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
             };
         }
     }
-    // unowned planet doesn't gain silver
+    // unowned planet doesn't gain silver; paused planet doesn't gain silver
 
     planet
 }

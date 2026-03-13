@@ -7,3 +7,4 @@ pub mod space_junk;
 pub mod capture_zones;
 pub mod default_stats;
 pub mod upgrade;
+pub mod planet_init;

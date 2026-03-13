@@ -567,6 +567,11 @@ async function main() {
             tier2,
             tier3,
             initPlanetState,
+            planetEventsZero(),
+            planetArtifactsZero(),
+            Array.from({ length: 20 }, () => arrivalZero()),
+            Array.from({ length: 20 }, () => artifactZero()),
+            Array.from({ length: 20 }, () => artifactLocationZero()),
             initPlayerState,
             world,
         ] as const;
@@ -868,6 +873,7 @@ async function main() {
 
     for (let attempt = 1; attempt <= 3; attempt++) {
         state = await loadPlanetCoreInputs(ctx, location);
+        const worldForUpgrade = (await loadWorldFromEvents(ctx)) ?? world;
 
         console.log('\n🔄 Refreshing timestamp before upgrade...');
         await sendTimestampRefreshTx(ctx);
@@ -885,6 +891,7 @@ async function main() {
             state.artifacts,
             state.artifactLocations,
             state.planetArtifacts,
+            worldForUpgrade,
         ] as const;
 
         console.log(

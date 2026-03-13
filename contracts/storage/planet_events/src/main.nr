@@ -96,6 +96,7 @@ pub contract PlanetEventsStorage {
         let index = self.storage.authorized_index.at(contract_address).read();
         let last_index = self.storage.authorized_count.read() - 1;
         self.storage.authorized_map.at(contract_address).write(false);
+        self.storage.authorized_index.at(contract_address).write(0);
 
         if index != last_index {
             let last_contract = self.storage.authorized_list.at(last_index).read();
@@ -111,6 +112,7 @@ pub contract PlanetEventsStorage {
     #[external("public")]
     fn add_authorized_contracts_batch(addresses: [AztecAddress; 3], count: u8) {
         self.internal.assert_admin();
+        assert(count <= 3, "count exceeds batch size");
         let mut current_count = self.storage.authorized_count.read();
         for i in 0..3 {
             if (i as u8) < count {

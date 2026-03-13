@@ -71,9 +71,10 @@ pub contract ArtifactStorage {
     #[external("public")]
     fn set_spaceships_max5(ids: [Field; 5], states: [Artifact; 5], count: u32) {
         self.internal.assert_authorized();
+        assert(count <= 5, "count exceeds batch size");
         let block_number = self.context.block_number();
         for i in 0..5 {
-            if i < count {
+            if ((i as u32) < count) & (ids[i] != 0) {
                 let root = poseidon2_hash(states[i].serialize());
                 self.storage.state_roots.at(ids[i]).write(root);
                 self.emit(
@@ -111,6 +112,7 @@ pub contract ArtifactStorage {
         let index = self.storage.authorized_index.at(contract_address).read();
         let last_index = self.storage.authorized_count.read() - 1;
         self.storage.authorized_map.at(contract_address).write(false);
+        self.storage.authorized_index.at(contract_address).write(0);
 
         if index != last_index {
             let last_contract = self.storage.authorized_list.at(last_index).read();
@@ -126,6 +128,7 @@ pub contract ArtifactStorage {
     #[external("public")]
     fn add_authorized_contracts_batch(addresses: [AztecAddress; 3], count: u8) {
         self.internal.assert_admin();
+        assert(count <= 3, "count exceeds batch size");
         let mut current_count = self.storage.authorized_count.read();
         for i in 0..3 {
             if (i as u8) < count {
@@ -157,7 +160,7 @@ pub contract ArtifactStorage {
     #[external("public")]
     #[view]
     fn compute_state_hash(state: Artifact) -> Field {
-        if (state == Artifact::zero()) {
+        if state == Artifact::zero() {
             0
         } else {
             poseidon2_hash(state.serialize())
@@ -187,11 +190,14 @@ pub contract ArtifactStorage {
     #[external("public")]
     #[view]
     fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20], count: u32) -> bool {
+        assert(count <= 20, "count exceeds batch size");
         let mut result = true;
-        for i in 0..count {
-            let stored_hash = self.storage.state_roots.at(ids[i]).read();
-            if stored_hash != hashes[i] {
-                result = false;
+        for i in 0..20 {
+            if result & ((i as u32) < count) & (ids[i] != 0) {
+                let stored_hash = self.storage.state_roots.at(ids[i]).read();
+                if stored_hash != hashes[i] {
+                    result = false;
+                }
             }
         }
         result
@@ -212,7 +218,7 @@ pub contract ArtifactStorage {
 
     #[external("utility")]
     unconstrained fn compute_state_hash_unconstrained(state: Artifact) -> Field {
-        if (state == Artifact::zero()) {
+        if state == Artifact::zero() {
             0
         } else {
             poseidon2_hash(state.serialize())

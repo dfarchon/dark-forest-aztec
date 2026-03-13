@@ -111,6 +111,54 @@ function planetZero(aztecZero: string): Record<string, unknown> {
     };
 }
 
+const aztecZero =
+    '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+function planetEventsZero(): Record<string, unknown> {
+    return { events: Array(20).fill({ id: 0 }), count: 0, last_updated: 0 };
+}
+
+function planetArtifactsZero(): Record<string, unknown> {
+    return { ids: Array(20).fill(0n), count: 0, last_updated: 0 };
+}
+
+function arrivalZero(): Record<string, unknown> {
+    return {
+        id: 0,
+        player: aztecZero,
+        from_planet: 0n,
+        to_planet: 0n,
+        pop_arriving: 0n,
+        silver_moved: 0n,
+        departure_time: 0,
+        arrival_time: 0,
+        arrival_type: 0,
+        carried_artifact_id: 0n,
+        distance: 0n,
+    };
+}
+
+function artifactZero(): Record<string, unknown> {
+    return {
+        planet_discovered_on: 0n,
+        rarity: 0,
+        planet_biome: 0,
+        minted_at_timestamp: 0,
+        discoverer: aztecZero,
+        artifact_type: 0,
+        activations: 0n,
+        last_activated: 0,
+        last_deactivated: 0,
+        wormhole_to: 0n,
+        controller: aztecZero,
+        last_updated: 0,
+    };
+}
+
+function artifactLocationZero(): Record<string, unknown> {
+    return { planet_id: 0n, voyage_id: 0n, last_updated: 0 };
+}
+
 /** Load latest World state for id=0 from WorldStorage.WorldUpdate events, or return null. */
 async function loadWorldFromEvents(
     ctx: TestContext
@@ -314,8 +362,6 @@ async function main() {
     }
 
     const playerState = playerZero();
-    const aztecZero =
-        '0x0000000000000000000000000000000000000000000000000000000000000000';
     const planetState = planetZero(aztecZero);
 
     // Send a no-op tx to refresh block timestamp before the main test tx.
@@ -366,6 +412,11 @@ async function main() {
         planetTypeWeightsTier2,
         planetTypeWeightsTier3,
         planetState,
+        planetEventsZero(),
+        planetArtifactsZero(),
+        Array.from({ length: 20 }, () => arrivalZero()),
+        Array.from({ length: 20 }, () => artifactZero()),
+        Array.from({ length: 20 }, () => artifactLocationZero()),
         playerState,
         world,
     ] as const;

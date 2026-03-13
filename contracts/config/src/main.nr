@@ -17,6 +17,7 @@ pub contract Config {
         capture_zones::CaptureZonesConfig,
         default_stats::PlanetDefaultStats,
         game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
+        planet_init::PlanetInitConfig,
         snark::SnarkConfig,
         space_junk::SpaceJunkConfig,
         spaceships::SpaceshipsConfig,
@@ -65,6 +66,7 @@ pub contract Config {
         // ========== Default Stats & Upgrades ==========
         planet_default_stats: Map<u8, PublicMutable<PlanetDefaultStats, Context>, Context>, // level 0-9
         upgrades: Map<u128, PublicMutable<Upgrade, Context>, Context>, // key = branch * 10 + level
+        upgrades_hash: Map<u128, PublicMutable<Field, Context>, Context>, // key = branch * 10 + level
 
         cumulative_rarities: Map<u128, PublicMutable<u128, Context>, Context>, // index -> value
     }
@@ -264,121 +266,141 @@ pub contract Config {
     }
 
     #[external("public")]
-    fn initializeUpgrades() {
+    fn initialize_upgrades_defense() {
         self.internal.assert_admin();
 
-        // Initialize upgrade structures (3 branches x 4 levels)
-        // Defense branch (branch = 0)
-        self.storage.upgrades.at(0).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(1).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(2).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        self.storage.upgrades.at(3).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 100,
-                def_multiplier: 120,
-            },
-        );
-        // Range branch (branch = 1)
-        self.storage.upgrades.at(10).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(11).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(12).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(13).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 125,
-                speed_multiplier: 100,
-                def_multiplier: 100,
-            },
-        );
-        // Speed branch (branch = 2)
-        self.storage.upgrades.at(20).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(21).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(22).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
-        self.storage.upgrades.at(23).write(
-            Upgrade {
-                pop_cap_multiplier: 120,
-                pop_gro_multiplier: 120,
-                range_multiplier: 100,
-                speed_multiplier: 175,
-                def_multiplier: 100,
-            },
-        );
+        // Defense branch (branch = 0), keys 0..3
+        let def0 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 120,
+        };
+        self.storage.upgrades.at(0).write(def0);
+        self.storage.upgrades_hash.at(0).write(poseidon2_hash(def0.serialize()));
+
+        let def1 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 120,
+        };
+        self.storage.upgrades.at(1).write(def1);
+        self.storage.upgrades_hash.at(1).write(poseidon2_hash(def1.serialize()));
+
+        let def2 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 120,
+        };
+        self.storage.upgrades.at(2).write(def2);
+        self.storage.upgrades_hash.at(2).write(poseidon2_hash(def2.serialize()));
+
+        let def3 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 100,
+            def_multiplier: 120,
+        };
+        self.storage.upgrades.at(3).write(def3);
+        self.storage.upgrades_hash.at(3).write(poseidon2_hash(def3.serialize()));
+    }
+
+    #[external("public")]
+    fn initialize_upgrades_range() {
+        self.internal.assert_admin();
+
+        // Range branch (branch = 1), keys 10..13
+        let rng0 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 125,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(10).write(rng0);
+        self.storage.upgrades_hash.at(10).write(poseidon2_hash(rng0.serialize()));
+
+        let rng1 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 125,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(11).write(rng1);
+        self.storage.upgrades_hash.at(11).write(poseidon2_hash(rng1.serialize()));
+
+        let rng2 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 125,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(12).write(rng2);
+        self.storage.upgrades_hash.at(12).write(poseidon2_hash(rng2.serialize()));
+
+        let rng3 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 125,
+            speed_multiplier: 100,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(13).write(rng3);
+        self.storage.upgrades_hash.at(13).write(poseidon2_hash(rng3.serialize()));
+    }
+
+    #[external("public")]
+    fn initialize_upgrades_speed() {
+        self.internal.assert_admin();
+
+        // Speed branch (branch = 2), keys 20..23
+        let spd0 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 175,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(20).write(spd0);
+        self.storage.upgrades_hash.at(20).write(poseidon2_hash(spd0.serialize()));
+
+        let spd1 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 175,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(21).write(spd1);
+        self.storage.upgrades_hash.at(21).write(poseidon2_hash(spd1.serialize()));
+
+        let spd2 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 175,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(22).write(spd2);
+        self.storage.upgrades_hash.at(22).write(poseidon2_hash(spd2.serialize()));
+
+        let spd3 = Upgrade {
+            pop_cap_multiplier: 120,
+            pop_gro_multiplier: 120,
+            range_multiplier: 100,
+            speed_multiplier: 175,
+            def_multiplier: 100,
+        };
+        self.storage.upgrades.at(23).write(spd3);
+        self.storage.upgrades_hash.at(23).write(poseidon2_hash(spd3.serialize()));
     }
 
     #[external("public")]
@@ -468,6 +490,7 @@ pub contract Config {
     fn set_upgrade(key: u128, upgrade: Upgrade) {
         self.internal.assert_admin();
         self.storage.upgrades.at(key).write(upgrade);
+        self.storage.upgrades_hash.at(key).write(poseidon2_hash(upgrade.serialize()));
     }
 
     #[external("public")]
@@ -475,18 +498,12 @@ pub contract Config {
         self.internal.assert_admin();
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).write(upgrade);
+        self.storage.upgrades_hash.at(key).write(poseidon2_hash(upgrade.serialize()));
     }
 
     // ========== Config Getters (public, for cross-contract calls) ==========
     // These functions allow Main and other contracts to read config during transaction execution via .view().
     // Unlike #[external("utility")] getters, these are onchain-callable public functions.
-
-    /// Returns the admin/owner address of the Config contract.
-    #[external("public")]
-    #[view]
-    fn get_admin() -> AztecAddress {
-        self.storage.admin.read()
-    }
 
     /// Returns WorldConfig (world radius, time factor, reveal cooldown, etc.).
     #[external("public")]
@@ -597,6 +614,23 @@ pub contract Config {
         self.storage.cumulative_rarities.at(index).read()
     }
 
+    /// Batch getter: returns all config needed for planet initialization in one call.
+    #[external("public")]
+    #[view]
+    fn get_planet_init_config(level: u8) -> PlanetInitConfig {
+        PlanetInitConfig {
+            world_config: self.storage.world_config.read(),
+            game_config_core: self.storage.game_config_core.read(),
+            space_junk_config: self.storage.space_junk_config.read(),
+            planet_default_stats: self.storage.planet_default_stats.at(level).read(),
+            planet_level_thresholds: self.storage.planet_level_thresholds.read(),
+            planet_type_weights_tier_0: self.storage.planet_type_weights_tier_0.read(),
+            planet_type_weights_tier_1: self.storage.planet_type_weights_tier_1.read(),
+            planet_type_weights_tier_2: self.storage.planet_type_weights_tier_2.read(),
+            planet_type_weights_tier_3: self.storage.planet_type_weights_tier_3.read(),
+        }
+    }
+
     // ========== Config Hash Getters (on-chain verification) ==========
 
     /// Returns the stored hash of WorldConfig.
@@ -678,6 +712,20 @@ pub contract Config {
     #[view]
     fn get_upgrade_config_hash() -> Field {
         self.storage.upgrade_config_hash.read()
+    }
+
+    /// Returns the stored hash of Upgrade for the given key (branch * 10 + level).
+    #[external("public")]
+    #[view]
+    fn get_upgrade_hash(key: u128) -> Field {
+        self.storage.upgrades_hash.at(key).read()
+    }
+
+    /// Returns the stored hash of Upgrade by branch and level.
+    #[external("public")]
+    #[view]
+    fn get_upgrade_hash_by_branch_level(branch: u128, level: u128) -> Field {
+        self.storage.upgrades_hash.at(branch * 10 + level).read()
     }
 
     /// Returns the stored hash of PlanetDefaultStats for the given level.
@@ -880,6 +928,20 @@ pub contract Config {
         self.storage.upgrade_config_hash.read() == hash
     }
 
+    /// Verifies that the given hash matches the stored Upgrade hash for the given key.
+    #[external("public")]
+    #[view]
+    fn verify_upgrade_hash(key: u128, hash: Field) -> bool {
+        self.storage.upgrades_hash.at(key).read() == hash
+    }
+
+    /// Verifies that the given hash matches the stored Upgrade hash by branch and level.
+    #[external("public")]
+    #[view]
+    fn verify_upgrade_hash_by_branch_level(branch: u128, level: u128, hash: Field) -> bool {
+        self.storage.upgrades_hash.at(branch * 10 + level).read() == hash
+    }
+
     /// Verifies that the given hash matches the stored PlanetDefaultStats hash for the given level.
     #[external("public")]
     #[view]
@@ -900,15 +962,16 @@ pub contract Config {
         all_match
     }
 
-    /// Verifies config hashes needed for the move function.
-    /// Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
+    /// Verifies config hashes needed for planet initialization (no artifacts).
+    /// Order: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
     /// Also verifies planet_default_stats_hash for the given level.
+    /// Callers that need artifacts_config should verify it separately via verify_artifacts_config_hash.
     #[external("public")]
     #[view]
-    fn verify_move_config_hashes(
+    fn verify_config_hashes(
         level: u8,
         planet_default_stats_hash: Field,
-        hashes: [Field; 10],
+        hashes: [Field; 9],
     ) -> bool {
         (self.storage.snark_config_hash.read() == hashes[0])
             & (self.storage.world_config_hash.read() == hashes[1])
@@ -919,28 +982,7 @@ pub contract Config {
             & (self.storage.planet_type_weights_tier_1_hash.read() == hashes[6])
             & (self.storage.planet_type_weights_tier_2_hash.read() == hashes[7])
             & (self.storage.planet_type_weights_tier_3_hash.read() == hashes[8])
-            & (self.storage.artifacts_config_hash.read() == hashes[9])
             & (self.storage.planet_default_stats_hash.at(level).read() == planet_default_stats_hash)
-    }
-
-    /// Verifies all config hashes at once. Returns true if all match.
-    /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones, upgrade]
-    #[external("public")]
-    #[view]
-    fn verify_all_config_hashes(hashes: [Field; 13]) -> bool {
-        (self.storage.world_config_hash.read() == hashes[0])
-            & (self.storage.snark_config_hash.read() == hashes[1])
-            & (self.storage.game_config_core_hash.read() == hashes[2])
-            & (self.storage.planet_level_thresholds_hash.read() == hashes[3])
-            & (self.storage.planet_type_weights_tier_0_hash.read() == hashes[4])
-            & (self.storage.planet_type_weights_tier_1_hash.read() == hashes[5])
-            & (self.storage.planet_type_weights_tier_2_hash.read() == hashes[6])
-            & (self.storage.planet_type_weights_tier_3_hash.read() == hashes[7])
-            & (self.storage.artifacts_config_hash.read() == hashes[8])
-            & (self.storage.spaceships_config_hash.read() == hashes[9])
-            & (self.storage.space_junk_config_hash.read() == hashes[10])
-            & (self.storage.capture_zones_config_hash.read() == hashes[11])
-            & (self.storage.upgrade_config_hash.read() == hashes[12])
     }
 
     // ========== Storage Access Functions ==========
@@ -1192,6 +1234,19 @@ pub contract Config {
     #[external("utility")]
     unconstrained fn get_upgrade_config_hash_unconstrained() -> Field {
         self.storage.upgrade_config_hash.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_upgrade_hash_unconstrained(key: u128) -> Field {
+        self.storage.upgrades_hash.at(key).read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_upgrade_hash_by_branch_level_unconstrained(
+        branch: u128,
+        level: u128,
+    ) -> Field {
+        self.storage.upgrades_hash.at(branch * 10 + level).read()
     }
 
     /// Returns the stored hash of PlanetDefaultStats for the given level (unconstrained).

@@ -288,7 +288,6 @@ pub fn _random_artifact_type_and_level_bonus(
         } else {
             artifact_type = ArtifactType::Wormhole;
         }
-        artifact_type = ArtifactType::PhotoidCannon;
     }
 
     let mut bonus: u8 = 0;
@@ -641,7 +640,6 @@ pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) 
 /// separately, everyone other than the owner can also send a maximum
 /// of 10 arrivals in aggregate
 ///
-///todo: implement this
 
 /// Noir port of Solidity `LibGameUtils.isPopCapBoost`.
 /// Takes pre-decomposed bytes to avoid redundant `to_be_bytes` calls.

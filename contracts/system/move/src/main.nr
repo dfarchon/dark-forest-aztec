@@ -47,11 +47,11 @@ contract Move {
     use ::libs::batch_utils::{
         assert_artifact_timestamp_freshness, assert_planet_timestamp_freshness,
         assert_public_timestamp, compute_artifact_and_location_hashes, compute_artifact_hash,
-        compute_move_config_hashes, compute_planet_hashes, compute_world_hash,
+        compute_config_hashes, compute_planet_hashes, compute_world_hash,
     };
     use ::libs::planet::{
-        apply_spaceship_depart, check_player_init, initialize_planet_with_defaults, refresh_planet,
-        refresh_planet_v2,
+        apply_spaceship_depart, check_player_init, initialize_planet_with_defaults,
+        refresh_planet_v1, refresh_planet_v2,
     };
 
     use ::arrival_storage::ArrivalStorage;
@@ -258,6 +258,7 @@ contract Move {
         }
 
         let sender = self.msg_sender();
+        assert(!world.paused, "Game is paused");
 
         // Verify timestamp freshness for source planet
         assert_planet_timestamp_freshness(
@@ -294,7 +295,7 @@ contract Move {
         }
 
         // Compute config hashes for public verification
-        let (planet_default_stats_hash, config_hashes) = compute_move_config_hashes(
+        let (planet_default_stats_hash, config_hashes) = compute_config_hashes(
             snark_config,
             planet_default_stats,
             world_config,
@@ -305,8 +306,8 @@ contract Move {
             planet_type_weights_tier_1,
             planet_type_weights_tier_2,
             planet_type_weights_tier_3,
-            artifacts_config,
         );
+        let artifacts_config_hash = poseidon2_hash(artifacts_config.serialize());
 
         // Compute state hashes for public verification
         let (_, source_planet_hash, source_planet_artifacts_state_hash, source_planet_events_state_hash, source_arrival_ids, source_arrival_hashes, source_arrival_artifact_ids, source_arrival_artifact_hashes, source_arrival_artifact_location_hashes, original_source_arrivals_count) = compute_planet_hashes(
@@ -340,7 +341,7 @@ contract Move {
         let source_planet_is_initialized = source_planet != Planet::zero();
         assert(source_planet_is_initialized, "Source planet is not initialized");
 
-        let new_source_planet_state = refresh_planet(
+        let new_source_planet_state = refresh_planet_v1(
             timestamp,
             source_loc,
             source_planet,
@@ -367,7 +368,7 @@ contract Move {
         let mut new_target_arrival_artifact_locations = target_arrival_artifact_locations;
 
         if target_planet_is_initialized {
-            let new_target_states = refresh_planet(
+            let new_target_states = refresh_planet_v1(
                 timestamp,
                 target_loc,
                 target_planet,
@@ -758,7 +759,7 @@ contract Move {
         new_source_planet_events_state.last_updated = timestamp;
         new_source_planet_artifacts_state.last_updated = timestamp;
         for i in 0..20 {
-            if source_arrivals[i].carried_artifact_id != 0 {
+            if i < original_source_arrivals_count & (source_arrivals[i].carried_artifact_id != 0) {
                 new_source_arrival_artifact_locations[i].last_updated = timestamp;
             }
         }
@@ -767,7 +768,7 @@ contract Move {
         new_target_planet_events_state.last_updated = timestamp;
         new_target_planet_artifacts_state.last_updated = timestamp;
         for i in 0..20 {
-            if target_arrivals[i].carried_artifact_id != 0 {
+            if i < original_target_arrivals_count & (target_arrivals[i].carried_artifact_id != 0) {
                 new_target_arrival_artifact_locations[i].last_updated = timestamp;
             }
         }
@@ -784,8 +785,9 @@ contract Move {
             source_activated_artifact_id,
             target_activated_artifact_id,
             timestamp,
-            // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
+            // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
             config_hashes,
+            artifacts_config_hash,
             planet_default_stats_hash,
             // State hashes from private function for verification
             source_planet_hash,
@@ -836,8 +838,9 @@ contract Move {
         source_activated_artifact_id: Field,
         target_activated_artifact_id: Field,
         timestamp: u64,
-        // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3, artifacts]
-        config_hashes: [Field; 10],
+        // Config hashes: [snark, world, game_core, thresholds, space_junk, tier0, tier1, tier2, tier3]
+        config_hashes: [Field; 9],
+        artifacts_config_hash: Field,
         planet_default_stats_hash: Field,
         // State hashes from private function for verification
         source_planet_hash: Field,
@@ -896,14 +899,18 @@ contract Move {
             ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
 
-        // Verify all config hashes in a single cross-contract call
+        // Verify base config hashes in a single cross-contract call
         assert(
-            self.view(config.verify_move_config_hashes(
+            self.view(config.verify_config_hashes(
                 target_level,
                 planet_default_stats_hash,
                 config_hashes,
             )),
             "Config hash mismatch",
+        );
+        assert(
+            self.view(config.verify_artifacts_config_hash(artifacts_config_hash)),
+            "Artifacts config hash mismatch",
         );
 
         // Verify source planet state hashes

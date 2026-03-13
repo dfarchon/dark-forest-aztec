@@ -284,14 +284,6 @@ pub fn validate_upgrade_planet(
     (current_branch_level, silver_cost)
 }
 
-pub fn validate_withdraw_silver(planet: Planet, silver_to_withdraw: u128, sender: AztecAddress) {
-    assert(planet.owner == sender, "Only owner can withdraw");
-    assert(planet.planet_type == PlanetType::TradingPost, "Only trading posts can withdraw");
-    assert(!planet.destroyed, "Planet is destroyed");
-    assert(silver_to_withdraw > 0, "Must withdraw positive silver");
-    assert(planet.silver >= silver_to_withdraw, "Not enough silver");
-}
-
 /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.
 /// artifacts[i] corresponds to arrivals[i].carried_artifact_id (aligned with arrivals).
 pub fn get_refreshed_planet(
@@ -377,7 +369,7 @@ pub fn apply_spaceship_depart(artifact: Artifact, mut planet: Planet, timestamp:
 
 /// Noir port of Solidity `LibPlanet.refreshPlanet`.
 /// artifacts[i] and artifact_locations[i] correspond to arrivals[i].carried_artifact_id.
-pub fn refresh_planet(
+pub fn refresh_planet_v1(
     timestamp: u64,
     location_id: Field,
     mut planet: Planet,

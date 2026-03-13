@@ -490,8 +490,16 @@ async function main() {
             .send(opts);
     });
 
-    await run('Config.initializeUpgrades()', async () => {
-        await config.methods.initializeUpgrades().send(opts);
+    await run('Config.initialize_upgrades_defense()', async () => {
+        await config.methods.initialize_upgrades_defense().send(opts);
+    });
+
+    await run('Config.initialize_upgrades_range()', async () => {
+        await config.methods.initialize_upgrades_range().send(opts);
+    });
+
+    await run('Config.initialize_upgrades_speed()', async () => {
+        await config.methods.initialize_upgrades_speed().send(opts);
     });
 
     await run('Config.set_default_upgrade_config()', async () => {

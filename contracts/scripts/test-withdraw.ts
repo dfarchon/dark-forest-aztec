@@ -556,6 +556,11 @@ async function main() {
             tier2,
             tier3,
             initPlanetState,
+            planetEventsZero(),
+            planetArtifactsZero(),
+            Array.from({ length: 20 }, () => arrivalZero()),
+            Array.from({ length: 20 }, () => artifactZero()),
+            Array.from({ length: 20 }, () => artifactLocationZero()),
             initPlayerState,
             world,
         ] as const;
@@ -925,6 +930,7 @@ async function main() {
                 `Could not load player state for ${user.toString()} before withdraw`
             );
         }
+        const worldForWithdraw = (await loadWorldFromEvents(ctx)) ?? world;
 
         console.log('\n🔄 Refreshing timestamp before withdraw...');
         await sendTimestampRefreshTx(ctx);
@@ -942,6 +948,7 @@ async function main() {
             state.artifactLocations,
             state.planetArtifacts,
             playerStateForWithdraw,
+            worldForWithdraw,
         ] as const;
 
         console.log(

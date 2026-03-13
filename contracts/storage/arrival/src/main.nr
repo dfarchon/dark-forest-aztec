@@ -29,6 +29,8 @@ pub contract ArrivalStorage {
         // arrival id (as Field) -> full Arrival data (for on-chain storage and off-chain read)
         stored_arrivals: Map<Field, PublicMutable<Arrival, Context>, Context>,
         // Atomic counter for generating unique event/arrival IDs.
+        // Value is the *next* id to allocate; initialized to 1 so the
+        // first allocated id is 1 (0 reserved / unused).
         // Stored independently from the World state hash to avoid
         // per-block write contention.
         event_id_counter: PublicMutable<Field, Context>,
@@ -46,7 +48,8 @@ pub contract ArrivalStorage {
     fn constructor(admin: AztecAddress) {
         self.storage.admin.write(admin);
         self.storage.authorized_count.write(0);
-        self.storage.event_id_counter.write(0);
+        // Next id to hand out starts at 1 (see allocate_event_id).
+        self.storage.event_id_counter.write(1);
     }
 
     // ================== INTERNAL AUTH ==================
@@ -69,6 +72,7 @@ pub contract ArrivalStorage {
     #[external("public")]
     fn set(id: Field, state: Arrival) {
         self.internal.assert_authorized();
+        assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
         let root = poseidon2_hash(state.serialize());
         self.storage.state_roots.at(id).write(root);
@@ -116,6 +120,7 @@ pub contract ArrivalStorage {
         let index = self.storage.authorized_index.at(contract_address).read();
         let last_index = self.storage.authorized_count.read() - 1;
         self.storage.authorized_map.at(contract_address).write(false);
+        self.storage.authorized_index.at(contract_address).write(0);
 
         if index != last_index {
             let last_contract = self.storage.authorized_list.at(last_index).read();
@@ -131,6 +136,7 @@ pub contract ArrivalStorage {
     #[external("public")]
     fn add_authorized_contracts_batch(addresses: [AztecAddress; 3], count: u8) {
         self.internal.assert_admin();
+        assert(count <= 3, "count exceeds batch size");
         let mut current_count = self.storage.authorized_count.read();
         for i in 0..3 {
             if (i as u8) < count {
@@ -162,7 +168,7 @@ pub contract ArrivalStorage {
     #[external("public")]
     #[view]
     fn compute_state_hash(state: Arrival) -> Field {
-        if (state == Arrival::zero()) {
+        if state == Arrival::zero() {
             0
         } else {
             poseidon2_hash(state.serialize())
@@ -198,11 +204,14 @@ pub contract ArrivalStorage {
     #[external("public")]
     #[view]
     fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20], count: u32) -> bool {
+        assert(count <= 20, "count exceeds batch size");
         let mut result = true;
-        for i in 0..count {
-            let stored_hash = self.storage.state_roots.at(ids[i]).read();
-            if stored_hash != hashes[i] {
-                result = false;
+        for i in 0..20 {
+            if result & ((i as u32) < count) & (ids[i] != 0) {
+                let stored_hash = self.storage.state_roots.at(ids[i]).read();
+                if stored_hash != hashes[i] {
+                    result = false;
+                }
             }
         }
         result
@@ -223,7 +232,7 @@ pub contract ArrivalStorage {
 
     #[external("utility")]
     unconstrained fn compute_state_hash_unconstrained(state: Arrival) -> Field {
-        if (state == Arrival::zero()) {
+        if state == Arrival::zero() {
             0
         } else {
             poseidon2_hash(state.serialize())
