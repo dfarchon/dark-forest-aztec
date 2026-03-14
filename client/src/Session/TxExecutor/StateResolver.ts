@@ -70,6 +70,7 @@ import {
 } from "./MoveSimulation";
 import { resolveActivateArtifact } from "./resolveActivateArtifact";
 import { resolveAdminGiveArtifact } from "./resolveAdminGiveArtifact";
+import { resolveAdminGiveSpaceship } from "./resolveAdminGiveSpaceship";
 import { resolveDeactivateArtifact } from "./resolveDeactivateArtifact";
 import { resolveDepositArtifact } from "./resolveDepositArtifact";
 import { resolveFindArtifact } from "./resolveFindArtifact";
@@ -343,6 +344,8 @@ export class StateResolver {
         );
       case "adminGiveArtifact":
         return resolveAdminGiveArtifact(intent, this.getDeps());
+      case "adminGiveSpaceship":
+        return resolveAdminGiveSpaceship(intent, this.getDeps());
 
       default:
         throw new Error(

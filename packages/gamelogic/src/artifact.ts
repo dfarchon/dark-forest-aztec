@@ -176,7 +176,7 @@ export function artifactFileName(
   color: ArtifactFileColor,
   debugProps?: { forceAncient: boolean; skipCaching: boolean },
 ): string {
-  const { artifactType: type, rarity, planetBiome: biome, id } = artifact;
+  const { artifactType: type } = artifact;
 
   if (isSpaceShip(type)) {
     switch (type) {
@@ -193,31 +193,35 @@ export function artifactFileName(
     }
   }
 
-  const size = thumb ? "16" : "64";
-  const ext = videoMode ? "webm" : "png";
+  return `${type as number}.png`;
 
-  let fileName = "";
-
-  if (!debugProps?.skipCaching && artifactFileNamesById.has(id)) {
-    fileName = artifactFileNamesById.get(id) ?? "";
-  } else {
-    const typeStr = ArtifactTypeNames[type];
-    const rarityStr = ArtifactRarityNames[rarity];
-    let nameStr: string;
-    if (debugProps) {
-      nameStr = debugProps.forceAncient ? "ancient" : biome + BiomeNames[biome];
-    } else {
-      nameStr = isAncient(artifact) ? "ancient" : biome + BiomeNames[biome];
-    }
-    fileName = `${typeStr}-${rarityStr}-${nameStr}`;
-  }
-
-  if (!debugProps?.skipCaching) artifactFileNamesById.set(id, fileName);
-
-  let colorStr = "";
-  if (color === ArtifactFileColor.APP_BACKGROUND) colorStr = "-bg";
-
-  return `${size}-${fileName}${colorStr}.${ext}`;
+  // --- Old complex filename logic (commented out) ---
+  // const { rarity, planetBiome: biome, id } = artifact;
+  // const size = thumb ? "16" : "64";
+  // const ext = videoMode ? "webm" : "png";
+  //
+  // let fileName = "";
+  //
+  // if (!debugProps?.skipCaching && artifactFileNamesById.has(id)) {
+  //   fileName = artifactFileNamesById.get(id) ?? "";
+  // } else {
+  //   const typeStr = ArtifactTypeNames[type];
+  //   const rarityStr = ArtifactRarityNames[rarity];
+  //   let nameStr: string;
+  //   if (debugProps) {
+  //     nameStr = debugProps.forceAncient ? "ancient" : biome + BiomeNames[biome];
+  //   } else {
+  //     nameStr = isAncient(artifact) ? "ancient" : biome + BiomeNames[biome];
+  //   }
+  //   fileName = `${typeStr}-${rarityStr}-${nameStr}`;
+  // }
+  //
+  // if (!debugProps?.skipCaching) artifactFileNamesById.set(id, fileName);
+  //
+  // let colorStr = "";
+  // if (color === ArtifactFileColor.APP_BACKGROUND) colorStr = "-bg";
+  //
+  // return `${size}-${fileName}${colorStr}.${ext}`;
 }
 
 export function getActiveBlackDomain(

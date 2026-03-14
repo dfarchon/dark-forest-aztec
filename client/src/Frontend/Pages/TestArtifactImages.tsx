@@ -52,33 +52,22 @@ function ArtifactPreviewer({
   ancient?: boolean;
   thumb: boolean;
 }) {
-  return (
-    <video
-      width={250}
-      loop
-      autoPlay
-      key={type + "-" + biome + "-" + rarity + "vid"}
-    >
-      <source
-        src={
-          ARTIFACT_URL +
-          artifactFileName(
-            true,
-            thumb,
-            {
-              artifactType: type,
-              planetBiome: biome,
-              rarity,
-              id: EMPTY_ARTIFACT_ID,
-            },
-            ArtifactFileColor.BLUE,
-            { forceAncient: ancient === true, skipCaching: true }
-          )
-        }
-        type={"video/webm"}
-      />
-    </video>
-  );
+  const src =
+    ARTIFACT_URL +
+    artifactFileName(
+      true,
+      thumb,
+      {
+        artifactType: type,
+        planetBiome: biome,
+        rarity,
+        id: EMPTY_ARTIFACT_ID,
+      },
+      ArtifactFileColor.BLUE,
+      { forceAncient: ancient === true, skipCaching: true }
+    );
+
+  return <img width={250} src={src} key={type + "-" + biome + "-" + rarity} />;
 }
 
 const THUMB = false;

@@ -30,7 +30,7 @@ contract ArtifactValut {
         compute_player_hash, compute_world_hash,
     };
     use ::libs::game_utils::{_put_artifact_on_planet, _take_artifact_off_planet};
-    use ::libs::planet::refresh_planet_v1;
+    use ::libs::planet::{apply_spaceship_arrive, refresh_planet_v1};
 
     use ::arrival_storage::ArrivalStorage;
     use ::artifact_location_storage::ArtifactLocationStorage;
@@ -1034,5 +1034,84 @@ contract ArtifactValut {
         self.call(artifact_storage.set(artifact_id, artifact));
         self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
         self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+    }
+
+    /// Noir port of Solidity `DFAdminFacet.adminGiveSpaceShip`
+    #[external("public")]
+    fn admin_give_spaceship(
+        args: DFTCreateArtifactArgs,
+        planet: Planet,
+        planet_artifacts_state: PlanetArtifacts,
+    ) {
+        self.internal.assert_admin();
+
+        assert(is_spaceship(args.artifact_type), "artifact type must be a spaceship");
+
+        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
+        let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
+        let artifact_location_storage =
+            ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
+        let planet_artifacts_storage =
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
+
+        let location_id = args.planet_id;
+
+        // Verify planet state hash
+        let planet_state_hash = poseidon2_hash(planet.serialize());
+        assert(
+            self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
+            "planet hash mismatch",
+        );
+        assert(planet.is_initialized, "planet is not initialized");
+
+        // Verify planet_artifacts state hash
+        let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
+            0
+        } else {
+            poseidon2_hash(planet_artifacts_state.serialize())
+        };
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),
+            "planet_artifacts hash mismatch",
+        );
+
+        let timestamp = self.context.timestamp();
+
+        let artifact = Artifact {
+            planet_discovered_on: location_id,
+            rarity: args.rarity,
+            planet_biome: args.biome,
+            minted_at_timestamp: timestamp,
+            discoverer: args.discoverer,
+            artifact_type: args.artifact_type,
+            activations: 0,
+            last_activated: 0,
+            last_deactivated: 0,
+            wormhole_to: 0 as Field,
+            owner: AztecAddress::zero(),
+            controller: args.controller,
+            last_updated: timestamp,
+        };
+
+        let artifact_location =
+            ArtifactLocation { planet_id: location_id, voyage_id: 0, last_updated: timestamp };
+
+        let artifact_id = args.id;
+
+        let put_result = _put_artifact_on_planet(
+            artifact_id,
+            artifact_location,
+            location_id,
+            planet_artifacts_state,
+        );
+        let new_artifact_location = put_result.1;
+        let new_planet_artifacts_state = put_result.3;
+
+        let new_planet = apply_spaceship_arrive(artifact, planet);
+
+        self.call(artifact_storage.set(artifact_id, artifact));
+        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        self.call(planet_storage.set(location_id, new_planet));
     }
 }

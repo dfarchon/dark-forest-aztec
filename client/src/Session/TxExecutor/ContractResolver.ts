@@ -116,6 +116,11 @@ export class ContractResolver {
         return { contract: this.artifactVault, method: "give_spaceships" };
       case "adminGiveArtifact":
         return { contract: this.artifactVault, method: "admin_give_artifact" };
+      case "adminGiveSpaceship":
+        return {
+          contract: this.artifactVault,
+          method: "admin_give_spaceship",
+        };
       default:
         throw new Error(`ContractResolver: unsupported method "${methodName}"`);
     }

@@ -550,11 +550,15 @@ function App() {
   }, [whitelistAddress]);
 
   const onSpawnSpaceship = useCallback(async () => {
-    if (!selectedPlanet) return;
+    if (!selectedPlanet || !targetAccount) return;
     setError(undefined);
     setStatus(undefined);
     try {
-      const tx = await df.giveSpaceships?.(selectedPlanet.locationId);
+      const tx = await df.adminGiveSpaceship?.(
+        selectedPlanet.locationId,
+        selectedShip,
+        targetAccount
+      );
       if (tx?.confirmedPromise) {
         tx.confirmedPromise.then(() => {
           df.hardRefreshPlanet?.(selectedPlanet.locationId);
@@ -565,7 +569,7 @@ function App() {
     } catch (e) {
       setErr(e);
     }
-  }, [selectedPlanet, setErr]);
+  }, [selectedPlanet, targetAccount, selectedShip, setErr]);
 
   const onGiveArtifact = useCallback(async () => {
     if (!selectedPlanet || !targetAccount) return;

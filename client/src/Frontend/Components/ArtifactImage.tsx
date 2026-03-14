@@ -1,8 +1,4 @@
-import {
-  ArtifactFileColor,
-  artifactFileName,
-  isSpaceShip,
-} from "@dfpunk/gamelogic";
+import { ArtifactFileColor, artifactFileName } from "@dfpunk/gamelogic";
 import { Artifact } from "@dfpunk/types";
 import React from "react";
 import styled, { css } from "styled-components";
@@ -38,17 +34,10 @@ export function ArtifactImage({
     artifact,
     bgColor || ArtifactFileColor.BLUE
   );
-  const image = isSpaceShip(artifact.artifactType) ? (
-    <img width={size} height={size} src={url} />
-  ) : (
-    <video width={size} height={size} loop autoPlay key={artifact.id}>
-      <source src={url} type={"video/webm"} />
-    </video>
-  );
 
   return (
     <Container width={size} height={size}>
-      {image}
+      <img width={size} height={size} src={url} />
     </Container>
   );
 }

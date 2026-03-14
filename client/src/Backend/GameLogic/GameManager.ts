@@ -73,6 +73,7 @@ import {
   TxIntent,
   UnconfirmedActivateArtifact,
   UnconfirmedAdminGiveArtifact,
+  UnconfirmedAdminGiveSpaceship,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedClaimReward,
@@ -3421,6 +3422,33 @@ class GameManager extends EventEmitter {
     } catch (e) {
       this.getNotificationsManager().txInitError(
         "adminGiveArtifact",
+        e.message
+      );
+      throw e;
+    }
+  }
+
+  public async adminGiveSpaceship(
+    locationId: LocationId,
+    artifactType: number,
+    owner: EthAddress
+  ): Promise<Transaction<UnconfirmedAdminGiveSpaceship>> {
+    try {
+      const txIntent: UnconfirmedAdminGiveSpaceship = {
+        methodName: "adminGiveSpaceship",
+        locationId,
+        artifactType,
+        owner,
+        args: Promise.resolve([
+          locationIdToDecStr(locationId),
+          artifactType,
+          owner,
+        ]),
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError(
+        "adminGiveSpaceship",
         e.message
       );
       throw e;
