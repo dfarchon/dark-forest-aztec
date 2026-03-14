@@ -35,7 +35,8 @@
         "sync-env-and-artifacts": "node --experimental-transform-types scripts/sync-env-and-artifacts.ts",
         "test:env": "node --experimental-transform-types scripts/test-env.ts",
         "test:moveProof": "pnpm exec tsx scripts/test-moveProof.ts",
-        "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts"
+        "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts",
+        "update-config": "node --experimental-transform-types scripts/update-config.ts"
     },
     "dependencies": {
         "@dfpunk/utils": "workspace:*"
