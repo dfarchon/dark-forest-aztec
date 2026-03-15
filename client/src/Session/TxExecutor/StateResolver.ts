@@ -65,6 +65,7 @@ import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { ConfigCache } from "./ConfigCache";
 import {
   clampMoveForSubmit,
+  estimatePopArriving,
   getRefreshedPopulationAndSilver,
   validateMoveForSubmit,
 } from "./MoveSimulation";
@@ -691,8 +692,6 @@ export class StateResolver {
     const movedArtifactId = intent.artifact
       ? BigInt(`0x${intent.artifact}`)
       : 0n;
-    const sourceActivatedArtifactId = 0n; // TODO: support activated artifact
-    const targetActivatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
 
     // Resync clock before computing timestamp to minimize drift
@@ -748,6 +747,14 @@ export class StateResolver {
 
     const targetArrivalData = this.loadArrivalsForPlanetEvents(
       targetPlanetEventsRaw
+    );
+
+    // Resolve activated artifact IDs from planet_artifacts
+    const sourceActivatedArtifactId = this.findActivatedArtifactId(
+      sourcePlanetArtifactsRaw
+    );
+    const targetActivatedArtifactId = this.findActivatedArtifactId(
+      targetPlanetArtifactsRaw
     );
 
     // World state
@@ -980,6 +987,67 @@ export class StateResolver {
       });
       popMoved = clamped.popMoved;
       silverMoved = clamped.silverMoved;
+
+      // Pre-check: estimate pop_arriving using the same formula as the contract.
+      // This catches "Not enough forces to make move" before the expensive simulation.
+      if (!isSpaceshipMove) {
+        const sourceArt =
+          sourceActivatedArtifactId !== 0n
+            ? this.indexer.getArtifact(String(sourceActivatedArtifactId))
+            : undefined;
+        const targetArt =
+          targetActivatedArtifactId !== 0n
+            ? this.indexer.getArtifact(String(targetActivatedArtifactId))
+            : undefined;
+        const artsCfg = config.artifactsConfig as
+          | Record<string, unknown>
+          | undefined;
+        const photoidDelay = BigInt(
+          String(artsCfg?.photoid_activation_delay ?? 14400)
+        );
+
+        const toArtParam = (
+          id: bigint,
+          a: import("../Indexer/TableTypes/chain").ArtifactState | undefined
+        ) =>
+          a
+            ? {
+                id,
+                artifact_type: a.artifact_type,
+                rarity: a.rarity,
+                last_activated: a.last_activated,
+                last_deactivated: a.last_deactivated,
+                wormhole_to: a.wormhole_to,
+              }
+            : undefined;
+
+        const popArriving = estimatePopArriving({
+          maxDist: BigInt(String(maxDist)),
+          popMoved,
+          sourcePlanetRange: sourcePlanetRaw.range,
+          sourcePlanetSpeed: sourcePlanetRaw.speed,
+          sourcePlanetPopulationCap: sourcePlanetRaw.population_cap,
+          sourceActivatedArtifact: toArtParam(
+            sourceActivatedArtifactId,
+            sourceArt
+          ),
+          targetActivatedArtifact: toArtParam(
+            targetActivatedArtifactId,
+            targetArt
+          ),
+          targetLoc: targetLocDec,
+          sourceLoc: sourceLocDec,
+          timestamp,
+          photoidActivationDelay: photoidDelay,
+          isSpaceshipMove: false,
+        });
+
+        if (popArriving === 0n) {
+          throw new Error(
+            "Not enough forces to make move: pop_arriving would be 0 (distance too far for energy sent)"
+          );
+        }
+      }
     }
 
     // Log full move contract args so failures (e.g. perlin mismatch) can be debugged
@@ -1457,6 +1525,29 @@ export class StateResolver {
   private loadArtifactLocationOrZero(id: string): Record<string, unknown> {
     const raw = this.indexer.getArtifactLocation(id);
     return raw ? artifactLocationToContract(raw) : artifactLocationZero();
+  }
+
+  /**
+   * Find the activated artifact on a planet by scanning planet_artifacts ids.
+   * Returns its bigint id, or 0n if none is activated.
+   * Mirrors contract logic: is_activated = last_activated > last_deactivated.
+   */
+  private findActivatedArtifactId(
+    planetArtifacts:
+      | import("../Indexer/TableTypes/chain").PlanetArtifactsState
+      | undefined
+  ): bigint {
+    if (!planetArtifacts) return 0n;
+    const count = planetArtifacts.count;
+    for (let i = 0; i < count; i++) {
+      const id = planetArtifacts.ids[i];
+      if (!id || id === "0") continue;
+      const art = this.indexer.getArtifact(id);
+      if (art && art.last_activated > art.last_deactivated) {
+        return BigInt(id);
+      }
+    }
+    return 0n;
   }
 
   // -------------------------------------------------------------------------

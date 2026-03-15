@@ -3690,7 +3690,7 @@ class GameManager extends EventEmitter {
   getWormholeFactors(
     fromPlanet: Planet,
     toPlanet: Planet
-  ): { distanceFactor: number; speedFactor: number } | undefined {
+  ): { distanceFactor: number } | undefined {
     const fromActiveArtifact = this.getActiveArtifact(fromPlanet);
     const toActiveArtifact = this.getActiveArtifact(toPlanet);
 
@@ -3709,24 +3709,19 @@ class GameManager extends EventEmitter {
     ) {
       if (greaterRarity === undefined) {
         greaterRarity = toActiveArtifact.rarity;
-      } else {
-        greaterRarity = Math.max(
-          greaterRarity,
-          toActiveArtifact.rarity
-        ) as ArtifactRarity;
       }
+      // else: keep fromPlanet's rarity (contract prioritizes source)
     }
 
-    const rangeUpgradesPerRarity = [0, 2, 4, 6, 8, 10];
-    const speedUpgradesPerRarity = [0, 10, 20, 30, 40, 50];
+    // Must match contract speed_boosts: [1, 2, 4, 8, 16, 32]
+    const distanceDivisorPerRarity = [1, 2, 4, 8, 16, 32];
 
     if (!greaterRarity || greaterRarity <= ArtifactRarity.Unknown) {
       return undefined;
     }
 
     return {
-      distanceFactor: rangeUpgradesPerRarity[greaterRarity],
-      speedFactor: speedUpgradesPerRarity[greaterRarity],
+      distanceFactor: distanceDivisorPerRarity[greaterRarity],
     };
   }
 

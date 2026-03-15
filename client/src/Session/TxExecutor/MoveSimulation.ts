@@ -410,3 +410,130 @@ export function clampMoveForSubmit(params: ClampMoveForSubmitParams): {
 
   return { popMoved, silverMoved };
 }
+
+// Contract artifact type enum values (u8)
+const ArtifactTypeWormhole = 5;
+const ArtifactTypePhotoidCannon = 7;
+
+/**
+ * Estimates pop_arriving using the same formula as the contract (move/src/main.nr).
+ * This mirrors: wormhole distance shortening, photoid temporary range/speed buff,
+ * piecewise linear decay, and the pop_arriving > 0 assertion.
+ *
+ * Returns 0 when the move would fail the contract assertion.
+ */
+export function estimatePopArriving(params: {
+  maxDist: bigint;
+  popMoved: bigint;
+  sourcePlanetRange: bigint;
+  sourcePlanetSpeed: bigint;
+  sourcePlanetPopulationCap: bigint;
+  sourceActivatedArtifact:
+    | {
+        id: bigint;
+        artifact_type: number;
+        rarity: number;
+        last_activated: bigint;
+        last_deactivated: bigint;
+        wormhole_to: string;
+      }
+    | undefined;
+  targetActivatedArtifact:
+    | {
+        id: bigint;
+        artifact_type: number;
+        rarity: number;
+        last_activated: bigint;
+        last_deactivated: bigint;
+        wormhole_to: string;
+      }
+    | undefined;
+  targetLoc: string;
+  sourceLoc: string;
+  timestamp: bigint;
+  photoidActivationDelay: bigint;
+  isSpaceshipMove: boolean;
+}): bigint {
+  if (params.isSpaceshipMove) return 0n;
+
+  let effectiveDistTimesHundred = params.maxDist * 100n;
+  let rangeMultiplier = 100n;
+
+  // _checkWormhole
+  const isActivated = (a: {
+    last_activated: bigint;
+    last_deactivated: bigint;
+  }) => a.last_activated > a.last_deactivated;
+
+  let sourceHasWormhole = false;
+  let targetHasWormhole = false;
+
+  if (
+    params.sourceActivatedArtifact &&
+    params.sourceActivatedArtifact.id !== 0n
+  ) {
+    const a = params.sourceActivatedArtifact;
+    sourceHasWormhole =
+      isActivated(a) &&
+      a.artifact_type === ArtifactTypeWormhole &&
+      a.wormhole_to === params.targetLoc;
+  }
+
+  if (
+    params.targetActivatedArtifact &&
+    params.targetActivatedArtifact.id !== 0n
+  ) {
+    const a = params.targetActivatedArtifact;
+    targetHasWormhole =
+      isActivated(a) &&
+      a.artifact_type === ArtifactTypeWormhole &&
+      a.wormhole_to === params.sourceLoc;
+  }
+
+  if (sourceHasWormhole || targetHasWormhole) {
+    const wormholeRarity = sourceHasWormhole
+      ? params.sourceActivatedArtifact!.rarity
+      : params.targetActivatedArtifact!.rarity;
+    const speedBoosts = [1n, 2n, 4n, 8n, 16n, 32n];
+    const r = Math.min(5, Math.max(0, wormholeRarity));
+    effectiveDistTimesHundred /= speedBoosts[r];
+  }
+
+  // _checkPhotoid
+  if (
+    params.sourceActivatedArtifact &&
+    params.sourceActivatedArtifact.id !== 0n
+  ) {
+    const a = params.sourceActivatedArtifact;
+    const isPhotoid =
+      isActivated(a) &&
+      a.artifact_type === ArtifactTypePhotoidCannon &&
+      params.timestamp - a.last_activated >= params.photoidActivationDelay;
+
+    if (isPhotoid) {
+      const r = Math.min(5, Math.max(0, a.rarity));
+      const rangeBoosts = [100n, 200n, 200n, 200n, 200n, 200n];
+      rangeMultiplier = rangeBoosts[r];
+    }
+  }
+
+  // _buff_planet: apply temporary range upgrade
+  const buffedRange = (params.sourcePlanetRange * rangeMultiplier) / 100n;
+
+  // Piecewise linear decay (contract lines 690-707)
+  const percent = (params.popMoved * 100n) / params.sourcePlanetPopulationCap;
+  const dMaxPercent =
+    percent <= 25n
+      ? percent * 2n
+      : percent <= 50n
+        ? 25n + percent
+        : (100n + percent) / 2n;
+
+  const dFactor = buffedRange * 432n * dMaxPercent;
+  const distScaled = effectiveDistTimesHundred * 100n;
+
+  if (distScaled >= dFactor || dFactor === 0n) {
+    return 0n;
+  }
+  return (params.popMoved * (dFactor - distScaled)) / dFactor;
+}
