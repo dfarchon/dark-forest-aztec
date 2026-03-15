@@ -236,20 +236,33 @@ class PersistentChunkStore implements ChunkStore {
     await this.bulkSetKeyInCollection(toSave, ObjectStore.BOARD);
   }
 
+  private get homeLocationsKey(): string {
+    return `${this.contractAddress}-${this.account}-homeLocations`;
+  }
+
   /**
    * we keep a list rather than a single location, since client/contract can
    * often go out of sync on initialization - if client thinks that init
    * failed but is wrong, it will prompt user to initialize with new home coords,
    * which bricks the user's account.
+   *
+   * Stored in localStorage for durability. Falls back to IndexedDB for migration.
    */
   public async getHomeLocations(): Promise<WorldLocation[]> {
-    const homeLocations = await this.getKey("homeLocations");
-    let parsed: WorldLocation[] = [];
-    if (homeLocations) {
-      parsed = JSON.parse(homeLocations) as WorldLocation[];
+    const stored = localStorage.getItem(this.homeLocationsKey);
+    if (stored) {
+      return JSON.parse(stored) as WorldLocation[];
     }
 
-    return parsed;
+    // Migration fallback: check IndexedDB and copy to localStorage
+    const legacy = await this.getKey("homeLocations");
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as WorldLocation[];
+      localStorage.setItem(this.homeLocationsKey, legacy);
+      return parsed;
+    }
+
+    return [];
   }
 
   public async addHomeLocation(location: WorldLocation): Promise<void> {
@@ -260,11 +273,15 @@ class PersistentChunkStore implements ChunkStore {
       locationList = [location];
     }
     locationList = Array.from(new Set(locationList));
-    await this.setKey("homeLocations", stringify(locationList));
+    const serialized = stringify(locationList);
+    localStorage.setItem(this.homeLocationsKey, serialized);
+    await this.setKey("homeLocations", serialized);
   }
 
   public async confirmHomeLocation(location: WorldLocation): Promise<void> {
-    await this.setKey("homeLocations", stringify([location]));
+    const serialized = stringify([location]);
+    localStorage.setItem(this.homeLocationsKey, serialized);
+    await this.setKey("homeLocations", serialized);
   }
 
   public async getSavedTouchedPlanetIds(): Promise<LocationId[]> {
