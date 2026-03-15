@@ -91,4 +91,13 @@ export class ChainClock {
   getOffsetSec(): number {
     return this.offsetMs / 1000;
   }
+
+  /** Fetch the latest L2 block number from the node. */
+  async getBlockNumber(): Promise<number> {
+    return Number(
+      await (
+        this.node as unknown as { getBlockNumber: () => Promise<number> }
+      ).getBlockNumber()
+    );
+  }
 }

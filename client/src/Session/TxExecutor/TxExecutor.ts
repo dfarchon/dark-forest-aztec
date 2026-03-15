@@ -325,7 +325,8 @@ export class TxExecutor {
         if (
           tx.intent.methodName === "initializePlayer" ||
           tx.intent.methodName === "revealLocation" ||
-          tx.intent.methodName === "move"
+          tx.intent.methodName === "move" ||
+          tx.intent.methodName === "findArtifact"
         ) {
           try {
             console.debug(

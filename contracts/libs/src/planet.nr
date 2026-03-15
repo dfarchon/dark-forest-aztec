@@ -452,15 +452,10 @@ pub fn refresh_planet_v2(
     arrival_artifacts: [Artifact; 20],
     arrival_artifact_locations: [ArtifactLocation; 20],
     planet_artifacts_state: PlanetArtifacts,
-) -> (Planet, PlanetEvents, PlanetArtifacts, u32, [Field; 20], [ArtifactLocation; 20]) {
+) -> (Planet, PlanetEvents, PlanetArtifacts, u32, [Field; 20], [ArtifactLocation; 20], [u32; 20]) {
     let mut new_planet = planet;
     let mut new_planet_events_state = planet_events_state;
-    // arrivals
-    // arrival_artifacts
-    // arrival_artifact_locations
     let mut new_planet_artifacts_state = planet_artifacts_state;
-    // owned_artifacts;
-    // owned_artifact_locations;
 
     let result = get_refreshed_planet(
         location_id,
@@ -500,6 +495,7 @@ pub fn refresh_planet_v2(
     let mut changed_artifact_location_count: u32 = 0;
     let mut changed_artifact_location_ids: [Field; 20] = [0; 20];
     let mut changed_artifact_locations: [ArtifactLocation; 20] = [ArtifactLocation::zero(); 20];
+    let mut changed_artifact_arrival_indices: [u32; 20] = [0; 20];
 
     for i in 0..20 {
         if i < artifacts_to_add.count {
@@ -522,6 +518,7 @@ pub fn refresh_planet_v2(
 
             changed_artifact_location_ids[changed_artifact_location_count] = artifact_id;
             changed_artifact_locations[changed_artifact_location_count] = res.1;
+            changed_artifact_arrival_indices[changed_artifact_location_count] = artifact_loc_idx;
             changed_artifact_location_count += 1;
         }
     }
@@ -529,5 +526,6 @@ pub fn refresh_planet_v2(
     (
         new_planet, new_planet_events_state, new_planet_artifacts_state,
         changed_artifact_location_count, changed_artifact_location_ids, changed_artifact_locations,
+        changed_artifact_arrival_indices,
     )
 }

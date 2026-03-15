@@ -4,7 +4,7 @@
  * Contract signature:
  * find_artifact(location_id, x, y, biomebase, timestamp,
  *   provided_snark_config, game_config_core, world_config, artifacts_config,
- *   player, planet, planet_events_state,
+ *   spaceships_config, player, planet, planet_events_state,
  *   arrivals[20], arrival_artifacts[20], arrival_artifact_locations[20],
  *   planet_artifacts_state, owned_artifacts[20], owned_artifact_locations[20],
  *   world)
@@ -90,12 +90,71 @@ export async function resolveFindArtifact(
     });
   }
 
-  const locationIdDec = locationIdToDecStr(String(rawLocationId) as LocationId);
+  const locationId_my = locationIdToDecStr(String(rawLocationId) as LocationId);
+
+  const locationIdDec = String(rawLocationId);
+
+  console.log("----- test -----");
+  console.log("locationId_my", locationId_my);
+  console.log("locationIdDec", locationIdDec);
+  console.log("----- test -----");
+
   const playerAddr = deps.getPlayerAddress();
 
   // Load planet state
   const planetRaw = deps.indexer.getPlanet(locationIdDec);
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+  console.debug("-------------------------------------------------------");
+  console.debug("[FindArtifact] planet owner from indexer:", planetRaw?.owner);
+  console.debug("[FindArtifact] player address (sender):", playerAddr);
+  console.debug(
+    "[FindArtifact] planet.owner passed to contract:",
+    planet.owner
+  );
+  console.debug(
+    "[FindArtifact] owner === sender?",
+    planetRaw?.owner === playerAddr
+  );
+  console.debug(
+    "[FindArtifact] planet prospected_block_number:",
+    planetRaw?.prospected_block_number
+  );
+  console.debug(
+    "[FindArtifact] planet has_tried_finding_artifact:",
+    planetRaw?.has_tried_finding_artifact
+  );
+  console.debug("-------------------------------------------------------");
+
+  // NOTE: The private circuit no longer calls get_block_header_at (see TODO in
+  // artifact_find contract). The block-advance wait below is kept for the public
+  // function's assertion: prospected_block_number < block_number.
+  const prospectBlock = Number(planetRaw?.prospected_block_number ?? 0);
+  const currentBlock = await deps.chainClock.getBlockNumber();
+  console.debug(
+    `[FindArtifact] prospectBlock=${prospectBlock}, currentBlock=${currentBlock}`
+  );
+  if (prospectBlock > 0 && currentBlock <= prospectBlock) {
+    const MAX_WAIT_MS = 120_000;
+    const POLL_MS = 2_000;
+    const start = Date.now();
+    let block = currentBlock;
+    while (block <= prospectBlock) {
+      if (Date.now() - start > MAX_WAIT_MS) {
+        throw new Error(
+          `[FindArtifact] timed out waiting for chain to advance past prospect block ${prospectBlock} (current: ${block})`
+        );
+      }
+      console.debug(
+        `[FindArtifact] waiting for chain to advance past prospect block ${prospectBlock} (current: ${block})...`
+      );
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      block = await deps.chainClock.getBlockNumber();
+    }
+    console.debug(
+      `[FindArtifact] chain at block ${block}, prospect block ${prospectBlock} OK`
+    );
+  }
 
   const planetEventsRaw = deps.indexer.getPlanetEvents(locationIdDec);
   const planetEventsState = planetEventsRaw
@@ -145,6 +204,7 @@ export async function resolveFindArtifact(
     config.gameConfigCore,
     config.worldConfig,
     config.artifactsConfig,
+    config.spaceshipsConfig,
     player,
     planet,
     planetEventsState,
