@@ -34,7 +34,8 @@ function onlyInDevelopment(): string {
 
 const defaultSettings: Record<Setting, string> = {
   [Setting.OptOutMetrics]: onlyInDevelopment(),
-  [Setting.AutoApproveNonPurchaseTransactions]: onlyInDevelopment(),
+  // Default: do not open confirmation popup (auto-approve non-purchase tx)
+  [Setting.AutoApproveNonPurchaseTransactions]: "true",
   [Setting.DrawChunkBorders]: "false",
   [Setting.HighPerformanceRendering]: "false",
   [Setting.MoveNotifications]: "true",

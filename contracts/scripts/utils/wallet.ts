@@ -295,14 +295,17 @@ export type TestAccountCredentials = {
 };
 
 function isAccountAlreadyDeployedError(error: unknown): boolean {
-    const message =
-        error instanceof Error
-            ? error.message.toLowerCase()
-            : String(error).toLowerCase();
+    const toMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+    const main = toMsg(error).toLowerCase();
+    const cause =
+        error instanceof Error && error.cause != null
+            ? toMsg(error.cause).toLowerCase()
+            : '';
+    const combined = `${main} ${cause}`;
     return (
-        message.includes('existing nullifier') ||
-        message.includes('already deployed') ||
-        message.includes('already exists')
+        combined.includes('existing nullifier') ||
+        combined.includes('already deployed') ||
+        combined.includes('already exists')
     );
 }
 

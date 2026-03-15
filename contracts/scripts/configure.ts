@@ -27,8 +27,13 @@ import {
 dotenv.config();
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-/** Prover OFF by default — configure is 10–100x faster. Set PROVER_ENABLED=true only for proof benchmarking. */
-const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const isLocalSandbox =
+    /^https?:\/\/localhost(:\d+)?$/i.test(AZTEC_NODE_URL) ||
+    /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(AZTEC_NODE_URL);
+/** Use prover on devnet (required for valid proofs). Off for local sandbox only. */
+const PROVER_ENABLED =
+    process.env.PROVER_ENABLED === 'true' ||
+    (!isLocalSandbox && process.env.PROVER_ENABLED !== 'false');
 
 const CONTRACT_SPECS = [
     {
@@ -194,9 +199,9 @@ async function main() {
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
     console.log(`⚡ Prover: ${PROVER_ENABLED ? 'ON (slow)' : 'OFF (fast)'}\n`);
 
-    if (PROVER_ENABLED) {
+    if (PROVER_ENABLED && isLocalSandbox) {
         console.warn(
-            '⚠️  PROVER_ENABLED=true: configure will be very slow. For fast run, set PROVER_ENABLED=false.\n'
+            '⚠️  Prover ON: configure will be slow. For local sandbox only, set PROVER_ENABLED=false for a fast run.\n'
         );
     }
 
@@ -206,7 +211,7 @@ async function main() {
     console.log('📝 Registering SponsoredFPC contract...');
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
-        proverEnabled: false, // Always false for fast configure
+        proverEnabled: PROVER_ENABLED,
     });
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
