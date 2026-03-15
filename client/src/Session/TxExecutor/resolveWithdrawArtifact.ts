@@ -78,9 +78,9 @@ export async function resolveWithdrawArtifact(
   const worldRaw = deps.indexer.getWorld();
   const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-  // Timestamp
+  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    deps.chainClock,
+    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 

@@ -80,7 +80,7 @@ export async function resolveDeactivateArtifact(
   // Timestamp
   const artifactId = BigInt(`0x${intent.artifactId}`);
   const timestamp = computeTimestamp(
-    deps.chainClock,
+    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 

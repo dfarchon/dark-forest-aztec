@@ -27,14 +27,15 @@ export function hexIdToField(v: unknown): bigint {
 }
 
 /**
- * Compute a safe timestamp: max of chainClock.nowSec() and all entity last_updated times.
- * The contract asserts timestamp >= all entity last_updated fields.
+ * Compute a safe timestamp: max of baseTimestamp and all entity last_updated times.
+ * Uses the raw chain block timestamp (not extrapolated) to avoid sending a
+ * timestamp ahead of the L2 block time on devnet.
  */
 export function computeTimestamp(
-  chainClock: ChainClock,
+  baseTimestamp: bigint,
   entityTimes: bigint[]
 ): bigint {
-  let timestamp = BigInt(Math.floor(chainClock.nowSec()));
+  let timestamp = baseTimestamp;
   let maxEntityTime = 0n;
   for (const t of entityTimes) {
     if (t > maxEntityTime) maxEntityTime = t;

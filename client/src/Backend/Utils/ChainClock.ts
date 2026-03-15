@@ -20,6 +20,9 @@ export class ChainClock {
   /** Chain time minus client time, in milliseconds. */
   private offsetMs = 0;
 
+  /** Raw chain timestamp (seconds) from the last successful sync. */
+  private lastChainTimestampSec = 0;
+
   /** Wall-clock ms of the last successful sync (for throttling). */
   private lastSyncMs = 0;
 
@@ -31,6 +34,7 @@ export class ChainClock {
 
   /** Sync the clock from a known chain timestamp (seconds). */
   sync(chainTimestampSec: number): void {
+    this.lastChainTimestampSec = chainTimestampSec;
     this.offsetMs = chainTimestampSec * 1000 - Date.now();
     this.lastSyncMs = Date.now();
   }
@@ -90,6 +94,21 @@ export class ChainClock {
   /** The current offset in seconds (positive = chain ahead). */
   getOffsetSec(): number {
     return this.offsetMs / 1000;
+  }
+
+  /**
+   * Last known L2 block timestamp (seconds) without Date.now() extrapolation.
+   * Safe to use as the base timestamp for contract calls on devnet where
+   * block timestamps may lag behind the client's system clock.
+   */
+  lastBlockTimestamp(): number {
+    return this.lastChainTimestampSec;
+  }
+
+  /** Force-sync and return the raw chain timestamp (seconds). */
+  async syncAndGetBlockTimestamp(): Promise<number> {
+    await this.syncFromNode();
+    return this.lastChainTimestampSec;
   }
 
   /** Fetch the latest L2 block number from the node. */

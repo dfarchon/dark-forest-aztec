@@ -64,9 +64,9 @@ export async function resolveGiveSpaceships(
   const playerRaw = deps.indexer.getPlayer(playerAddr);
   const player = playerRaw ? playerToContract(playerRaw) : playerZero();
 
-  // Timestamp
+  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    deps.chainClock,
+    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
     collectEntityTimes(
       planetRaw,
       planetEventsRaw,

@@ -92,9 +92,9 @@ export async function resolveActivateArtifact(
   const levelIndex = Math.min(9, Math.max(0, planetLevel));
   const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-  // Timestamp
+  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    deps.chainClock,
+    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 
