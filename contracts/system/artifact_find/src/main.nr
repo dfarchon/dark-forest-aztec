@@ -4,7 +4,6 @@ use ::aztec::macros::aztec;
 contract ArtifactFind {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
-        oracle::block_header::get_block_header_at,
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
     };
     use ::aztec::state_vars::PublicMutable;
@@ -180,6 +179,7 @@ contract ArtifactFind {
         game_config_core: GameConfigCore,
         world_config: WorldConfig,
         artifacts_config: ArtifactsConfig,
+        spaceships_config: SpaceshipsConfig,
         // State inputs (to be validated via hash in public)
         player: Player,
         planet: Planet,
@@ -276,6 +276,7 @@ contract ArtifactFind {
         let mut change_artifact_location_count = refresh_planet_result.3;
         let mut change_artifact_location_ids = refresh_planet_result.4;
         let mut change_artifact_locations = refresh_planet_result.5;
+        let change_artifact_arrival_indices = refresh_planet_result.6;
 
         let mut artifacts: [Artifact; 20] = [Artifact::zero(); 20];
         for i in 0..20 {
@@ -285,12 +286,8 @@ contract ArtifactFind {
         }
         for i in 0..20 {
             if i < change_artifact_location_count {
-                let id = change_artifact_location_ids[i];
-                for j in 0..20 {
-                    if arrivals[j].carried_artifact_id == id {
-                        artifacts[planet_artifacts_state.count + i] = arrival_artifacts[j];
-                    }
-                }
+                artifacts[planet_artifacts_state.count + i] =
+                    arrival_artifacts[change_artifact_arrival_indices[i]];
             }
         }
 
@@ -301,16 +298,24 @@ contract ArtifactFind {
         assert(!new_planet.destroyed, "planet is destroyed");
         assert(new_planet.planet_type == PlanetType::Ruins, "not a ruins");
 
-        assert(
-            contains_gear(sender, new_planet_artifacts_state, artifacts),
-            "gear ship must be present on planet",
-        );
+        if spaceships_config.gear {
+            assert(
+                contains_gear(sender, new_planet_artifacts_state, artifacts),
+                "gear ship must be present on planet",
+            );
+        }
 
         let biome: u8 = _get_biome(new_planet.space_type, biomebase, game_config_core);
-        let prospect_block = new_planet.prospected_block_number as u32;
-        let header = get_block_header_at(prospect_block, *self.context);
-        let block_hash: Field = header.hash();
-        let artifact_seed = poseidon2_hash([location_id, block_hash]);
+        // TODO: Restore get_block_header_at once EmbeddedWallet PXE oracle is fixed.
+        // Original code used the block hash for stronger randomness:
+        //   let header = get_block_header_at(prospect_block, *self.context);
+        //   let block_hash: Field = header.hash();
+        //   let artifact_seed = poseidon2_hash([location_id, block_hash]);
+        // Workaround: use prospected_block_number directly as the seed entropy source.
+        // The block number is still unpredictable at prospect time (player doesn't know
+        // which block the prospect tx will land in), preserving the no-reroll property.
+        let artifact_seed =
+            poseidon2_hash([location_id, new_planet.prospected_block_number as Field]);
 
         let (artifact_type, level_bonus) =
             _random_artifact_type_and_level_bonus(artifact_seed, biome, new_planet.space_type);
@@ -338,27 +343,18 @@ contract ArtifactFind {
         let mut artifact_location =
             ArtifactLocation { planet_id: location_id, voyage_id: 0, last_updated: timestamp };
 
-        let put_artifact_on_planet_result = _put_artifact_on_planet(
-            artifact_id,
-            artifact_location,
-            location_id,
-            new_planet_artifacts_state,
-        );
-
-        let mut new_artfact = artifact;
-        let mut new_artifact_location = put_artifact_on_planet_result.1;
-        new_planet_artifacts_state = put_artifact_on_planet_result.3;
-
-        new_planet.has_tried_finding_artifact = true;
-
         let put_result = _put_artifact_on_planet(
             artifact_id,
             artifact_location,
             location_id,
             new_planet_artifacts_state,
         );
+
+        let mut new_artifact = artifact;
         let mut new_artifact_location = put_result.1;
         new_planet_artifacts_state = put_result.3;
+
+        new_planet.has_tried_finding_artifact = true;
 
         let mut new_player = player;
 
@@ -373,7 +369,7 @@ contract ArtifactFind {
             }
         }
 
-        new_artfact.last_updated = timestamp;
+        new_artifact.last_updated = timestamp;
         new_artifact_location.last_updated = timestamp;
         new_player.last_updated = timestamp;
 
@@ -406,7 +402,7 @@ contract ArtifactFind {
             change_artifact_location_count,
             change_artifact_location_ids,
             change_artifact_locations,
-            artifact,
+            new_artifact,
             new_artifact_location,
             new_player,
         );
@@ -452,7 +448,14 @@ contract ArtifactFind {
 
         let block_number = self.context.block_number();
 
-        assert(block_number <= new_planet.prospected_block_number + 256, "planet not prospected");
+        assert(
+            new_planet.prospected_block_number < block_number,
+            "can only find artifact after prospected block",
+        );
+        assert(
+            (block_number - new_planet.prospected_block_number) < 256,
+            "planet prospect expired",
+        );
 
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());

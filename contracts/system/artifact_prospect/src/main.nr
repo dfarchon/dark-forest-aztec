@@ -250,6 +250,7 @@ contract ArtifactProspect {
         let mut change_artifact_location_count = refresh_planet_result.3;
         let mut change_artifact_location_ids = refresh_planet_result.4;
         let mut change_artifact_locations = refresh_planet_result.5;
+        let change_artifact_arrival_indices = refresh_planet_result.6;
 
         let mut artifacts: [Artifact; 20] = [Artifact::zero(); 20];
         for i in 0..20 {
@@ -259,12 +260,8 @@ contract ArtifactProspect {
         }
         for i in 0..20 {
             if i < change_artifact_location_count {
-                let id = change_artifact_location_ids[i];
-                for j in 0..20 {
-                    if arrivals[j].carried_artifact_id == id {
-                        artifacts[planet_artifacts_state.count + i] = arrival_artifacts[j];
-                    }
-                }
+                artifacts[planet_artifacts_state.count + i] =
+                    arrival_artifacts[change_artifact_arrival_indices[i]];
             }
         }
 
