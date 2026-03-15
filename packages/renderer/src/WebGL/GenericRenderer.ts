@@ -101,6 +101,9 @@ export class GenericRenderer<
   /** The program corresponding to this renderer. */
   public program: WebGLProgram;
 
+  /** Vertex Array Object for this renderer. */
+  private vao: WebGLVertexArrayObject;
+
   /** A dictionary of uniform setters, keyed by uniform name. */
   public uniformSetters: UniformSetters<T>;
 
@@ -172,13 +175,21 @@ export class GenericRenderer<
     this.uniformLocs = uniformLocs as UniformLocs<T>;
     this.uniformSetters = uniformSetters as UniformSetters<T>;
 
-    // construct attrib managers
+    // create VAO and construct attrib managers within it
+    const vao = gl.createVertexArray();
+    if (!vao) throw "error creating VAO";
+    this.vao = vao;
+
+    gl.bindVertexArray(this.vao);
+
     const attribManagers: Partial<AttribManagers<T>> = {};
     for (const [key, props] of Object.entries(attribs)) {
       const k = key as keyof T["attribs"];
       attribManagers[k] = new AttribManager(gl, program, props);
     }
     this.attribManagers = attribManagers as AttribManagers<T>;
+
+    gl.bindVertexArray(null);
   }
 
   /**
@@ -203,12 +214,16 @@ export class GenericRenderer<
 
     this.setUniforms();
 
+    gl.bindVertexArray(this.vao);
+
     for (const attrib in this.attribManagers) {
       this.attribManagers[attrib].bufferData(this.verts);
     }
 
     // draw
     gl.drawArrays(drawMode, 0, this.verts);
+
+    gl.bindVertexArray(null);
 
     this.verts = 0;
   }
