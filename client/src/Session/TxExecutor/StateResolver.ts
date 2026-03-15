@@ -691,8 +691,6 @@ export class StateResolver {
     const movedArtifactId = intent.artifact
       ? BigInt(`0x${intent.artifact}`)
       : 0n;
-    const sourceActivatedArtifactId = 0n; // TODO: support activated artifact
-    const targetActivatedArtifactId = 0n; // TODO: support activated artifact
     const isAbandoning = intent.abandoning;
 
     // Resync clock before computing timestamp to minimize drift
@@ -706,6 +704,11 @@ export class StateResolver {
     const targetLocDec = locationIdToDecStr(
       String(rawTargetLoc) as import("@dfpunk/types").LocationId
     );
+
+    const sourceActivatedArtifactId =
+      this.findActivatedArtifactId(sourceLocDec);
+    const targetActivatedArtifactId =
+      this.findActivatedArtifactId(targetLocDec);
 
     // Source planet state
     const sourcePlanetRaw = this.indexer.getPlanet(sourceLocDec);
@@ -1457,6 +1460,25 @@ export class StateResolver {
   private loadArtifactLocationOrZero(id: string): Record<string, unknown> {
     const raw = this.indexer.getArtifactLocation(id);
     return raw ? artifactLocationToContract(raw) : artifactLocationZero();
+  }
+
+  /**
+   * Finds the activated artifact on a planet by scanning its artifact list.
+   * Returns the artifact's numeric ID as bigint, or 0n if none is activated.
+   */
+  private findActivatedArtifactId(planetLocDec: string): bigint {
+    const pa = this.indexer.getPlanetArtifacts(planetLocDec);
+    if (!pa) return 0n;
+    const count = pa.count ?? 0;
+    for (let i = 0; i < count; i++) {
+      const artId = pa.ids[i];
+      if (!artId || artId === "0") continue;
+      const art = this.indexer.getArtifact(artId);
+      if (art && art.last_activated > art.last_deactivated) {
+        return BigInt(artId);
+      }
+    }
+    return 0n;
   }
 
   // -------------------------------------------------------------------------

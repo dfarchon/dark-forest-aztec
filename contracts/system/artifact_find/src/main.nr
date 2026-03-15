@@ -338,16 +338,7 @@ contract ArtifactFind {
         let mut artifact_location =
             ArtifactLocation { planet_id: location_id, voyage_id: 0, last_updated: timestamp };
 
-        let put_artifact_on_planet_result = _put_artifact_on_planet(
-            artifact_id,
-            artifact_location,
-            location_id,
-            new_planet_artifacts_state,
-        );
-
         let mut new_artfact = artifact;
-        let mut new_artifact_location = put_artifact_on_planet_result.1;
-        new_planet_artifacts_state = put_artifact_on_planet_result.3;
 
         new_planet.has_tried_finding_artifact = true;
 

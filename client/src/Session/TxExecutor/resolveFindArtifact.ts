@@ -10,9 +10,7 @@
  *   world)
  */
 
-import { locationIdToDecStr } from "@dfpunk/serde";
 import type { UnconfirmedFindArtifact } from "@dfpunk/types";
-import type { LocationId } from "@dfpunk/types";
 import {
   buildLocationProofInputs,
   computeLocationProofOutputs,
@@ -54,6 +52,7 @@ export async function resolveFindArtifact(
   intent: UnconfirmedFindArtifact,
   deps: ResolverDeps
 ): Promise<unknown[]> {
+  console.time("[FindArtifact] total resolve");
   const intentArgs = await intent.args;
   // intentArgs = [locationIdDec, x, y, biomebase]
   const [rawLocationId, rawX, rawY, rawBiomebase] = intentArgs;
@@ -62,12 +61,18 @@ export async function resolveFindArtifact(
   const y = signedCoordToField(rawY as number | bigint);
   const biomebase = Number(rawBiomebase);
 
+  console.time("[FindArtifact] chainClock.resync");
   await deps.chainClock.resync();
+  console.timeEnd("[FindArtifact] chainClock.resync");
+
+  console.time("[FindArtifact] configCache.getConfig");
   const config = await deps.configCache.getConfig();
+  console.timeEnd("[FindArtifact] configCache.getConfig");
 
   // When ZK checks enabled, recompute location hash with Poseidon2
   const snark = config.snarkConfig as Record<string, unknown> | undefined;
   if (snark && !snark.disable_zk_checks) {
+    console.time("[FindArtifact] computeLocationProof");
     const coord = (v: unknown) =>
       typeof v === "number" ? v : Number(BigInt(String(v ?? 0)));
     const inputs = buildLocationProofInputs(
@@ -83,6 +88,7 @@ export async function resolveFindArtifact(
     );
     const outputs = await computeLocationProofOutputs(inputs);
     locationId = outputs.locationHash;
+    console.timeEnd("[FindArtifact] computeLocationProof");
     console.debug("[FindArtifact proof] computed (Poseidon2):", {
       x: inputs.x,
       y: inputs.y,
@@ -90,12 +96,63 @@ export async function resolveFindArtifact(
     });
   }
 
-  const locationIdDec = locationIdToDecStr(String(rawLocationId) as LocationId);
+  // rawLocationId is already a decimal string (from GameManager.findArtifact),
+  // so use it directly — do NOT pass through locationIdToDecStr which expects hex.
+  const locationIdDec = String(rawLocationId);
   const playerAddr = deps.getPlayerAddress();
 
-  // Load planet state
-  const planetRaw = deps.indexer.getPlanet(locationIdDec);
+  // Load planet state — retry if indexer hasn't synced prospect's effects yet
+  let planetRaw = deps.indexer.getPlanet(locationIdDec);
+  if (
+    !planetRaw ||
+    planetRaw.owner === undefined ||
+    planetRaw.prospected_block_number === undefined ||
+    planetRaw.prospected_block_number === 0
+  ) {
+    console.warn(
+      "[FindArtifact] planet state missing or stale after waitForBlock, retrying...",
+      {
+        owner: planetRaw?.owner,
+        prospected_block_number: planetRaw?.prospected_block_number,
+      }
+    );
+    // Wait for the next indexer update and retry up to 5 times
+    for (let retry = 0; retry < 5; retry++) {
+      await new Promise<void>((r) => setTimeout(r, 2000));
+      planetRaw = deps.indexer.getPlanet(locationIdDec);
+      if (planetRaw?.owner && planetRaw.prospected_block_number) {
+        console.debug(
+          `[FindArtifact] planet state synced after retry ${retry + 1}`
+        );
+        break;
+      }
+      console.warn(`[FindArtifact] retry ${retry + 1}/5: still missing`, {
+        owner: planetRaw?.owner,
+        prospected_block_number: planetRaw?.prospected_block_number,
+      });
+    }
+  }
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+  // Debug: print planet owner vs player address
+  console.debug("[FindArtifact] planet owner from indexer:", planetRaw?.owner);
+  console.debug("[FindArtifact] player address (sender):", playerAddr);
+  console.debug(
+    "[FindArtifact] planet.owner passed to contract:",
+    planet.owner
+  );
+  console.debug(
+    "[FindArtifact] owner === sender?",
+    planetRaw?.owner === playerAddr
+  );
+  console.debug(
+    "[FindArtifact] planet prospected_block_number:",
+    planetRaw?.prospected_block_number
+  );
+  console.debug(
+    "[FindArtifact] planet has_tried_finding_artifact:",
+    planetRaw?.has_tried_finding_artifact
+  );
 
   const planetEventsRaw = deps.indexer.getPlanetEvents(locationIdDec);
   const planetEventsState = planetEventsRaw
@@ -108,13 +165,20 @@ export async function resolveFindArtifact(
     : planetArtifactsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  console.time("[FindArtifact] loadArrivals");
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
     planetEventsRaw
   );
+  console.timeEnd("[FindArtifact] loadArrivals");
 
   // Load owned artifacts on this planet
-  const ownedData = loadArtifactsForPlanet(deps.indexer, planetArtifactsRaw);
+  console.time("[FindArtifact] loadArtifacts");
+  const ownedData = await loadArtifactsForPlanet(
+    deps.indexer,
+    planetArtifactsRaw
+  );
+  console.timeEnd("[FindArtifact] loadArtifacts");
 
   // Player state
   const playerRaw = deps.indexer.getPlayer(playerAddr);
@@ -134,6 +198,8 @@ export async function resolveFindArtifact(
       playerRaw
     )
   );
+
+  console.timeEnd("[FindArtifact] total resolve");
 
   return [
     locationId,

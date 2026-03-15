@@ -34,18 +34,34 @@ export async function resolveProspectPlanet(
   intent: UnconfirmedProspectPlanet,
   deps: ResolverDeps
 ): Promise<unknown[]> {
+  console.time("[ProspectPlanet] total resolve");
   const intentArgs = await intent.args;
   // intentArgs = [locationIdDec]
   const [rawLocationId] = intentArgs;
   const locationId = BigInt(String(rawLocationId));
   const locationIdDec = String(rawLocationId);
 
+  console.time("[ProspectPlanet] chainClock.resync");
   await deps.chainClock.resync();
+  console.timeEnd("[ProspectPlanet] chainClock.resync");
+
+  console.time("[ProspectPlanet] configCache.getConfig");
   const config = await deps.configCache.getConfig();
+  console.timeEnd("[ProspectPlanet] configCache.getConfig");
 
   // Load planet state
   const planetRaw = deps.indexer.getPlanet(locationIdDec);
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
+
+  // Debug: print planet owner
+  console.debug(
+    "[ProspectPlanet] planet owner from indexer:",
+    planetRaw?.owner
+  );
+  console.debug(
+    "[ProspectPlanet] planet.owner passed to contract:",
+    planet.owner
+  );
 
   const planetEventsRaw = deps.indexer.getPlanetEvents(locationIdDec);
   const planetEventsState = planetEventsRaw
@@ -58,13 +74,20 @@ export async function resolveProspectPlanet(
     : planetArtifactsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  console.time("[ProspectPlanet] loadArrivals");
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
     planetEventsRaw
   );
+  console.timeEnd("[ProspectPlanet] loadArrivals");
 
   // Load owned artifacts on this planet
-  const ownedData = loadArtifactsForPlanet(deps.indexer, planetArtifactsRaw);
+  console.time("[ProspectPlanet] loadArtifacts");
+  const ownedData = await loadArtifactsForPlanet(
+    deps.indexer,
+    planetArtifactsRaw
+  );
+  console.timeEnd("[ProspectPlanet] loadArtifacts");
 
   // World state
   const worldRaw = deps.indexer.getWorld();
@@ -75,6 +98,8 @@ export async function resolveProspectPlanet(
     deps.chainClock,
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
+
+  console.timeEnd("[ProspectPlanet] total resolve");
 
   return [
     locationId,

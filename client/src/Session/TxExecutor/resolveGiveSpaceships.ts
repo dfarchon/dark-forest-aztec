@@ -55,7 +55,7 @@ export async function resolveGiveSpaceships(
     : planetEventsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
     planetEventsRaw
   );

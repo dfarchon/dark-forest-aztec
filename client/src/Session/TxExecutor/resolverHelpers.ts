@@ -9,6 +9,8 @@ import type { ConfigCache } from "./ConfigCache";
 import { artifactLocationToContract, artifactToContract } from "./stateConvert";
 import { artifactLocationZero, artifactZero } from "./stateZeros";
 
+const yieldTick = () => new Promise<void>((r) => setTimeout(r, 0));
+
 /**
  * Shared dependencies passed from StateResolver to each resolve function.
  */
@@ -53,15 +55,15 @@ export function computeTimestamp(
  * arrays of artifact state and artifact location state (length 20).
  * Used by prospect, find, deposit, withdraw.
  */
-export function loadArtifactsForPlanet(
+export async function loadArtifactsForPlanet(
   indexer: IndexerConnection,
   planetArtifactsRaw:
     | import("../Indexer/TableTypes/chain").PlanetArtifactsState
     | undefined
-): {
+): Promise<{
   artifacts: Record<string, unknown>[];
   artifactLocations: Record<string, unknown>[];
-} {
+}> {
   const count = planetArtifactsRaw?.count ?? 0;
   const ids = planetArtifactsRaw?.ids ?? [];
 
@@ -81,6 +83,7 @@ export function loadArtifactsForPlanet(
       artifacts.push(artifactZero());
       artifactLocations.push(artifactLocationZero());
     }
+    await yieldTick();
   }
 
   return { artifacts, artifactLocations };

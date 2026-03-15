@@ -12,19 +12,21 @@ import {
 } from "./stateConvert";
 import { arrivalZero, artifactLocationZero, artifactZero } from "./stateZeros";
 
+const yieldTick = () => new Promise<void>((r) => setTimeout(r, 0));
+
 /**
  * Load arrivals, artifacts, and artifact locations for a planet's events.
  * Returns arrays of length 20, padded with zeros for unused slots.
  * Standalone version of StateResolver.loadArrivalsForPlanetEvents().
  */
-export function loadArrivalsForPlanetEvents(
+export async function loadArrivalsForPlanetEvents(
   indexer: IndexerConnection,
   planetEvents: PlanetEventsState | undefined
-): {
+): Promise<{
   arrivals: Record<string, unknown>[];
   artifacts: Record<string, unknown>[];
   artifactLocations: Record<string, unknown>[];
-} {
+}> {
   const count = planetEvents?.count ?? 0;
   const events = planetEvents?.events ?? [];
 
@@ -64,6 +66,7 @@ export function loadArrivalsForPlanetEvents(
       artifacts.push(artifactZero());
       artifactLocations.push(artifactLocationZero());
     }
+    await yieldTick();
   }
 
   return { arrivals, artifacts, artifactLocations };

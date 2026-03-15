@@ -289,7 +289,13 @@ export class TxExecutor {
         }
 
         // 2. Resolve full contract args from indexer state + config + timestamp
+        console.time(
+          `[TxExecutor] resolve ${tx.intent.methodName} (tx ${tx.id})`
+        );
         const contractArgs = await this.stateResolver.resolve(tx.intent);
+        console.timeEnd(
+          `[TxExecutor] resolve ${tx.intent.methodName} (tx ${tx.id})`
+        );
 
         // 3. Get contract + method
         const { contract, method } = this.contractResolver.resolve(
@@ -322,46 +328,48 @@ export class TxExecutor {
         )[method];
         const invocation = methodFn(...contractArgs);
 
-        if (
-          tx.intent.methodName === "initializePlayer" ||
-          tx.intent.methodName === "revealLocation" ||
-          tx.intent.methodName === "move"
-        ) {
-          try {
-            console.debug(
-              `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
-            );
-            console.debug(
-              `[TxExecutor] contractArgs (${contractArgs.length}):`,
-              contractArgs
-            );
-            const simResult = await invocation.simulate(sendOpts);
-            console.debug(
-              `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
-              simResult
-            );
-
-            console.log(simResult);
-          } catch (simErr) {
-            console.error(
-              `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
-              simErr
-            );
-            if (simErr instanceof Error) {
-              console.error(`[TxExecutor] error message:`, simErr.message);
-              console.error(`[TxExecutor] error stack:`, simErr.stack);
-              if ("cause" in simErr) {
-                console.error(`[TxExecutor] error cause:`, simErr.cause);
-              }
+        // Simulate all transaction types before sending
+        try {
+          console.time(
+            `[TxExecutor] simulate ${tx.intent.methodName} (tx ${tx.id})`
+          );
+          console.debug(
+            `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
+          );
+          const simResult = await invocation.simulate(sendOpts);
+          console.timeEnd(
+            `[TxExecutor] simulate ${tx.intent.methodName} (tx ${tx.id})`
+          );
+          console.debug(
+            `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
+            simResult
+          );
+        } catch (simErr) {
+          console.timeEnd(
+            `[TxExecutor] simulate ${tx.intent.methodName} (tx ${tx.id})`
+          );
+          console.error(
+            `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+            simErr
+          );
+          if (simErr instanceof Error) {
+            console.error(`[TxExecutor] error message:`, simErr.message);
+            console.error(`[TxExecutor] error stack:`, simErr.stack);
+            if ("cause" in simErr) {
+              console.error(`[TxExecutor] error cause:`, simErr.cause);
             }
-            throw simErr;
           }
+          throw simErr;
         }
 
+        console.time(`[TxExecutor] send ${tx.intent.methodName} (tx ${tx.id})`);
         const submitted: TxHash = await timeout(
           invocation.send(sendOpts),
           TX_SUBMIT_TIMEOUT,
           `tx request ${tx.id} failed to submit: timed out`
+        );
+        console.timeEnd(
+          `[TxExecutor] send ${tx.intent.methodName} (tx ${tx.id})`
         );
 
         // 6. Submit state — v0.6 lines 376-383
@@ -374,10 +382,16 @@ export class TxExecutor {
 
         // 7. Wait for confirmation — v0.6 line 385
         //    Aztec equivalent of ethConnection.waitForTransaction(hash)
+        console.time(
+          `[TxExecutor] waitForTx ${tx.intent.methodName} (tx ${tx.id})`
+        );
         const receipt = await waitForTx(this.node, submitted, {
           timeout: 120,
           dontThrowOnRevert: true,
         });
+        console.timeEnd(
+          `[TxExecutor] waitForTx ${tx.intent.methodName} (tx ${tx.id})`
+        );
 
         // 8. Check result — v0.6 lines 386-397
         if (receipt.hasExecutionReverted() || receipt.isDropped()) {

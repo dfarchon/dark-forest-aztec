@@ -164,6 +164,11 @@ export function createAztecNodeBlockSource(
           contractAddress: address,
         });
         const events = raw.map((e) => e.event) as DecodedUpdate[];
+        if (events.length > 0) {
+          console.debug(
+            `[AztecNodeSource] ${table}: ${events.length} events in blocks ${fromBlock}-${toBlock}`
+          );
+        }
         for (const ev of events) {
           if (ev?.state == null) continue;
           const id = table === "world" ? "0" : toIdStr(ev.id);
@@ -171,6 +176,9 @@ export function createAztecNodeBlockSource(
         }
       }
 
+      console.debug(
+        `[AztecNodeSource] getBlockUpdates(${fromBlock}, ${toBlock}): ${updates.length} total updates`
+      );
       return { fromBlock, toBlock, updates };
     },
   };

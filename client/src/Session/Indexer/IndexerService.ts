@@ -144,6 +144,9 @@ export class IndexerService {
     const toBlock = this.latestKnownBlock;
     if (fromBlock > toBlock) return;
 
+    console.debug(
+      `[IndexerService] processNewBlocks: ${fromBlock} → ${toBlock} (${toBlock - fromBlock + 1} blocks)`
+    );
     this.isSyncing = true;
     try {
       while (fromBlock <= toBlock) {
@@ -152,6 +155,12 @@ export class IndexerService {
           toBlock
         );
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
+        if (updates.updates.length > 0) {
+          console.debug(
+            `[IndexerService] applying ${updates.updates.length} updates for blocks ${fromBlock}-${chunkEnd}:`,
+            updates.updates.map((u) => `${u.table}:${u.id}`).join(", ")
+          );
+        }
         this.applyUpdates(updates);
         this.snapshot.lastProcessedBlock = chunkEnd;
         this.onBlockProcessed?.(fromBlock, chunkEnd);
@@ -542,11 +551,13 @@ export class IndexerService {
    * at least up to the given block number.
    */
   waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
-    console.log(
-      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`
+    console.debug(
+      `[IndexerService] waitForBlock target=${blockNumber}, lastProcessed=${this.snapshot.lastProcessedBlock}, latestKnown=${this.latestKnownBlock}, isSyncing=${this.isSyncing}`
     );
     if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
+      console.debug(
+        `[IndexerService] waitForBlock: already synced, resolving immediately`
+      );
       return Promise.resolve();
     }
     return new Promise<void>((resolve, reject) => {
@@ -561,8 +572,8 @@ export class IndexerService {
 
       const unsub = this.subscribe((payload) => {
         if (payload.toBlock >= blockNumber) {
-          console.log(
-            `[DEBUG waitForBlock] synced to block ${payload.toBlock}, resolving`
+          console.debug(
+            `[IndexerService] waitForBlock: resolved at block ${payload.toBlock}, tables=[${payload.tables}], lastProcessed=${this.snapshot.lastProcessedBlock}`
           );
           clearTimeout(timer);
           unsub();

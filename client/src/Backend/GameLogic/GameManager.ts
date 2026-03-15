@@ -3694,39 +3694,34 @@ class GameManager extends EventEmitter {
     const fromActiveArtifact = this.getActiveArtifact(fromPlanet);
     const toActiveArtifact = this.getActiveArtifact(toPlanet);
 
-    let greaterRarity: ArtifactRarity | undefined;
-
-    if (
+    // Match contract move/src/main.nr: source wormhole is checked first;
+    // if source has one, its rarity is used (target is ignored).
+    const sourceHasWormhole =
       fromActiveArtifact?.artifactType === ArtifactType.Wormhole &&
-      fromActiveArtifact.wormholeTo === toPlanet.locationId
-    ) {
-      greaterRarity = fromActiveArtifact.rarity;
-    }
+      fromActiveArtifact.wormholeTo === toPlanet.locationId;
 
-    if (
+    const targetHasWormhole =
       toActiveArtifact?.artifactType === ArtifactType.Wormhole &&
-      toActiveArtifact.wormholeTo === fromPlanet.locationId
-    ) {
-      if (greaterRarity === undefined) {
-        greaterRarity = toActiveArtifact.rarity;
-      } else {
-        greaterRarity = Math.max(
-          greaterRarity,
-          toActiveArtifact.rarity
-        ) as ArtifactRarity;
-      }
-    }
+      toActiveArtifact.wormholeTo === fromPlanet.locationId;
 
-    const rangeUpgradesPerRarity = [0, 2, 4, 6, 8, 10];
-    const speedUpgradesPerRarity = [0, 10, 20, 30, 40, 50];
-
-    if (!greaterRarity || greaterRarity <= ArtifactRarity.Unknown) {
+    if (!sourceHasWormhole && !targetHasWormhole) {
       return undefined;
     }
 
+    const wormholeRarity: ArtifactRarity = sourceHasWormhole
+      ? fromActiveArtifact!.rarity
+      : toActiveArtifact!.rarity;
+
+    if (wormholeRarity <= ArtifactRarity.Unknown) {
+      return undefined;
+    }
+
+    // Must match contract: speed_boosts = [1, 2, 4, 8, 16, 32]
+    const distanceDivisorPerRarity = [1, 2, 4, 8, 16, 32];
+    const factor = distanceDivisorPerRarity[wormholeRarity];
     return {
-      distanceFactor: rangeUpgradesPerRarity[greaterRarity],
-      speedFactor: speedUpgradesPerRarity[greaterRarity],
+      distanceFactor: factor,
+      speedFactor: factor,
     };
   }
 
