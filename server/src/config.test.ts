@@ -10,6 +10,7 @@ test("parseServerConfig defaults to devnet and known frontend origins", () => {
 
   assert.equal(config.aztecNodeUrl, "https://v4-devnet-2.aztec-labs.com");
   assert.equal(config.nodeKind, "remote");
+  assert.equal(config.snapshotSchemaVersion, 1);
   assert.deepEqual(config.corsOrigins, [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -23,6 +24,7 @@ test("parseServerConfig prefers INDEXER_START_BLOCK override", () => {
     INDEXER_START_BLOCK: "456",
     PORT: "3100",
     SQLITE_PATH: "./data/test.db",
+    SNAPSHOT_SCHEMA_VERSION: "3",
     PERSIST_MIN_INTERVAL_SEC: "5",
     CORS_ORIGINS: "https://game.example",
   });
@@ -31,6 +33,7 @@ test("parseServerConfig prefers INDEXER_START_BLOCK override", () => {
   assert.equal(config.indexerStartBlock, 456);
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.port, 3100);
+  assert.equal(config.snapshotSchemaVersion, 3);
 });
 
 test("parseServerConfig falls back to workspace START_BLOCK", () => {
@@ -50,6 +53,17 @@ test("parseServerConfig rejects invalid INDEXER_START_BLOCK", () => {
         INDEXER_START_BLOCK: "-1",
       }),
     /INDEXER_START_BLOCK/,
+  );
+});
+
+test("parseServerConfig rejects invalid SNAPSHOT_SCHEMA_VERSION", () => {
+  assert.throws(
+    () =>
+      parseServerConfig({
+        AZTEC_NODE_URL: "https://devnet.aztec.example",
+        SNAPSHOT_SCHEMA_VERSION: "0",
+      }),
+    /SNAPSHOT_SCHEMA_VERSION/,
   );
 });
 

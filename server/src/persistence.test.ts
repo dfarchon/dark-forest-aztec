@@ -52,12 +52,8 @@ test("jsonToSnapshot rehydrates bigint fields from persisted JSON", () => {
     world: {
       "0": {
         paused: false,
-        planet_events_count: "1",
         radius: "2",
         misc_nonce: "3",
-        planet_ids_count: "4",
-        revealed_planet_ids_count: "5",
-        player_ids_count: "6",
         next_change_block: 7,
       },
     },
@@ -97,10 +93,28 @@ test("jsonToSnapshot rehydrates bigint fields from persisted JSON", () => {
         prospected_block_number: 25,
       },
     },
+    artifact: {
+      a1: {
+        planet_discovered_on: "1",
+        rarity: 1,
+        planet_biome: 2,
+        minted_at_timestamp: "3",
+        discoverer: "0xdef",
+        artifact_type: 4,
+        activations: "5",
+        last_activated: "6",
+        last_deactivated: "7",
+        wormhole_to: "8",
+        owner: "0xowner",
+        controller: "0xcontroller",
+        last_updated: "9",
+      },
+    },
   });
 
   const world = snapshot.world.get("0");
   const planet = snapshot.planet.get("123");
+  const artifact = snapshot.artifact.get("a1");
 
   assert.equal(typeof world?.radius, "bigint");
   assert.equal(world?.radius, 2n);
@@ -108,4 +122,53 @@ test("jsonToSnapshot rehydrates bigint fields from persisted JSON", () => {
   assert.equal(planet?.population_cap, 10n);
   assert.equal(planet?.planet_level, 2);
   assert.equal(planet?.owner, "0xabc");
+  assert.deepEqual(Object.keys(world ?? {}).sort(), [
+    "misc_nonce",
+    "next_change_block",
+    "paused",
+    "radius",
+  ]);
+  assert.equal(artifact?.owner, "0xowner");
+  assert.equal(artifact?.controller, "0xcontroller");
+});
+
+test("SnapshotStore resets stored snapshot when snapshot schema version changes", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-store-version-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const v1Store = new SnapshotStore(dbPath, 0, {
+      dbSchemaVersion: 1,
+      snapshotSchemaVersion: 1,
+    });
+    v1Store.save(
+      99,
+      JSON.stringify({
+        lastProcessedBlock: 99,
+        world: {
+          "0": {
+            paused: false,
+            radius: "1",
+            misc_nonce: "1",
+            next_change_block: 0,
+          },
+        },
+      }),
+    );
+    const restoredV1 = v1Store.restore();
+    assert.ok(restoredV1);
+    v1Store.close();
+
+    const v2Store = new SnapshotStore(dbPath, 0, {
+      dbSchemaVersion: 1,
+      snapshotSchemaVersion: 2,
+    });
+    const restoredV2 = v2Store.restore();
+    assert.equal(restoredV2, null);
+    v2Store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

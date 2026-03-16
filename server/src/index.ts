@@ -91,6 +91,9 @@ async function main(): Promise<void> {
   console.log(
     `[Server] CORS origins: ${config.corsOrigins.join(", ") || "(disabled)"}`,
   );
+  console.log(
+    `[Server] Snapshot schema version: ${config.snapshotSchemaVersion}`,
+  );
   if (config.indexerStartBlock !== contracts.startBlock) {
     console.warn(
       `[Server] INDEXER_START_BLOCK override ${config.indexerStartBlock} differs from @dfpunk/contracts START_BLOCK ${contracts.startBlock}.`,
@@ -106,6 +109,10 @@ async function main(): Promise<void> {
   const store = new SnapshotStore(
     config.sqlitePath,
     config.persistMinIntervalSec,
+    {
+      dbSchemaVersion: 1,
+      snapshotSchemaVersion: config.snapshotSchemaVersion,
+    },
   );
 
   // 2. Create IndexerService
