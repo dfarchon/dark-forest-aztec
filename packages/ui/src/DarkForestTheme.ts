@@ -14,8 +14,6 @@ Theme.registerThemeFragment(
   "app",
   "app",
   css`
-    @import url("https://fonts.googleapis.com/css2?family=Inconsolata:wght@300&display=swap");
-
     :host,
     :root {
       color: ${unsafeCSS(dfstyles.colors.text)};

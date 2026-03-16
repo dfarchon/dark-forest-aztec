@@ -64,51 +64,60 @@ export class ConfigCache {
     const from = this.senderAddress;
     const c = this.configContract;
 
-    const [
-      admin,
-      snarkConfig,
-      worldConfig,
-      gameConfigCore,
-      upgradeConfig,
-      planetLevelThresholds,
-      spaceJunkConfig,
-      tier0,
-      tier1,
-      tier2,
-      tier3,
-      planetDefaultStatsArr,
-      upgradesArr,
-      artifactsConfig,
-      spaceshipsConfig,
-      ...cumulativeRaritiesRaw
-    ] = await Promise.all([
-      c.methods.get_admin_unconstrained().simulate({ from }),
-      c.methods.get_snark_config_unconstrained().simulate({ from }),
-      c.methods.get_world_config_unconstrained().simulate({ from }),
-      c.methods.get_game_config_core_unconstrained().simulate({ from }),
-      c.methods.get_upgrade_config_unconstrained().simulate({ from }),
-      c.methods.get_planet_level_thresholds_unconstrained().simulate({ from }),
-      c.methods.get_space_junk_config_unconstrained().simulate({ from }),
-      c.methods
-        .get_planet_type_weights_tier_unconstrained(0)
-        .simulate({ from }),
-      c.methods
-        .get_planet_type_weights_tier_unconstrained(1)
-        .simulate({ from }),
-      c.methods
-        .get_planet_type_weights_tier_unconstrained(2)
-        .simulate({ from }),
-      c.methods
-        .get_planet_type_weights_tier_unconstrained(3)
-        .simulate({ from }),
-      c.methods.get_default_stats_unconstrained().simulate({ from }),
-      c.methods.get_upgrades_unconstrained().simulate({ from }),
-      c.methods.get_artifacts_config_unconstrained().simulate({ from }),
-      c.methods.get_spaceships_config_unconstrained().simulate({ from }),
-      ...Array.from({ length: 10 }, (_, i) =>
-        c.methods.get_cumulative_rarity_unconstrained(i).simulate({ from })
-      ),
-    ]);
+    // Serialize PXE simulate() calls — the embedded PXE does not support
+    // concurrent execution and floods the console with warnings otherwise.
+    const admin = await c.methods.get_admin_unconstrained().simulate({ from });
+    const snarkConfig = await c.methods
+      .get_snark_config_unconstrained()
+      .simulate({ from });
+    const worldConfig = await c.methods
+      .get_world_config_unconstrained()
+      .simulate({ from });
+    const gameConfigCore = await c.methods
+      .get_game_config_core_unconstrained()
+      .simulate({ from });
+    const upgradeConfig = await c.methods
+      .get_upgrade_config_unconstrained()
+      .simulate({ from });
+    const planetLevelThresholds = await c.methods
+      .get_planet_level_thresholds_unconstrained()
+      .simulate({ from });
+    const spaceJunkConfig = await c.methods
+      .get_space_junk_config_unconstrained()
+      .simulate({ from });
+    const tier0 = await c.methods
+      .get_planet_type_weights_tier_unconstrained(0)
+      .simulate({ from });
+    const tier1 = await c.methods
+      .get_planet_type_weights_tier_unconstrained(1)
+      .simulate({ from });
+    const tier2 = await c.methods
+      .get_planet_type_weights_tier_unconstrained(2)
+      .simulate({ from });
+    const tier3 = await c.methods
+      .get_planet_type_weights_tier_unconstrained(3)
+      .simulate({ from });
+    const planetDefaultStatsArr = await c.methods
+      .get_default_stats_unconstrained()
+      .simulate({ from });
+    const upgradesArr = await c.methods
+      .get_upgrades_unconstrained()
+      .simulate({ from });
+    const artifactsConfig = await c.methods
+      .get_artifacts_config_unconstrained()
+      .simulate({ from });
+    const spaceshipsConfig = await c.methods
+      .get_spaceships_config_unconstrained()
+      .simulate({ from });
+
+    const cumulativeRaritiesRaw: unknown[] = [];
+    for (let i = 0; i < 10; i++) {
+      cumulativeRaritiesRaw.push(
+        await c.methods
+          .get_cumulative_rarity_unconstrained(i)
+          .simulate({ from })
+      );
+    }
 
     const planetDefaultStats = Array.isArray(planetDefaultStatsArr)
       ? [...planetDefaultStatsArr]

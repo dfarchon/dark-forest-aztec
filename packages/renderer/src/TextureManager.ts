@@ -12,9 +12,9 @@ import {
   RenderedArtifact,
 } from "@dfpunk/types";
 
-export const ARTIFACTS_URL = "/public/sprites/artifacts.png";
-export const ARTIFACTS_THUMBS_URL = "/public/sprites/artifactthumbs.png";
-export const GLASS_URL = "/public/sprites/glass.png";
+export const ARTIFACTS_URL = "/sprites/artifacts.png";
+export const ARTIFACTS_THUMBS_URL = "/sprites/artifactthumbs.png";
+export const GLASS_URL = "/sprites/glass.png";
 
 const imageByUrl = new Map<string, HTMLImageElement>();
 

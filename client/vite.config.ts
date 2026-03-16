@@ -18,6 +18,7 @@ export default defineConfig({
         "events",
         "path",
         "string_decoder",
+        "tty",
         "vm",
       ],
       globals: {
@@ -35,6 +36,9 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+  },
+  define: {
+    "globalThis.litIssuedWarnings": "new Set()",
   },
   optimizeDeps: {
     esbuildOptions: {
