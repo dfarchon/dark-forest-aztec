@@ -60,13 +60,14 @@ export type TxIntent = {
   // contractAddress?: string;
   methodName: ContractMethodName | string;
   args: Promise<unknown[]> | unknown[];
+  /** Chain time (seconds) when user initiated the action; used as base timestamp for contract args. */
+  uiTimestamp?: number;
 };
 
 export type UnconfirmedInit = TxIntent & {
   methodName: "initializePlayer";
   locationId: LocationId;
   location: WorldLocation;
-  uiTimestamp?: number;
 };
 
 export type UnconfirmedMove = TxIntent & {
@@ -77,7 +78,6 @@ export type UnconfirmedMove = TxIntent & {
   silver: number;
   abandoning: boolean;
   artifact?: ArtifactId;
-  uiTimestamp?: number;
 };
 
 export type UnconfirmedFindArtifact = TxIntent & {

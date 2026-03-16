@@ -63,12 +63,6 @@ import {
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { ConfigCache } from "./ConfigCache";
-import {
-  clampMoveForSubmit,
-  estimatePopArriving,
-  getRefreshedPopulationAndSilver,
-  validateMoveForSubmit,
-} from "./MoveSimulation";
 import { resolveActivateArtifact } from "./resolveActivateArtifact";
 import { resolveAdminGiveArtifact } from "./resolveAdminGiveArtifact";
 import { resolveAdminGiveSpaceship } from "./resolveAdminGiveSpaceship";
@@ -446,8 +440,9 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    await this.chainClock.resync();
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {
@@ -591,8 +586,9 @@ export class StateResolver {
       perlin = planetRaw ? planetRaw.perlin : 0;
     }
 
-    await this.chainClock.resync();
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {
@@ -687,15 +683,13 @@ export class StateResolver {
 
     // Frontend energy/silver values are divided by CONTRACT_PRECISION (1000).
     // Contract expects raw u128 values, so multiply back.
-    let popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
-    let silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
+    const popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
+    const silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
     const movedArtifactId = intent.artifact
       ? BigInt(`0x${intent.artifact}`)
       : 0n;
     const isAbandoning = intent.abandoning;
 
-    // Resync clock before computing timestamp to minimize drift
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     // Indexer stores by decimal string key; rawSourceLoc/rawTargetLoc are hex LocationIds
@@ -895,7 +889,9 @@ export class StateResolver {
     const levelIndex = Math.min(9, Math.max(0, targetLevelResolved));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     {
       const entityTimes: bigint[] = [];
       if (sourcePlanetRaw) entityTimes.push(sourcePlanetRaw.last_updated);
@@ -926,122 +922,6 @@ export class StateResolver {
           `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
         );
         timestamp = maxEntityTime;
-      }
-    }
-
-    // Client-side simulation: clamp population/silver to contract-safe ranges
-    if (sourcePlanetRaw) {
-      const timestampSec = Number(timestamp);
-      const planetEventsForSim: import("../Indexer/TableTypes/chain").PlanetEventsState =
-        sourcePlanetEventsRaw ?? {
-          events: Array.from({ length: 20 }, () => ({ id: "0" })),
-          count: 0,
-          last_updated: 0n,
-        };
-      const refreshed = getRefreshedPopulationAndSilver(
-        timestampSec,
-        sourcePlanetRaw,
-        planetEventsForSim,
-        sourceArrivalData.arrivals,
-        sourceArrivalData.artifacts
-      );
-      console.log("[StateResolver Move]", {
-        intentForces: intent.forces,
-        intentSilver: intent.silver,
-        popMoved,
-        silverMoved,
-        timestamp: Number(timestamp),
-        indexerPopulation: sourcePlanetRaw.population,
-        indexerLastUpdated: Number(sourcePlanetRaw.last_updated),
-        refreshedPopulation: refreshed.population,
-        refreshedSilver: refreshed.silver,
-      });
-
-      const movedArtifactType = Number(
-        (movedArtifact as Record<string, unknown>)?.artifact_type ?? 0
-      );
-      const isSpaceshipMove =
-        movedArtifactId !== 0n &&
-        [3, 10, 11, 12, 13, 14].includes(movedArtifactType);
-
-      // Non-clampable preconditions (owner, destroyed) — still throw
-      validateMoveForSubmit({
-        isSpaceshipMove,
-        sender: this.getPlayerAddress(),
-        sourceOwner: refreshed.owner,
-        sourceDestroyed: sourcePlanetRaw.destroyed,
-      });
-
-      // Clamp popMoved/silverMoved to contract-safe ranges
-      const clamped = clampMoveForSubmit({
-        refreshedPopulation: refreshed.population,
-        refreshedSilver: refreshed.silver,
-        popMoved,
-        silverMoved,
-        isSpaceshipMove,
-      });
-      popMoved = clamped.popMoved;
-      silverMoved = clamped.silverMoved;
-
-      // Pre-check: estimate pop_arriving using the same formula as the contract.
-      // This catches "Not enough forces to make move" before the expensive simulation.
-      if (!isSpaceshipMove) {
-        const sourceArt =
-          sourceActivatedArtifactId !== 0n
-            ? this.indexer.getArtifact(String(sourceActivatedArtifactId))
-            : undefined;
-        const targetArt =
-          targetActivatedArtifactId !== 0n
-            ? this.indexer.getArtifact(String(targetActivatedArtifactId))
-            : undefined;
-        const artsCfg = config.artifactsConfig as
-          | Record<string, unknown>
-          | undefined;
-        const photoidDelay = BigInt(
-          String(artsCfg?.photoid_activation_delay ?? 14400)
-        );
-
-        const toArtParam = (
-          id: bigint,
-          a: import("../Indexer/TableTypes/chain").ArtifactState | undefined
-        ) =>
-          a
-            ? {
-                id,
-                artifact_type: a.artifact_type,
-                rarity: a.rarity,
-                last_activated: a.last_activated,
-                last_deactivated: a.last_deactivated,
-                wormhole_to: a.wormhole_to,
-              }
-            : undefined;
-
-        const popArriving = estimatePopArriving({
-          maxDist: BigInt(String(maxDist)),
-          popMoved,
-          sourcePlanetRange: sourcePlanetRaw.range,
-          sourcePlanetSpeed: sourcePlanetRaw.speed,
-          sourcePlanetPopulationCap: sourcePlanetRaw.population_cap,
-          sourceActivatedArtifact: toArtParam(
-            sourceActivatedArtifactId,
-            sourceArt
-          ),
-          targetActivatedArtifact: toArtParam(
-            targetActivatedArtifactId,
-            targetArt
-          ),
-          targetLoc: targetLocDec,
-          sourceLoc: sourceLocDec,
-          timestamp,
-          photoidActivationDelay: photoidDelay,
-          isSpaceshipMove: false,
-        });
-
-        if (popArriving === 0n) {
-          throw new Error(
-            "Not enough forces to make move: pop_arriving would be 0 (distance too far for energy sent)"
-          );
-        }
       }
     }
 
@@ -1158,7 +1038,6 @@ export class StateResolver {
       );
     }
 
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     const planetRaw = this.indexer.getPlanet(String(locationIdDec));
@@ -1192,7 +1071,9 @@ export class StateResolver {
       );
     }
 
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     {
       const entityTimes: bigint[] = [];
       if (planetRaw) entityTimes.push(planetRaw.last_updated);
@@ -1239,7 +1120,6 @@ export class StateResolver {
     const location = BigInt(String(locationIdDec));
     const silverToWithdraw = BigInt(String(amount));
 
-    await this.chainClock.resync();
     const config = await this.configCache.getConfig();
 
     const planetRaw = this.indexer.getPlanet(String(locationIdDec));
@@ -1266,7 +1146,9 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     {
       const entityTimes: bigint[] = [];
       if (planetRaw) entityTimes.push(planetRaw.last_updated);
@@ -1416,8 +1298,9 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    await this.chainClock.resync();
-    let timestamp = BigInt(Math.floor(this.chainClock.lastBlockTimestamp()));
+    let timestamp = BigInt(
+      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    );
     if (planetRaw) {
       const planetLastUpdated = BigInt(planetRaw.last_updated);
       if (planetLastUpdated > timestamp) {

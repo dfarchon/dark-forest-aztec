@@ -28,6 +28,9 @@ export class ChainClock {
 
   private static MIN_SYNC_INTERVAL_MS = 3000;
 
+  /** Expected L2 block interval in seconds; used to cap extrapolated chain time. */
+  private static BLOCK_INTERVAL_SEC = 36;
+
   constructor(node: AztecNode) {
     this.node = node;
   }
@@ -51,49 +54,40 @@ export class ChainClock {
   /** Fetch the latest L2 block timestamp and sync. */
   async syncFromNode(): Promise<void> {
     try {
-      const block = await (
-        this.node as unknown as {
-          getBlock: (n: number | "latest") => Promise<
-            | {
-                header?: {
-                  globalVariables?: { timestamp?: unknown };
-                };
-                timestamp?: number;
-              }
-            | undefined
-          >;
+      const block = await this.node.getBlock("latest");
+      if (block) {
+        const ts = Number(block.timestamp);
+        if (ts > 0) {
+          this.sync(ts);
         }
-      ).getBlock("latest");
-
-      let ts: number | undefined;
-      const raw = block?.header?.globalVariables?.timestamp;
-      if (raw != null) {
-        ts = typeof raw === "bigint" ? Number(raw) : Number(raw);
-      } else if (block?.timestamp != null) {
-        ts = Number(block.timestamp);
-      }
-
-      if (ts != null && ts > 0) {
-        this.sync(ts);
       }
     } catch {
       // keep current offset (0 = use system clock)
     }
   }
 
-  /** Current chain-adjusted time in milliseconds. */
+  /**
+   * Current chain time in milliseconds. Uses the latest L2 block timestamp from
+   * the last sync, capped by wall clock and by lastBlockTs + BLOCK_INTERVAL so
+   * we never report time ahead of the next block. Falls back to Date.now() when
+   * no sync has completed yet.
+   */
   now(): number {
-    return Date.now() + this.offsetMs;
+    if (this.lastChainTimestampSec === 0) return Date.now();
+    const wallNowMs = Date.now();
+    const chainTimeCapMs =
+      this.lastChainTimestampSec * 1000 + ChainClock.BLOCK_INTERVAL_SEC * 1000;
+    return Math.min(wallNowMs, chainTimeCapMs);
   }
 
   /** Current chain-adjusted time in seconds. */
   nowSec(): number {
-    return this.now() / 1000;
+    return Math.floor(this.now() / 1000);
   }
 
   /** The current offset in seconds (positive = chain ahead). */
   getOffsetSec(): number {
-    return this.offsetMs / 1000;
+    return Math.floor(this.offsetMs / 1000);
   }
 
   /**
@@ -113,10 +107,6 @@ export class ChainClock {
 
   /** Fetch the latest L2 block number from the node. */
   async getBlockNumber(): Promise<number> {
-    return Number(
-      await (
-        this.node as unknown as { getBlockNumber: () => Promise<number> }
-      ).getBlockNumber()
-    );
+    return Number(await this.node.getBlockNumber());
   }
 }

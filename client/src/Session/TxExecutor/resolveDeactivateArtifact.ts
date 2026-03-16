@@ -41,8 +41,6 @@ export async function resolveDeactivateArtifact(
   const locationIdDec = String(rawLocationId);
   const artifactIdStr = String(BigInt(`0x${intent.artifactId}`));
 
-  await deps.chainClock.resync();
-
   // Load planet state
   const planetRaw = deps.indexer.getPlanet(locationIdDec);
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
@@ -77,10 +75,9 @@ export async function resolveDeactivateArtifact(
   const worldRaw = deps.indexer.getWorld();
   const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-  // Timestamp
   const artifactId = BigInt(`0x${intent.artifactId}`);
   const timestamp = computeTimestamp(
-    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
+    BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 

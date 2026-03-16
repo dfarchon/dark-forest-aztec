@@ -42,8 +42,6 @@ export async function resolveDepositArtifact(
   const locationIdDec = String(rawLocationId);
   const artifactIdStr = String(rawArtifactId);
 
-  await deps.chainClock.resync();
-
   // Load planet state
   const planetRaw = deps.indexer.getPlanet(locationIdDec);
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
@@ -78,9 +76,8 @@ export async function resolveDepositArtifact(
   const worldRaw = deps.indexer.getWorld();
   const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
+    BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 

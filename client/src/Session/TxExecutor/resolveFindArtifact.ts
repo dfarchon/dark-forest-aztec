@@ -62,7 +62,6 @@ export async function resolveFindArtifact(
   const y = signedCoordToField(rawY as number | bigint);
   const biomebase = Number(rawBiomebase);
 
-  await deps.chainClock.resync();
   const config = await deps.configCache.getConfig();
 
   // When ZK checks enabled, recompute location hash with Poseidon2
@@ -183,9 +182,8 @@ export async function resolveFindArtifact(
   const worldRaw = deps.indexer.getWorld();
   const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
+    BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(
       planetRaw,
       planetEventsRaw,

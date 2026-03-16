@@ -2149,6 +2149,7 @@ class GameManager extends EventEmitter {
         locationId: planetId,
         location: planet.location,
         args: getArgs(),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       // Always await the submitTransaction so we can catch rejections
@@ -2278,6 +2279,7 @@ class GameManager extends EventEmitter {
       args: Promise.resolve([
         locationIdToDecStr(this.homeLocation.hash as LocationId),
       ]),
+      uiTimestamp: Math.floor(this.chainClock.nowSec()),
     });
     await tx.confirmedPromise;
     this.hardRefreshPlanet(this.homeLocation?.hash);
@@ -2513,6 +2515,7 @@ class GameManager extends EventEmitter {
         methodName: "prospectPlanet",
         planetId: planetId,
         args: Promise.resolve([locationIdToDecStr(planetId)]),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       const tx = await this.contractsAPI.submitTransaction(txIntent);
@@ -2589,6 +2592,7 @@ class GameManager extends EventEmitter {
           planet.location.coords.y,
           planet.location.biomebase,
         ]),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       const tx =
@@ -2666,6 +2670,7 @@ class GameManager extends EventEmitter {
           locationIdToDecStr(locationId),
           artifactIdToDecStr(artifactId),
         ]),
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       const tx = await this.contractsAPI.submitTransaction(txIntent);
@@ -2724,6 +2729,7 @@ class GameManager extends EventEmitter {
         ]),
         locationId,
         artifactId,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       this.terminal.current?.println(
@@ -2791,6 +2797,7 @@ class GameManager extends EventEmitter {
         locationId,
         artifactId,
         wormholeTo,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       // Always await the submitTransaction so we can catch rejections
@@ -2830,6 +2837,7 @@ class GameManager extends EventEmitter {
         args: Promise.resolve([locationIdToDecStr(locationId)]),
         locationId,
         artifactId,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       // Always await the submitTransaction so we can catch rejections
@@ -2897,6 +2905,7 @@ class GameManager extends EventEmitter {
         ]),
         locationId,
         amount,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       // Always await the submitTransaction so we can catch rejections
@@ -3111,7 +3120,7 @@ class GameManager extends EventEmitter {
         silver: silverMoved,
         artifact: artifactMoved,
         abandoning,
-        uiTimestamp,
+        uiTimestamp: uiTimestamp ?? Math.floor(this.chainClock.nowSec()),
       };
 
       if (artifactMoved) {
@@ -3169,6 +3178,7 @@ class GameManager extends EventEmitter {
         ]),
         locationId: planetId,
         upgradeBranch: branch,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
       // Always await the submitTransaction so we can catch rejections
@@ -3387,6 +3397,7 @@ class GameManager extends EventEmitter {
         locationId: planetId,
         location,
         newOwner,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
       return await this.contractsAPI.submitTransaction(txIntent);
     } catch (e) {

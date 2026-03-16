@@ -37,7 +37,6 @@ export async function resolveGiveSpaceships(
   const locationIdDec = String(rawLocationId);
   const playerAddr = deps.getPlayerAddress();
 
-  await deps.chainClock.resync();
   const config = await deps.configCache.getConfig();
 
   // Load planet state
@@ -64,9 +63,8 @@ export async function resolveGiveSpaceships(
   const playerRaw = deps.indexer.getPlayer(playerAddr);
   const player = playerRaw ? playerToContract(playerRaw) : playerZero();
 
-  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
+    BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(
       planetRaw,
       planetEventsRaw,

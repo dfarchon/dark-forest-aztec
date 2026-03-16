@@ -49,7 +49,6 @@ export async function resolveActivateArtifact(
   const wormholeTo = BigInt(String(rawWormholeTo ?? 0));
   const locationIdDec = String(rawLocationId);
 
-  await deps.chainClock.resync();
   const config = await deps.configCache.getConfig();
 
   // Load planet state
@@ -92,9 +91,8 @@ export async function resolveActivateArtifact(
   const levelIndex = Math.min(9, Math.max(0, planetLevel));
   const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-  // Timestamp: use raw chain block timestamp to avoid future-timestamp errors on devnet
   const timestamp = computeTimestamp(
-    BigInt(Math.floor(deps.chainClock.lastBlockTimestamp())),
+    BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
 
