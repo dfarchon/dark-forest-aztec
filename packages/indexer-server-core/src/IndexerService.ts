@@ -89,18 +89,18 @@ export class IndexerService {
   private readonly debounceMs: number;
   private readonly pollIntervalMs: number;
   private readonly maxBlocksPerRequest: number;
-  private readonly onBlockProcessed?: (
-    fromBlock: number,
-    toBlock: number,
-  ) => void;
+  private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
   private snapshot: IndexerSnapshot = emptySnapshot();
   private latestKnownBlock: number = 0;
   private isSyncing: boolean = false;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private lifecycle: IndexerLifecycle = "idle";
-  private processingLoopActive: boolean = false;
-  private processAgainRequested: boolean = false;
+
+  /** Secondary index: artifact owner -> set of artifact ids. */
+  private ownerArtifactIndex = new Map<string, Set<string>>();
+  /** Secondary index: artifact controller -> set of artifact ids. */
+  private controllerArtifactIndex = new Map<string, Set<string>>();
 
   /** Subscribers notified when state changes (after applying updates). */
   private listeners = new Set<(payload: IndexerChangePayload) => void>();
@@ -130,70 +130,52 @@ export class IndexerService {
 
   private onLatestBlock: (latest: number) => void;
 
+  /** Override the onBlockProcessed callback after construction. */
+  setOnBlockProcessed(cb: (fromBlock: number, toBlock: number) => void): void {
+    this.onBlockProcessed = cb;
+  }
+
   /**
    * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
    * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
    */
   private async processNewBlocks(): Promise<void> {
-    if (this.processingLoopActive) {
-      this.processAgainRequested = true;
-      return;
-    }
+    let fromBlock = this.snapshot.lastProcessedBlock + 1;
+    const toBlock = this.latestKnownBlock;
+    if (fromBlock > toBlock) return;
 
-    this.processingLoopActive = true;
+    this.isSyncing = true;
     try {
-      do {
-        this.processAgainRequested = false;
-        let fromBlock = this.snapshot.lastProcessedBlock + 1;
-        const toBlock = this.latestKnownBlock;
-        if (fromBlock > toBlock) continue;
-
-        this.isSyncing = true;
-        let failed = false;
-        try {
-          while (fromBlock <= toBlock) {
-            const chunkEnd = Math.min(
-              fromBlock + this.maxBlocksPerRequest - 1,
-              toBlock,
-            );
-            const updates = await this.source.getBlockUpdates(
-              fromBlock,
-              chunkEnd,
-            );
-            this.applyUpdates(updates);
-            this.snapshot.lastProcessedBlock = chunkEnd;
-            this.onBlockProcessed?.(fromBlock, chunkEnd);
-            const tables = [
-              ...new Set(updates.updates.map((u) => u.table)),
-            ] as TableName[];
-            const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
-            this.notifyListeners({
-              tables,
-              fromBlock,
-              toBlock: chunkEnd,
-              updatedIdsByTable,
-            });
-            fromBlock = chunkEnd + 1;
-          }
-        } catch (err) {
-          failed = true;
-          console.warn("[IndexerService] processNewBlocks error:", err);
-        } finally {
-          this.isSyncing = false;
-          const completedBlock = this.snapshot.lastProcessedBlock;
-          this.notifyListeners({
-            tables: [],
-            fromBlock: completedBlock,
-            toBlock: completedBlock,
-          });
-        }
-        if (failed) break;
-      } while (
-        this.processAgainRequested ||
-        this.snapshot.lastProcessedBlock < this.latestKnownBlock
-      );
+      while (fromBlock <= toBlock) {
+        const chunkEnd = Math.min(
+          fromBlock + this.maxBlocksPerRequest - 1,
+          toBlock,
+        );
+        const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
+        this.applyUpdates(updates);
+        this.snapshot.lastProcessedBlock = chunkEnd;
+        this.onBlockProcessed?.(fromBlock, chunkEnd);
+        const tables = [
+          ...new Set(updates.updates.map((u) => u.table)),
+        ] as TableName[];
+        const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
+        this.notifyListeners({
+          tables,
+          fromBlock,
+          toBlock: chunkEnd,
+          updatedIdsByTable,
+        });
+        fromBlock = chunkEnd + 1;
+      }
+    } catch (err) {
+      console.warn("[IndexerService] processNewBlocks error:", err);
     } finally {
-      this.processingLoopActive = false;
+      this.isSyncing = false;
+      this.notifyListeners({
+        tables: [],
+        fromBlock: toBlock,
+        toBlock,
+      });
     }
   }
 
@@ -225,13 +207,86 @@ export class IndexerService {
       const rawState = (u as TableUpdate<Raw>).state as Raw;
       const state = rawToState(u.table, rawState);
       const tableMap = this.snapshot[u.table] as Map<TableId, unknown>;
+
+      if (u.table === "artifact") {
+        const oldState = tableMap.get(id) as ArtifactState | undefined;
+        this.updateArtifactIndexes(id, oldState, state as ArtifactState);
+      }
+
       tableMap.set(id, state);
+    }
+  }
+
+  /**
+   * Maintain ownerArtifactIndex and controllerArtifactIndex when an artifact
+   * row is inserted or updated. Handles removal from old owner/controller sets
+   * and insertion into new ones.
+   */
+  private updateArtifactIndexes(
+    artifactId: string,
+    oldState: ArtifactState | undefined,
+    newState: ArtifactState,
+  ): void {
+    if (oldState?.owner !== newState.owner) {
+      if (oldState) {
+        this.ownerArtifactIndex.get(oldState.owner)?.delete(artifactId);
+      }
+      if (newState.owner) {
+        let set = this.ownerArtifactIndex.get(newState.owner);
+        if (!set) {
+          set = new Set();
+          this.ownerArtifactIndex.set(newState.owner, set);
+        }
+        set.add(artifactId);
+      }
+    }
+
+    if (oldState?.controller !== newState.controller) {
+      if (oldState) {
+        this.controllerArtifactIndex
+          .get(oldState.controller)
+          ?.delete(artifactId);
+      }
+      if (newState.controller) {
+        let set = this.controllerArtifactIndex.get(newState.controller);
+        if (!set) {
+          set = new Set();
+          this.controllerArtifactIndex.set(newState.controller, set);
+        }
+        set.add(artifactId);
+      }
+    }
+  }
+
+  /** Rebuild both artifact secondary indexes from the current snapshot. */
+  private rebuildArtifactIndexes(): void {
+    this.ownerArtifactIndex.clear();
+    this.controllerArtifactIndex.clear();
+    const artifactMap = this.snapshot.artifact as Map<string, ArtifactState>;
+    for (const [id, state] of artifactMap) {
+      if (state.owner) {
+        let set = this.ownerArtifactIndex.get(state.owner);
+        if (!set) {
+          set = new Set();
+          this.ownerArtifactIndex.set(state.owner, set);
+        }
+        set.add(id);
+      }
+      if (state.controller) {
+        let set = this.controllerArtifactIndex.get(state.controller);
+        if (!set) {
+          set = new Set();
+          this.controllerArtifactIndex.set(state.controller, set);
+        }
+        set.add(id);
+      }
     }
   }
 
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
   applySnapshot(snapshot: IndexerSnapshot): void {
     this.snapshot = snapshot;
+    this.rebuildArtifactIndexes();
     const block = snapshot.lastProcessedBlock;
     this.notifyListeners({
       tables: [...TABLE_NAMES],
@@ -266,6 +321,7 @@ export class IndexerService {
         const snap = await this.bootstrapSource.getSnapshot();
         if (snap) {
           this.snapshot = snap;
+          this.rebuildArtifactIndexes();
           this.latestKnownBlock = snap.lastProcessedBlock;
           snapshotLoaded = true;
         }
@@ -419,6 +475,23 @@ export class IndexerService {
     return Object.fromEntries(map) as Record<string, TableRowType[K]>;
   }
 
+  /**
+   * Full snapshot as JSON string (same shape as server GET /snapshot).
+   * Use for debugging or exporting the current synced state.
+   */
+  getSnapshotAsJsonString(): string {
+    const obj: Record<string, unknown> = {
+      lastProcessedBlock: this.snapshot.lastProcessedBlock,
+    };
+    for (const table of TABLE_NAMES) {
+      const map = this.snapshot[table] as Map<TableId, unknown>;
+      obj[table] = Object.fromEntries(map);
+    }
+    return JSON.stringify(obj, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value,
+    );
+  }
+
   /** All planet ids currently in state. */
   getPlanetIds(): string[] {
     return Array.from(this.snapshot.planet.keys());
@@ -437,6 +510,23 @@ export class IndexerService {
   /** All artifact ids. */
   getArtifactIds(): string[] {
     return Array.from(this.snapshot.artifact.keys());
+  }
+
+  /** Total number of artifacts in state. */
+  getArtifactCount(): number {
+    return this.snapshot.artifact.size;
+  }
+
+  /** Artifact ids owned by the given address (via owner field). */
+  getArtifactIdsByOwner(ownerId: string): string[] {
+    const set = this.ownerArtifactIndex.get(ownerId);
+    return set ? Array.from(set) : [];
+  }
+
+  /** Artifact ids controlled by the given address (via controller field). */
+  getArtifactIdsByController(controllerId: string): string[] {
+    const set = this.controllerArtifactIndex.get(controllerId);
+    return set ? Array.from(set) : [];
   }
 
   /** Full player map (id → PlayerState). */
