@@ -67,6 +67,8 @@ contracts/artifacts/
 contracts/target/
 contracts/build/
 **/artifacts/
+!packages/contracts/src/artifacts/
+!packages/contracts/src/artifacts/**
 contracts/codegenCache.json
 
 # Typechain / codegen outputs
