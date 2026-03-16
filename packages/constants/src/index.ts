@@ -136,7 +136,7 @@ export const MAX_AUTO_GAS_PRICE_GWEI = 15 as const;
  */
 // Careful, don't add a slash to the end of this.
 export const BLOCK_EXPLORER_URL =
-  "https://dashboard.tenderly.co/tx/xdai" as const;
+  "https://devnet.aztecscan.xyz/tx-effects" as const;
 
 /**
  * The amount of time between gas price refreshes when fetching prices from the oracle.

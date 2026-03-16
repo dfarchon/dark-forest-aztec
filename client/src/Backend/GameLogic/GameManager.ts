@@ -770,6 +770,19 @@ class GameManager extends EventEmitter {
     gameManager.contractsAPI
       .on(ContractsAPIEvent.ArtifactUpdate, async (artifactId: ArtifactId) => {
         await gameManager.hardRefreshArtifact(artifactId);
+
+        // Sync the planet that holds this artifact so its heldArtifactIds
+        // is up-to-date and the renderer can display the artifact.
+        const artifact = gameManager.entityStore.getArtifactById(artifactId);
+        if (artifact?.onPlanetId) {
+          const localPlanet = gameManager.entityStore.getPlanetWithId(
+            artifact.onPlanetId
+          );
+          if (localPlanet && isLocatable(localPlanet)) {
+            await gameManager.hardRefreshPlanet(artifact.onPlanetId);
+          }
+        }
+
         gameManager.emit(GameManagerEvent.ArtifactUpdate, artifactId);
       })
       .on(

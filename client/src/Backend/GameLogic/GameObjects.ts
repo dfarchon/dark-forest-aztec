@@ -431,9 +431,19 @@ export class GameObjects {
     if (localArtifact) {
       artifact.transactions = localArtifact.transactions;
 
-      // note: not sure if the logic here is correct
       if (artifact.onPlanetId === undefined) {
         artifact.onPlanetId = localArtifact.onPlanetId;
+      }
+
+      // If we locally already processed the arrival (onVoyageId cleared),
+      // don't let stale contract data re-set it.
+      if (
+        artifact.onVoyageId !== undefined &&
+        localArtifact.onVoyageId === undefined
+      ) {
+        artifact.onVoyageId = undefined;
+      } else if (artifact.onVoyageId === undefined) {
+        artifact.onVoyageId = localArtifact.onVoyageId;
       }
     }
 
@@ -1177,6 +1187,13 @@ export class GameObjects {
               );
               this.emitArrivalNotifications(update);
               this.removeArrival(planetId, update.arrival.eventId);
+              this.setPlanet(planet);
+              if (arrival.artifactId) {
+                const artifact = this.getArtifactById(arrival.artifactId);
+                if (artifact) {
+                  this.setArtifact(artifact);
+                }
+              }
             },
             arrival.arrivalTime * 1000 - this.chainClock.now()
           );
@@ -1236,6 +1253,13 @@ export class GameObjects {
               this.contractConstants
             );
             this.emitArrivalNotifications(update);
+            this.setPlanet(planet);
+            if (awt.arrivalData.artifactId) {
+              const artifact = this.getArtifactById(awt.arrivalData.artifactId);
+              if (artifact) {
+                this.setArtifact(artifact);
+              }
+            }
           } catch (e) {
             console.error(`error flushing matured arrival ${voyageId}: ${e}`);
           }
