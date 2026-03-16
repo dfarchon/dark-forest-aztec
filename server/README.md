@@ -6,7 +6,8 @@ This service indexes DFPunk Aztec public storage updates block-by-block, keeps a
 
 - Keep a consistent, queryable game state mirror from Aztec public events.
 - Recover quickly after restart from local SQLite snapshot.
-- Serve large snapshot payloads efficiently (`gzip` cached).
+- Serve large snapshot payloads efficiently (`gzip`/`brotli` cached).
+- Support v2 chunked snapshot APIs for staged client upgrades.
 - Run locally and in container environments (e.g. Railway + volume).
 
 ## High-Level Architecture
@@ -16,7 +17,7 @@ Aztec Node (public events)
   -> AztecNodeSource (decode events)
   -> IndexerService (typed Maps + sync lifecycle)
   -> SnapshotCache (JSON mirror + cached gzip)
-  -> HTTP API (/snapshot, /blocks/latest, /health)
+  -> HTTP API (/snapshot, /snapshot/manifest, /snapshot/chunks/*, /blocks/latest, /health)
                      \
                       -> SnapshotStore (SQLite WAL persistence)
 ```
@@ -116,6 +117,31 @@ This server uses **IndexerService** from `packages/indexer-server-core/src`. Ser
   - `X-Snapshot-Uncompressed-Length: <number>`
   - `Cache-Control: no-cache`
 
+### `GET /snapshot/manifest`
+
+- Returns chunk metadata for v2 clients.
+- Query:
+  - `chunkRows` (optional, default `1000`, max `20000`)
+- Response:
+  - `version: 2`
+  - `lastProcessedBlock`
+  - `chunkRows`
+  - `tables[tableName] = { rowCount, chunkCount }`
+
+### `GET /snapshot/chunks/:table/:chunkIndex`
+
+- Returns one compressed chunk for the selected table.
+- Query:
+  - `chunkRows` (optional, same rules as manifest)
+- Headers:
+  - `X-Snapshot-Chunk-Count`
+  - `X-Snapshot-Chunk-Index`
+  - `X-Snapshot-Chunk-Rows`
+  - `X-Snapshot-Block`
+  - `X-Snapshot-Uncompressed-Length`
+- Notes:
+  - v1 `/snapshot` remains unchanged for backward compatibility.
+
 ### `GET /blocks/latest`
 
 - Returns:
@@ -154,6 +180,7 @@ Key variables:
 - `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
+- `SNAPSHOT_SCHEMA_VERSION` (default: `1`; mismatch resets persisted snapshot)
 - `PERSIST_MIN_INTERVAL_SEC` (default: `10`)
 - `ADMIN_TOKEN` (default: empty, backup endpoint disabled)
 
