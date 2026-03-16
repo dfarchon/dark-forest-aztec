@@ -3,7 +3,12 @@ use ::aztec::macros::aztec;
 #[aztec]
 contract ArtifactFind {
     use ::aztec::{
-        macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
+        macros::{
+            events::event,
+            functions::{external, initializer, internal, only_self, view},
+            storage::storage,
+        },
+        oracle::block_header::get_block_header_at,
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
     };
     use ::aztec::state_vars::PublicMutable;
@@ -70,6 +75,21 @@ contract ArtifactFind {
         planet_events_storage_address: PublicMutable<AztecAddress, Context>,
         player_storage_address: PublicMutable<AztecAddress, Context>,
         world_storage_address: PublicMutable<AztecAddress, Context>,
+        // Stores the last block hash retrieved by a private call.
+        last_block_hash: PublicMutable<Field, Context>,
+        // Stores the block number that was queried last.
+        last_queried_block: PublicMutable<u32, Context>,
+    }
+
+    // ---- Events ----
+
+    /// Emitted (publicly) when test_get_block_header_private succeeds.
+    /// Visible to off-chain scripts via getDecodedPublicEvents.
+    #[event]
+    struct BlockHashResult {
+        target_block: u32,
+        block_hash: Field,
+        chain_id: Field,
     }
 
     #[internal("public")]
@@ -81,6 +101,8 @@ contract ArtifactFind {
     #[initializer]
     fn constructor(admin: AztecAddress) {
         self.storage.admin.write(admin);
+        self.storage.last_block_hash.write(0);
+        self.storage.last_queried_block.write(0);
     }
 
     #[external("public")]
@@ -308,14 +330,14 @@ contract ArtifactFind {
         let biome: u8 = _get_biome(new_planet.space_type, biomebase, game_config_core);
         // TODO: Restore get_block_header_at once EmbeddedWallet PXE oracle is fixed.
         // Original code used the block hash for stronger randomness:
-        //   let header = get_block_header_at(prospect_block, *self.context);
-        //   let block_hash: Field = header.hash();
-        //   let artifact_seed = poseidon2_hash([location_id, block_hash]);
+        let header = get_block_header_at(new_planet.prospected_block_number, *self.context);
+        let block_hash: Field = header.hash();
+        let artifact_seed = poseidon2_hash([location_id, block_hash]);
         // Workaround: use prospected_block_number directly as the seed entropy source.
         // The block number is still unpredictable at prospect time (player doesn't know
         // which block the prospect tx will land in), preserving the no-reroll property.
-        let artifact_seed =
-            poseidon2_hash([location_id, new_planet.prospected_block_number as Field]);
+        // let artifact_seed =
+        //     poseidon2_hash([location_id, new_planet.prospected_block_number as Field]);
 
         let (artifact_type, level_bonus) =
             _random_artifact_type_and_level_bonus(artifact_seed, biome, new_planet.space_type);
@@ -563,4 +585,51 @@ contract ArtifactFind {
         self.call(player_storage.set(sender, new_player));
     }
 
+    // ---- Private entry ----
+
+    /// Private function: fetches block header at `target_block` using the oracle,
+    /// hashes it, then enqueues a public write + event emission.
+    #[external("private")]
+    fn test_get_block_header_private(target_block: u32) {
+        let header = get_block_header_at(target_block, *self.context);
+        let block_hash = header.hash();
+        let chain_id = self.context.chain_id();
+        self.enqueue_self.record_block_hash_public(target_block, block_hash, chain_id);
+    }
+
+    // ---- Public (only_self) writer ----
+
+    /// Called only via enqueue_self from test_get_block_header_private.
+    /// Stores the result and emits a public event so off-chain tools can observe it.
+    #[external("public")]
+    #[only_self]
+    fn record_block_hash_public(target_block: u32, block_hash: Field, chain_id: Field) {
+        self.storage.last_block_hash.write(block_hash);
+        self.storage.last_queried_block.write(target_block);
+        self.emit(BlockHashResult { target_block, block_hash, chain_id });
+    }
+
+    // ---- Public views ----
+
+    /// Returns the most recently stored block hash.
+    #[external("public")]
+    #[view]
+    fn get_last_block_hash() -> Field {
+        self.storage.last_block_hash.read()
+    }
+
+    /// Returns the block number that was last queried.
+    #[external("public")]
+    #[view]
+    fn get_last_queried_block() -> u32 {
+        self.storage.last_queried_block.read()
+    }
+
+    // ---- chain_id utility ----
+
+    #[external("public")]
+    #[view]
+    fn get_chain_id() -> Field {
+        self.context.chain_id()
+    }
 }
