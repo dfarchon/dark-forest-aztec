@@ -1,5 +1,10 @@
 [build]
-  publish = "dist"
+  base = "."
+  command = "pnpm install && pnpm --filter client build"
+  publish = "client/dist"
+
+[build.environment]
+  NODE_VERSION = "24.12.0"
 
 [[redirects]]
   from = "/*"
