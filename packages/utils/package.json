@@ -15,8 +15,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
   },
   "dependencies": {
-    "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
-    "@aztec/foundation": "4.0.0-devnet.2-patch.1",
+    "@aztec/aztec.js": "4.1.0-rc.2",
+    "@aztec/foundation": "4.1.0-rc.2",
     "@dfpunk/hashing": "workspace:*"
   },
   "devDependencies": {
