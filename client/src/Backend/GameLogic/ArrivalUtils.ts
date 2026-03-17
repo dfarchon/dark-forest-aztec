@@ -274,6 +274,7 @@ export const arrive = (
       toPlanet.pausers++;
     }
     arrivingArtifact.onPlanetId = toPlanet.locationId;
+    arrivingArtifact.onVoyageId = undefined;
   }
 
   return { arrival, current: toPlanet, previous: prevPlanet };

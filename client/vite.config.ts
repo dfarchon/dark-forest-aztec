@@ -37,9 +37,6 @@ export default defineConfig({
   build: {
     target: "esnext",
   },
-  define: {
-    "globalThis.litIssuedWarnings": "new Set()",
-  },
   optimizeDeps: {
     esbuildOptions: {
       target: "esnext",

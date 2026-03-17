@@ -1,3 +1,6 @@
+(globalThis as { litIssuedWarnings?: Set<unknown> }).litIssuedWarnings =
+  new Set();
+
 import "../Styles/preflight.css";
 import "../Styles/style.css";
 

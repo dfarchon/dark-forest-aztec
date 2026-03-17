@@ -15,6 +15,7 @@ import { EMPTY_LOCATION_ID } from "@dfpunk/constants";
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { isSpaceShip } from "@dfpunk/gamelogic";
 import {
+  artifactIdToDecStr,
   decodeArrival,
   decodeArtifact,
   decodePlanet,
@@ -463,10 +464,11 @@ export class ContractsAPI extends EventEmitter {
   public async getArtifactById(
     artifactId: ArtifactId
   ): Promise<Artifact | undefined> {
-    const state = this.indexerConnection.getArtifact(artifactId);
+    const decId = artifactIdToDecStr(artifactId);
+    const state = this.indexerConnection.getArtifact(decId);
     if (!state) return undefined;
-    const location = this.indexerConnection.getArtifactLocation(artifactId);
-    return decodeArtifact(artifactId, state, undefined, location ?? undefined);
+    const location = this.indexerConnection.getArtifactLocation(decId);
+    return decodeArtifact(decId, state, undefined, location ?? undefined);
   }
 
   public async bulkGetArtifactsOnPlanets(
@@ -502,11 +504,12 @@ export class ContractsAPI extends EventEmitter {
     await forEachWithProgress(
       artifactIds,
       (artId) => {
-        const state = this.indexerConnection.getArtifact(artId);
+        const decId = artifactIdToDecStr(artId);
+        const state = this.indexerConnection.getArtifact(decId);
         if (state) {
-          const location = this.indexerConnection.getArtifactLocation(artId);
+          const location = this.indexerConnection.getArtifactLocation(decId);
           result.push(
-            decodeArtifact(artId, state, undefined, location ?? undefined)
+            decodeArtifact(decId, state, undefined, location ?? undefined)
           );
         }
       },
@@ -563,7 +566,9 @@ export class ContractsAPI extends EventEmitter {
 
   /** Whether an artifact with the given id exists. Mirrors v0.6 doesArtifactExist. */
   public doesArtifactExist(artifactId: ArtifactId): boolean {
-    return this.indexerConnection.doesArtifactExist(artifactId);
+    return this.indexerConnection.doesArtifactExist(
+      artifactIdToDecStr(artifactId)
+    );
   }
 
   // =========================================================================
