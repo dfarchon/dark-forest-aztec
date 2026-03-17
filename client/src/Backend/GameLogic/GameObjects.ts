@@ -430,17 +430,17 @@ export class GameObjects {
     const localArtifact = this.artifacts.get(artifact.id);
     if (localArtifact) {
       artifact.transactions = localArtifact.transactions;
+    }
 
-      // Chain state for artifact_location is lazily updated — arrivals are only
-      // processed on-chain during the next transaction that touches the planet.
-      // If the client has already processed the arrival locally (onPlanetId set,
-      // onVoyageId cleared), prefer the local state over stale chain data.
-      if (
-        artifact.onPlanetId === undefined &&
-        localArtifact.onPlanetId !== undefined
-      ) {
-        artifact.onPlanetId = localArtifact.onPlanetId;
-        artifact.onVoyageId = localArtifact.onVoyageId;
+    // Derive actual artifact location from chain state + arrival data + time.
+    // Chain state is lazily updated — if artifact shows onVoyageId but arrival
+    // has already matured, compute the correct location ourselves.
+    if (artifact.onVoyageId) {
+      const awt = this.arrivals.get(artifact.onVoyageId);
+      if (awt && this.chainClock.nowSec() >= awt.arrivalData.arrivalTime) {
+        // Arrival has matured — artifact is now on the target planet
+        artifact.onPlanetId = awt.arrivalData.toPlanet;
+        artifact.onVoyageId = undefined;
       }
     }
 
