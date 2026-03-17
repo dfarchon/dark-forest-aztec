@@ -31,8 +31,8 @@ export function getEffectiveNodeUrl(): string {
  */
 export function getEffectiveIndexerBootstrapUrl(): string | undefined {
   const key = STORAGE_KEY_INDEXER_BOOTSTRAP_URL;
-  if (!localStorage.getItem(key)) return getIndexerBootstrapUrl();
-  const stored = localStorage.getItem(key) ?? "";
+  const stored = localStorage.getItem(key);
+  if (stored === null) return getIndexerBootstrapUrl();
   return stored.length > 0 ? stored : undefined;
 }
 
@@ -53,7 +53,8 @@ export function setConnectionOverrides(overrides: ConnectionOverrides): void {
       overrides.indexerBootstrapUrl === null ||
       overrides.indexerBootstrapUrl === ""
     ) {
-      localStorage.removeItem(STORAGE_KEY_INDEXER_BOOTSTRAP_URL);
+      // Persist explicit "no indexer" choice so we don't fall back to env default.
+      localStorage.setItem(STORAGE_KEY_INDEXER_BOOTSTRAP_URL, "");
     } else {
       localStorage.setItem(
         STORAGE_KEY_INDEXER_BOOTSTRAP_URL,
