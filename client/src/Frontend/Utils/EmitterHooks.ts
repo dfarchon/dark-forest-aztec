@@ -1,5 +1,5 @@
 import { Callback, Monomitter } from "@dfpunk/events";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { Wrapper } from "../../Backend/Utils/Wrapper";
 
@@ -28,6 +28,18 @@ export function useEmitterSubscribe<T>(
 }
 
 /**
+ * Schedules a setState so it never runs during another component's render.
+ * Prevents "Cannot update a component while rendering a different component" warnings
+ * when emitters publish synchronously during render.
+ */
+function scheduleSetState<T, V extends T>(
+  setVal: React.Dispatch<React.SetStateAction<T>>,
+  value: V
+): void {
+  queueMicrotask(() => setVal(value as T));
+}
+
+/**
  * Use returned value from an emitter
  * @param emitter `Monomitter` to subscribe to
  * @param initialVal initial state value
@@ -39,7 +51,7 @@ export function useEmitterValue<T>(
   const [val, setVal] = useState<T | undefined>(initialVal);
 
   useEffect(() => {
-    const sub = emitter.subscribe((v) => setVal(v));
+    const sub = emitter.subscribe((v) => scheduleSetState(setVal, v));
 
     return sub.unsubscribe;
   }, [emitter]);
@@ -62,7 +74,7 @@ export function useWrappedEmitter<T>(
 
   useEffect(() => {
     const sub = emitter.subscribe((v) => {
-      setVal(new Wrapper(v));
+      scheduleSetState(setVal, new Wrapper(v));
     });
 
     return sub.unsubscribe;

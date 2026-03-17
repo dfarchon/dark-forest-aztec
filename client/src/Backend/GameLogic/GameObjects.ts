@@ -431,9 +431,16 @@ export class GameObjects {
     if (localArtifact) {
       artifact.transactions = localArtifact.transactions;
 
-      // note: not sure if the logic here is correct
-      if (artifact.onPlanetId === undefined) {
+      // Chain state for artifact_location is lazily updated — arrivals are only
+      // processed on-chain during the next transaction that touches the planet.
+      // If the client has already processed the arrival locally (onPlanetId set,
+      // onVoyageId cleared), prefer the local state over stale chain data.
+      if (
+        artifact.onPlanetId === undefined &&
+        localArtifact.onPlanetId !== undefined
+      ) {
         artifact.onPlanetId = localArtifact.onPlanetId;
+        artifact.onVoyageId = localArtifact.onVoyageId;
       }
     }
 
@@ -1163,20 +1170,34 @@ export class GameObjects {
 
           this.removeArrival(planetId, update.arrival.eventId);
           this.emitArrivalNotifications(update);
+          // Persist artifact state changes from arrive()
+          if (arrival.artifactId) {
+            const artifact = this.getArtifactById(arrival.artifactId);
+            if (artifact) this.setArtifact(artifact);
+          }
         } else {
           // otherwise, set a timer to do this arrival in the future
           // and append it to arrivalsWithTimers
           const applyFutureArrival = setTimeout(
             () => {
+              // Re-fetch planet from store to avoid stale closure reference
+              const currentPlanet = this.planets.get(planetId);
+              if (!currentPlanet) return;
               const update = arrive(
-                planet,
-                this.getPlanetArtifacts(planet.locationId),
+                currentPlanet,
+                this.getPlanetArtifacts(currentPlanet.locationId),
                 arrival,
                 this.getArtifactById(arrival.artifactId),
                 this.contractConstants
               );
               this.emitArrivalNotifications(update);
               this.removeArrival(planetId, update.arrival.eventId);
+              // Persist changes and publish events
+              this.setPlanet(currentPlanet);
+              if (arrival.artifactId) {
+                const artifact = this.getArtifactById(arrival.artifactId);
+                if (artifact) this.setArtifact(artifact);
+              }
             },
             arrival.arrivalTime * 1000 - this.chainClock.now()
           );
@@ -1236,6 +1257,12 @@ export class GameObjects {
               this.contractConstants
             );
             this.emitArrivalNotifications(update);
+            // Persist changes and publish events
+            this.setPlanet(planet);
+            if (awt.arrivalData.artifactId) {
+              const artifact = this.getArtifactById(awt.arrivalData.artifactId);
+              if (artifact) this.setArtifact(artifact);
+            }
           } catch (e) {
             console.error(`error flushing matured arrival ${voyageId}: ${e}`);
           }

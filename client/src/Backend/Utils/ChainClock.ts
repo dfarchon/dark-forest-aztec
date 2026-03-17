@@ -29,7 +29,7 @@ export class ChainClock {
   private static MIN_SYNC_INTERVAL_MS = 3000;
 
   /** Expected L2 block interval in seconds; used to cap extrapolated chain time. */
-  private static BLOCK_INTERVAL_SEC = 36;
+  private static BLOCK_INTERVAL_SEC = 30; // 36;
 
   constructor(node: AztecNode) {
     this.node = node;
