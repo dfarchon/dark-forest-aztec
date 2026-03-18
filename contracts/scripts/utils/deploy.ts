@@ -19,11 +19,11 @@ import { getDefaultInitializer } from '@aztec/stdlib/abi';
 import fs from 'fs';
 import path from 'path';
 
-import { getSponsoredPFCContract } from './wallet.ts';
+import { getSponsoredFpcAddressForFees } from './wallet.ts';
 
 const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
 
-/** SponsoredFPC instance (has .address). Pass from getSponsoredPFCContract() to reuse. */
+/** SponsoredFPC instance (has .address). Pass from getSponsoredFPCContractForPxe() to reuse. */
 export type SponsoredFpcInstance = { address: AztecAddress };
 
 /** Context passed to getConstructorArgs: deployer + addresses of already-deployed contracts (by config name). */
@@ -61,7 +61,7 @@ export type DeployContractsOptions = {
     writeEnv?: boolean;
     /** Timeout per deploy in ms (default: 120_000). */
     timeoutMs?: number;
-    /** SponsoredFPC instance for gas/fees. If set, used for every deploy; else getSponsoredPFCContract() per contract. */
+    /** SponsoredFPC instance for gas/fees. If set, used for every deploy; else getSponsoredFpcAddressForFees() per contract. */
     sponsoredFpc?: SponsoredFpcInstance;
     /** Script start time (Date.now()) for elapsed-time stats. */
     scriptStartTime?: number;
@@ -105,7 +105,7 @@ export async function deployOneContract(
         writeEnv?: boolean;
         envFilePath?: string;
         timeoutMs?: number;
-        /** SponsoredFPC instance for gas. If omitted, getSponsoredPFCContract() is called. */
+        /** SponsoredFPC instance for gas. If omitted, uses getSponsoredFpcAddressForFees(). */
         sponsoredFpc?: SponsoredFpcInstance;
     } = {}
 ): Promise<DeploymentResult> {
@@ -131,7 +131,9 @@ export async function deployOneContract(
         }
     );
 
-    const sponsoredFPC = sponsoredFpcOpt ?? (await getSponsoredPFCContract());
+    const sponsoredFPC: SponsoredFpcInstance = sponsoredFpcOpt ?? {
+        address: await getSponsoredFpcAddressForFees(),
+    };
     const deployMethod = new DeployMethod(
         contract.publicKeys,
         wallet,

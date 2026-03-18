@@ -19,7 +19,7 @@ import * as dotenv from 'dotenv';
 
 import {
     getContractInstances,
-    getSponsoredPFCContract,
+    getSponsoredFPCContractForPxe,
     loadAccountFromEnv,
     setupWallet,
 } from './utils/index.ts';
@@ -213,7 +213,7 @@ async function main() {
         clearStore: false,
         proverEnabled: PROVER_ENABLED,
     });
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFPC = await getSponsoredFPCContractForPxe(aztecNode);
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Loading account from .env...');

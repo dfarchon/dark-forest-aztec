@@ -14,7 +14,7 @@ import {
     type ContractDeployConfig,
     deployContracts,
     getOrCreateAccount,
-    getSponsoredPFCContract,
+    getSponsoredFPCContractForPxe,
     setupWallet,
 } from './utils/index.ts';
 
@@ -225,7 +225,7 @@ async function main() {
     const wallet = await setupWallet(aztecNode, WALLET_SETUP_OPTIONS);
 
     console.log('📝 Registering SponsoredFPC contract...');
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFPC = await getSponsoredFPCContractForPxe(aztecNode);
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Getting or creating deployer account...');

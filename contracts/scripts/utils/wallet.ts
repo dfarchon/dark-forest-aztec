@@ -87,18 +87,44 @@ export async function setupWallet(
     });
 }
 
-/**
- * Get the canonical SponsoredFPC contract instance (for sponsored fee payments).
- * Use this when sending transactions with SponsoredFeePaymentMethod.
- */
-export async function getSponsoredPFCContract() {
-    const instance = await getContractInstanceFromInstantiationParams(
+function sponsoredFpcAddressFromEnv(): string | undefined {
+    const v = process.env.SPONSORED_FPC_ADDRESS?.trim();
+    return v && v.length > 0 ? v : undefined;
+}
+
+async function getSponsoredFPCInstanceFromSalt() {
+    return getContractInstanceFromInstantiationParams(
         SponsoredFPCContractArtifact,
-        {
-            salt: new Fr(SPONSORED_FPC_SALT),
-        }
+        { salt: new Fr(SPONSORED_FPC_SALT) }
     );
-    return instance;
+}
+
+/**
+ * SponsoredFPC address for SponsoredFeePaymentMethod (no node required when set via .env).
+ */
+export async function getSponsoredFpcAddressForFees(): Promise<AztecAddress> {
+    const raw = sponsoredFpcAddressFromEnv();
+    if (raw) return AztecAddress.fromString(raw);
+    return (await getSponsoredFPCInstanceFromSalt()).address;
+}
+
+/**
+ * SponsoredFPC contract instance for PXE registerContract.
+ * When SPONSORED_FPC_ADDRESS is set, loads from chain via aztecNode.getContract.
+ */
+export async function getSponsoredFPCContractForPxe(aztecNode: AztecNode) {
+    const raw = sponsoredFpcAddressFromEnv();
+    if (raw) {
+        const addr = AztecAddress.fromString(raw);
+        const instance = await aztecNode.getContract(addr);
+        if (!instance) {
+            throw new Error(
+                `SPONSORED_FPC_ADDRESS not found on chain: ${raw}. Check AZTEC_NODE_URL and address.`
+            );
+        }
+        return instance;
+    }
+    return getSponsoredFPCInstanceFromSalt();
 }
 
 async function deployAccountIfNeeded(
@@ -109,15 +135,13 @@ async function deployAccountIfNeeded(
     const existing = await aztecNode.getContract(accountManager.address);
     if (existing) return false;
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFpcAddr = await getSponsoredFpcAddressForFees();
     const deployMethod = await accountManager.getDeployMethod();
     try {
         await deployMethod.send({
             from: AztecAddress.ZERO,
             fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                    sponsoredFPC.address
-                ),
+                paymentMethod: new SponsoredFeePaymentMethod(sponsoredFpcAddr),
             },
             skipClassPublication: true,
             skipInstancePublication: true,
@@ -239,12 +263,12 @@ export async function createAccount(
         signingKey
     );
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFpcAddr = await getSponsoredFpcAddressForFees();
     const deployMethod = await accountManager.getDeployMethod();
     const deployOpts = {
         from: AztecAddress.ZERO,
         fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
+            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFpcAddr),
         },
         skipClassPublication: true,
         skipInstancePublication: true,
@@ -327,12 +351,12 @@ export async function createAccountWithCredentials(
         signingKey
     );
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFpcAddr = await getSponsoredFpcAddressForFees();
     const deployMethod = await accountManager.getDeployMethod();
     const deployOpts = {
         from: AztecAddress.ZERO,
         fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
+            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFpcAddr),
         },
         skipClassPublication: true,
         skipInstancePublication: true,

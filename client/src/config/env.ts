@@ -59,3 +59,12 @@ export function getProverEnabled(): boolean {
   const value = getString("VITE_PROVER_ENABLED");
   return value === "true";
 }
+
+/**
+ * Optional SponsoredFPC contract address (same network as node).
+ * When unset, the client uses the canonical salt-derived address.
+ * Should match contracts/.env SPONSORED_FPC_ADDRESS when pointing at the same network.
+ */
+export function getSponsoredFpcAddressFromEnv(): string | undefined {
+  return getString("VITE_SPONSORED_FPC_ADDRESS");
+}

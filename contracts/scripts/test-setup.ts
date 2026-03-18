@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import {
     createAccountWithCredentials,
     getContractInstances,
-    getSponsoredPFCContract,
+    getSponsoredFPCContractForPxe,
     loadAccountFromCredentials,
     loadAccountFromEnv,
     registerContractsWithWallet,
@@ -376,7 +376,7 @@ export async function getTestContext(): Promise<TestContext> {
         proverEnabled: PROVER_ENABLED,
     });
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const sponsoredFPC = await getSponsoredFPCContractForPxe(aztecNode);
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     const admin = await loadAccountFromEnv(wallet, aztecNode);

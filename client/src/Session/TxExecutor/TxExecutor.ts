@@ -7,12 +7,18 @@
  * Key differences from v0.6:
  *   - No nonce/gas management (Aztec handles internally)
  *   - Uses SponsoredFeePaymentMethod for fee-free transactions
- *   - send({ wait: NO_WAIT }) → TxHash, then waitForTx() for receipt
+ *   - send({ wait: NO_WAIT }) → { txHash }, then waitForTx(txHash) for receipt
  *   - StateResolver assembles full contract args from indexer state
  *   - ContractResolver maps methodName to Aztec contract + method
  */
 
-import { NO_WAIT } from "@aztec/aztec.js/contracts";
+import {
+  type ContractFunctionInteraction,
+  NO_WAIT,
+  type NoWait,
+  type SendInteractionOptions,
+  type TxSendResultImmediate,
+} from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { waitForTx } from "@aztec/aztec.js/node";
@@ -298,29 +304,30 @@ export class TxExecutor {
 
         time_called = Date.now();
 
-        // 4. Build send options
-        const sendOpts = {
+        // 4. Build options (simulate disallows wait: NO_WAIT; send uses NO_WAIT)
+        const interactionFromAndFee = {
           from: this.walletManager.getActiveAddress()!,
           fee: {
             paymentMethod: new SponsoredFeePaymentMethod(
               this.walletManager.getSponsoredFpcAddress()
             ),
           },
+        };
+        const simulateOpts = interactionFromAndFee;
+        const sendOpts: SendInteractionOptions<NoWait> = {
+          ...interactionFromAndFee,
           wait: NO_WAIT,
         };
 
-        // 5. Submit — send({ wait: NO_WAIT }) returns TxHash immediately
+        // 5. Submit — send({ wait: NO_WAIT }) returns TxSendResultImmediate { txHash, ... }
         //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
-        const methodFn = (
-          contract.methods as Record<
-            string,
-            (...a: unknown[]) => {
-              send: (o: unknown) => Promise<TxHash>;
-              simulate: (o: unknown) => Promise<unknown>;
-            }
-          >
-        )[method];
-        const invocation = methodFn(...contractArgs);
+        const methodEntry = contract.methods[method];
+        if (typeof methodEntry !== "function") {
+          throw new Error(`Unknown contract method: ${String(method)}`);
+        }
+        const invocation = (
+          methodEntry as (...args: unknown[]) => ContractFunctionInteraction
+        )(...contractArgs);
 
         if (
           tx.intent.methodName === "initializePlayer" ||
@@ -336,7 +343,7 @@ export class TxExecutor {
               `[TxExecutor] contractArgs (${contractArgs.length}):`,
               contractArgs
             );
-            const simResult = await invocation.simulate(sendOpts);
+            const simResult = await invocation.simulate(simulateOpts);
             console.debug(
               `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
               simResult
@@ -359,11 +366,12 @@ export class TxExecutor {
           }
         }
 
-        const submitted: TxHash = await timeout(
+        const sendImmediate = (await timeout(
           invocation.send(sendOpts),
           TX_SUBMIT_TIMEOUT,
           `tx request ${tx.id} failed to submit: timed out`
-        );
+        )) as unknown as TxSendResultImmediate;
+        const submitted: TxHash = sendImmediate.txHash;
 
         // 6. Submit state — v0.6 lines 376-383
         tx.state = "Submit";

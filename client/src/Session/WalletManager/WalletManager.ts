@@ -19,36 +19,56 @@ import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/Sponsored
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
+  ADMIN_CONTRACT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
   ADMIN_DEPLOYMENT_SALT,
+  ARRIVAL_STORAGE_CONTRACT_ADDRESS,
   ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
   ARRIVAL_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_ACTION_SYSTEM_DEPLOYER_ADDRESS,
   ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT,
+  ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS,
   ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT,
+  ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS,
   ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT,
+  ARTIFACT_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
   ARTIFACT_STORAGE_DEPLOYMENT_SALT,
+  ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
   ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
+  CONFIG_CONTRACT_ADDRESS,
   CONFIG_DEPLOYER_ADDRESS,
   CONFIG_DEPLOYMENT_SALT,
+  CORE_CONTRACT_ADDRESS,
   CORE_DEPLOYER_ADDRESS,
   CORE_DEPLOYMENT_SALT,
+  MOVE_CONTRACT_ADDRESS,
   MOVE_DEPLOYER_ADDRESS,
   MOVE_DEPLOYMENT_SALT,
+  PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
   PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
   PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS,
   PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
   PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
+  PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_STORAGE_CONTRACT_ADDRESS,
   PLANET_STORAGE_DEPLOYER_ADDRESS,
   PLANET_STORAGE_DEPLOYMENT_SALT,
+  PLAYER_STORAGE_CONTRACT_ADDRESS,
   PLAYER_STORAGE_DEPLOYER_ADDRESS,
   PLAYER_STORAGE_DEPLOYMENT_SALT,
+  START_BLOCK,
+  WORLD_STORAGE_CONTRACT_ADDRESS,
   WORLD_STORAGE_DEPLOYER_ADDRESS,
   WORLD_STORAGE_DEPLOYMENT_SALT,
 } from "@dfpunk/contracts";
@@ -65,12 +85,14 @@ import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
 import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
 import { PlanetEventsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetRevealedCoordsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetRevealedCoordsStorage";
 import { PlanetStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetStorage";
 import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
+import { getSponsoredFpcAddressFromEnv } from "../../config/env";
 import { KeyStore } from "./KeyStore";
 import type { AccountRecord, WalletManagerConfig } from "./types";
 
@@ -89,7 +111,8 @@ async function getNetworkFingerprint(node: AztecNode): Promise<string> {
   if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
   const block = await node.getBlock(BlockNumber(1));
   if (!block) return GENESIS_PENDING_SENTINEL;
-  return (await block.hash()).toString();
+  const blockHash = (await block.hash()).toString();
+  return `${blockHash}-${START_BLOCK}`;
 }
 
 /**
@@ -142,105 +165,129 @@ async function registerGameContractsWithPxe(
     salt: string;
     artifact: typeof CoreContractArtifact;
     name: string;
+    expectedAddress: string;
   }> = [
     {
       deployer: CONFIG_DEPLOYER_ADDRESS,
       salt: CONFIG_DEPLOYMENT_SALT,
       artifact: ConfigContractArtifact,
       name: "Config",
+      expectedAddress: CONFIG_CONTRACT_ADDRESS,
     },
     {
       deployer: CORE_DEPLOYER_ADDRESS,
       salt: CORE_DEPLOYMENT_SALT,
       artifact: CoreContractArtifact,
       name: "Core",
+      expectedAddress: CORE_CONTRACT_ADDRESS,
     },
     {
       deployer: MOVE_DEPLOYER_ADDRESS,
       salt: MOVE_DEPLOYMENT_SALT,
       artifact: MoveContractArtifact,
       name: "Move",
+      expectedAddress: MOVE_CONTRACT_ADDRESS,
     },
     {
       deployer: ADMIN_DEPLOYER_ADDRESS,
       salt: ADMIN_DEPLOYMENT_SALT,
       artifact: AdminContractArtifact,
       name: "Admin",
+      expectedAddress: ADMIN_CONTRACT_ADDRESS,
     },
     {
       deployer: PLANET_STORAGE_DEPLOYER_ADDRESS,
       salt: PLANET_STORAGE_DEPLOYMENT_SALT,
       artifact: PlanetStorageContractArtifact,
       name: "PlanetStorage",
+      expectedAddress: PLANET_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: PLAYER_STORAGE_DEPLOYER_ADDRESS,
       salt: PLAYER_STORAGE_DEPLOYMENT_SALT,
       artifact: PlayerStorageContractArtifact,
       name: "PlayerStorage",
+      expectedAddress: PLAYER_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
       salt: PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
       artifact: PlanetEventsStorageContractArtifact,
       name: "PlanetEventsStorage",
+      expectedAddress: PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS,
       salt: PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
       artifact: PlanetArtifactsStorageContractArtifact,
       name: "PlanetArtifactsStorage",
+      expectedAddress: PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
       salt: ARRIVAL_STORAGE_DEPLOYMENT_SALT,
       artifact: ArrivalStorageContractArtifact,
       name: "ArrivalStorage",
+      expectedAddress: ARRIVAL_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_STORAGE_DEPLOYER_ADDRESS,
       salt: ARTIFACT_STORAGE_DEPLOYMENT_SALT,
       artifact: ArtifactStorageContractArtifact,
       name: "ArtifactStorage",
+      expectedAddress: ARTIFACT_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS,
       salt: ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT,
       artifact: ArtifactLocationStorageContractArtifact,
       name: "ArtifactLocationStorage",
+      expectedAddress: ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
+    },
+    {
+      deployer: PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetRevealedCoordsStorageContractArtifact,
+      name: "PlanetRevealedCoordsStorage",
+      expectedAddress: PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: WORLD_STORAGE_DEPLOYER_ADDRESS,
       salt: WORLD_STORAGE_DEPLOYMENT_SALT,
       artifact: WorldStorageContractArtifact,
       name: "WorldStorage",
+      expectedAddress: WORLD_STORAGE_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_ACTION_SYSTEM_DEPLOYER_ADDRESS,
       salt: ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT,
       artifact: ArtifactActionContractArtifact,
       name: "ArtifactAction",
+      expectedAddress: ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS,
       salt: ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT,
       artifact: ArtifactFindContractArtifact,
       name: "ArtifactFind",
+      expectedAddress: ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS,
       salt: ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT,
       artifact: ArtifactProspectContractArtifact,
       name: "ArtifactProspect",
+      expectedAddress: ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS,
     },
     {
       deployer: ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
       salt: ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
       artifact: ArtifactValutContractArtifact,
       name: "ArtifactVault",
+      expectedAddress: ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS,
     },
   ];
-  for (const { deployer, salt, artifact, name } of specs) {
+  for (const { deployer, salt, artifact, name, expectedAddress } of specs) {
     if (!deployer || !salt) continue;
     try {
       const instance = await getContractInstanceFromInstantiationParams(
@@ -251,10 +298,16 @@ async function registerGameContractsWithPxe(
           constructorArgs: [admin],
         }
       );
+      const derived = instance.address.toString();
+      if (derived !== expectedAddress) {
+        console.error(
+          `[WalletManager] Address mismatch for ${name}: derived ${derived}, expected ${expectedAddress}. Artifacts may be out of sync — run sync-env-and-artifacts.`
+        );
+      }
       await wallet.registerContract(instance, artifact);
     } catch (err) {
-      console.warn(
-        `[WalletManager] Skip PXE registration for ${name}:`,
+      console.error(
+        `[WalletManager] Failed PXE registration for ${name}:`,
         err instanceof Error ? err.message : err
       );
     }
@@ -383,16 +436,31 @@ export class WalletManager {
       },
     });
 
-    const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-      SponsoredFPCContractArtifact,
-      { salt: new Fr(SPONSORED_FPC_SALT) }
-    );
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+    const viteSponsored = getSponsoredFpcAddressFromEnv();
+    let sponsoredFpcAddress: AztecAddress;
+    if (viteSponsored) {
+      const addr = AztecAddress.fromString(viteSponsored);
+      const instance = await node.getContract(addr);
+      if (!instance) {
+        throw new Error(
+          `[WalletManager] VITE_SPONSORED_FPC_ADDRESS not found on chain: ${viteSponsored}. Check node URL and address.`
+        );
+      }
+      await wallet.registerContract(instance, SponsoredFPCContractArtifact);
+      sponsoredFpcAddress = addr;
+    } else {
+      const sponsoredFPC = await getContractInstanceFromInstantiationParams(
+        SponsoredFPCContractArtifact,
+        { salt: new Fr(SPONSORED_FPC_SALT) }
+      );
+      await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+      sponsoredFpcAddress = sponsoredFPC.address;
+    }
 
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
     await registerGameContractsWithPxe(wallet, admin);
 
-    return new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
+    return new WalletManager(node, wallet, sponsoredFpcAddress, keyStore);
   }
 
   // ---------------------------------------------------------------------------
