@@ -527,6 +527,23 @@ export class IndexerService {
     return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
   }
 
+  /**
+   * Full snapshot as JSON string (same shape as server GET /snapshot).
+   * Use for debugging or comparing client state with server snapshot.
+   */
+  getSnapshotAsJsonString(): string {
+    const obj: Record<string, unknown> = {
+      lastProcessedBlock: this.snapshot.lastProcessedBlock,
+    };
+    for (const table of TABLE_NAMES) {
+      const map = this.snapshot[table] as Map<TableId, unknown>;
+      obj[table] = Object.fromEntries(map);
+    }
+    return JSON.stringify(obj, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value
+    );
+  }
+
   /** Full revealed coords map (id → PlanetRevealedCoordsState). */
   getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
     return new Map(

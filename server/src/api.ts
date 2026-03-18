@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
@@ -117,6 +118,16 @@ export function createApp(deps: ApiDeps): Hono {
         "X-Snapshot-Uncompressed-Length": String(chunk.jsonByteLength),
         "Cache-Control": "no-cache",
       },
+    });
+  });
+
+  // GET /snapshot/hash — SHA-256 hash of snapshot JSON for client-side consistency verification
+  app.get("/snapshot/hash", (c) => {
+    const jsonStr = cache.getJsonString();
+    const hash = createHash("sha256").update(jsonStr).digest("hex");
+    return c.json({
+      hash,
+      lastProcessedBlock: cache.getProcessedBlockNumber(),
     });
   });
 

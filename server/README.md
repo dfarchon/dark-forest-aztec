@@ -172,11 +172,12 @@ Environment variable references:
 - `.env.example` — generic reference with all supported keys
 - `env.local.example` — recommended local devnet preset
 - `env.railway.example` — recommended Railway preset
+- `docs/README.md` — docs entrypoint + release checklist (read this first)
 
 Key variables:
 
 - `AZTEC_NODE_URL` (runtime default: `https://v4-devnet-2.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
-- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app`)
+- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`)
 - `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
@@ -215,7 +216,7 @@ Common local API checks:
 - `http://localhost:3001/blocks/latest`
 - `http://localhost:3001/snapshot`
 
-If you are running the frontend from `https://df-aztec.netlify.app` against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
+If you are running the frontend from `https://dfpunk-aztec.netlify.app` (or `https://df-aztec.netlify.app`) against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
 
 ### Local API checks
 
@@ -307,7 +308,7 @@ Notes:
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   -e AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
   dfpunk-indexer-server
 ```
@@ -317,7 +318,7 @@ For local sandbox instead of devnet, override:
 ```bash
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   -e AZTEC_NODE_URL=http://host.docker.internal:8080 \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
   dfpunk-indexer-server
 ```
 
@@ -331,7 +332,7 @@ Recommended Railway settings for the current server:
 - Mount a persistent volume at `/data`
 - Set `SQLITE_PATH=/data/indexer.db`
 - Set `AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com`
-- Set `CORS_ORIGINS=https://df-aztec.netlify.app`
+- Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`
 - Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
 
 Detailed setup, verification steps, and known deploy traps are documented in [`server/docs/railway-deploy.md`](/Users/pabloli/Documents/dfpunk-aztec/server/docs/railway-deploy.md).

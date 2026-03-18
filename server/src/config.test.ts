@@ -15,6 +15,7 @@ test("parseServerConfig defaults to devnet and known frontend origins", () => {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://df-aztec.netlify.app",
+    "https://dfpunk-aztec.netlify.app",
   ]);
 });
 
