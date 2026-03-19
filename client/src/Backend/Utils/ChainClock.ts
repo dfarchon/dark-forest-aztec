@@ -67,13 +67,10 @@ export class ChainClock {
   }
 
   /**
-   * Current chain time in milliseconds. Uses the latest L2 block timestamp from
-   * the last sync, capped by wall clock and by lastBlockTs + BLOCK_INTERVAL so
-   * we never report time ahead of the next block. Falls back to Date.now() when
-   * no sync has completed yet.
+   * Current chain time in milliseconds (latest L2 block timestamp from last sync).
+   * Caller must have triggered at least one sync (e.g. at init) before using.
    */
   now(): number {
-    if (this.lastChainTimestampSec === 0) return Date.now();
     return this.lastChainTimestampSec * 1000;
   }
 

@@ -598,6 +598,9 @@ class GameManager extends EventEmitter {
       throw new Error("you must pass in a handle to a terminal");
     }
 
+    // Force one sync at init so game time (energy growth, etc.) is never 0
+    await chainClock.syncFromNode();
+
     const account = contractsAPI.getAddress();
     if (!account) {
       throw new Error("no account: wallet has no active address");
@@ -1001,7 +1004,11 @@ class GameManager extends EventEmitter {
     this.entityStore.replacePlanetFromContractData(planet);
   }
 
-  public async hardRefreshPlanet(planetId: LocationId): Promise<void> {
+  public async hardRefreshPlanet(
+    planetId: LocationId,
+    show?: boolean
+  ): Promise<void> {
+    if (show) console.log(planetId);
     const planet = await this.contractsAPI.getPlanetById(planetId);
     if (!planet) {
       return;
