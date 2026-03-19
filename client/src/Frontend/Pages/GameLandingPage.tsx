@@ -261,6 +261,9 @@ export function GameLandingPage() {
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
   useEffect(() => {
+    if (step !== TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED) {
+      return;
+    }
     let destroyed = false;
     const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
     setLoadingPhase({ step: "connecting" });
@@ -353,7 +356,7 @@ export function GameLandingPage() {
     return () => {
       destroyed = true;
     };
-  }, []);
+  }, [step]);
 
   const advanceStateFromNone = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
@@ -381,11 +384,16 @@ export function GameLandingPage() {
       }
 
       if (issues.length > 0) {
+        const count = issues.length;
         terminal.current?.print(
-          `${issues.length.toString()} errors found. `,
+          `${count} ${count === 1 ? "error" : "errors"} found. `,
           TerminalTextStyle.Red
         );
-        terminal.current?.println("Please resolve them and refresh the page.");
+        terminal.current?.println(
+          count === 1
+            ? "Please resolve it and refresh the page."
+            : "Please resolve them and refresh the page."
+        );
         setStep(TerminalPromptStep.TERMINATED);
       } else {
         setStep(TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED);
@@ -1021,9 +1029,12 @@ export function GameLandingPage() {
 
   const advanceState = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
-      if (step === TerminalPromptStep.NONE && walletManager) {
+      if (step === TerminalPromptStep.NONE) {
         await advanceStateFromNone(terminal);
-      } else if (step === TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED) {
+      } else if (
+        step === TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED &&
+        walletManager
+      ) {
         await advanceStateFromCompatibilityPassed(terminal);
       } else if (step === TerminalPromptStep.DISPLAY_ACCOUNTS) {
         await advanceStateFromDisplayAccounts(terminal);
