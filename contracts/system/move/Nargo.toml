@@ -4,7 +4,7 @@ type = "contract"
 authors = [""]
 
 [dependencies]
-aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v4.1.0-rc.2", directory = "aztec" }
+aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v4.0.0-devnet.2-patch.1", directory = "aztec" }
 
 circuits = { path = "../../circuits" }
 config = { path = "../../config" }
