@@ -17,6 +17,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@alejoamiras/tee-rex": "4.1.0-rc.4.4",
     "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
     "@aztec/constants": "4.0.0-devnet.2-patch.1",
     "@aztec/foundation": "4.0.0-devnet.2-patch.1",

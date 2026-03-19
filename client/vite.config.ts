@@ -1,8 +1,19 @@
+import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Workaround: @alejoamiras/tee-rex has broken main/types in package.json
+      // (points to dist/index.js but actual entry is dist/src/index.js)
+      "@alejoamiras/tee-rex": path.resolve(
+        __dirname,
+        "node_modules/@alejoamiras/tee-rex/dist/src/index.js"
+      ),
+    },
+  },
   worker: {
     format: "es",
   },

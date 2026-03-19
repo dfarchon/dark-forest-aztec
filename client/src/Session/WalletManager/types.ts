@@ -7,6 +7,8 @@ export interface WalletManagerConfig {
   nodeUrl: string;
   storagePrefix?: string;
   balancePollIntervalMs?: number;
+  /** TeeRex accelerator URL for proof generation. */
+  proverUrl?: string;
   /** PXE config overrides. In browser, dataStoreMapSizeKb defaults to 128 GB which fails; use ~128 MB. */
   pxeConfig?: {
     dataStoreMapSizeKb?: number;

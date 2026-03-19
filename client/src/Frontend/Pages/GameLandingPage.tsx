@@ -23,6 +23,7 @@ import { ChainClock } from "../../Backend/Utils/ChainClock";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
+  getEffectiveProverUrl,
 } from "../../config/connection";
 import { getProverEnabled } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
@@ -272,6 +273,7 @@ export function GameLandingPage() {
         const wm = await createWalletManager({
           nodeUrl,
           storagePrefix: "dfpunk",
+          proverUrl: getEffectiveProverUrl(),
           pxeConfig: {
             proverEnabled: getProverEnabled(),
           },

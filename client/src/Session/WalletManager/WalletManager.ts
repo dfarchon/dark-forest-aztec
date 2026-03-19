@@ -6,6 +6,7 @@
  * and manages ECDSAR accounts with localStorage persistence via KeyStore.
  */
 
+import { ProvingMode, TeeRexProver } from "@alejoamiras/tee-rex";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
@@ -381,6 +382,19 @@ export class WalletManager {
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
         ...config.pxeConfig,
       },
+      pxeOptions:
+        config.pxeConfig?.proverEnabled && config.proverUrl
+          ? (() => {
+              const prover = new TeeRexProver(config.proverUrl!);
+              prover.setProvingMode(ProvingMode.accelerated);
+              const url = new URL(config.proverUrl!);
+              prover.setAcceleratorConfig({
+                host: url.hostname,
+                port: parseInt(url.port, 10) || 59833,
+              });
+              return { proverOrOptions: prover };
+            })()
+          : undefined,
     });
 
     const sponsoredFPC = await getContractInstanceFromInstantiationParams(
