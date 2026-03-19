@@ -323,6 +323,24 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).dfDebug = {
+            snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),
+            snapshotJson: () => connection.getSnapshotAsJsonString(),
+            downloadSnapshot: () => {
+              const json = connection.getSnapshotAsJsonString();
+              const blob = new Blob([json], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `client-snapshot-block-${connection.getProcessedBlockNumber()}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            },
+            connection,
+          };
+        }
         initialSyncDoneRef.current = true;
         setLoadingPhase({ step: "done" });
         setWalletManager(wm);

@@ -6,7 +6,8 @@ This service indexes DFPunk Aztec public storage updates block-by-block, keeps a
 
 - Keep a consistent, queryable game state mirror from Aztec public events.
 - Recover quickly after restart from local SQLite snapshot.
-- Serve large snapshot payloads efficiently (`gzip` cached).
+- Serve large snapshot payloads efficiently (`gzip`/`brotli` cached).
+- Support v2 chunked snapshot APIs for staged client upgrades.
 - Run locally and in container environments (e.g. Railway + volume).
 
 ## High-Level Architecture
@@ -16,7 +17,7 @@ Aztec Node (public events)
   -> AztecNodeSource (decode events)
   -> IndexerService (typed Maps + sync lifecycle)
   -> SnapshotCache (JSON mirror + cached gzip)
-  -> HTTP API (/snapshot, /blocks/latest, /health)
+  -> HTTP API (/snapshot, /snapshot/manifest, /snapshot/chunks/*, /blocks/latest, /health)
                      \
                       -> SnapshotStore (SQLite WAL persistence)
 ```
@@ -116,6 +117,31 @@ This server uses **IndexerService** from `packages/indexer-server-core/src`. Ser
   - `X-Snapshot-Uncompressed-Length: <number>`
   - `Cache-Control: no-cache`
 
+### `GET /snapshot/manifest`
+
+- Returns chunk metadata for v2 clients.
+- Query:
+  - `chunkRows` (optional, default `1000`, max `20000`)
+- Response:
+  - `version: 2`
+  - `lastProcessedBlock`
+  - `chunkRows`
+  - `tables[tableName] = { rowCount, chunkCount }`
+
+### `GET /snapshot/chunks/:table/:chunkIndex`
+
+- Returns one compressed chunk for the selected table.
+- Query:
+  - `chunkRows` (optional, same rules as manifest)
+- Headers:
+  - `X-Snapshot-Chunk-Count`
+  - `X-Snapshot-Chunk-Index`
+  - `X-Snapshot-Chunk-Rows`
+  - `X-Snapshot-Block`
+  - `X-Snapshot-Uncompressed-Length`
+- Notes:
+  - v1 `/snapshot` remains unchanged for backward compatibility.
+
 ### `GET /blocks/latest`
 
 - Returns:
@@ -146,14 +172,16 @@ Environment variable references:
 - `.env.example` — generic reference with all supported keys
 - `env.local.example` — recommended local devnet preset
 - `env.railway.example` — recommended Railway preset
+- `docs/README.md` — docs entrypoint + release checklist (read this first)
 
 Key variables:
 
 - `AZTEC_NODE_URL` (runtime default: `https://v4-devnet-2.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
-- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app`)
+- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`)
 - `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
+- `SNAPSHOT_SCHEMA_VERSION` (default: `1`; mismatch resets persisted snapshot)
 - `PERSIST_MIN_INTERVAL_SEC` (default: `10`)
 - `ADMIN_TOKEN` (default: empty, backup endpoint disabled)
 
@@ -188,7 +216,7 @@ Common local API checks:
 - `http://localhost:3001/blocks/latest`
 - `http://localhost:3001/snapshot`
 
-If you are running the frontend from `https://df-aztec.netlify.app` against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
+If you are running the frontend from `https://dfpunk-aztec.netlify.app` (or `https://df-aztec.netlify.app`) against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
 
 ### Local API checks
 
@@ -280,7 +308,7 @@ Notes:
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   -e AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
   dfpunk-indexer-server
 ```
@@ -290,7 +318,7 @@ For local sandbox instead of devnet, override:
 ```bash
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   -e AZTEC_NODE_URL=http://host.docker.internal:8080 \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://df-aztec.netlify.app \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
   dfpunk-indexer-server
 ```
 
@@ -304,7 +332,7 @@ Recommended Railway settings for the current server:
 - Mount a persistent volume at `/data`
 - Set `SQLITE_PATH=/data/indexer.db`
 - Set `AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com`
-- Set `CORS_ORIGINS=https://df-aztec.netlify.app`
+- Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`
 - Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
 
 Detailed setup, verification steps, and known deploy traps are documented in [`server/docs/railway-deploy.md`](/Users/pabloli/Documents/dfpunk-aztec/server/docs/railway-deploy.md).

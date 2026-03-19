@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 
-import type { IndexerService } from "../../packages/indexer-server-core/src/index.ts";
+import {
+  TABLE_NAMES,
+  type IndexerService,
+  type TableName,
+} from "../../packages/indexer-server-core/src/index.ts";
 import type { SnapshotStore } from "./persistence.ts";
 import type { SnapshotCache } from "./snapshotCache.ts";
 
@@ -19,6 +24,9 @@ export function createApp(deps: ApiDeps): Hono {
   const app = new Hono();
   const snapshotExposeHeaders = [
     "Content-Length",
+    "X-Snapshot-Chunk-Count",
+    "X-Snapshot-Chunk-Index",
+    "X-Snapshot-Chunk-Rows",
     "X-Snapshot-Block",
     "X-Snapshot-Uncompressed-Length",
   ];
@@ -46,16 +54,19 @@ export function createApp(deps: ApiDeps): Hono {
   app.use("/blocks/*", compress());
   app.use("/health", compress());
 
-  // GET /snapshot — returns pre-gzipped snapshot Buffer
-  app.get("/snapshot", () => {
-    const buf = cache.getGzipBuffer();
+  // GET /snapshot — returns pre-compressed snapshot Buffer (Brotli preferred, gzip fallback)
+  app.get("/snapshot", (c) => {
+    const accept = c.req.header("accept-encoding") ?? "";
+    const useBrotli = accept.includes("br");
+    const buf = useBrotli ? cache.getBrotliBuffer() : cache.getGzipBuffer();
+    const encoding = useBrotli ? "br" : "gzip";
     const jsonBytes = cache.getJsonByteLength();
     const snapshotBlock = cache.getProcessedBlockNumber();
     return new Response(Uint8Array.from(buf), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Content-Encoding": "gzip",
+        "Content-Encoding": encoding,
         "Content-Length": String(buf.byteLength),
         "X-Snapshot-Block": String(snapshotBlock),
         // Uncompressed JSON bytes help clients compute a meaningful progress
@@ -63,6 +74,60 @@ export function createApp(deps: ApiDeps): Hono {
         "X-Snapshot-Uncompressed-Length": String(jsonBytes),
         "Cache-Control": "no-cache",
       },
+    });
+  });
+
+  // GET /snapshot/manifest — v2 chunk metadata (clients can opt-in without breaking /snapshot)
+  app.get("/snapshot/manifest", (c) => {
+    const chunkRows = parseChunkRows(c.req.query("chunkRows"));
+    return c.json(cache.getChunkManifest(chunkRows));
+  });
+
+  // GET /snapshot/chunks/:table/:chunkIndex — v2 chunk payload (Brotli preferred, gzip fallback)
+  app.get("/snapshot/chunks/:table/:chunkIndex", (c) => {
+    const table = c.req.param("table");
+    if (!isTableName(table)) {
+      return c.json({ error: "Unknown table" }, 404);
+    }
+
+    const chunkIndex = Number(c.req.param("chunkIndex"));
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      return c.json({ error: "Invalid chunkIndex" }, 400);
+    }
+
+    const chunkRows = parseChunkRows(c.req.query("chunkRows"));
+    const chunk = cache.getEncodedChunk(table, chunkIndex, chunkRows);
+    if (!chunk) {
+      return c.json({ error: "Chunk not found" }, 404);
+    }
+
+    const accept = c.req.header("accept-encoding") ?? "";
+    const useBrotli = accept.includes("br");
+    const payload = useBrotli ? chunk.brotli : chunk.gzip;
+    const encoding = useBrotli ? "br" : "gzip";
+    return new Response(Uint8Array.from(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Encoding": encoding,
+        "Content-Length": String(payload.byteLength),
+        "X-Snapshot-Block": String(cache.getProcessedBlockNumber()),
+        "X-Snapshot-Chunk-Count": String(chunk.chunkCount),
+        "X-Snapshot-Chunk-Index": String(chunkIndex),
+        "X-Snapshot-Chunk-Rows": String(chunkRows),
+        "X-Snapshot-Uncompressed-Length": String(chunk.jsonByteLength),
+        "Cache-Control": "no-cache",
+      },
+    });
+  });
+
+  // GET /snapshot/hash — SHA-256 hash of snapshot JSON for client-side consistency verification
+  app.get("/snapshot/hash", (c) => {
+    const jsonStr = cache.getJsonString();
+    const hash = createHash("sha256").update(jsonStr).digest("hex");
+    return c.json({
+      hash,
+      lastProcessedBlock: cache.getProcessedBlockNumber(),
     });
   });
 
@@ -74,7 +139,7 @@ export function createApp(deps: ApiDeps): Hono {
         blockNumber: indexer.getProcessedBlockNumber(),
         snapshotBlock,
         snapshotBytes: cache.getJsonByteLength(),
-        snapshotEncoding: "gzip",
+        snapshotEncoding: "br, gzip",
       }),
       {
         status: 200,
@@ -135,4 +200,15 @@ export function createApp(deps: ApiDeps): Hono {
   });
 
   return app;
+}
+
+function parseChunkRows(raw: string | undefined): number {
+  if (!raw || raw.trim() === "") return 1000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) return 1000;
+  return Math.min(parsed, 20_000);
+}
+
+function isTableName(value: string): value is TableName {
+  return TABLE_NAMES.includes(value as TableName);
 }

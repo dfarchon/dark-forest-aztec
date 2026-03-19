@@ -34,7 +34,7 @@ Recommended Railway variables:
 
 ```bash
 AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com
-CORS_ORIGINS=https://df-aztec.netlify.app
+CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app
 SQLITE_PATH=/data/indexer.db
 PERSIST_MIN_INTERVAL_SEC=10
 ADMIN_TOKEN=<set only if you need /admin/backup>

@@ -81,7 +81,7 @@ export function ConnectionSettingsModal({
   const handleRestoreDefault = useCallback(() => {
     setConnectionOverrides({
       nodeUrl: "",
-      indexerBootstrapUrl: null,
+      indexerBootstrapUrl: undefined,
     });
     setNodeUrlInput(getNodeUrl());
     setIndexerUrlInput(getIndexerBootstrapUrl() ?? "");

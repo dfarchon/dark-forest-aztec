@@ -527,6 +527,30 @@ export class IndexerService {
     return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
   }
 
+  /**
+   * Full snapshot as JSON string (same shape as server GET /snapshot).
+   *
+   * Dev-only: in production builds this intentionally throws.
+   * The serialization code lives behind `import.meta.env.DEV` so it is
+   * dead-code-eliminated from production bundles.
+   */
+  getSnapshotAsJsonString(): string {
+    if (!import.meta.env.DEV) {
+      throw new Error("getSnapshotAsJsonString() is dev-only");
+    }
+
+    const obj: Record<string, unknown> = {
+      lastProcessedBlock: this.snapshot.lastProcessedBlock,
+    };
+    for (const table of TABLE_NAMES) {
+      const map = this.snapshot[table] as Map<TableId, unknown>;
+      obj[table] = Object.fromEntries(map);
+    }
+    return JSON.stringify(obj, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value
+    );
+  }
+
   /** Full revealed coords map (id → PlanetRevealedCoordsState). */
   getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
     return new Map(

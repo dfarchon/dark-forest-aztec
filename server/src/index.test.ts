@@ -15,6 +15,7 @@ function createTestConfig(): ServerRuntimeConfig {
     nodeKind: "remote",
     persistMinIntervalSec: 10,
     port: 3001,
+    snapshotSchemaVersion: 1,
     sqlitePath: "/tmp/indexer.db",
   };
 }

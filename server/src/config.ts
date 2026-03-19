@@ -6,6 +6,7 @@ export const DEFAULT_CORS_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://df-aztec.netlify.app",
+  "https://dfpunk-aztec.netlify.app",
 ];
 
 export interface ServerRuntimeConfig {
@@ -13,6 +14,7 @@ export interface ServerRuntimeConfig {
   nodeKind: "local" | "remote";
   port: number;
   sqlitePath: string;
+  snapshotSchemaVersion: number;
   persistMinIntervalSec: number;
   adminToken: string;
   corsOrigins: string[];
@@ -65,11 +67,22 @@ export function parseServerConfig(
   env: Record<string, string | undefined> = process.env,
 ): ServerRuntimeConfig {
   const aztecNodeUrl = parseAztecNodeUrl(env.AZTEC_NODE_URL);
+  const snapshotSchemaVersion = parseIntEnv(
+    env.SNAPSHOT_SCHEMA_VERSION,
+    1,
+    "SNAPSHOT_SCHEMA_VERSION",
+  );
+  if (snapshotSchemaVersion < 1) {
+    throw new Error(
+      "[ServerConfig] SNAPSHOT_SCHEMA_VERSION must be a positive integer",
+    );
+  }
   return {
     aztecNodeUrl,
     nodeKind: detectNodeKind(aztecNodeUrl),
     port: parseIntEnv(env.PORT, 3001, "PORT"),
     sqlitePath: env.SQLITE_PATH?.trim() || "./data/indexer.db",
+    snapshotSchemaVersion,
     persistMinIntervalSec: parseIntEnv(
       env.PERSIST_MIN_INTERVAL_SEC,
       10,

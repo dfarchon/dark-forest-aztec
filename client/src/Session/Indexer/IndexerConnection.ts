@@ -456,6 +456,17 @@ export class IndexerConnection {
   public waitForBlock(blockNumber: number, timeoutMs?: number): Promise<void> {
     return this.indexer.waitForBlock(blockNumber, timeoutMs);
   }
+
+  /**
+   * Full snapshot as JSON string (same shape as server GET /snapshot).
+   * Use for comparing client state with server snapshot.
+   */
+  public getSnapshotAsJsonString(): string {
+    if (!import.meta.env.DEV) {
+      throw new Error("getSnapshotAsJsonString() is dev-only");
+    }
+    return this.indexer.getSnapshotAsJsonString();
+  }
 }
 
 // ---------------------------------------------------------------------------

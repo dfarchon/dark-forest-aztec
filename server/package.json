@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "clean": "del-cli dist node_modules data",
+    "compare:snapshot": "node scripts/compare-snapshots.mjs",
     "dev": "node --experimental-transform-types src/index.ts",
     "docker:build": "bash scripts/build-server-image.sh",
     "docker:publish": "IMAGE_PUSH=1 bash scripts/build-server-image.sh",
@@ -25,6 +26,7 @@
     "mock:snapshot": "node scripts/mock-big-snapshot-stream-server.mjs",
     "prepare:contracts": "node scripts/prepare-contract-artifacts.mjs",
     "prepare:contracts:build": "node scripts/prepare-contract-artifacts.mjs --build-if-missing",
+    "serve": "bash scripts/serve.sh",
     "start": "node --experimental-transform-types src/index.ts",
     "test:build:image": "node --test scripts/build-server-image.test.mjs",
     "test:init-player:safe": "node --experimental-transform-types scripts/test-core-initialize-player-safe.mjs",
