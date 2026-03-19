@@ -1091,7 +1091,21 @@ class GameManager extends EventEmitter {
   public async hardRefreshArtifact(artifactId: ArtifactId): Promise<void> {
     const artifact = await this.contractsAPI.getArtifactById(artifactId);
     if (!artifact) return;
-    this.entityStore.replaceArtifactFromContractData(artifact);
+
+    let arrival: QueuedArrival | undefined;
+    if (artifact.onVoyageId !== undefined) {
+      arrival = await this.contractsAPI.getArrival(Number(artifact.onVoyageId));
+    }
+    const nowSec = this.chainClock.nowSec();
+    this.entityStore.replaceArtifactFromChainData(artifact, arrival, nowSec);
+  }
+
+  /**
+   * Refreshes the current account's spaceships (artifacts + related planets/voyages) from chain.
+   * Call this to manually sync your spaceship state after actions or when UI needs fresh data.
+   */
+  public async refreshMySpaceships(show?: boolean): Promise<void> {
+    await this.hardRefreshPlayerSpaceships(this.account, show);
   }
 
   private async hardRefreshPlayerSpaceships(
@@ -1107,21 +1121,32 @@ class GameManager extends EventEmitter {
 
     for (const ship of spaceships) {
       await this.hardRefreshArtifact(ship.id);
+      // Use refreshed artifact from entity store (chain + chainClock derived state),
+      // not raw ship from getPlayerSpaceships, so we refresh the right planets.
+      const artifact = this.entityStore.getArtifactById(ship.id);
+      if (!artifact) continue;
+      if (show) {
+        console.log("--------------");
+        console.log(artifact.id);
+        console.log(artifact);
+      }
 
-      if (ship.onPlanetId) {
-        const localPlanet = this.entityStore.getPlanetWithId(ship.onPlanetId);
+      if (artifact.onPlanetId) {
+        const localPlanet = this.entityStore.getPlanetWithId(
+          artifact.onPlanetId
+        );
         if (localPlanet && isLocatable(localPlanet)) {
-          await this.hardRefreshPlanet(ship.onPlanetId);
+          await this.hardRefreshPlanet(artifact.onPlanetId);
         }
       }
 
-      if (ship.onVoyageId !== undefined) {
+      if (artifact.onVoyageId !== undefined) {
         const arrival = await this.contractsAPI.getArrival(
-          Number(ship.onVoyageId)
+          Number(artifact.onVoyageId)
         );
         if (arrival) {
           if (show) {
-            console.log("Arrival ID:", ship.onVoyageId);
+            console.log("Arrival ID:", artifact.onVoyageId);
             console.log(arrival);
           }
 

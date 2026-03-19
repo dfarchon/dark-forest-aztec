@@ -447,6 +447,31 @@ export class GameObjects {
     this.setArtifact(artifact);
   }
 
+  /**
+   * Updates artifact state from chain data only: artifact + optional arrival + chain time.
+   * Does not use local artifact for location; derives onPlanetId/onVoyageId from chain and
+   * arrival. If the artifact is on a voyage and chain time is past arrival.arrivalTime,
+   * treats it as arrived (onPlanetId = toPlanet, onVoyageId = undefined). Preserves only
+   * localArtifact.transactions for unconfirmed tx display.
+   */
+  public replaceArtifactFromChainData(
+    artifact: Artifact,
+    arrivalIfOnVoyage: QueuedArrival | undefined,
+    nowSec: number
+  ): void {
+    const localArtifact = this.artifacts.get(artifact.id);
+    if (localArtifact) {
+      artifact.transactions = localArtifact.transactions;
+    }
+
+    if (arrivalIfOnVoyage != null && nowSec >= arrivalIfOnVoyage.arrivalTime) {
+      artifact.onPlanetId = arrivalIfOnVoyage.toPlanet;
+      artifact.onVoyageId = undefined;
+    }
+
+    this.setArtifact(artifact);
+  }
+
   public replaceArtifactsFromContractData(artifacts: Iterable<Artifact>) {
     for (const artifact of artifacts) {
       this.replaceArtifactFromContractData(artifact);
