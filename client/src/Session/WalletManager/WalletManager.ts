@@ -80,6 +80,9 @@ const DEPLOY_TIMEOUT_MS = 120_000;
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
 const GENESIS_PENDING_SENTINEL = "genesis-pending";
 
+/** Total steps for wallet init progress: 1 connect + 1 network + 1 storage + 1 PXE + 1 SponsoredFPC + 16 contracts + 1 restore/finalize. */
+const WALLET_INIT_TOTAL_STEPS = 22;
+
 /**
  * Compute a fingerprint for the current network instance by hashing block 1's header.
  * Returns a sentinel value when the network has not yet produced block 1.
@@ -132,10 +135,12 @@ async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
 /**
  * Register game contracts (system + storage) with the wallet's PXE so simulate() and send() can run.
  * Requires deployer + salt from @dfpunk/contracts (run sync-env-and-artifacts after deploy).
+ * Optionally reports progress per contract via onRegisterProgress(currentStep, contractName).
  */
 async function registerGameContractsWithPxe(
   wallet: EmbeddedWallet,
-  admin: AztecAddress
+  admin: AztecAddress,
+  onRegisterProgress?: (currentStep: number, contractName: string) => void
 ): Promise<void> {
   const specs: Array<{
     deployer: string;
@@ -240,8 +245,10 @@ async function registerGameContractsWithPxe(
       name: "ArtifactVault",
     },
   ];
+  let step = 6; // steps 6–21 for the 16 contracts
   for (const { deployer, salt, artifact, name } of specs) {
     if (!deployer || !salt) continue;
+    onRegisterProgress?.(step, name);
     try {
       const instance = await getContractInstanceFromInstantiationParams(
         artifact,
@@ -258,6 +265,7 @@ async function registerGameContractsWithPxe(
         err instanceof Error ? err.message : err
       );
     }
+    step += 1;
   }
 }
 
@@ -293,13 +301,18 @@ export class WalletManager {
 
   static async create(config: WalletManagerConfig): Promise<WalletManager> {
     const node = createAztecNodeClient(config.nodeUrl);
+    const onProgress = config.onWalletProgress;
+    const total = WALLET_INIT_TOTAL_STEPS;
+
+    onProgress?.(1, total, "Connecting to node");
     await waitForNode(node);
 
-    const mgr = await WalletManager._initWallet(node, config);
+    const mgr = await WalletManager._initWallet(node, config, onProgress);
 
     const savedAddr = mgr.keyStore.getActiveAddress();
     if (savedAddr) {
       try {
+        onProgress?.(total, total, "Restoring account");
         await mgr.restoreAccount(savedAddr);
       } catch (err) {
         console.warn("[WalletManager] Failed to restore saved account:", err);
@@ -308,7 +321,11 @@ export class WalletManager {
         await clearStaleIndexedDBs();
         mgr.keyStore.clearActiveAddress();
 
-        const retryMgr = await WalletManager._initWallet(node, config);
+        const retryMgr = await WalletManager._initWallet(
+          node,
+          config,
+          onProgress
+        );
         retryMgr.startBalancePolling(
           config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
         );
@@ -316,6 +333,7 @@ export class WalletManager {
       }
     }
 
+    onProgress?.(total, total, "Finalizing");
     mgr.startBalancePolling(
       config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
     );
@@ -342,9 +360,11 @@ export class WalletManager {
    */
   private static async _initWallet(
     node: AztecNode,
-    config: WalletManagerConfig
+    config: WalletManagerConfig,
+    onProgress?: WalletManagerConfig["onWalletProgress"]
   ): Promise<WalletManager> {
     const keyStore = new KeyStore(config.storagePrefix);
+    const total = WALLET_INIT_TOTAL_STEPS;
 
     const fingerprint = await getNetworkFingerprint(node);
     const storedFingerprint = keyStore.getNetworkFingerprint();
@@ -358,6 +378,9 @@ export class WalletManager {
         : fingerprint.slice(2, 10);
     const pxeDataDir = `pxe_data_${rollupAddr}_${fpSuffix}`;
 
+    onProgress?.(2, total, "Checking network");
+
+    onProgress?.(3, total, "Preparing storage");
     if (networkChanged) {
       if (storedFingerprint) {
         console.warn(
@@ -373,6 +396,7 @@ export class WalletManager {
       keyStore.setNetworkFingerprint(fingerprint);
     }
 
+    onProgress?.(4, total, "Creating PXE");
     const wallet = await EmbeddedWallet.create(node, {
       pxeConfig: {
         dataDirectory: pxeDataDir,
@@ -388,9 +412,12 @@ export class WalletManager {
       { salt: new Fr(SPONSORED_FPC_SALT) }
     );
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+    onProgress?.(5, total, "Registering Sponsored FPC");
 
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
-    await registerGameContractsWithPxe(wallet, admin);
+    await registerGameContractsWithPxe(wallet, admin, (step, name) =>
+      onProgress?.(step, total, `Registering ${name}`)
+    );
 
     return new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
   }
@@ -399,18 +426,22 @@ export class WalletManager {
   // Account management
   // ---------------------------------------------------------------------------
 
-  async createAccount(label?: string): Promise<AccountRecord> {
+  async createAccount(
+    label?: string,
+    onStatus?: (msg: string) => void
+  ): Promise<AccountRecord> {
     const salt = Fr.random();
     const secretKey = Fr.random();
     const signingKeyBuf = Fr.random().toBuffer().slice(0, 32);
 
+    onStatus?.("Creating account keys...");
     const accountManager = await this.wallet.createECDSARAccount(
       secretKey,
       salt,
       Buffer.from(signingKeyBuf)
     );
 
-    await this.deployAccountIfNeeded(accountManager);
+    await this.deployAccountIfNeeded(accountManager, onStatus);
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),

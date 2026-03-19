@@ -2,6 +2,13 @@
  * WalletManager types: configuration, persisted account records, and status snapshot.
  */
 
+/** Progress callback for wallet init: (currentStep, totalSteps, message). */
+export type WalletProgressCallback = (
+  current: number,
+  total: number,
+  message: string
+) => void;
+
 /** Initialization config for createWalletManager(). */
 export interface WalletManagerConfig {
   nodeUrl: string;
@@ -12,6 +19,8 @@ export interface WalletManagerConfig {
     dataStoreMapSizeKb?: number;
     proverEnabled?: boolean;
   };
+  /** Optional progress callback during wallet init (e.g. for loading overlay). */
+  onWalletProgress?: WalletProgressCallback;
 }
 
 /**

@@ -278,6 +278,14 @@ export function GameLandingPage() {
           pxeConfig: {
             proverEnabled: getProverEnabled(),
           },
+          onWalletProgress: (current, total, message) => {
+            if (destroyed) return;
+            setLoadingPhase({
+              step: "wallet",
+              detail: `${message} (${current}/${total})`,
+              percent: Math.round((current / total) * 100),
+            });
+          },
         });
         if (destroyed) {
           wm.destroy();
@@ -613,13 +621,44 @@ export function GameLandingPage() {
 
   const advanceStateFromGenerateAccount = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const SPIN_CHARS = ["|", "/", "-", "\\"];
+      const SPIN_MS = 120;
+      let spinInterval: ReturnType<typeof setInterval> | undefined;
+      let spinIndex = 0;
+      let currentStep = "";
       try {
         terminal.current?.println(``);
-        terminal.current?.print("Deploying new Aztec account... ");
-        const record = await walletManager!.createAccount();
-        const newAddr = record.address;
-
+        terminal.current?.println("Deploying new Aztec account...");
+        terminal.current?.println(
+          "This may take 1–2 minutes.",
+          TerminalTextStyle.Sub
+        );
+        terminal.current?.print("  ");
+        spinInterval = setInterval(() => {
+          if (!terminal.current) return;
+          terminal.current.removeLast(1);
+          const line = currentStep
+            ? `  ${currentStep} ${SPIN_CHARS[spinIndex]}`
+            : `  ${SPIN_CHARS[spinIndex]}`;
+          terminal.current.print(line, TerminalTextStyle.Sub);
+          spinIndex = (spinIndex + 1) % SPIN_CHARS.length;
+        }, SPIN_MS);
+        const record = await walletManager!.createAccount(undefined, (msg) => {
+          if (!terminal.current) return;
+          terminal.current.removeLast(1);
+          currentStep = msg;
+          terminal.current.print(
+            `  ${msg} ${SPIN_CHARS[spinIndex]}`,
+            TerminalTextStyle.Sub
+          );
+          spinIndex = (spinIndex + 1) % SPIN_CHARS.length;
+        });
+        if (spinInterval) clearInterval(spinInterval);
+        spinInterval = undefined;
+        terminal.current?.removeLast(1);
+        terminal.current?.println(`  ${currentStep}`, TerminalTextStyle.Sub);
         terminal.current?.println("Done.", TerminalTextStyle.Green);
+        const newAddr = record.address;
         terminal.current?.println(``);
         terminal.current?.print(`Created account with address `);
         terminal.current?.printElement(
@@ -646,6 +685,8 @@ export function GameLandingPage() {
         await terminal.current?.getInput();
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (e) {
+        if (spinInterval) clearInterval(spinInterval);
+        terminal.current?.removeLast(1);
         console.error("Failed to create account:", e);
         terminal.current?.println(
           "An unknown error occurred. please try again.",
