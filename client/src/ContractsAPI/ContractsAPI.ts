@@ -461,6 +461,12 @@ export class ContractsAPI extends EventEmitter {
   // Read API — artifacts  (mirrors v0.6 getArtifactById / bulkGetArtifactsOnPlanets / bulkGetArtifacts / getPlayerArtifacts)
   // =========================================================================
 
+  /** Artifact ids on a planet (decimal strings). Thin wrapper around indexerConnection.getArtifactsOnPlanet. */
+  public getArtifactIdsOnPlanet(planetId: LocationId): string[] {
+    const decId = locationIdToDecStr(planetId);
+    return this.indexerConnection.getArtifactsOnPlanet(decId);
+  }
+
   public async getArtifactById(
     artifactId: ArtifactId
   ): Promise<Artifact | undefined> {

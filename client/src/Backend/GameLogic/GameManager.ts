@@ -1797,12 +1797,19 @@ class GameManager extends EventEmitter {
 
   /**
    * Gets the artifacts with the given ids, including ones we know exist but haven't been loaded,
-   * represented by `undefined`.
+   * represented by `undefined`. Deduplicates by id so duplicate ids in the input yield each artifact once.
    */
   getArtifactsWithIds(
     artifactIds: ArtifactId[] = []
   ): Array<Artifact | undefined> {
-    return artifactIds.map((id) => this.getArtifactWithId(id));
+    const seen = new Set<ArtifactId>();
+    return artifactIds
+      .filter((id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .map((id) => this.getArtifactWithId(id));
   }
 
   /**

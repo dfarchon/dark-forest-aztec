@@ -254,8 +254,11 @@ export const arrive = (
     toPlanet.silver += arrival.silverMoved;
   }
 
-  // transfer artifact if necessary
-  if (arrival.artifactId) {
+  // transfer artifact if necessary (idempotent: avoid duplicate when state already includes it, e.g. from hardRefresh)
+  if (
+    arrival.artifactId &&
+    !toPlanet.heldArtifactIds.includes(arrival.artifactId)
+  ) {
     toPlanet.heldArtifactIds.push(arrival.artifactId);
   }
 
