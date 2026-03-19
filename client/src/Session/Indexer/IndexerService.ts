@@ -529,9 +529,16 @@ export class IndexerService {
 
   /**
    * Full snapshot as JSON string (same shape as server GET /snapshot).
-   * Use for debugging or comparing client state with server snapshot.
+   *
+   * Dev-only: in production builds this intentionally throws.
+   * The serialization code lives behind `import.meta.env.DEV` so it is
+   * dead-code-eliminated from production bundles.
    */
   getSnapshotAsJsonString(): string {
+    if (!import.meta.env.DEV) {
+      throw new Error("getSnapshotAsJsonString() is dev-only");
+    }
+
     const obj: Record<string, unknown> = {
       lastProcessedBlock: this.snapshot.lastProcessedBlock,
     };

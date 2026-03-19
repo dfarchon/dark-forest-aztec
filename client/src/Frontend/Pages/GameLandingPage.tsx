@@ -323,7 +323,7 @@ export function GameLandingPage() {
         }
 
         indexerRef.current = connection;
-        if (process.env.NODE_ENV !== "production") {
+        if (import.meta.env.DEV) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).dfDebug = {
             snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),

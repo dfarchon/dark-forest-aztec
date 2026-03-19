@@ -462,6 +462,9 @@ export class IndexerConnection {
    * Use for comparing client state with server snapshot.
    */
   public getSnapshotAsJsonString(): string {
+    if (!import.meta.env.DEV) {
+      throw new Error("getSnapshotAsJsonString() is dev-only");
+    }
     return this.indexer.getSnapshotAsJsonString();
   }
 }
