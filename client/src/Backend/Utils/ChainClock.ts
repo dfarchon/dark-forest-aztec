@@ -29,7 +29,7 @@ export class ChainClock {
   private static MIN_SYNC_INTERVAL_MS = 3000;
 
   /** Expected L2 block interval in seconds; used to cap extrapolated chain time. */
-  private static BLOCK_INTERVAL_SEC = 30; // 36;
+  private static BLOCK_INTERVAL_SEC = 36;
 
   constructor(node: AztecNode) {
     this.node = node;
@@ -74,10 +74,7 @@ export class ChainClock {
    */
   now(): number {
     if (this.lastChainTimestampSec === 0) return Date.now();
-    const wallNowMs = Date.now();
-    const chainTimeCapMs =
-      this.lastChainTimestampSec * 1000 + ChainClock.BLOCK_INTERVAL_SEC * 1000;
-    return Math.min(wallNowMs, chainTimeCapMs);
+    return this.lastChainTimestampSec * 1000;
   }
 
   /** Current chain-adjusted time in seconds. */

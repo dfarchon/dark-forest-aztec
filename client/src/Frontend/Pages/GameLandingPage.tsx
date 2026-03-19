@@ -72,6 +72,8 @@ interface LoadingPhase {
     | "done";
   detail?: string;
   percent?: number;
+  gamestateSubStep?: number;
+  gamestateSubStepTotal?: number;
 }
 
 const LOADING_STEP_LABELS: Record<LoadingPhase["step"], string> = {
@@ -93,9 +95,12 @@ const LOADING_STEP_ORDER: LoadingPhase["step"][] = [
   "gamestate",
 ];
 
+const LOADING_STEP_COUNT = LOADING_STEP_ORDER.length;
+
 function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
   const currentIdx = LOADING_STEP_ORDER.indexOf(phase.step);
   const hasPercent = phase.percent != null;
+  const stepNum = phase.step === "done" ? LOADING_STEP_COUNT : currentIdx + 1;
 
   return (
     <div
@@ -114,7 +119,9 @@ function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
         minWidth: "260px",
       }}
     >
-      <div style={{ marginBottom: "6px", color: "#999" }}>Initializing...</div>
+      <div style={{ marginBottom: "6px", color: "#999" }}>
+        Initializing... (step {stepNum}/{LOADING_STEP_COUNT})
+      </div>
       {LOADING_STEP_ORDER.map((s, i) => {
         const isCurrent = s === phase.step;
         const isDone = i < currentIdx;
@@ -132,6 +139,13 @@ function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
           color = "#555";
         }
         const label = LOADING_STEP_LABELS[s];
+        const gamestateStepSuffix =
+          isCurrent &&
+          s === "gamestate" &&
+          phase.gamestateSubStep != null &&
+          phase.gamestateSubStepTotal != null
+            ? ` (step ${phase.gamestateSubStep}/${phase.gamestateSubStepTotal})`
+            : "";
         return (
           <div
             key={s}
@@ -144,6 +158,7 @@ function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
               {marker}
             </span>
             {label}
+            {gamestateStepSuffix}
             {isCurrent && phase.detail ? (
               <span style={{ color: "#aaa" }}> — {phase.detail}</span>
             ) : null}
@@ -821,6 +836,23 @@ export function GameLandingPage() {
           terminal,
           contractAddress,
           chainClock,
+          onLoadingProgress: (
+            detail,
+            percent,
+            gamestateSubStep,
+            gamestateSubStepTotal
+          ) =>
+            setLoadingPhase((prev) =>
+              prev.step === "gamestate"
+                ? {
+                    ...prev,
+                    detail,
+                    percent,
+                    gamestateSubStep,
+                    gamestateSubStepTotal,
+                  }
+                : prev
+            ),
         });
       } catch (e) {
         console.error(e);

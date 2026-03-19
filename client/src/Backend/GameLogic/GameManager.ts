@@ -581,11 +581,18 @@ class GameManager extends EventEmitter {
     terminal,
     contractAddress,
     chainClock,
+    onLoadingProgress,
   }: {
     contractsAPI: ContractsAPI;
     terminal: React.MutableRefObject<TerminalHandle | undefined>;
     contractAddress: EthAddress;
     chainClock: ChainClock;
+    onLoadingProgress?: (
+      detail: string,
+      percent?: number,
+      subStep?: number,
+      subStepTotal?: number
+    ) => void;
   }): Promise<GameManager> {
     if (!terminal.current) {
       throw new Error("you must pass in a handle to a terminal");
@@ -599,7 +606,14 @@ class GameManager extends EventEmitter {
     const gameStateDownloader = new InitialGameStateDownloader(
       terminal.current
     );
+    const GAMESTATE_SUBSTEP_TOTAL = 4;
 
+    onLoadingProgress?.(
+      "Loading from disk...",
+      undefined,
+      1,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     terminal.current?.println("Loading game data from disk...");
 
     const persistentChunkStore = await PersistentChunkStore.create({
@@ -607,6 +621,12 @@ class GameManager extends EventEmitter {
       contractAddress,
     });
 
+    onLoadingProgress?.(
+      "Downloading from chain...",
+      undefined,
+      2,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     terminal.current?.println("Downloading data from Ethereum blockchain...");
     terminal.current?.println(
       "(the contract is very big. this may take a while)"
@@ -619,8 +639,15 @@ class GameManager extends EventEmitter {
     );
     const possibleHomes = await persistentChunkStore.getHomeLocations();
 
+    onLoadingProgress?.(
+      "Building index...",
+      undefined,
+      3,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     terminal.current?.println("");
     terminal.current?.println("Building Index...");
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
 
     await persistentChunkStore.saveTouchedPlanetIds(
       initialState.allTouchedPlanetIds
@@ -675,6 +702,13 @@ class GameManager extends EventEmitter {
       planetRarity: initialState.contractConstants.PLANET_RARITY,
     };
 
+    onLoadingProgress?.(
+      "Initializing...",
+      undefined,
+      4,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000));
     await initPoseidon2();
 
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
