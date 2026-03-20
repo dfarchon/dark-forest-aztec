@@ -188,7 +188,7 @@ async function loadWorldFromEvents(
             contractAddress: ctx.contracts['WorldStorage']?.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;

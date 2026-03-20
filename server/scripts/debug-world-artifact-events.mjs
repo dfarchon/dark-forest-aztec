@@ -24,10 +24,10 @@ async function count(label, eventDef, address) {
     toBlock: BlockNumber(to + 1),
     contractAddress: AztecAddress.fromString(address),
   });
-  console.log(`${label}: count=${raw.length}, range=${from}-${to}`);
-  if (raw.length > 0) {
-    const first = raw[0].event;
-    const last = raw[raw.length - 1].event;
+  console.log(`${label}: count=${raw.events.length}, range=${from}-${to}`);
+  if (raw.events.length > 0) {
+    const first = raw.events[0].event;
+    const last = raw.events[raw.events.length - 1].event;
     console.log(
       `  first: id=${String(first.id)} block=${String(first.block_number)}`,
     );

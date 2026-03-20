@@ -78,7 +78,7 @@ async function printWorldFromEvents(
             contractAddress: WorldStorage.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
@@ -118,7 +118,7 @@ async function printPlayerFromEvents(
             contractAddress: PlayerStorage.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
@@ -171,7 +171,7 @@ async function printPlanetFromEvents(
             contractAddress: PlanetStorage.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;
@@ -228,7 +228,7 @@ async function printPlanetRevealedCoordsFromEvents(
             contractAddress: PRC.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         block_number?: number;
         state?: Record<string, unknown>;

@@ -115,7 +115,7 @@ async function loadWorldFromEvents(ctx) {
     contractAddress: ctx.contracts.WorldStorage?.address,
   });
 
-  const events = raw.map((e) => e.event);
+  const events = raw.events.map((e) => e.event);
   const worldEvent = events.filter((e) => String(e?.id) === "0" && e?.state).pop();
   if (!worldEvent?.state) {
     return null;
@@ -152,7 +152,7 @@ async function loadPlayerFromEvents(ctx, playerAddress) {
     contractAddress: ctx.contracts.PlayerStorage?.address,
   });
 
-  const events = raw.map((e) => e.event);
+  const events = raw.events.map((e) => e.event);
   const playerEvent = events
     .filter((e) => String(e?.id).toLowerCase() === normalized && e?.state)
     .pop();

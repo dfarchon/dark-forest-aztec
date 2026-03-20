@@ -163,7 +163,7 @@ export function createAztecNodeBlockSource(
           toBlock: BlockNumber(fromBlock + limit),
           contractAddress: address,
         });
-        const events = raw.map((e) => e.event) as DecodedUpdate[];
+        const events = raw.events.map((e) => e.event) as DecodedUpdate[];
         for (const ev of events) {
           if (ev?.state == null) continue;
           const id = table === "world" ? "0" : toIdStr(ev.id);

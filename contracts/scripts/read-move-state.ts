@@ -71,7 +71,7 @@ async function printWorld(
             contractAddress: W.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         state?: Record<string, unknown>;
     }[];
@@ -111,7 +111,7 @@ async function printPlanets(
             contractAddress: P.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         state?: Record<string, unknown>;
     }[];
@@ -165,7 +165,7 @@ async function printArrivals(
             contractAddress: A.address,
         }
     );
-    const events = raw.map((e) => e.event) as {
+    const events = raw.events.map((e) => e.event) as {
         id: unknown;
         state?: Record<string, unknown>;
     }[];

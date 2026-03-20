@@ -90,7 +90,7 @@ async function loadWorldFromEvents(
             toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['WorldStorage']?.address,
         });
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
@@ -118,7 +118,7 @@ async function loadPlanetFromEvents(
             toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['PlanetStorage']?.address,
         });
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
@@ -150,7 +150,7 @@ async function loadPlayerFromEvents(
             toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['PlayerStorage']?.address,
         });
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
@@ -184,7 +184,7 @@ async function loadPlanetEventsFromEvents(
                 contractAddress: ctx.contracts['PlanetEventsStorage']?.address,
             }
         );
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
@@ -219,7 +219,7 @@ async function loadPlanetArtifactsFromEvents(
                     ctx.contracts['PlanetArtifactsStorage']?.address,
             }
         );
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
@@ -291,7 +291,7 @@ async function loadArrivalFromEvents(
             toBlock: BlockNumber(from + limit),
             contractAddress: ctx.contracts['ArrivalStorage']?.address,
         });
-        const events = raw.map((e) => e.event) as {
+        const events = raw.events.map((e) => e.event) as {
             id: unknown;
             state?: Record<string, unknown>;
         }[];
