@@ -340,10 +340,10 @@ export class ContractsAPI extends EventEmitter {
 
   // =========================================================================
   // Read API — planets  (mirrors v0.6 getTouchedPlanetIds / bulkGetPlanets / getPlanetById)
+  // v0.6 used an on-chain pagination cursor; Aztec path reads the in-memory indexer snapshot (full list).
   // =========================================================================
 
   public async getTouchedPlanetIds(
-    _startingAt: number,
     onProgress?: (fractionCompleted: number) => void
   ): Promise<LocationId[]> {
     const decIds = this.indexerConnection.getPlanetIds();
@@ -428,6 +428,7 @@ export class ContractsAPI extends EventEmitter {
 
   // =========================================================================
   // Read API — revealed coords  (mirrors v0.6 getRevealedCoordsByIdIfExists / getRevealedPlanetsCoords)
+  // v0.6 used a pagination cursor; Aztec path returns all revealed coords in the indexer snapshot.
   // =========================================================================
 
   public async getRevealedCoordsByIdIfExists(
@@ -442,7 +443,6 @@ export class ContractsAPI extends EventEmitter {
   }
 
   public async getRevealedPlanetsCoords(
-    _startingAt: number,
     onProgressIds?: (fractionCompleted: number) => void,
     onProgressCoords?: (fractionCompleted: number) => void
   ): Promise<RevealedCoords[]> {

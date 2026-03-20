@@ -160,6 +160,9 @@ export class IndexerConnection {
   public subscribeToContractEvents(
     handlers: Partial<Record<string, (...args: any[]) => void>>
   ): () => void {
+    // Guard against double-subscribe: tear down any previous subscription first
+    this.unsubscribeIndexer?.();
+
     this.eventHandlers = handlers;
 
     if (this.indexer.getLifecycle() === "ready") {

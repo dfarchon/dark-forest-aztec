@@ -85,19 +85,6 @@ export class InitialGameStateDownloader {
     contractsAPI: ContractsAPI,
     persistentChunkStore: PersistentChunkStore
   ): Promise<InitialGameState> {
-    const isDev = process.env.NODE_ENV !== "production";
-
-    /**
-     * In development we use the same contract address every time we deploy,
-     * so storage is polluted with the IDs of old universes.
-     */
-    const storedTouchedPlanetIds = isDev
-      ? []
-      : await persistentChunkStore.getSavedTouchedPlanetIds();
-    const storedRevealedCoords = isDev
-      ? []
-      : await persistentChunkStore.getSavedRevealedCoords();
-
     this.terminal.printElement(<DarkForestTips tips={tips} />);
     this.terminal.newline();
 
@@ -132,24 +119,14 @@ export class InitialGameStateDownloader {
       minedChunks.flatMap((c) => c.planetLocations).map((l) => l.hash)
     );
 
-    const loadedTouchedPlanetIds = contractsAPI.getTouchedPlanetIds(
-      storedTouchedPlanetIds.length,
-      planetIdsLoadingBar
-    );
+    const allTouchedPlanetIds =
+      await contractsAPI.getTouchedPlanetIds(planetIdsLoadingBar);
 
-    const loadedRevealedCoords = contractsAPI.getRevealedPlanetsCoords(
-      storedRevealedCoords.length,
+    const allRevealedCoords = await contractsAPI.getRevealedPlanetsCoords(
       revealedPlanetsLoadingBar,
       revealedPlanetsCoordsLoadingBar
     );
     const claimedCoordsMap = new Map<LocationId, ClaimedCoords>();
-
-    const allTouchedPlanetIds = storedTouchedPlanetIds.concat(
-      await loadedTouchedPlanetIds
-    );
-    const allRevealedCoords = storedRevealedCoords.concat(
-      await loadedRevealedCoords
-    );
     const revealedCoordsMap = new Map<LocationId, RevealedCoords>();
     for (const revealedCoords of allRevealedCoords) {
       revealedCoordsMap.set(revealedCoords.hash, revealedCoords);

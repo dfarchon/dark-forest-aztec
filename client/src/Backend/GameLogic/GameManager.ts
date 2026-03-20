@@ -373,6 +373,12 @@ class GameManager extends EventEmitter {
    */
   private safeMode: boolean;
 
+  /**
+   * Planets currently being refreshed from chain data. Prevents concurrent
+   * hardRefreshPlanet calls from racing against each other.
+   */
+  private refreshingPlanets = new Set<LocationId>();
+
   public get planetRarity(): number {
     return this.contractConstants.PLANET_RARITY;
   }
@@ -651,13 +657,6 @@ class GameManager extends EventEmitter {
     terminal.current?.println("");
     terminal.current?.println("Building Index...");
     await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-
-    await persistentChunkStore.saveTouchedPlanetIds(
-      initialState.allTouchedPlanetIds
-    );
-    await persistentChunkStore.saveRevealedCoords(
-      initialState.allRevealedCoords
-    );
 
     const knownArtifacts: Map<ArtifactId, Artifact> = new Map();
 
@@ -1008,45 +1007,53 @@ class GameManager extends EventEmitter {
     planetId: LocationId,
     show?: boolean
   ): Promise<void> {
-    if (show) console.log(planetId);
-    const planet = await this.contractsAPI.getPlanetById(planetId);
-    if (!planet) {
-      return;
+    // Skip if this planet is already being refreshed (prevents concurrent races)
+    if (this.refreshingPlanets.has(planetId)) return;
+    this.refreshingPlanets.add(planetId);
+
+    try {
+      if (show) console.log(planetId);
+      const planet = await this.contractsAPI.getPlanetById(planetId);
+      if (!planet) {
+        return;
+      }
+
+      const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+      const artifactsOnPlanets =
+        await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
+      const artifactsOnPlanet = artifactsOnPlanets[0];
+
+      const revealedCoords =
+        await this.contractsAPI.getRevealedCoordsByIdIfExists(planetId);
+      let revealedLocation: RevealedLocation | undefined;
+      let claimedCoords: ClaimedCoords | undefined;
+
+      if (revealedCoords) {
+        const loc = await this.locationFromCoords(revealedCoords);
+        revealedLocation = {
+          ...loc,
+          revealer: revealedCoords.revealer,
+        };
+      }
+
+      this.entityStore.replacePlanetFromContractData(
+        planet,
+        arrivals,
+        artifactsOnPlanet.map((a) => a.id),
+        revealedLocation,
+        claimedCoords?.revealer
+      );
+
+      // it's important that we reload the artifacts that are on the planet after the move
+      // completes because this move could have been a photoid canon move. one of the side
+      // effects of this type of move is that the active photoid canon deactivates upon a move
+      // meaning we need to reload its data from the blockchain.
+      artifactsOnPlanet.forEach((a) =>
+        this.entityStore.replaceArtifactFromContractData(a)
+      );
+    } finally {
+      this.refreshingPlanets.delete(planetId);
     }
-
-    const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
-    const artifactsOnPlanets =
-      await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
-    const artifactsOnPlanet = artifactsOnPlanets[0];
-
-    const revealedCoords =
-      await this.contractsAPI.getRevealedCoordsByIdIfExists(planetId);
-    let revealedLocation: RevealedLocation | undefined;
-    let claimedCoords: ClaimedCoords | undefined;
-
-    if (revealedCoords) {
-      const loc = await this.locationFromCoords(revealedCoords);
-      revealedLocation = {
-        ...loc,
-        revealer: revealedCoords.revealer,
-      };
-    }
-
-    this.entityStore.replacePlanetFromContractData(
-      planet,
-      arrivals,
-      artifactsOnPlanet.map((a) => a.id),
-      revealedLocation,
-      claimedCoords?.revealer
-    );
-
-    // it's important that we reload the artifacts that are on the planet after the move
-    // completes because this move could have been a photoid canon move. one of the side
-    // effects of this type of move is that the active photoid canon deactivates upon a move
-    // meaning we need to reload its data from the blockchain.
-    artifactsOnPlanet.forEach((a) =>
-      this.entityStore.replaceArtifactFromContractData(a)
-    );
   }
 
   private async bulkHardRefreshPlanets(planetIds: LocationId[]): Promise<void> {

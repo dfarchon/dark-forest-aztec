@@ -825,7 +825,6 @@ export function GameLandingPage() {
           walletManager,
           configCache,
         });
-        contractsAPI.setupEventListeners();
 
         setLoadingPhase({
           step: "gamestate",
