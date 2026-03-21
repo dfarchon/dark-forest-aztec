@@ -1,11 +1,16 @@
 /**
  * Single source for loading and reading `contracts/` env files in scripts.
  *
- * Resolution order (first match wins):
+ * Two-phase loading:
+ *   Phase 1 — always load `contracts/.env` to pick up `AZTEC_NETWORK` / `CONTRACTS_ENV_FILE`.
+ *   Phase 2 — resolve the active env file and load it (override: true).
+ *
+ * Resolution order for the active file (first match wins):
  * 1. `CONTRACTS_ENV_FILE` — absolute path, or relative to `process.cwd()`
- * 2. If `AZTEC_NETWORK` is set (typically from the shell) and `contracts/.env.<AZTEC_NETWORK>` exists, use it
+ * 2. If `AZTEC_NETWORK` is set (shell env or `.env`) and `contracts/.env.<AZTEC_NETWORK>` exists, use it
  * 3. Otherwise `contracts/.env`
  *
+ * All writes (ACCOUNT_*, contract addresses, START_BLOCK) go to the active file.
  * Call `loadContractsEnv()` once at the start of each entry script before reading values.
  */
 import * as dotenv from 'dotenv';
@@ -115,20 +120,78 @@ export type LoadContractsEnvOptions = {
 
 /**
  * Load dotenv from the resolved contracts env file. Idempotent (subsequent calls no-op).
- * @returns Absolute path of the loaded file
+ *
+ * Two-phase loading: `.env` is always loaded first so that `AZTEC_NETWORK` (and
+ * `CONTRACTS_ENV_FILE`) are available in `process.env` before resolution. If a
+ * network-specific file (`.env.<network>`) is resolved, it is loaded second with
+ * `override: true` so its values take precedence. Writes target the resolved file.
+ *
+ * @returns Absolute path of the active env file (network-specific when applicable)
  */
 export function loadContractsEnv(options?: LoadContractsEnvOptions): string {
     if (loadCalled) {
         return loadedPath!;
     }
     loadCalled = true;
-    const envPath = resolveContractsEnvFilePath();
-    loadedPath = envPath;
-    dotenv.config({
-        path: envPath,
-        override: options?.override ?? false,
-    });
-    return envPath;
+    const override = options?.override ?? false;
+
+    const baseEnvPath = path.join(CONTRACTS_PACKAGE_ROOT, '.env');
+    if (fs.existsSync(baseEnvPath)) {
+        dotenv.config({ path: baseEnvPath, override });
+    }
+
+    const targetPath = resolveContractsEnvFilePath();
+    loadedPath = targetPath;
+
+    if (targetPath !== baseEnvPath) {
+        dotenv.config({ path: targetPath, override: true });
+    }
+
+    printEnvSummary(baseEnvPath, targetPath);
+
+    return targetPath;
+}
+
+function isEnvDiagnosticsSilent(): boolean {
+    const v = process.env.ACCOUNT_SILENT_DIAGNOSTICS?.toLowerCase().trim();
+    return v === '1' || v === 'true';
+}
+
+function abbreviateAddress(addr: string): string {
+    if (addr.length <= 12) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function printEnvSummary(baseEnvPath: string, activePath: string): void {
+    if (isEnvDiagnosticsSilent()) return;
+
+    const rel = (p: string) => path.relative(process.cwd(), p);
+    const network = process.env.AZTEC_NETWORK;
+    const nodeUrl =
+        process.env.AZTEC_NODE_URL ?? 'http://localhost:8080 (default)';
+    const account = process.env.ACCOUNT_ADDRESS;
+
+    const missing: string[] = [];
+    for (const key of ENV_KEYS) {
+        if (!process.env[key]) missing.push(key);
+    }
+    const setCount = ENV_KEYS.length - missing.length;
+
+    const lines = ['\n--- env loaded ---'];
+    lines.push(`  Base:    ${rel(baseEnvPath)}`);
+    if (activePath !== baseEnvPath) {
+        lines.push(`  Active:  ${rel(activePath)}`);
+    }
+    lines.push(`  Network: ${network ?? '(unset)'}`);
+    lines.push(`  Node:    ${nodeUrl}`);
+    lines.push(
+        `  Account: ${account ? abbreviateAddress(account) : '(not set)'}`
+    );
+    lines.push(`  Keys:    ${setCount}/${ENV_KEYS.length} set`);
+    if (missing.length > 0) {
+        lines.push(`  Missing: ${missing.join(', ')}`);
+    }
+    console.log(lines.join('\n'));
 }
 
 /**

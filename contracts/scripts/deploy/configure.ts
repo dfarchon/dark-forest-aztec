@@ -189,6 +189,12 @@ function formatElapsed(ms: number): string {
 
 async function main() {
     const scriptStartTime = Date.now();
+    const startFromStep = parseInt(process.argv[2] || '1', 10);
+    if (startFromStep > 1) {
+        console.log(
+            `\n⏩ Resuming from step ${startFromStep} (skipping 1-${startFromStep - 1})\n`
+        );
+    }
 
     const addresses = addressesFromEnv();
     console.log('✅ All required environment variables are present');
@@ -368,6 +374,10 @@ async function main() {
     let stepIndex = 0;
     const run = async (label: string, action: () => Promise<unknown>) => {
         stepIndex += 1;
+        if (stepIndex < startFromStep) {
+            console.log(`  [${stepIndex}/${TOTAL_STEPS}] ${label} (skipped)`);
+            return;
+        }
         console.log(`\n⚙️  [${stepIndex}/${TOTAL_STEPS}] ${label}`);
         const stepStart = Date.now();
         await action();
