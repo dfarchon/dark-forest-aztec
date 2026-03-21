@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const artifactsDir = path.join(__dirname, 'artifacts');
+const artifactsDir = path.join(__dirname, '..', 'artifacts');
 
 // From @aztec/constants - deployment uses bufferAsFields which chunks bytecode into 31-byte fields
 const MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS = 3000;

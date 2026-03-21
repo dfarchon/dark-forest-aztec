@@ -1345,7 +1345,7 @@ export class StateResolver {
   /**
    * Load arrivals, artifacts, and artifact locations for a planet's events.
    * Returns arrays of length 20, padded with zeros for unused slots.
-   * Matches contracts/scripts/test-move.ts loadArrivalsForPlanetEvents().
+   * Matches contracts/scripts/test/test-move.ts loadArrivalsForPlanetEvents().
    */
   private loadArrivalsForPlanetEvents(
     planetEvents:

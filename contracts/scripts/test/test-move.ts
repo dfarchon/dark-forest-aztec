@@ -10,24 +10,19 @@
  * This script uses an uninitialized target so no admin step is required.
  *
  * Usage:
- *   node --experimental-transform-types scripts/test-move.ts [userIndex]
+ *   node --experimental-transform-types scripts/test/test-move.ts [userIndex]
  * userIndex: 0 = user1, 1 = user2 (default 0). Player must already be initialized.
  */
 import { getGasLimits } from '@aztec/aztec.js/contracts';
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
+import { unwrapSimulateResult } from '../utils/index.ts';
 import {
     getTestContext,
     sendTimestampRefreshTx,
     type TestContext,
 } from './test-setup.ts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const aztecZero =
     '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -91,7 +86,7 @@ async function loadWorldFromEvents(
     const from = Math.max(0, latestBlock - 200);
     const limit = latestBlock - from + 1;
     try {
-        const mod = await import('./artifacts/WorldStorage.ts');
+        const mod = await import('../artifacts/WorldStorage.ts');
         const W = mod.WorldStorageContract;
         if (!W?.events?.WorldUpdate) return null;
         const raw = await getPublicEvents(ctx.node, W.events.WorldUpdate, {
@@ -119,7 +114,7 @@ async function loadPlanetFromEvents(
     const from = Math.max(0, latestBlock - 200);
     const limit = latestBlock - from + 1;
     try {
-        const mod = await import('./artifacts/PlanetStorage.ts');
+        const mod = await import('../artifacts/PlanetStorage.ts');
         const P = mod.PlanetStorageContract;
         if (!P?.events?.PlanetUpdate) return null;
         const raw = await getPublicEvents(ctx.node, P.events.PlanetUpdate, {
@@ -149,7 +144,7 @@ async function loadPlanetEventsFromEvents(
     const from = Math.max(0, latestBlock - 200);
     const limit = latestBlock - from + 1;
     try {
-        const mod = await import('./artifacts/PlanetEventsStorage.ts');
+        const mod = await import('../artifacts/PlanetEventsStorage.ts');
         const PE = mod.PlanetEventsStorageContract;
         if (!PE?.events?.PlanetEventsUpdate) return null;
         const raw = await getPublicEvents(
@@ -183,7 +178,7 @@ async function loadPlanetArtifactsFromEvents(
     const from = Math.max(0, latestBlock - 200);
     const limit = latestBlock - from + 1;
     try {
-        const mod = await import('./artifacts/PlanetArtifactsStorage.ts');
+        const mod = await import('../artifacts/PlanetArtifactsStorage.ts');
         const PA = mod.PlanetArtifactsStorageContract;
         if (!PA?.events?.PlanetArtifactsUpdate) return null;
         const raw = await getPublicEvents(
@@ -260,7 +255,7 @@ async function loadArrivalFromEvents(
     const from = Math.max(0, latestBlock - 200);
     const limit = latestBlock - from + 1;
     try {
-        const mod = await import('./artifacts/ArrivalStorage.ts');
+        const mod = await import('../artifacts/ArrivalStorage.ts');
         const A = mod.ArrivalStorageContract;
         if (!A?.events?.ArrivalUpdate) return null;
         const raw = await getPublicEvents(ctx.node, A.events.ArrivalUpdate, {
@@ -398,39 +393,51 @@ async function main() {
         );
 
     console.log('\n📥 Loading config...');
-    const snarkConfig = await Config.methods
-        .get_snark_config()
-        .simulate({ from: user });
-    const planetDefaultStats = await Config.methods
-        .get_planet_default_stats(0)
-        .simulate({ from: user });
-    const worldConfig = await Config.methods
-        .get_world_config()
-        .simulate({ from: user });
-    const gameConfigCore = await Config.methods
-        .get_game_config_core()
-        .simulate({ from: user });
-    const planetLevelThresholds = await Config.methods
-        .get_planet_level_thresholds()
-        .simulate({ from: user });
-    const spaceJunkConfig = await Config.methods
-        .get_space_junk_config()
-        .simulate({ from: user });
-    const tier0 = await Config.methods
-        .get_planet_type_weights_tier(0)
-        .simulate({ from: user });
-    const tier1 = await Config.methods
-        .get_planet_type_weights_tier(1)
-        .simulate({ from: user });
-    const tier2 = await Config.methods
-        .get_planet_type_weights_tier(2)
-        .simulate({ from: user });
-    const tier3 = await Config.methods
-        .get_planet_type_weights_tier(3)
-        .simulate({ from: user });
-    const artifactsConfig = await Config.methods
-        .get_artifacts_config()
-        .simulate({ from: user });
+    const snarkConfig = unwrapSimulateResult(
+        await Config.methods.get_snark_config().simulate({ from: user })
+    );
+    const planetDefaultStats = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_default_stats(0)
+            .simulate({ from: user })
+    );
+    const worldConfig = unwrapSimulateResult(
+        await Config.methods.get_world_config().simulate({ from: user })
+    );
+    const gameConfigCore = unwrapSimulateResult(
+        await Config.methods.get_game_config_core().simulate({ from: user })
+    );
+    const planetLevelThresholds = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_level_thresholds()
+            .simulate({ from: user })
+    );
+    const spaceJunkConfig = unwrapSimulateResult(
+        await Config.methods.get_space_junk_config().simulate({ from: user })
+    );
+    const tier0 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(0)
+            .simulate({ from: user })
+    );
+    const tier1 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(1)
+            .simulate({ from: user })
+    );
+    const tier2 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(2)
+            .simulate({ from: user })
+    );
+    const tier3 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(3)
+            .simulate({ from: user })
+    );
+    const artifactsConfig = unwrapSimulateResult(
+        await Config.methods.get_artifacts_config().simulate({ from: user })
+    );
 
     const sourcePlanet = await loadPlanetFromEvents(ctx, sourceLoc);
     if (!sourcePlanet)
@@ -719,7 +726,7 @@ async function main() {
         if (blockNumber !== undefined) {
             console.log('\n  To inspect state changes, run:');
             console.log(
-                '    node --experimental-transform-types scripts/read-move-state.ts',
+                '    node --experimental-transform-types scripts/read/read-move-state.ts',
                 blockNumber,
                 String(sourceLoc),
                 String(targetLoc)

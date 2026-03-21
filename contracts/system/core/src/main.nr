@@ -37,6 +37,7 @@ contract Core {
         player::Player,
         world::World,
     };
+    use ::types::system_storage_addresses::CoreSystemStorageAddresses;
 
     use ::libs::batch_utils::{
         assert_planet_timestamp_freshness, assert_public_timestamp, compute_config_hashes,
@@ -182,6 +183,27 @@ contract Core {
         self.storage.arrivals_storage_address.write(arrivals_addr);
         self.storage.artifact_storage_address.write(artifact_addr);
         self.storage.artifact_location_storage_address.write(artifact_location_addr);
+    }
+
+    // ================== UTILITY (UNCONSTRAINED) ==================
+
+    #[external("utility")]
+    unconstrained fn get_all_storage_addresses_unconstrained() -> CoreSystemStorageAddresses {
+        CoreSystemStorageAddresses {
+            config_storage_address: self.storage.config_storage_address.read(),
+            world_storage_address: self.storage.world_storage_address.read(),
+            player_storage_address: self.storage.player_storage_address.read(),
+            planet_storage_address: self.storage.planet_storage_address.read(),
+            planet_revealed_coords_storage_address: self
+                .storage
+                .planet_revealed_coords_storage_address
+                .read(),
+            planet_events_storage_address: self.storage.planet_events_storage_address.read(),
+            planet_artifacts_storage_address: self.storage.planet_artifacts_storage_address.read(),
+            arrivals_storage_address: self.storage.arrivals_storage_address.read(),
+            artifact_storage_address: self.storage.artifact_storage_address.read(),
+            artifact_location_storage_address: self.storage.artifact_location_storage_address.read(),
+        }
     }
 
     #[external("private")]

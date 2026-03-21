@@ -3,11 +3,11 @@
  * Use the block number from a successful test-core-initialize-player.ts run.
  *
  * Usage (from contracts/ directory):
- *   node --experimental-transform-types scripts/read-initialize-player-state.ts <blockNumber> [playerAddress] [locationId]
+ *   node --experimental-transform-types scripts/read/read-initialize-player-state.ts <blockNumber> [playerAddress] [locationId]
  *
  * Example:
- *   node --experimental-transform-types scripts/read-initialize-player-state.ts 42
- *   node --experimental-transform-types scripts/read-initialize-player-state.ts 42 0x2303efff... 1053122916685571866979180276836704323188950954005495816462848571295662080
+ *   node --experimental-transform-types scripts/read/read-initialize-player-state.ts 42
+ *   node --experimental-transform-types scripts/read/read-initialize-player-state.ts 42 0x2303efff... 1053122916685571866979180276836704323188950954005495816462848571295662080
  *
  * If playerAddress is omitted, all PlayerUpdate events in the block are printed.
  * If locationId is omitted, all PlanetUpdate and PlanetRevealedCoordsUpdate events in the block are printed.
@@ -15,14 +15,8 @@
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
 import type { EventMetadataDefinition } from '@aztec/stdlib/abi';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-import { getTestContext, type TestContext } from './test-setup.ts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+import { getTestContext, type TestContext } from '../test/test-setup.ts';
 
 function toStr(v: unknown): string {
     if (v === undefined || v === null) return '';
@@ -45,10 +39,10 @@ type StorageArtifacts = {
 
 async function loadStorageArtifacts(): Promise<StorageArtifacts> {
     const [ws, ps, pls, prcs] = await Promise.all([
-        import('./artifacts/WorldStorage.ts'),
-        import('./artifacts/PlayerStorage.ts'),
-        import('./artifacts/PlanetStorage.ts'),
-        import('./artifacts/PlanetRevealedCoordsStorage.ts'),
+        import('../artifacts/WorldStorage.ts'),
+        import('../artifacts/PlayerStorage.ts'),
+        import('../artifacts/PlanetStorage.ts'),
+        import('../artifacts/PlanetRevealedCoordsStorage.ts'),
     ]);
     return {
         WorldStorage:
@@ -274,7 +268,7 @@ async function main() {
 
     if (!blockStr || !/^\d+$/.test(blockStr)) {
         console.error(
-            'Usage: node scripts/read-initialize-player-state.ts <blockNumber> [playerAddress] [locationId]'
+            'Usage: node scripts/read/read-initialize-player-state.ts <blockNumber> [playerAddress] [locationId]'
         );
         process.exit(1);
     }

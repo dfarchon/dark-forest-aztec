@@ -3,25 +3,19 @@
  * Use the block number from a successful test-move.ts run.
  *
  * Usage (from contracts/ directory):
- *   node --experimental-transform-types scripts/read-move-state.ts <blockNumber> [sourceLoc] [targetLoc]
+ *   node --experimental-transform-types scripts/read/read-move-state.ts <blockNumber> [sourceLoc] [targetLoc]
  *
  * Example:
- *   node --experimental-transform-types scripts/read-move-state.ts 50
- *   node --experimental-transform-types scripts/read-move-state.ts 50 1053122916685571866979180276836704323188950954005495816462848571295662080 1053122916685571866979180276836704323188950954005495816462848571295662081
+ *   node --experimental-transform-types scripts/read/read-move-state.ts 50
+ *   node --experimental-transform-types scripts/read/read-move-state.ts 50 1053122916685571866979180276836704323188950954005495816462848571295662080 1053122916685571866979180276836704323188950954005495816462848571295662081
  *
  * If sourceLoc/targetLoc omitted, all PlanetUpdate and ArrivalUpdate events in the block are printed.
  */
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
 import type { EventMetadataDefinition } from '@aztec/stdlib/abi';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-import { getTestContext, type TestContext } from './test-setup.ts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+import { getTestContext, type TestContext } from '../test/test-setup.ts';
 
 function toStr(v: unknown): string {
     if (v === undefined || v === null) return '';
@@ -41,9 +35,9 @@ type MoveArtifacts = {
 
 async function loadArtifacts(): Promise<MoveArtifacts> {
     const [ws, pls, arr] = await Promise.all([
-        import('./artifacts/WorldStorage.ts'),
-        import('./artifacts/PlanetStorage.ts'),
-        import('./artifacts/ArrivalStorage.ts'),
+        import('../artifacts/WorldStorage.ts'),
+        import('../artifacts/PlanetStorage.ts'),
+        import('../artifacts/ArrivalStorage.ts'),
     ]);
     return {
         WorldStorage:
@@ -201,7 +195,7 @@ async function main() {
 
     if (!blockStr || !/^\d+$/.test(blockStr)) {
         console.error(
-            'Usage: node scripts/read-move-state.ts <blockNumber> [sourceLoc] [targetLoc]'
+            'Usage: node scripts/read/read-move-state.ts <blockNumber> [sourceLoc] [targetLoc]'
         );
         process.exit(1);
     }

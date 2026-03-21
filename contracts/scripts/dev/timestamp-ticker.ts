@@ -2,7 +2,7 @@
  * Sends a no-op transaction periodically to keep the local Aztec chain producing blocks,
  * so you can get correct timestamps when testing.
  *
- * Usage: node --experimental-transform-types scripts/timestamp-ticker.ts [intervalSeconds]
+ * Usage: node --experimental-transform-types scripts/dev/timestamp-ticker.ts [intervalSeconds]
  *   intervalSeconds: interval in seconds (default 12)
  *
  * Prerequisites: deploy + configure done, .env has ACCOUNT_* and ADMIN_CONTRACT_ADDRESS
@@ -10,22 +10,22 @@
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 import {
+    getAztecNodeUrl,
     getContractInstances,
+    getOptionalEnv,
+    getProverEnabled,
     getSponsoredPFCContract,
-    loadAccountFromEnv,
+    loadContractsEnv,
+    resolveDeployerAccount,
     setupWallet,
-} from './utils/index.ts';
+} from '../utils/index.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+loadContractsEnv();
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const AZTEC_NODE_URL = getAztecNodeUrl();
+const PROVER_ENABLED = getProverEnabled();
 const INTERVAL_SEC = parseInt(process.argv[2] || '12', 10) || 12;
 
 const CONTRACT_SPECS = [
@@ -36,7 +36,7 @@ const CONTRACT_SPECS = [
     },
 ];
 async function main() {
-    const adminAddr = process.env.ADMIN_CONTRACT_ADDRESS;
+    const adminAddr = getOptionalEnv('ADMIN_CONTRACT_ADDRESS');
     if (!adminAddr) {
         throw new Error(
             'Missing ADMIN_CONTRACT_ADDRESS in .env. Run deploy + configure first.'
@@ -57,7 +57,10 @@ async function main() {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    const admin = await loadAccountFromEnv(wallet, aztecNode);
+    const admin = await resolveDeployerAccount(wallet, aztecNode, {
+        mode: 'loadOnly',
+        deployTimeoutMs: 120_000,
+    });
     const contracts = await getContractInstances(
         wallet,
         { Admin: adminAddr },

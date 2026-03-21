@@ -9,27 +9,22 @@
  *   then runs initialize_player.
  *
  * Usage (from contracts/ directory):
- *   node --experimental-transform-types scripts/test-core-initialize-player.ts [userIndex]
+ *   node --experimental-transform-types scripts/test/test-core-initialize-player.ts [userIndex]
  *
  * userIndex: 0 = user1, 1 = user2 (default 0). Use different indexes for multiple runs so each
  * account initializes once (e.g. first run no arg → user1, second run "1" → user2).
  *
- * Or with tsx: pnpm exec tsx scripts/test-core-initialize-player.ts [userIndex]
+ * Or with tsx: pnpm exec tsx scripts/test/test-core-initialize-player.ts [userIndex]
  */
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
+import { unwrapSimulateResult } from '../utils/index.ts';
 import {
     getTestContext,
     sendTimestampRefreshTx,
     type TestContext,
 } from './test-setup.ts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // World shape (types/storage/world.nr)
 function worldZero(): {
@@ -169,7 +164,7 @@ async function loadWorldFromEvents(
     const limit = latestBlock - from + 1;
 
     // Dynamic import so we don't require artifacts at parse time
-    const mod = await import('./artifacts/WorldStorage.ts');
+    const mod = await import('../artifacts/WorldStorage.ts');
     // Use only the exported WorldStorageContract; do not fallback to mod.WorldStorage (fix TS error)
     const WorldStorageContract = mod.WorldStorageContract;
     if (!WorldStorageContract?.events?.WorldUpdate) {
@@ -307,36 +302,48 @@ async function main() {
     const perlin = 13;
 
     console.log('\n📥 Loading config from Config contract...');
-    const snarkConfig = await Config.methods
-        .get_snark_config()
-        .simulate({ from: user });
-    const planetDefaultStats = await Config.methods
-        .get_planet_default_stats(level)
-        .simulate({ from: user });
-    const worldConfig = await Config.methods
-        .get_world_config()
-        .simulate({ from: user });
-    const gameConfigCore = await Config.methods
-        .get_game_config_core()
-        .simulate({ from: user });
-    const planetLevelThresholds = await Config.methods
-        .get_planet_level_thresholds()
-        .simulate({ from: user });
-    const spaceJunkConfig = await Config.methods
-        .get_space_junk_config()
-        .simulate({ from: user });
-    const planetTypeWeightsTier0 = await Config.methods
-        .get_planet_type_weights_tier(0)
-        .simulate({ from: user });
-    const planetTypeWeightsTier1 = await Config.methods
-        .get_planet_type_weights_tier(1)
-        .simulate({ from: user });
-    const planetTypeWeightsTier2 = await Config.methods
-        .get_planet_type_weights_tier(2)
-        .simulate({ from: user });
-    const planetTypeWeightsTier3 = await Config.methods
-        .get_planet_type_weights_tier(3)
-        .simulate({ from: user });
+    const snarkConfig = unwrapSimulateResult(
+        await Config.methods.get_snark_config().simulate({ from: user })
+    );
+    const planetDefaultStats = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_default_stats(level)
+            .simulate({ from: user })
+    );
+    const worldConfig = unwrapSimulateResult(
+        await Config.methods.get_world_config().simulate({ from: user })
+    );
+    const gameConfigCore = unwrapSimulateResult(
+        await Config.methods.get_game_config_core().simulate({ from: user })
+    );
+    const planetLevelThresholds = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_level_thresholds()
+            .simulate({ from: user })
+    );
+    const spaceJunkConfig = unwrapSimulateResult(
+        await Config.methods.get_space_junk_config().simulate({ from: user })
+    );
+    const planetTypeWeightsTier0 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(0)
+            .simulate({ from: user })
+    );
+    const planetTypeWeightsTier1 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(1)
+            .simulate({ from: user })
+    );
+    const planetTypeWeightsTier2 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(2)
+            .simulate({ from: user })
+    );
+    const planetTypeWeightsTier3 = unwrapSimulateResult(
+        await Config.methods
+            .get_planet_type_weights_tier(3)
+            .simulate({ from: user })
+    );
 
     console.log('📥 Resolving World state...');
     let world = await loadWorldFromEvents(ctx);
@@ -463,7 +470,7 @@ async function main() {
         if (blockNumber !== undefined) {
             console.log('\n  To inspect on-chain state changes, run:');
             console.log(
-                '    node --experimental-transform-types scripts/read-initialize-player-state.ts',
+                '    node --experimental-transform-types scripts/read/read-initialize-player-state.ts',
                 blockNumber,
                 user.toString(),
                 String(locationId)
@@ -474,7 +481,7 @@ async function main() {
         console.log(
             '\n  Next run (' +
                 otherLabel +
-                '): node --experimental-transform-types scripts/test-core-initialize-player.ts',
+                '): node --experimental-transform-types scripts/test/test-core-initialize-player.ts',
             otherIndex
         );
         console.log('\n' + '='.repeat(60));

@@ -12,6 +12,8 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
+import { getOptionalEnv } from './env.ts';
+
 export type ContractSpec = {
     name: string;
     modulePath: string;
@@ -27,7 +29,7 @@ const SCRIPTS_DIR = path.join(
 /**
  * Load contract wrapper modules and return instances for the given addresses.
  * Use this after deploy (with results) or when reading addresses from .env.
- * modulePath in specs is relative to the scripts directory (e.g. './artifacts/Config.ts').
+ * modulePath in specs is relative to the scripts directory (e.g. './artifacts/Config.ts' from `scripts/`).
  *
  * @param wallet - Wallet to use for interactions
  * @param addresses - Map of contract name -> address string (e.g. { Config: "0x...", Admin: "0x..." })
@@ -95,8 +97,8 @@ export async function registerContractsWithWallet(
             '_CONTRACT_ADDRESS',
             '_DEPLOYMENT_SALT'
         );
-        const deployerStr = process.env[deployerKey];
-        const saltStr = process.env[saltKey];
+        const deployerStr = getOptionalEnv(deployerKey);
+        const saltStr = getOptionalEnv(saltKey);
         if (!deployerStr || !saltStr) continue;
         const resolvedPath = path.resolve(SCRIPTS_DIR, spec.modulePath);
         const moduleUrl = pathToFileURL(resolvedPath).href;

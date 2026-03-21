@@ -5,7 +5,7 @@ import { getPublicEvents } from "@aztec/aztec.js/events";
 import { BlockNumber } from "@aztec/foundation/branded-types";
 import dotenv from "dotenv";
 
-import { getTestContext } from "../../contracts/scripts/test-setup.ts";
+import { getTestContext } from "../../contracts/scripts/test/test-setup.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");

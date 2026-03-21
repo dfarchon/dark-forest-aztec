@@ -20,6 +20,7 @@ contract Admin {
     };
 
     use ::types::storage::{planet::Planet, player::Player, world::World};
+    use ::types::system_storage_addresses::AdminSystemStorageAddresses;
 
     use ::libs::batch_utils::{
         assert_public_timestamp, compute_config_hashes, compute_planet_state_hash,
@@ -99,6 +100,18 @@ contract Admin {
         self.storage.world_storage_address.write(world_addr);
         self.storage.player_storage_address.write(player_addr);
         self.storage.planet_storage_address.write(planet_addr);
+    }
+
+    // ================== UTILITY (UNCONSTRAINED) ==================
+
+    #[external("utility")]
+    unconstrained fn get_all_storage_addresses_unconstrained() -> AdminSystemStorageAddresses {
+        AdminSystemStorageAddresses {
+            config_storage_address: self.storage.config_storage_address.read(),
+            world_storage_address: self.storage.world_storage_address.read(),
+            player_storage_address: self.storage.player_storage_address.read(),
+            planet_storage_address: self.storage.planet_storage_address.read(),
+        }
     }
 
     /// Pause the game. Verifies world matches on-chain state via WorldStorage.verify(), then sets paused = true.

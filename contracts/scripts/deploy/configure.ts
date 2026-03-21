@@ -1,6 +1,6 @@
 /**
  * Run post-deploy interactions using contract addresses from .env.
- * Use after deploy: pnpm configure (or node --experimental-transform-types scripts/configure.ts)
+ * Use after deploy: pnpm configure (or node --experimental-transform-types scripts/deploy/configure.ts)
  * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS, ADMIN_CONTRACT_ADDRESS, CORE_CONTRACT_ADDRESS,
  * MOVE_CONTRACT_ADDRESS, ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS, ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS,
  * ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS, ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS,
@@ -15,25 +15,46 @@ import type { ContractBase } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import * as dotenv from 'dotenv';
 
 import {
+    getAztecNodeUrl,
     getContractInstances,
+    getProverEnabled,
+    getRequiredEnv,
     getSponsoredPFCContract,
-    loadAccountFromEnv,
+    loadContractsEnv,
+    resolveDeployerAccount,
     setupWallet,
-} from './utils/index.ts';
+    unwrapSimulateResult,
+} from '../utils/index.ts';
+import {
+    ARTIFACT_SYSTEM_NAMES,
+    PHASE3_AUTHORIZED_BY_STORAGE,
+    PHASE4_ARTIFACT_EXTRA_STORAGES,
+    type StorageContractName,
+    type SystemContractName,
+} from './storageAuthorizationExpectations.ts';
 
-dotenv.config();
+loadContractsEnv();
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+/** Phase 3 batch order (matches previous configure steps). */
+const PHASE3_STORAGE_ORDER: StorageContractName[] = [
+    'WorldStorage',
+    'PlayerStorage',
+    'PlanetStorage',
+    'PlanetRevealedCoordsStorage',
+    'PlanetEventsStorage',
+    'PlanetArtifactsStorage',
+    'ArrivalStorage',
+    'ArtifactStorage',
+    'ArtifactLocationStorage',
+];
+
+const AZTEC_NODE_URL = getAztecNodeUrl();
+const PROVER_ENABLED = getProverEnabled();
 const isLocalSandbox =
     /^https?:\/\/localhost(:\d+)?$/i.test(AZTEC_NODE_URL) ||
     /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(AZTEC_NODE_URL);
-/** Use prover on devnet (required for valid proofs). Off for local sandbox only. */
-const PROVER_ENABLED =
-    process.env.PROVER_ENABLED === 'true' ||
-    (!isLocalSandbox && process.env.PROVER_ENABLED !== 'false');
 
 const CONTRACT_SPECS = [
     {
@@ -151,9 +172,7 @@ function addressesFromEnv(): Record<string, string> {
     ];
     const out: Record<string, string> = {};
     for (const [name, key] of envKeys) {
-        const v = process.env[key];
-        if (!v) throw new Error(`Missing ${key} in .env (run deploy first)`);
-        out[name] = v;
+        out[name] = getRequiredEnv(key);
     }
     return out;
 }
@@ -217,7 +236,10 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Loading account from .env...');
-    const deployer = await loadAccountFromEnv(wallet, aztecNode);
+    const deployer = await resolveDeployerAccount(wallet, aztecNode, {
+        mode: 'loadOnly',
+        deployTimeoutMs: 120_000,
+    });
     console.log(`✅ Account loaded: ${deployer.toString()}\n`);
 
     console.log('📄 Connecting to contracts...');
@@ -274,6 +296,28 @@ async function main() {
         throw new Error('One or more storage contracts are missing');
     }
 
+    const systemInstances: Record<SystemContractName, ContractBase> = {
+        Admin: admin,
+        Core: core,
+        Move: move,
+        ArtifactAction: artifactActionSystem,
+        ArtifactFind: artifactFindSystem,
+        ArtifactProspect: artifactProspectSystem,
+        ArtifactValut: artifactVaultSystem,
+    };
+
+    const storageByName: Record<StorageContractName, ContractBase> = {
+        WorldStorage: worldStorage,
+        PlayerStorage: playerStorage,
+        PlanetStorage: planetStorage,
+        PlanetRevealedCoordsStorage: planetRevealedCoordsStorage,
+        PlanetEventsStorage: planetEventsStorage,
+        PlanetArtifactsStorage: planetArtifactsStorage,
+        ArrivalStorage: arrivalStorage,
+        ArtifactStorage: artifactStorage,
+        ArtifactLocationStorage: artifactLocationStorage,
+    };
+
     const opts = {
         from: deployer,
         fee: {
@@ -300,9 +344,9 @@ async function main() {
 
         const toAuthorize: AztecAddress[] = [];
         for (const addr of contractAddrs) {
-            const isAuth = await methods
-                .is_authorized(addr)
-                .simulate({ from: deployer });
+            const isAuth = unwrapSimulateResult(
+                await methods.is_authorized(addr).simulate({ from: deployer })
+            ) as boolean;
             if (!isAuth) toAuthorize.push(addr);
         }
         if (toAuthorize.length === 0) return;
@@ -591,82 +635,17 @@ async function main() {
 
     // ---- Phase 3: Storage authorization (9 calls) ----
 
-    await run('WorldStorage.add_authorized_contracts_batch()', async () => {
-        await addAuthorizedBatchIfNeeded(worldStorage, [
-            admin.address,
-            core.address,
-            move.address,
-        ]);
-    });
-
-    await run('PlayerStorage.add_authorized_contracts_batch()', async () => {
-        await addAuthorizedBatchIfNeeded(playerStorage, [
-            admin.address,
-            core.address,
-            move.address,
-        ]);
-    });
-
-    await run('PlanetStorage.add_authorized_contracts_batch()', async () => {
-        await addAuthorizedBatchIfNeeded(planetStorage, [
-            admin.address,
-            core.address,
-            move.address,
-        ]);
-    });
-
-    await run(
-        'PlanetRevealedCoordsStorage.add_authorized_contracts_batch()',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetRevealedCoordsStorage, [
-                core.address,
-            ]);
-        }
-    );
-
-    await run(
-        'PlanetEventsStorage.add_authorized_contracts_batch()',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetEventsStorage, [
-                core.address,
-                move.address,
-            ]);
-        }
-    );
-
-    await run(
-        'PlanetArtifactsStorage.add_authorized_contracts_batch()',
-        async () => {
-            await addAuthorizedBatchIfNeeded(planetArtifactsStorage, [
-                core.address,
-                move.address,
-            ]);
-        }
-    );
-
-    await run('ArrivalStorage.add_authorized_contracts_batch()', async () => {
-        await addAuthorizedBatchIfNeeded(arrivalStorage, [
-            core.address,
-            move.address,
-        ]);
-    });
-
-    await run('ArtifactStorage.add_authorized_contracts_batch()', async () => {
-        await addAuthorizedBatchIfNeeded(artifactStorage, [
-            core.address,
-            move.address,
-        ]);
-    });
-
-    await run(
-        'ArtifactLocationStorage.add_authorized_contracts_batch()',
-        async () => {
-            await addAuthorizedBatchIfNeeded(artifactLocationStorage, [
-                core.address,
-                move.address,
-            ]);
-        }
-    );
+    for (const storageName of PHASE3_STORAGE_ORDER) {
+        const batch = PHASE3_AUTHORIZED_BY_STORAGE[storageName];
+        const storage = storageByName[storageName];
+        const addrs = batch.map((n) => systemInstances[n].address);
+        await run(
+            `${storageName}.add_authorized_contracts_batch()`,
+            async () => {
+                await addAuthorizedBatchIfNeeded(storage, addrs);
+            }
+        );
+    }
 
     // ---- Phase 4: Artifact system contracts setup ----
 
@@ -697,21 +676,12 @@ async function main() {
         });
     }
 
-    const artifactSystemAddresses = artifactSystems.map(
-        (s) => s.instance.address
+    const artifactSystemAddresses = ARTIFACT_SYSTEM_NAMES.map(
+        (n) => systemInstances[n].address
     );
 
-    const artifactAuthStorages: Array<[string, ContractBase]> = [
-        ['WorldStorage', worldStorage],
-        ['PlayerStorage', playerStorage],
-        ['PlanetStorage', planetStorage],
-        ['PlanetArtifactsStorage', planetArtifactsStorage],
-        ['PlanetEventsStorage', planetEventsStorage],
-        ['ArtifactStorage', artifactStorage],
-        ['ArtifactLocationStorage', artifactLocationStorage],
-    ];
-
-    for (const [storageName, storage] of artifactAuthStorages) {
+    for (const storageName of PHASE4_ARTIFACT_EXTRA_STORAGES) {
+        const storage = storageByName[storageName];
         await run(
             `${storageName}.add_authorized_contracts_batch(artifact systems)`,
             async () => {

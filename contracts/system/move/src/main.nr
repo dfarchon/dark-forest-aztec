@@ -38,6 +38,7 @@ contract Move {
         player::Player,
         world::World,
     };
+    use ::types::system_storage_addresses::MoveSystemStorageAddresses;
 
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _get_upgrade_for_artifact, _take_artifact_off_planet,
@@ -177,6 +178,23 @@ contract Move {
         self.storage.arrivals_storage_address.write(arrivals_addr);
         self.storage.artifact_storage_address.write(artifact_addr);
         self.storage.artifact_location_storage_address.write(artifact_location_addr);
+    }
+
+    // ================== UTILITY (UNCONSTRAINED) ==================
+
+    #[external("utility")]
+    unconstrained fn get_all_storage_addresses_unconstrained() -> MoveSystemStorageAddresses {
+        MoveSystemStorageAddresses {
+            config_storage_address: self.storage.config_storage_address.read(),
+            world_storage_address: self.storage.world_storage_address.read(),
+            player_storage_address: self.storage.player_storage_address.read(),
+            planet_storage_address: self.storage.planet_storage_address.read(),
+            planet_events_storage_address: self.storage.planet_events_storage_address.read(),
+            planet_artifacts_storage_address: self.storage.planet_artifacts_storage_address.read(),
+            arrivals_storage_address: self.storage.arrivals_storage_address.read(),
+            artifact_storage_address: self.storage.artifact_storage_address.read(),
+            artifact_location_storage_address: self.storage.artifact_location_storage_address.read(),
+        }
     }
 
     #[external("private")]

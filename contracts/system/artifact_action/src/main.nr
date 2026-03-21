@@ -17,6 +17,7 @@ contract ArtifactAction {
         player::Player,
         world::World,
     };
+    use ::types::system_storage_addresses::ArtifactFacetSystemStorageAddresses;
 
     use ::types::config::{
         artifacts::ArtifactsConfig,
@@ -166,6 +167,23 @@ contract ArtifactAction {
     fn set_world_storage_address(world_storage_address: AztecAddress) {
         self.internal.assert_admin();
         self.storage.world_storage_address.write(world_storage_address);
+    }
+
+    // ================== UTILITY (UNCONSTRAINED) ==================
+
+    #[external("utility")]
+    unconstrained fn get_all_storage_addresses_unconstrained() -> ArtifactFacetSystemStorageAddresses {
+        ArtifactFacetSystemStorageAddresses {
+            config_storage_address: self.storage.config_storage_address.read(),
+            arrivals_storage_address: self.storage.arrivals_storage_address.read(),
+            artifact_storage_address: self.storage.artifact_storage_address.read(),
+            artifact_location_storage_address: self.storage.artifact_location_storage_address.read(),
+            planet_storage_address: self.storage.planet_storage_address.read(),
+            planet_artifacts_storage_address: self.storage.planet_artifacts_storage_address.read(),
+            planet_events_storage_address: self.storage.planet_events_storage_address.read(),
+            player_storage_address: self.storage.player_storage_address.read(),
+            world_storage_address: self.storage.world_storage_address.read(),
+        }
     }
 
     /// Noir port of Solidity `DFArtifactFacet.activateArtifact`

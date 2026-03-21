@@ -1,7 +1,7 @@
 /**
  * Zero-state constructors for Aztec contract inputs.
  * When an entity doesn't exist on-chain yet, pass its zero state.
- * Matches patterns from contracts/scripts/test-move.ts and test-core-initialize-player.ts.
+ * Matches patterns from contracts/scripts/test/test-move.ts and test-core-initialize-player.ts.
  */
 
 const AZTEC_ZERO =

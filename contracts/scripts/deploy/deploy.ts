@@ -1,27 +1,33 @@
 /**
  * Deploy all contracts (Config, storage contracts, system contracts) and write deployment info to .env.
- * Run: pnpm deploy-contracts  (builds first) or node --experimental-transform-types scripts/deploy.ts
+ * Requires generated TS artifacts under `scripts/artifacts/` (from `pnpm build-contracts`).
+ * `pnpm deploy-contracts` runs that pipeline first; to deploy without rebuilding, run this file with node after a successful build.
  * Requires: AZTEC_NODE_URL (optional, default http://localhost:8080). Optional: WRITE_ENV_FILE, PROVER_ENABLED.
  */
 
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import {
     type ContractDeployConfig,
     deployContracts,
-    getOrCreateAccount,
+    getAztecNodeUrl,
+    getContractsEnvFilePath,
+    getProverEnabled,
     getSponsoredPFCContract,
+    getWriteEnvFile,
+    loadContractsEnv,
+    resolveDeployerAccount,
     setupWallet,
-} from './utils/index.ts';
+} from '../utils/index.ts';
 
-dotenv.config();
+loadContractsEnv();
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const AZTEC_NODE_URL = getAztecNodeUrl();
+const PROVER_ENABLED = getProverEnabled();
 
 /** Wallet options for deploy: fresh store, prover off for fast local deploy. */
 const WALLET_SETUP_OPTIONS = {
@@ -53,7 +59,7 @@ const DEPLOY_DEFINITIONS: Array<{
     {
         name: 'Config',
         envPrefix: 'CONFIG',
-        modulePath: './artifacts/Config.ts',
+        modulePath: '../artifacts/Config.ts',
         exportName: 'ConfigContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
@@ -61,63 +67,63 @@ const DEPLOY_DEFINITIONS: Array<{
     {
         name: 'WorldStorage',
         envPrefix: 'WORLD_STORAGE',
-        modulePath: './artifacts/WorldStorage.ts',
+        modulePath: '../artifacts/WorldStorage.ts',
         exportName: 'WorldStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'PlayerStorage',
         envPrefix: 'PLAYER_STORAGE',
-        modulePath: './artifacts/PlayerStorage.ts',
+        modulePath: '../artifacts/PlayerStorage.ts',
         exportName: 'PlayerStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'PlanetStorage',
         envPrefix: 'PLANET_STORAGE',
-        modulePath: './artifacts/PlanetStorage.ts',
+        modulePath: '../artifacts/PlanetStorage.ts',
         exportName: 'PlanetStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'PlanetRevealedCoordsStorage',
         envPrefix: 'PLANET_REVEALED_COORDS_STORAGE',
-        modulePath: './artifacts/PlanetRevealedCoordsStorage.ts',
+        modulePath: '../artifacts/PlanetRevealedCoordsStorage.ts',
         exportName: 'PlanetRevealedCoordsStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'PlanetEventsStorage',
         envPrefix: 'PLANET_EVENTS_STORAGE',
-        modulePath: './artifacts/PlanetEventsStorage.ts',
+        modulePath: '../artifacts/PlanetEventsStorage.ts',
         exportName: 'PlanetEventsStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'PlanetArtifactsStorage',
         envPrefix: 'PLANET_ARTIFACTS_STORAGE',
-        modulePath: './artifacts/PlanetArtifactsStorage.ts',
+        modulePath: '../artifacts/PlanetArtifactsStorage.ts',
         exportName: 'PlanetArtifactsStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArrivalStorage',
         envPrefix: 'ARRIVAL_STORAGE',
-        modulePath: './artifacts/ArrivalStorage.ts',
+        modulePath: '../artifacts/ArrivalStorage.ts',
         exportName: 'ArrivalStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactStorage',
         envPrefix: 'ARTIFACT_STORAGE',
-        modulePath: './artifacts/ArtifactStorage.ts',
+        modulePath: '../artifacts/ArtifactStorage.ts',
         exportName: 'ArtifactStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactLocationStorage',
         envPrefix: 'ARTIFACT_LOCATION_STORAGE',
-        modulePath: './artifacts/ArtifactLocationStorage.ts',
+        modulePath: '../artifacts/ArtifactLocationStorage.ts',
         exportName: 'ArtifactLocationStorageContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
@@ -125,53 +131,68 @@ const DEPLOY_DEFINITIONS: Array<{
     {
         name: 'Admin',
         envPrefix: 'ADMIN',
-        modulePath: './artifacts/Admin.ts',
+        modulePath: '../artifacts/Admin.ts',
         exportName: 'AdminContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'Core',
         envPrefix: 'CORE',
-        modulePath: './artifacts/Core.ts',
+        modulePath: '../artifacts/Core.ts',
         exportName: 'CoreContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'Move',
         envPrefix: 'MOVE',
-        modulePath: './artifacts/Move.ts',
+        modulePath: '../artifacts/Move.ts',
         exportName: 'MoveContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactAction',
         envPrefix: 'ARTIFACT_ACTION_SYSTEM',
-        modulePath: './artifacts/ArtifactAction.ts',
+        modulePath: '../artifacts/ArtifactAction.ts',
         exportName: 'ArtifactActionContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactFind',
         envPrefix: 'ARTIFACT_FIND_SYSTEM',
-        modulePath: './artifacts/ArtifactFind.ts',
+        modulePath: '../artifacts/ArtifactFind.ts',
         exportName: 'ArtifactFindContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactProspect',
         envPrefix: 'ARTIFACT_PROSPECT_SYSTEM',
-        modulePath: './artifacts/ArtifactProspect.ts',
+        modulePath: '../artifacts/ArtifactProspect.ts',
         exportName: 'ArtifactProspectContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
     {
         name: 'ArtifactValut',
         envPrefix: 'ARTIFACT_VAULT_SYSTEM',
-        modulePath: './artifacts/ArtifactValut.ts',
+        modulePath: '../artifacts/ArtifactValut.ts',
         exportName: 'ArtifactValutContract',
         getConstructorArgs: (ctx) => [ctx.deployer.toField()],
     },
 ];
+
+const DEPLOY_SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+/** Fail fast if `pnpm build-contracts` / `copy-artifacts` has not populated `scripts/artifacts/`. */
+function assertCodegenArtifactsPresent(): void {
+    const configPath = path.join(DEPLOY_SCRIPT_DIR, '../artifacts/Config.ts');
+    if (!fs.existsSync(configPath)) {
+        console.error(
+            `Missing contract codegen: ${configPath}\n` +
+                `Run from contracts/: pnpm build-contracts\n` +
+                `(compile → codegen → copy TypeScript wrappers to scripts/artifacts/)`
+        );
+        process.exit(1);
+    }
+}
 
 async function loadDeployConfigs(): Promise<ContractDeployConfig[]> {
     const configs: ContractDeployConfig[] = [];
@@ -207,6 +228,8 @@ function formatElapsed(ms: number): string {
 async function main() {
     const scriptStartTime = Date.now();
 
+    assertCodegenArtifactsPresent();
+
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
     console.log(
         `⚡ Prover: ${PROVER_ENABLED ? 'ON (slow — each contract ~2–5 min)' : 'OFF (fast)'}\n`
@@ -229,12 +252,14 @@ async function main() {
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
     console.log('👤 Getting or creating deployer account...');
-    const deployer = await getOrCreateAccount(wallet, aztecNode);
+    const deployer = await resolveDeployerAccount(wallet, aztecNode, {
+        mode: 'getOrCreate',
+        deployTimeoutMs: 120_000,
+    });
     console.log(`✅ Deployer: ${deployer.toString()}\n`);
 
-    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-    const envPath = path.join(scriptDir, '..', '.env');
-    const writeEnv = process.env.WRITE_ENV_FILE !== 'false';
+    const envPath = getContractsEnvFilePath();
+    const writeEnv = getWriteEnvFile();
 
     const startBlock = Number(await aztecNode.getBlockNumber());
     console.log(`📌 START_BLOCK: ${startBlock}`);

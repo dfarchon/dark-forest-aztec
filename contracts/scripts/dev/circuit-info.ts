@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import zlib from 'zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const targetDir = path.join(__dirname, '..', 'target');
+const targetDir = path.join(__dirname, '..', '..', 'target');
 
 const BYTES_PER_FIELD = 31;
 const MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS = 3000;

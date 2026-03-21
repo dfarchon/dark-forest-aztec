@@ -408,11 +408,11 @@ function workloadPlan(config) {
 
   const moveUser1 = {
     name: "move user1",
-    args: ["--experimental-transform-types", "scripts/test-move.ts", "0"],
+    args: ["--experimental-transform-types", "scripts/test/test-move.ts", "0"],
   };
   const moveUser2 = {
     name: "move user2",
-    args: ["--experimental-transform-types", "scripts/test-move.ts", "1"],
+    args: ["--experimental-transform-types", "scripts/test/test-move.ts", "1"],
   };
 
   // In high-throughput mode we still prepend idempotent init guards so
@@ -423,19 +423,19 @@ function workloadPlan(config) {
 
   const upgradeStepUser1 = {
     name: "upgrade user1",
-    args: ["--experimental-transform-types", "scripts/test-upgrade.ts", "0"],
+    args: ["--experimental-transform-types", "scripts/test/test-upgrade.ts", "0"],
   };
   const upgradeStepUser2 = {
     name: "upgrade user2",
-    args: ["--experimental-transform-types", "scripts/test-upgrade.ts", "1"],
+    args: ["--experimental-transform-types", "scripts/test/test-upgrade.ts", "1"],
   };
   const withdrawStepUser1 = {
     name: "withdraw user1",
-    args: ["--experimental-transform-types", "scripts/test-withdraw.ts", "0"],
+    args: ["--experimental-transform-types", "scripts/test/test-withdraw.ts", "0"],
   };
   const withdrawStepUser2 = {
     name: "withdraw user2",
-    args: ["--experimental-transform-types", "scripts/test-withdraw.ts", "1"],
+    args: ["--experimental-transform-types", "scripts/test/test-withdraw.ts", "1"],
   };
 
   return {

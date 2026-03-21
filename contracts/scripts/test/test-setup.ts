@@ -2,7 +2,7 @@
  * Test environment: prepares 3 accounts (1 admin + 2 users) and loads contract instances.
  * Run deploy + configure first, then run this script or build tests on top of it.
  *
- * Run: pnpm exec tsx scripts/test-setup.ts  or  node --experimental-transform-types scripts/test-setup.ts
+ * Run: pnpm exec tsx scripts/test/test-setup.ts  or  node --experimental-transform-types scripts/test/test-setup.ts
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractBase } from '@aztec/aztec.js/contracts';
@@ -10,28 +10,31 @@ import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 import {
     createAccountWithCredentials,
+    getAztecNodeUrl,
     getContractInstances,
+    getOptionalEnv,
+    getProverEnabled,
+    getRequiredEnv,
     getSponsoredPFCContract,
     loadAccountFromCredentials,
     loadAccountFromEnv,
+    loadContractsEnv,
     registerContractsWithWallet,
     setupWallet,
     type TestAccountCredentials,
-} from './utils/index.ts';
+} from '../utils/index.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Load .env from contracts/ so it works regardless of cwd (e.g. run from repo root)
-dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true });
+loadContractsEnv({ override: true });
 
 /** Path to persisted test accounts (user1, user2) so they can be reused across runs. */
-const TEST_ACCOUNTS_PATH = path.join(__dirname, '.test-accounts.json');
+const TEST_ACCOUNTS_PATH = path.join(__dirname, '..', '.test-accounts.json');
 
 type TestAccountsFile = {
     user1: TestAccountCredentials;
@@ -223,8 +226,8 @@ export type ArtifactVaultFunctionName =
 
 // ---------------------------------------------------------------------------
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
+const AZTEC_NODE_URL = getAztecNodeUrl();
+const PROVER_ENABLED = getProverEnabled();
 
 const CONTRACT_SPECS = [
     {
@@ -328,16 +331,15 @@ const ENV_KEYS: Array<[string, string]> = [
 function addressesFromEnv(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, key] of ENV_KEYS) {
-        const v = process.env[key];
         if (
             key === 'MOVE_CONTRACT_ADDRESS' ||
             key === 'ARTIFACT_SYSTEM_CONTRACT_ADDRESS'
         ) {
+            const v = getOptionalEnv(key);
             if (v) out[name] = v;
             continue;
         }
-        if (!v) throw new Error(`Missing ${key} in .env (run deploy first)`);
-        out[name] = v;
+        out[name] = getRequiredEnv(key);
     }
     return out;
 }

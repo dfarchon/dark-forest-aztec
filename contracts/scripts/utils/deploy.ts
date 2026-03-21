@@ -17,11 +17,9 @@ import type { Wallet } from '@aztec/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec/stdlib/abi';
 import { getDefaultInitializer } from '@aztec/stdlib/abi';
 import fs from 'fs';
-import path from 'path';
 
+import { getContractsEnvFilePath, getWriteEnvFile } from './env.ts';
 import { getSponsoredPFCContract } from './wallet.ts';
-
-const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
 
 /** SponsoredFPC instance (has .address). Pass from getSponsoredPFCContract() to reuse. */
 export type SponsoredFpcInstance = { address: AztecAddress };
@@ -111,7 +109,7 @@ export async function deployOneContract(
 ): Promise<DeploymentResult> {
     const {
         writeEnv = true,
-        envFilePath = DEFAULT_ENV_PATH,
+        envFilePath = getContractsEnvFilePath(),
         timeoutMs = 120_000,
         sponsoredFpc: sponsoredFpcOpt,
     } = options;
@@ -194,8 +192,8 @@ export async function deployContracts(
     options: DeployContractsOptions = {}
 ): Promise<Record<string, DeploymentResult>> {
     const {
-        envFilePath = DEFAULT_ENV_PATH,
-        writeEnv = process.env.WRITE_ENV_FILE !== 'false',
+        envFilePath = getContractsEnvFilePath(),
+        writeEnv = getWriteEnvFile(),
         timeoutMs = 120_000,
         sponsoredFpc,
         scriptStartTime,

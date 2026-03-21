@@ -2,18 +2,20 @@
  * Debug script: prints all available time sources to figure out what
  * self.context.timestamp() returns in the Aztec sandbox.
  *
- * Usage: node --experimental-transform-types scripts/debug-timestamp.ts
+ * Usage: node --experimental-transform-types scripts/dev/debug-timestamp.ts
  */
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+import {
+    getAztecNodeUrl,
+    getEthereumHost,
+    loadContractsEnv,
+} from '../utils/env.ts';
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
-const ETHEREUM_RPC = process.env.ETHEREUM_HOST || 'http://localhost:8545';
+loadContractsEnv();
+
+const AZTEC_NODE_URL = getAztecNodeUrl();
+const ETHEREUM_RPC = getEthereumHost();
 
 function toISO(sec: number | bigint): string {
     return new Date(Number(sec) * 1000).toISOString();

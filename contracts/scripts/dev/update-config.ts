@@ -12,18 +12,21 @@
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import * as dotenv from 'dotenv';
 
 import {
+    getAztecNodeUrl,
     getContractInstances,
+    getRequiredEnv,
     getSponsoredPFCContract,
-    loadAccountFromEnv,
+    loadContractsEnv,
+    resolveDeployerAccount,
     setupWallet,
-} from './utils/index.ts';
+    unwrapSimulateResult,
+} from '../utils/index.ts';
 
-dotenv.config();
+loadContractsEnv();
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
+const AZTEC_NODE_URL = getAztecNodeUrl();
 
 const CONTRACT_SPECS = [
     {
@@ -34,12 +37,7 @@ const CONTRACT_SPECS = [
 ];
 
 function getConfigAddress(): Record<string, string> {
-    const v = process.env.CONFIG_CONTRACT_ADDRESS;
-    if (!v)
-        throw new Error(
-            'Missing CONFIG_CONTRACT_ADDRESS in .env (run deploy first)'
-        );
-    return { Config: v };
+    return { Config: getRequiredEnv('CONFIG_CONTRACT_ADDRESS') };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +150,9 @@ async function main() {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    const deployer = await loadAccountFromEnv(wallet, aztecNode, {
+    const deployer = await resolveDeployerAccount(wallet, aztecNode, {
+        mode: 'loadOnly',
+        deployTimeoutMs: 120_000,
         ensureDeployed: false,
     });
     console.log(`Account loaded : ${deployer.toString()}\n`);
@@ -173,12 +173,14 @@ async function main() {
     };
 
     // Read current configs (unconstrained = no tx, faster than public simulate)
-    const worldConfig = (await config.methods
-        .get_world_config_unconstrained()
-        .simulate(simOpts)) as Record<string, unknown>;
-    const artifactsConfig = (await config.methods
-        .get_artifacts_config_unconstrained()
-        .simulate(simOpts)) as Record<string, unknown>;
+    const worldConfig = unwrapSimulateResult(
+        await config.methods.get_world_config_unconstrained().simulate(simOpts)
+    ) as Record<string, unknown>;
+    const artifactsConfig = unwrapSimulateResult(
+        await config.methods
+            .get_artifacts_config_unconstrained()
+            .simulate(simOpts)
+    ) as Record<string, unknown>;
 
     if (command === 'show') {
         console.log('Current on-chain config:');

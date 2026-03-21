@@ -9,12 +9,15 @@ import path from 'path';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 
+import { getContractsEnvFilePath, loadContractsEnv } from '../utils/env.ts';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Paths: script lives in contracts/scripts/ */
-const CONTRACTS_DIR = path.resolve(__dirname, '..');
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const ENV_PATH = path.join(CONTRACTS_DIR, '.env');
+/** Paths: script lives in contracts/scripts/deploy/ */
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
+
+loadContractsEnv();
+const ENV_PATH = getContractsEnvFilePath();
 const INDEX_TS_PATH = path.join(
     REPO_ROOT,
     'packages',
@@ -22,8 +25,8 @@ const INDEX_TS_PATH = path.join(
     'src',
     'index.ts'
 );
-/** Source: contracts/scripts/artifacts (same dir as this script) */
-const ARTIFACTS_SRC = path.join(__dirname, 'artifacts');
+/** Source: contracts/scripts/artifacts */
+const ARTIFACTS_SRC = path.join(__dirname, '..', 'artifacts');
 const ARTIFACTS_DEST = path.join(
     REPO_ROOT,
     'packages',
@@ -140,7 +143,7 @@ function generateIndexTs(
     const lines: string[] = [
         '',
         '/**',
-        ' * ACCOUNT_ADDRESS, START_BLOCK, and contract addresses. Generated from contracts/.env by sync-env-and-artifacts.ts',
+        ' * ACCOUNT_ADDRESS, START_BLOCK, and contract addresses. Generated from the resolved contracts env file by sync-env-and-artifacts.ts',
         ' */',
         '',
     ];

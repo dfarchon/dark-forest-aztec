@@ -10,13 +10,19 @@ import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 
+import {
+    getContractsEnvFilePath,
+    getOptionalEnv,
+    getWriteEnvFile,
+    reloadContractsEnv,
+} from './env.ts';
+
 const DEFAULT_PXE_STORE_DIR = path.join(
     import.meta.dirname,
     '..',
     '..',
     '.store'
 );
-const DEFAULT_ENV_PATH = path.join(import.meta.dirname, '..', '..', '.env');
 const FINGERPRINT_FILENAME = '.network-fingerprint';
 
 /**
@@ -102,12 +108,12 @@ export async function getSponsoredPFCContract() {
 }
 
 async function deployAccountIfNeeded(
-    aztecNode: AztecNode,
+    wallet: EmbeddedWallet,
     accountManager: AccountManager,
     timeoutMs: number
 ): Promise<boolean> {
-    const existing = await aztecNode.getContract(accountManager.address);
-    if (existing) return false;
+    const metadata = await wallet.getContractMetadata(accountManager.address);
+    if (metadata.isContractInitialized) return false;
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
@@ -119,8 +125,6 @@ async function deployAccountIfNeeded(
                     sponsoredFPC.address
                 ),
             },
-            skipClassPublication: true,
-            skipInstancePublication: true,
             wait: { timeout: timeoutMs },
         });
         return true;
@@ -132,7 +136,7 @@ async function deployAccountIfNeeded(
     }
 }
 
-async function hasLocalAccount(
+export async function hasLocalAccount(
     wallet: EmbeddedWallet,
     address: AztecAddress
 ): Promise<boolean> {
@@ -142,7 +146,7 @@ async function hasLocalAccount(
 
 /**
  * Load an account that was previously registered (e.g. after deploy wrote .env).
- * Reads ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY from process.env,
+ * Reads ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY from the contracts env,
  * recreates the same ECDSAR account in the wallet, and returns its address.
  *
  * Use this when:
@@ -150,19 +154,32 @@ async function hasLocalAccount(
  * - You are on a new machine / new run and need to "attach" the same on-chain account.
  *
  * If you did NOT clear the store (setupWallet(..., { clearStore: false })), the wallet
- * already has the account; you can get the address from process.env.ACCOUNT_ADDRESS
+ * already has the account; you can get the address from ACCOUNT_ADDRESS in env
  * or wallet.getAccounts() and use it as `from` without calling this.
  */
 export async function loadAccountFromEnv(
     wallet: EmbeddedWallet,
     aztecNode: AztecNode,
-    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
+    options: {
+        ensureDeployed?: boolean;
+        deployTimeoutMs?: number;
+        /** Print chain + local wallet diagnosis (default true; use false when caller already printed). */
+        logAccountStatus?: boolean;
+    } = {}
 ): Promise<AztecAddress> {
     const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
-    const envAddress = process.env.ACCOUNT_ADDRESS;
-    const salt = process.env.ACCOUNT_SALT;
-    const secretKey = process.env.ACCOUNT_SECRET_KEY;
-    const signingKeyHex = process.env.ACCOUNT_SIGNING_KEY;
+    const shouldLog = options.logAccountStatus !== false;
+    if (shouldLog) {
+        const ar = await import('./accountResolution.ts');
+        if (!ar.isAccountDiagnosticsSilent()) {
+            const d = await ar.diagnoseDeployerAccount(wallet, aztecNode);
+            ar.printDeployerAccountSummary(d);
+        }
+    }
+    const envAddress = getOptionalEnv('ACCOUNT_ADDRESS');
+    const salt = getOptionalEnv('ACCOUNT_SALT');
+    const secretKey = getOptionalEnv('ACCOUNT_SECRET_KEY');
+    const signingKeyHex = getOptionalEnv('ACCOUNT_SIGNING_KEY');
     if (!salt || !secretKey || !signingKeyHex) {
         throw new Error(
             'Account not in .env. Set ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY (or run deploy first).'
@@ -173,8 +190,8 @@ export async function loadAccountFromEnv(
         const accountAddress = AztecAddress.fromString(envAddress);
         if (await hasLocalAccount(wallet, accountAddress)) {
             if (!ensureDeployed) return accountAddress;
-            const deployed = await aztecNode.getContract(accountAddress);
-            if (deployed) return accountAddress;
+            const metadata = await wallet.getContractMetadata(accountAddress);
+            if (metadata.isContractInitialized) return accountAddress;
         }
     }
 
@@ -185,14 +202,14 @@ export async function loadAccountFromEnv(
     );
 
     if (ensureDeployed) {
-        await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
+        await deployAccountIfNeeded(wallet, accountManager, deployTimeoutMs);
     }
 
     return accountManager.address;
 }
 
 export type GetOrCreateAccountOptions = {
-    /** Where to write account vars when creating (default: contracts/.env) */
+    /** Where to write account vars when creating (default: resolved contracts env file) */
     envFilePath?: string;
     /** If false, do not append to .env after creating (default: true) */
     writeEnv?: boolean;
@@ -200,7 +217,8 @@ export type GetOrCreateAccountOptions = {
     deployTimeoutMs?: number;
 };
 
-function appendAccountToEnv(
+/** Append a new `ACCOUNT_*` block (does not edit prior lines; last occurrence wins in dotenv parse). */
+export function appendAccountToEnv(
     salt: Fr,
     secretKey: Fr,
     signingKey: Buffer,
@@ -225,8 +243,8 @@ export async function createAccount(
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
     const {
-        envFilePath = DEFAULT_ENV_PATH,
-        writeEnv = process.env.WRITE_ENV_FILE !== 'false',
+        envFilePath = getContractsEnvFilePath(),
+        writeEnv = getWriteEnvFile(),
         deployTimeoutMs = 120_000,
     } = options;
 
@@ -246,8 +264,6 @@ export async function createAccount(
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },
-        skipClassPublication: true,
-        skipInstancePublication: true,
         wait: { timeout: deployTimeoutMs },
     };
     await deployMethod.send(deployOpts);
@@ -260,6 +276,7 @@ export async function createAccount(
             accountManager.address,
             envFilePath
         );
+        reloadContractsEnv({ override: true });
     }
     return accountManager.address;
 }
@@ -275,9 +292,9 @@ export async function getOrCreateAccount(
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
     const hasAccount =
-        process.env.ACCOUNT_SALT &&
-        process.env.ACCOUNT_SECRET_KEY &&
-        process.env.ACCOUNT_SIGNING_KEY;
+        getOptionalEnv('ACCOUNT_SALT') &&
+        getOptionalEnv('ACCOUNT_SECRET_KEY') &&
+        getOptionalEnv('ACCOUNT_SIGNING_KEY');
     if (hasAccount) {
         return loadAccountFromEnv(wallet, aztecNode, {
             deployTimeoutMs: options.deployTimeoutMs,
@@ -297,11 +314,18 @@ export type TestAccountCredentials = {
 function isAccountAlreadyDeployedError(error: unknown): boolean {
     const toMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
     const main = toMsg(error).toLowerCase();
-    const cause =
-        error instanceof Error && error.cause != null
-            ? toMsg(error.cause).toLowerCase()
-            : '';
-    const combined = `${main} ${cause}`;
+    let causeStr = '';
+    if (error instanceof Error && error.cause != null) {
+        const c = error.cause;
+        if (typeof c === 'object' && c !== null && 'message' in c) {
+            causeStr = String(
+                (c as { message: unknown }).message
+            ).toLowerCase();
+        } else {
+            causeStr = toMsg(c).toLowerCase();
+        }
+    }
+    const combined = `${main} ${causeStr}`;
     return (
         combined.includes('existing nullifier') ||
         combined.includes('already deployed') ||
@@ -361,8 +385,8 @@ export async function loadAccountFromCredentials(
     const accountAddress = AztecAddress.fromString(cred.address);
     if (await hasLocalAccount(wallet, accountAddress)) {
         if (!ensureDeployed) return accountAddress;
-        const deployed = await aztecNode.getContract(accountAddress);
-        if (deployed) return accountAddress;
+        const metadata = await wallet.getContractMetadata(accountAddress);
+        if (metadata.isContractInitialized) return accountAddress;
     }
 
     const accountManager = await wallet.createECDSARAccount(
@@ -372,7 +396,7 @@ export async function loadAccountFromCredentials(
     );
 
     if (ensureDeployed) {
-        await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
+        await deployAccountIfNeeded(wallet, accountManager, deployTimeoutMs);
     }
 
     return accountManager.address;

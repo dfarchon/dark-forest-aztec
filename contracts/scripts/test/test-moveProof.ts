@@ -35,11 +35,7 @@ const LOCATION_PROOF_COORDS: [number, number][] = [
     [0, -70],
 ];
 
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-import { getTestContext } from './test-setup.ts';
+import { unwrapSimulateResult } from '../utils/index.ts';
 import {
     buildLocationProofInputs,
     buildMoveProofInputs,
@@ -47,10 +43,8 @@ import {
     computeMoveProofOutputs,
     validateLocationProofOutputs,
     validateMoveProofOutputs,
-} from './utils/moveProofValidation.ts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+} from '../utils/moveProofValidation.ts';
+import { getTestContext } from './test-setup.ts';
 
 function toBigint(v: unknown): bigint {
     if (typeof v === 'bigint') return v;
@@ -217,9 +211,9 @@ async function main() {
                 'Config or user not loaded. Run deploy + configure first.'
             );
         }
-        const raw = (await Config.methods
-            .get_snark_config()
-            .simulate({ from: user })) as {
+        const raw = unwrapSimulateResult(
+            await Config.methods.get_snark_config().simulate({ from: user })
+        ) as {
             planethash_key: unknown;
             spacetype_key: unknown;
             perlin_length_scale: unknown;

@@ -33,7 +33,7 @@ Use this checklist before and after deploying server changes that affect the web
 ### Contract Update Checks
 
 - Confirm contract artifacts and env are regenerated/synced:
-  - `contracts/scripts/sync-env-and-artifacts.ts`
+  - `contracts/scripts/deploy/sync-env-and-artifacts.ts`
 - Confirm `@dfpunk/contracts` exports are consistent:
   - `CORE_CONTRACT_ADDRESS`, `CONFIG_CONTRACT_ADDRESS`, `START_BLOCK`
 - Confirm server runtime env matches deployment:
