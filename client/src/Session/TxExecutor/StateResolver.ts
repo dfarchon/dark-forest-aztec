@@ -51,6 +51,8 @@ import type {
   UnconfirmedWithdrawArtifact,
   UnconfirmedWithdrawSilver,
 } from "@dfpunk/types";
+
+import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import {
   buildLocationProofInputs,
   buildMoveProofInputs,
@@ -58,9 +60,8 @@ import {
   computeMoveProofOutputs,
   validateLocationProofOutputs,
   validateMoveProofOutputs,
-} from "@dfpunk/utils";
-
-import type { ChainClock } from "../../Backend/Utils/ChainClock";
+} from "../../utils/moveProofValidation";
+import { unwrapSimulateResult } from "../../utils/unwrapSimulateResult";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { ConfigCache } from "./ConfigCache";
 import { resolveActivateArtifact } from "./resolveActivateArtifact";
@@ -1486,7 +1487,7 @@ export class StateResolver {
         onChainHashPromise,
       ]);
       const localBigInt = localHash.toBigInt();
-      const onChainBigInt = BigInt(String(onChainHash));
+      const onChainBigInt = BigInt(String(unwrapSimulateResult(onChainHash)));
       if (localBigInt !== onChainBigInt) {
         mismatches.push(
           `${label}: local=${localBigInt} onchain=${onChainBigInt}`
@@ -1694,7 +1695,7 @@ export class StateResolver {
         onChainHashPromise,
       ]);
       const localBigInt = localHash.toBigInt();
-      const onChainBigInt = BigInt(String(onChainHash));
+      const onChainBigInt = BigInt(String(unwrapSimulateResult(onChainHash)));
       if (localBigInt !== onChainBigInt) {
         mismatches.push(
           `${label}: local=${localBigInt} onchain=${onChainBigInt}`
@@ -1762,7 +1763,7 @@ export class StateResolver {
         onChainHashPromise,
       ]);
       const localBigInt = localHash.toBigInt();
-      const onChainBigInt = BigInt(String(onChainHash));
+      const onChainBigInt = BigInt(String(unwrapSimulateResult(onChainHash)));
       if (localBigInt !== onChainBigInt) {
         mismatches.push(
           `${label}: local=${localBigInt} onchain=${onChainBigInt}`

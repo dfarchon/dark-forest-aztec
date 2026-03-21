@@ -14,8 +14,13 @@ export {
     type SponsoredFpcInstance,
 } from './deploy.ts';
 export {
+    formatSimulatedValue,
+    unwrapSimulateResult,
+} from './simulate-result.ts';
+export {
     createAccount,
     createAccountWithCredentials,
+    getNetworkFingerprint,
     getOrCreateAccount,
     type GetOrCreateAccountOptions,
     getSponsoredPFCContract,

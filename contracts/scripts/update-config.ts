@@ -13,15 +13,21 @@ import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import * as dotenv from 'dotenv';
+import path from 'path';
 
 import {
     getContractInstances,
     getSponsoredPFCContract,
     loadAccountFromEnv,
     setupWallet,
+    unwrapSimulateResult,
 } from './utils/index.ts';
 
-dotenv.config();
+// Load contracts/.env regardless of cwd (e.g. run from repo root)
+dotenv.config({
+    path: path.join(import.meta.dirname, '..', '.env'),
+    override: true,
+});
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 
@@ -173,12 +179,14 @@ async function main() {
     };
 
     // Read current configs (unconstrained = no tx, faster than public simulate)
-    const worldConfig = (await config.methods
-        .get_world_config_unconstrained()
-        .simulate(simOpts)) as Record<string, unknown>;
-    const artifactsConfig = (await config.methods
-        .get_artifacts_config_unconstrained()
-        .simulate(simOpts)) as Record<string, unknown>;
+    const worldConfig = unwrapSimulateResult(
+        await config.methods.get_world_config_unconstrained().simulate(simOpts)
+    ) as Record<string, unknown>;
+    const artifactsConfig = unwrapSimulateResult(
+        await config.methods
+            .get_artifacts_config_unconstrained()
+            .simulate(simOpts)
+    ) as Record<string, unknown>;
 
     if (command === 'show') {
         console.log('Current on-chain config:');

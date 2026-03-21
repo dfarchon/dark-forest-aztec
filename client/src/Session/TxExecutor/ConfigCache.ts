@@ -6,6 +6,8 @@
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { ContractBase } from "@aztec/aztec.js/contracts";
 
+import { unwrapSimulateResult } from "../../utils/unwrapSimulateResult";
+
 /** Raw Upgrade from contract (snake_case). */
 export type RawUpgrade = {
   pop_cap_multiplier?: number | bigint;
@@ -66,56 +68,70 @@ export class ConfigCache {
 
     // Serialize PXE simulate() calls — the embedded PXE does not support
     // concurrent execution and floods the console with warnings otherwise.
-    const admin = await c.methods.get_admin_unconstrained().simulate({ from });
-    const snarkConfig = await c.methods
-      .get_snark_config_unconstrained()
-      .simulate({ from });
-    const worldConfig = await c.methods
-      .get_world_config_unconstrained()
-      .simulate({ from });
-    const gameConfigCore = await c.methods
-      .get_game_config_core_unconstrained()
-      .simulate({ from });
-    const upgradeConfig = await c.methods
-      .get_upgrade_config_unconstrained()
-      .simulate({ from });
-    const planetLevelThresholds = await c.methods
-      .get_planet_level_thresholds_unconstrained()
-      .simulate({ from });
-    const spaceJunkConfig = await c.methods
-      .get_space_junk_config_unconstrained()
-      .simulate({ from });
-    const tier0 = await c.methods
-      .get_planet_type_weights_tier_unconstrained(0)
-      .simulate({ from });
-    const tier1 = await c.methods
-      .get_planet_type_weights_tier_unconstrained(1)
-      .simulate({ from });
-    const tier2 = await c.methods
-      .get_planet_type_weights_tier_unconstrained(2)
-      .simulate({ from });
-    const tier3 = await c.methods
-      .get_planet_type_weights_tier_unconstrained(3)
-      .simulate({ from });
-    const planetDefaultStatsArr = await c.methods
-      .get_default_stats_unconstrained()
-      .simulate({ from });
-    const upgradesArr = await c.methods
-      .get_upgrades_unconstrained()
-      .simulate({ from });
-    const artifactsConfig = await c.methods
-      .get_artifacts_config_unconstrained()
-      .simulate({ from });
-    const spaceshipsConfig = await c.methods
-      .get_spaceships_config_unconstrained()
-      .simulate({ from });
+    const admin = unwrapSimulateResult(
+      await c.methods.get_admin_unconstrained().simulate({ from })
+    );
+    const snarkConfig = unwrapSimulateResult(
+      await c.methods.get_snark_config_unconstrained().simulate({ from })
+    );
+    const worldConfig = unwrapSimulateResult(
+      await c.methods.get_world_config_unconstrained().simulate({ from })
+    );
+    const gameConfigCore = unwrapSimulateResult(
+      await c.methods.get_game_config_core_unconstrained().simulate({ from })
+    );
+    const upgradeConfig = unwrapSimulateResult(
+      await c.methods.get_upgrade_config_unconstrained().simulate({ from })
+    );
+    const planetLevelThresholds = unwrapSimulateResult(
+      await c.methods
+        .get_planet_level_thresholds_unconstrained()
+        .simulate({ from })
+    );
+    const spaceJunkConfig = unwrapSimulateResult(
+      await c.methods.get_space_junk_config_unconstrained().simulate({ from })
+    );
+    const tier0 = unwrapSimulateResult(
+      await c.methods
+        .get_planet_type_weights_tier_unconstrained(0)
+        .simulate({ from })
+    );
+    const tier1 = unwrapSimulateResult(
+      await c.methods
+        .get_planet_type_weights_tier_unconstrained(1)
+        .simulate({ from })
+    );
+    const tier2 = unwrapSimulateResult(
+      await c.methods
+        .get_planet_type_weights_tier_unconstrained(2)
+        .simulate({ from })
+    );
+    const tier3 = unwrapSimulateResult(
+      await c.methods
+        .get_planet_type_weights_tier_unconstrained(3)
+        .simulate({ from })
+    );
+    const planetDefaultStatsArr = unwrapSimulateResult(
+      await c.methods.get_default_stats_unconstrained().simulate({ from })
+    );
+    const upgradesArr = unwrapSimulateResult(
+      await c.methods.get_upgrades_unconstrained().simulate({ from })
+    );
+    const artifactsConfig = unwrapSimulateResult(
+      await c.methods.get_artifacts_config_unconstrained().simulate({ from })
+    );
+    const spaceshipsConfig = unwrapSimulateResult(
+      await c.methods.get_spaceships_config_unconstrained().simulate({ from })
+    );
 
     const cumulativeRaritiesRaw: unknown[] = [];
     for (let i = 0; i < 10; i++) {
       cumulativeRaritiesRaw.push(
-        await c.methods
-          .get_cumulative_rarity_unconstrained(i)
-          .simulate({ from })
+        unwrapSimulateResult(
+          await c.methods
+            .get_cumulative_rarity_unconstrained(i)
+            .simulate({ from })
+        )
       );
     }
 

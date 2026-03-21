@@ -184,6 +184,21 @@ contract Core {
         self.storage.artifact_location_storage_address.write(artifact_location_addr);
     }
 
+    /// Returns all storage contract addresses in the same order as `set_all_storage_addresses`.
+    #[external("utility")]
+    unconstrained fn get_all_storage_addresses_unconstrained() -> (AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress, AztecAddress) {
+        (
+            self.storage.config_storage_address.read(), self.storage.world_storage_address.read(),
+            self.storage.player_storage_address.read(), self.storage.planet_storage_address.read(),
+            self.storage.planet_revealed_coords_storage_address.read(),
+            self.storage.planet_events_storage_address.read(),
+            self.storage.planet_artifacts_storage_address.read(),
+            self.storage.arrivals_storage_address.read(),
+            self.storage.artifact_storage_address.read(),
+            self.storage.artifact_location_storage_address.read(),
+        )
+    }
+
     #[external("private")]
     fn refresh_planet(
         location: Field,

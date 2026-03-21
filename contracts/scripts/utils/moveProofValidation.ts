@@ -1,6 +1,5 @@
 /**
- * Re-export proof validation from shared package.
- * @see @dfpunk/utils
+ * Re-export move proof helpers from [client/src/utils/moveProofValidation.ts](client/src/utils/moveProofValidation.ts) (single source of truth).
  */
 
 export type {
@@ -9,7 +8,7 @@ export type {
     MoveProofInputs,
     MoveProofOutputs,
     SnarkConfigLike,
-} from '@dfpunk/utils';
+} from '../../../client/src/utils/moveProofValidation.ts';
 export {
     buildLocationProofInputs,
     buildMoveProofInputs,
@@ -19,4 +18,4 @@ export {
     computeSpaceTypePerlin,
     validateLocationProofOutputs,
     validateMoveProofOutputs,
-} from '@dfpunk/utils';
+} from '../../../client/src/utils/moveProofValidation.ts';

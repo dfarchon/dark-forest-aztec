@@ -315,6 +315,11 @@ class GameManager extends EventEmitter {
    */
   private networkHealthInterval: ReturnType<typeof setInterval>;
 
+  /** Background retry when giveSpaceShips fails after initializePlayer succeeded. */
+  private spaceshipsRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private spaceshipsRetryBackoffMs = 2000;
+  private spaceshipsRetryAttempts = 0;
+
   /**
    * Manages the process of mining new space territory.
    */
@@ -2256,59 +2261,58 @@ class GameManager extends EventEmitter {
         throw new Error("game has ended");
       }
 
-      const planet = await this.findRandomHomePlanet();
-      this.homeLocation = planet.location;
-      this.terminal.current?.println("");
-      this.terminal.current?.println(
-        `Found Suitable Home Planet: ${getPlanetName(planet)} `
-      );
-      this.terminal.current?.println(
-        `Its coordinates are: (${planet.location.coords.x}, ${planet.location.coords.y})`
-      );
-      this.terminal.current?.println("");
-
-      await this.persistentChunkStore.addHomeLocation(planet.location);
-
-      const getArgs = async (): Promise<unknown[]> => {
-        const x = planet.location.coords.x;
-        const y = planet.location.coords.y;
-        const radius = Math.floor(Math.sqrt(x * x + y * y)) + 1;
-        const locationId = planet.location.hash;
-        const perlin = planet.location.perlin;
-        const level = planet.planetLevel;
-        const args: unknown[] = [x, y, radius, locationId, perlin, level];
-        this.terminal.current?.println(
-          "INIT: args [x, y, radius, locationId, perlin, level]:",
-          TerminalTextStyle.Sub
-        );
-        this.terminal.current?.println(
-          JSON.stringify(args.slice(0, 4)),
-          TerminalTextStyle.Sub
-        );
-        this.terminal.current?.newline();
-        return args;
-      };
-
-      const txIntent: UnconfirmedInit = {
-        methodName: "initializePlayer",
-        locationId: planet.location.hash,
-        location: planet.location,
-        args: getArgs(),
-        uiTimestamp: Math.floor(this.chainClock.nowSec()),
-      };
-
-      this.terminal.current?.println(
-        "INIT: proving that planet exists",
-        TerminalTextStyle.Sub
-      );
-
-      this.initMiningManager(planet.location.coords); // get an early start
-
-      // if player initialization causes an error, give the caller an opportunity
-      // to resolve that error. if the asynchronous `beforeRetry` function returns
-      // true, retry initializing the player. if it returns false, or if the
-      // `beforeRetry` is undefined, then don't retry and throw an exception.
+      // Wraps the entire flow — planet search through tx submission — so that
+      // on revert the player can press Enter to search for a new home planet
+      // rather than retrying with the same (likely still-failing) planet.
       while (true) {
+        const planet = await this.findRandomHomePlanet();
+        this.homeLocation = planet.location;
+        this.terminal.current?.println("");
+        this.terminal.current?.println(
+          `Found Suitable Home Planet: ${getPlanetName(planet)} `
+        );
+        this.terminal.current?.println(
+          `Its coordinates are: (${planet.location.coords.x}, ${planet.location.coords.y})`
+        );
+        this.terminal.current?.println("");
+
+        await this.persistentChunkStore.addHomeLocation(planet.location);
+
+        const getArgs = async (): Promise<unknown[]> => {
+          const x = planet.location.coords.x;
+          const y = planet.location.coords.y;
+          const radius = Math.floor(Math.sqrt(x * x + y * y)) + 1;
+          const locationId = planet.location.hash;
+          const perlin = planet.location.perlin;
+          const level = planet.planetLevel;
+          const args: unknown[] = [x, y, radius, locationId, perlin, level];
+          this.terminal.current?.println(
+            "INIT: args [x, y, radius, locationId, perlin, level]:",
+            TerminalTextStyle.Sub
+          );
+          this.terminal.current?.println(
+            JSON.stringify(args.slice(0, 4)),
+            TerminalTextStyle.Sub
+          );
+          this.terminal.current?.newline();
+          return args;
+        };
+
+        const txIntent: UnconfirmedInit = {
+          methodName: "initializePlayer",
+          locationId: planet.location.hash,
+          location: planet.location,
+          args: getArgs(),
+          uiTimestamp: Math.floor(this.chainClock.nowSec()),
+        };
+
+        this.terminal.current?.println(
+          "INIT: proving that planet exists",
+          TerminalTextStyle.Sub
+        );
+
+        this.initMiningManager(planet.location.coords); // get an early start
+
         try {
           const tx = await this.contractsAPI.submitTransaction(txIntent);
           const receipt = await tx.confirmedPromise;
@@ -2321,43 +2325,127 @@ class GameManager extends EventEmitter {
 
           break;
         } catch (e) {
-          if (beforeRetry) {
-            if (await beforeRetry(e)) {
-              continue;
-            }
-          } else {
-            throw e;
+          // Tear down the mining manager so initMiningManager can reinitialize
+          // with the next planet's coordinates (it early-returns when already set).
+          if (this.minerManager) {
+            this.minerManager.destroy();
+            this.minerManager = undefined;
           }
+
+          if (beforeRetry && (await beforeRetry(e))) {
+            continue;
+          }
+          throw e;
         }
       }
 
-      await this.getSpaceships();
-      await this.hardRefreshPlanet(planet.locationId);
+      try {
+        const shipsDone = await this.getSpaceships();
+        if (!shipsDone) {
+          this.terminal.current?.println(
+            "giveSpaceShips: another submission is in flight; will retry.",
+            TerminalTextStyle.Sub
+          );
+          this.spaceshipsRetryAttempts = 0;
+          this.spaceshipsRetryBackoffMs = 2000;
+          this.scheduleSpaceshipsRetry();
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.terminal.current?.println(
+          "giveSpaceShips failed; retrying in the background. You can continue.",
+          TerminalTextStyle.Sub
+        );
+        this.getNotificationsManager().txInitError("giveSpaceShips", msg);
+        this.spaceshipsRetryAttempts = 0;
+        this.spaceshipsRetryBackoffMs = 2000;
+        this.scheduleSpaceshipsRetry();
+      }
+
+      await this.hardRefreshPlanet(this.homeLocation!.hash);
 
       this.emit(GameManagerEvent.InitializedPlayer);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       this.terminal.current?.println(
         "Initialization failed. Please refresh the page and try again.",
         TerminalTextStyle.Red
       );
-      this.getNotificationsManager().txInitError("initializePlayer", e.message);
+      this.getNotificationsManager().txInitError("initializePlayer", msg);
       throw e;
     }
   }
 
-  private async getSpaceships() {
+  private clearSpaceshipsRetry(): void {
+    if (this.spaceshipsRetryTimer !== undefined) {
+      clearTimeout(this.spaceshipsRetryTimer);
+      this.spaceshipsRetryTimer = undefined;
+    }
+  }
+
+  private scheduleSpaceshipsRetry(): void {
+    this.clearSpaceshipsRetry();
+    const delay = Math.min(this.spaceshipsRetryBackoffMs, 60_000);
+    this.spaceshipsRetryTimer = setTimeout(() => {
+      void this.runSpaceshipsRetryAttempt();
+    }, delay);
+  }
+
+  private async runSpaceshipsRetryAttempt(): Promise<void> {
+    this.spaceshipsRetryTimer = undefined;
     if (!this.account || !this.homeLocation?.hash) return;
+    try {
+      const shipsDone = await this.getSpaceships();
+      if (!shipsDone) {
+        this.scheduleSpaceshipsRetry();
+        return;
+      }
+      this.spaceshipsRetryBackoffMs = 2000;
+      this.spaceshipsRetryAttempts = 0;
+      this.terminal.current?.println(
+        "giveSpaceShips confirmed.",
+        TerminalTextStyle.Green
+      );
+    } catch (e) {
+      this.spaceshipsRetryAttempts += 1;
+      if (this.spaceshipsRetryAttempts >= 20) {
+        this.terminal.current?.println(
+          "giveSpaceShips: max retries reached. Refresh the page to try again.",
+          TerminalTextStyle.Red
+        );
+        return;
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[giveSpaceShips] retry failed:", msg);
+      this.spaceshipsRetryBackoffMs = Math.min(
+        this.spaceshipsRetryBackoffMs * 2,
+        60_000
+      );
+      this.scheduleSpaceshipsRetry();
+    }
+  }
+
+  /**
+   * @returns true when no further action is needed (claimed, disabled, or tx confirmed).
+   * false when a giveSpaceShips tx is already pending — caller should retry later.
+   */
+  private async getSpaceships(): Promise<boolean> {
+    if (!this.account || !this.homeLocation?.hash) return true;
     if (
       !Object.values(this.contractConstants.SPACESHIPS).some((a) => a === true)
     ) {
       console.log("all spaceships disabled, not calling the tx");
-      return;
+      return true;
     }
 
     const player = await this.contractsAPI.getPlayerById(this.account);
-    if (player?.claimedShips) return;
+    if (player?.claimedShips) {
+      this.clearSpaceshipsRetry();
+      this.spaceshipsRetryAttempts = 0;
+      return true;
+    }
 
-    if (this.getGameObjects().isGettingSpaceships()) return;
+    if (this.getGameObjects().isGettingSpaceships()) return false;
     const tx = await this.contractsAPI.submitTransaction({
       methodName: "giveSpaceShips",
       args: Promise.resolve([
@@ -2367,6 +2455,10 @@ class GameManager extends EventEmitter {
     });
     await tx.confirmedPromise;
     this.hardRefreshPlanet(this.homeLocation?.hash);
+    this.clearSpaceshipsRetry();
+    this.spaceshipsRetryBackoffMs = 2000;
+    this.spaceshipsRetryAttempts = 0;
+    return true;
   }
 
   // this is slow, do not call in i.e. render/draw loop

@@ -9,7 +9,6 @@ packages:
   - packages/hexgen
   - packages/hashing
   - packages/serde
-  - packages/utils
   - packages/types
   - packages/procedural
   - packages/renderer

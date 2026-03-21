@@ -6,315 +6,315 @@
  * The deployer account address.
  */
 export const ACCOUNT_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * The address for the Admin contract.
  */
 export const ADMIN_CONTRACT_ADDRESS =
-  "0x10e94c233880c8430f196106d37c26d9492b8db68bd8d47d5c72b522e6349634";
+  "0x1b23dc19decb7df8a5f2d076fcb881d2eb1358fdb57cc0479c332fd4c4442f61";
 
 /**
  * Deployer address for Admin (for PXE registration).
  */
 export const ADMIN_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for Admin (for PXE registration).
  */
 export const ADMIN_DEPLOYMENT_SALT =
-  "0x212901bcce21bd91f3fe04d060c2fd2c289c5adc1ac88b6f6a3ea5187ef31292";
+  "0x02eabe768dc11401a5892a55072de2040ccc3ae880207be1ddc767cc72425f10";
 
 /**
  * The address for the ArrivalStorage contract.
  */
 export const ARRIVAL_STORAGE_CONTRACT_ADDRESS =
-  "0x1bec9f407d50609e11569f8225ea28e33975ab5c5c38982fae9626c5f152443c";
+  "0x285efaeb7a1076e54be191f587226524c281bd8046222863a8bebfe5e189a5ab";
 
 /**
  * ARRIVAL_STORAGE_DEPLOYER_ADDRESS
  */
 export const ARRIVAL_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * ARRIVAL_STORAGE_DEPLOYMENT_SALT
  */
 export const ARRIVAL_STORAGE_DEPLOYMENT_SALT =
-  "0x039d3b5b5ccfdbe6ec4bf4f3f0d658172f9128108900097616794f1105c87de5";
+  "0x085285bba1c5fd08f15a697e299e91ee047d16816df09e50641fb48512437505";
 
 /**
  * The address for the ArtifactAction system contract.
  */
 export const ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS =
-  "0x0f5ff4ad492b592b6a7d58bb09d631f328d0813b5a0138ef01228f1c8c3227ed";
+  "0x2fdcfbb81819388ccfcf61da4a7790bd34bde611bed3d2e43c116dcb5513cd82";
 
 /**
  * Deployer address for ArtifactAction (for PXE registration).
  */
 export const ARTIFACT_ACTION_SYSTEM_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for ArtifactAction (for PXE registration).
  */
 export const ARTIFACT_ACTION_SYSTEM_DEPLOYMENT_SALT =
-  "0x25b39c7ffd9d6a19e86f0a8df76f6de3dd7c6da7d34f6f061f8c6eed49a3ffd5";
+  "0x18633219b7132a809867ea925e8bc3bfe7606b8a612f635c83c5b87ea1763137";
 
 /**
  * The address for the ArtifactFind system contract.
  */
 export const ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS =
-  "0x20b299ce809f02937a95a6108ecb7c0d56c25bfcceffa80783f21b5003aa631d";
+  "0x2f617b84697000ac75fc0756e76ca9c1bc2fa5c780eaf270fd0fa0316605b01e";
 
 /**
  * Deployer address for ArtifactFind (for PXE registration).
  */
 export const ARTIFACT_FIND_SYSTEM_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for ArtifactFind (for PXE registration).
  */
 export const ARTIFACT_FIND_SYSTEM_DEPLOYMENT_SALT =
-  "0x21fa1cfeaaab0e468eed754d463da7d396dac4f9e183b0ce4549e87b58ac85c6";
+  "0x259127b1a0d6ace987ff71d0dcab9f6f03b71124e7ad28586946d73983f3b110";
 
 /**
  * The address for the ArtifactLocationStorage contract.
  */
 export const ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS =
-  "0x2428eab459869d0a3ac9eef023b85e484a179c70e06f1813959efb4d13c5cec6";
+  "0x011c435568ab5d2ebf156d9ebb31df7560a575052215c0c29538bce4277ba81e";
 
 /**
  * ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS
  */
 export const ARTIFACT_LOCATION_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT
  */
 export const ARTIFACT_LOCATION_STORAGE_DEPLOYMENT_SALT =
-  "0x02771e543c85a43adc2429101bc06f5e24b6dc92bcb48c7dcd40c4a8a9b0c75c";
+  "0x0904a261dcf250154f88e3e19ee2b6eeae7e5478b5565f0277ee323e0fde579c";
 
 /**
  * The address for the ArtifactProspect system contract.
  */
 export const ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS =
-  "0x15836ffa8ffabddf020a99dca587d8eb8d46cb66799f3684edf166875f9feb3c";
+  "0x057fdc2cd13f7d741f4918dc86f14ee2237c0b4556bbf6ace846bc17b66909db";
 
 /**
  * Deployer address for ArtifactProspect (for PXE registration).
  */
 export const ARTIFACT_PROSPECT_SYSTEM_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for ArtifactProspect (for PXE registration).
  */
 export const ARTIFACT_PROSPECT_SYSTEM_DEPLOYMENT_SALT =
-  "0x0b661ab02dbd59df000ecdbc7481012464b5e574a710762b4967c91f78e4cbc8";
+  "0x0c0d80a7c622b19fe964b92f724ec91c3bb844fff5046c009a0a402f2f7a0a3f";
 
 /**
  * The address for the ArtifactStorage contract.
  */
 export const ARTIFACT_STORAGE_CONTRACT_ADDRESS =
-  "0x2b78e253163371ee729fffd9f3e615d90b2748f3f2539fa99f063ea762b90084";
+  "0x055b124559e7c36451229d0fb145f63fc655d85846d09e6ac8fd88fcf2ae611c";
 
 /**
  * ARTIFACT_STORAGE_DEPLOYER_ADDRESS
  */
 export const ARTIFACT_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * ARTIFACT_STORAGE_DEPLOYMENT_SALT
  */
 export const ARTIFACT_STORAGE_DEPLOYMENT_SALT =
-  "0x238fac9e06aaa403af4939ecfc079cccd7d058981f7f12a0a48e37cd4f6cd054";
+  "0x2604c2f1101a738472e86e73ce2c36fb07cd7693c1af6476f78720ba70a7d588";
 
 /**
  * The address for the ArtifactVault system contract.
  */
 export const ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS =
-  "0x046f4a5197079f5b14a8f311eb0d0a1e6a2526d7db495f5047b3d7e496585874";
+  "0x00269ab0a05ddee1b158b1878388fe9daba0f2f00097b629e6a831a3c4cdf4db";
 
 /**
  * Deployer address for ArtifactVault (for PXE registration).
  */
 export const ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for ArtifactVault (for PXE registration).
  */
 export const ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT =
-  "0x0a7841894d0d732a5272df1092c688dbdeea5d7f49e97771c02b86b844e465f1";
+  "0x24c75f04ac684dd4a42175bcf19f16da6ad2136d8dfd7e29bbd06a537ae8f902";
 
 /**
  * The address for the Config contract.
  */
 export const CONFIG_CONTRACT_ADDRESS =
-  "0x1e5d29267371b8f2f3efba95320ecc07db0432b641af81489b5911d15ae91da5";
+  "0x1e231bed23007452f0532e17f147b8bacb4bf0656478c18ecf7ed3fecb947b0a";
 
 /**
  * CONFIG_DEPLOYER_ADDRESS
  */
 export const CONFIG_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * CONFIG_DEPLOYMENT_SALT
  */
 export const CONFIG_DEPLOYMENT_SALT =
-  "0x1ac2758155f366b6d6f52d8208a347cd48511fe43ee2610dd1ebdced9ca41e6f";
+  "0x0d3d059b7b5808e68ffbd1d5503374fa4f91bf15392437b0972f28fa2e3bbae2";
 
 /**
  * The address for the Core contract.
  */
 export const CORE_CONTRACT_ADDRESS =
-  "0x21393e797b0124ef019d13f24892781621f75f36677bca8e24bfb852d62cea94";
+  "0x0cfe32062d5f23d2c366518ca2ff7b727b22a5d36cce247e47c608bbcdeab856";
 
 /**
  * Deployer address for Core (for PXE registration).
  */
 export const CORE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for Core (for PXE registration).
  */
 export const CORE_DEPLOYMENT_SALT =
-  "0x0f16840baad95fdcdf45e2e8279e66436e23d3f78d0393d9328d542534eb1ac6";
+  "0x1412c37630a7f2750c36bb584da7721f03ee699fb235538a43c252e38aea9b29";
 
 /**
  * The address for the Move contract.
  */
 export const MOVE_CONTRACT_ADDRESS =
-  "0x0d89c971df6a7e5d6b56b30be1916b0522f3aa0450de77ad5216aab4bbceaa9b";
+  "0x295742324dc4eaa6ac08084cb46274ce492e4aff87b48648e60c82eb69770a30";
 
 /**
  * Deployer address for Move (for PXE registration).
  */
 export const MOVE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * Deployment salt for Move (for PXE registration).
  */
 export const MOVE_DEPLOYMENT_SALT =
-  "0x06c971cbeadf6c06b79faa89c4b3253ffa38eb23a2967d8a9cc2a787ca311480";
+  "0x2f35d447cfa682084b6ce3d843c11f65d9b91dd53aa264ceadf6af8c90c90011";
 
 /**
  * The address for the PlanetArtifactsStorage contract.
  */
 export const PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS =
-  "0x2886b0d46c7934deb371c242c01b5186cebbbd15c76b82cc0b3a01b7c3fd2f5e";
+  "0x2b8a1bd809d12e3a190c5fb8803a666d67d587b11af961af5395e37c2917c620";
 
 /**
  * PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS
  */
 export const PLANET_ARTIFACTS_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT
  */
 export const PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT =
-  "0x025b9196254f6afafc791b43c9ab292e80d29c0938f7b046161b00554751dcd8";
+  "0x1b4a01b4454a3cc9c9f6c85e773cd3017bafb7455f8d4fbd2eb7c30845bd6c89";
 
 /**
  * The address for the PlanetEventsStorage contract.
  */
 export const PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS =
-  "0x11d38a364751d72f721c40d538902862e51fa682635aa856ae85da4163140caf";
+  "0x2247eeb04c4f147dc887e6ea670027e23698f00b932f91441692d2d7bb8e6c9f";
 
 /**
  * PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS
  */
 export const PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT
  */
 export const PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT =
-  "0x15e063f54f75007b149c03521909459b3ebd9091352d184cf2ffa54f12b4562c";
+  "0x2b37e762b8452f7541bfd6dc83c92fb6cf0c09fd256a046b876cb8a1f7d4597a";
 
 /**
  * The address for the PlanetRevealedCoordsStorage contract.
  */
 export const PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS =
-  "0x1a823c78b56e9fd3be51024f076f61a31439b4a8e61de5c01138faf967e3ab1c";
+  "0x0aa2bc7ab0db3903320bd838178ef212b88291afea9eab6c70f2293af53a8449";
 
 /**
  * PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS
  */
 export const PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT
  */
 export const PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT =
-  "0x29b52a4c7e144f7949f3a1f97ccd82efc268bb4e54bd662c170eb6947ab7b17f";
+  "0x05fd7d510570121b970548e9fb73b736f5db19700c83f4d394f997256091293b";
 
 /**
  * The address for the PlanetStorage contract.
  */
 export const PLANET_STORAGE_CONTRACT_ADDRESS =
-  "0x09e808ed337a569ffdcdc09a5f09a04d39312668ca1971f217d8baf3a83f4569";
+  "0x1c77b60775584db000f67ca3b0b508d2c67e8f57e45ac20afbb4ab0d274b5f1e";
 
 /**
  * PLANET_STORAGE_DEPLOYER_ADDRESS
  */
 export const PLANET_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * PLANET_STORAGE_DEPLOYMENT_SALT
  */
 export const PLANET_STORAGE_DEPLOYMENT_SALT =
-  "0x2deb2ca907092913613949d1229ebe490f840c48541876e94578f737b67e8520";
+  "0x1d54b9fb49b8b7ecb5ae5b6dd56a27c77d0354c387de5cc7646ae24f1fd0752f";
 
 /**
  * The address for the PlayerStorage contract.
  */
 export const PLAYER_STORAGE_CONTRACT_ADDRESS =
-  "0x22e75c2f4587ca1a4183bab41b90f6f85426199742a968bfad798830872356db";
+  "0x198be4ae975285d6345bac64c34e097b06a11e821ccbc16f314125f0098334f3";
 
 /**
  * PLAYER_STORAGE_DEPLOYER_ADDRESS
  */
 export const PLAYER_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * PLAYER_STORAGE_DEPLOYMENT_SALT
  */
 export const PLAYER_STORAGE_DEPLOYMENT_SALT =
-  "0x1666db7e9bbe49c33ce501132d445ea21797d2ccc6141644e3633c79c87d4140";
+  "0x2a9d8629de5ed1e2e62da8a27dcd55c19f3c9003186407e9fee914615b919de4";
 
 /**
  * Block number at deployment start (from deploy script).
  */
-export const START_BLOCK = 54297;
+export const START_BLOCK = 5;
 
 /**
  * The address for the WorldStorage contract.
  */
 export const WORLD_STORAGE_CONTRACT_ADDRESS =
-  "0x2a6e8e7cbe4bca05df6b1e7a61cc38b27543b2c68d18ee78230ad81d806599ce";
+  "0x16990c73e549bae3d2ff317f24e56c805998ee5619e0973b153c5f906842fd2d";
 
 /**
  * WORLD_STORAGE_DEPLOYER_ADDRESS
  */
 export const WORLD_STORAGE_DEPLOYER_ADDRESS =
-  "0x1b9dba91f9ef4f5c2ce41215c0583ad9cc813a6ae3d09df538109c6af882a384";
+  "0x14b7b5aeefb9c9fa392501f045fe96e146f835afd3360611dd3b35b19bce1530";
 
 /**
  * WORLD_STORAGE_DEPLOYMENT_SALT
  */
 export const WORLD_STORAGE_DEPLOYMENT_SALT =
-  "0x2309c6e42ec2004c45202acac2e86485884a9107d08d4ec653d81105a5eea498";
+  "0x265d12078a95d958d1e59dd68b118ac351cda44383d04ad8d6b6aabaee66cf2a";

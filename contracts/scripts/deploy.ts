@@ -13,12 +13,17 @@ import path from 'path';
 import {
     type ContractDeployConfig,
     deployContracts,
+    getNetworkFingerprint,
     getOrCreateAccount,
     getSponsoredPFCContract,
     setupWallet,
 } from './utils/index.ts';
 
-dotenv.config();
+// Load contracts/.env regardless of cwd (e.g. run from repo root)
+dotenv.config({
+    path: path.join(import.meta.dirname, '..', '.env'),
+    override: true,
+});
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const PROVER_ENABLED = process.env.PROVER_ENABLED === 'true';
@@ -228,13 +233,38 @@ async function main() {
     const sponsoredFPC = await getSponsoredPFCContract();
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
 
-    console.log('👤 Getting or creating deployer account...');
-    const deployer = await getOrCreateAccount(wallet, aztecNode);
-    console.log(`✅ Deployer: ${deployer.toString()}\n`);
-
     const scriptDir = path.dirname(new URL(import.meta.url).pathname);
     const envPath = path.join(scriptDir, '..', '.env');
     const writeEnv = process.env.WRITE_ENV_FILE !== 'false';
+
+    const currentFingerprint = await getNetworkFingerprint(aztecNode);
+    const storedFingerprint = process.env.ACCOUNT_NETWORK_FINGERPRINT;
+    const hasExistingAccount = !!(
+        process.env.ACCOUNT_SALT && process.env.ACCOUNT_SECRET_KEY
+    );
+
+    if (
+        hasExistingAccount &&
+        storedFingerprint &&
+        storedFingerprint !== currentFingerprint
+    ) {
+        console.log(
+            '🔄 Network change detected (fingerprint mismatch). Will create a new account for this network.'
+        );
+        delete process.env.ACCOUNT_SALT;
+        delete process.env.ACCOUNT_SECRET_KEY;
+        delete process.env.ACCOUNT_SIGNING_KEY;
+        delete process.env.ACCOUNT_ADDRESS;
+        delete process.env.ACCOUNT_NETWORK_FINGERPRINT;
+    }
+
+    console.log('👤 Getting or creating deployer account...');
+    const deployer = await getOrCreateAccount(wallet, aztecNode, {
+        writeEnv,
+        envFilePath: envPath,
+        networkFingerprint: currentFingerprint,
+    });
+    console.log(`✅ Deployer: ${deployer.toString()}\n`);
 
     const startBlock = Number(await aztecNode.getBlockNumber());
     console.log(`📌 START_BLOCK: ${startBlock}`);

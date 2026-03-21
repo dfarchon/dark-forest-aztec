@@ -39,6 +39,7 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { unwrapSimulateResult } from '../../client/src/utils/unwrapSimulateResult.ts';
 import { getTestContext } from './test-setup.ts';
 import {
     buildLocationProofInputs,
@@ -217,9 +218,9 @@ async function main() {
                 'Config or user not loaded. Run deploy + configure first.'
             );
         }
-        const raw = (await Config.methods
-            .get_snark_config()
-            .simulate({ from: user })) as {
+        const raw = unwrapSimulateResult(
+            await Config.methods.get_snark_config().simulate({ from: user })
+        ) as {
             planethash_key: unknown;
             spacetype_key: unknown;
             perlin_length_scale: unknown;

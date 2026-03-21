@@ -13,11 +13,11 @@
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type { UnconfirmedFindArtifact } from "@dfpunk/types";
 import type { LocationId } from "@dfpunk/types";
+
 import {
   buildLocationProofInputs,
   computeLocationProofOutputs,
-} from "@dfpunk/utils";
-
+} from "../../utils/moveProofValidation";
 import type { ResolverDeps } from "./resolverHelpers";
 import {
   collectEntityTimes,

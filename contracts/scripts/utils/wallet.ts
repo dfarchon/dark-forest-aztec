@@ -23,7 +23,7 @@ const FINGERPRINT_FILENAME = '.network-fingerprint';
  * Compute a fingerprint for the current network instance by hashing block 1's header.
  * Returns a sentinel value when the network has not yet produced block 1.
  */
-async function getNetworkFingerprint(node: AztecNode): Promise<string> {
+export async function getNetworkFingerprint(node: AztecNode): Promise<string> {
     const blockNumber = await node.getBlockNumber();
     if (blockNumber < 1) return 'genesis-pending';
     const block = await node.getBlock(BlockNumber(1));
@@ -156,9 +156,21 @@ async function hasLocalAccount(
 export async function loadAccountFromEnv(
     wallet: EmbeddedWallet,
     aztecNode: AztecNode,
-    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
+    options: {
+        ensureDeployed?: boolean;
+        deployTimeoutMs?: number;
+        /** When provided, persist account info (with fingerprint) to .env before any chain operations. */
+        envWriteOptions?: {
+            envFilePath: string;
+            networkFingerprint: string;
+        };
+    } = {}
 ): Promise<AztecAddress> {
-    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
+    const {
+        ensureDeployed = true,
+        deployTimeoutMs = 120_000,
+        envWriteOptions,
+    } = options;
     const envAddress = process.env.ACCOUNT_ADDRESS;
     const salt = process.env.ACCOUNT_SALT;
     const secretKey = process.env.ACCOUNT_SECRET_KEY;
@@ -169,12 +181,35 @@ export async function loadAccountFromEnv(
         );
     }
 
+    const maybeWriteEnv = (address: AztecAddress) => {
+        if (
+            envWriteOptions &&
+            process.env.ACCOUNT_NETWORK_FINGERPRINT !==
+                envWriteOptions.networkFingerprint
+        ) {
+            appendAccountToEnv(
+                Fr.fromString(salt),
+                Fr.fromString(secretKey),
+                Buffer.from(signingKeyHex, 'hex'),
+                address,
+                envWriteOptions.envFilePath,
+                envWriteOptions.networkFingerprint
+            );
+        }
+    };
+
     if (envAddress) {
         const accountAddress = AztecAddress.fromString(envAddress);
         if (await hasLocalAccount(wallet, accountAddress)) {
-            if (!ensureDeployed) return accountAddress;
+            if (!ensureDeployed) {
+                maybeWriteEnv(accountAddress);
+                return accountAddress;
+            }
             const deployed = await aztecNode.getContract(accountAddress);
-            if (deployed) return accountAddress;
+            if (deployed) {
+                maybeWriteEnv(accountAddress);
+                return accountAddress;
+            }
         }
     }
 
@@ -183,6 +218,8 @@ export async function loadAccountFromEnv(
         Fr.fromString(salt),
         Buffer.from(signingKeyHex, 'hex')
     );
+
+    maybeWriteEnv(accountManager.address);
 
     if (ensureDeployed) {
         await deployAccountIfNeeded(aztecNode, accountManager, deployTimeoutMs);
@@ -198,6 +235,8 @@ export type GetOrCreateAccountOptions = {
     writeEnv?: boolean;
     /** Deploy timeout in ms (default: 120_000) */
     deployTimeoutMs?: number;
+    /** Network fingerprint (block-1 hash) to record alongside account keys in .env */
+    networkFingerprint?: string;
 };
 
 function appendAccountToEnv(
@@ -205,9 +244,13 @@ function appendAccountToEnv(
     secretKey: Fr,
     signingKey: Buffer,
     accountAddress: AztecAddress,
-    envFilePath: string
+    envFilePath: string,
+    networkFingerprint?: string
 ) {
     const block = [
+        ...(networkFingerprint
+            ? [`ACCOUNT_NETWORK_FINGERPRINT=${networkFingerprint}`]
+            : []),
         `ACCOUNT_SALT=${salt.toString()}`,
         `ACCOUNT_SECRET_KEY=${secretKey.toString()}`,
         `ACCOUNT_SIGNING_KEY=${signingKey.toString('hex')}`,
@@ -228,6 +271,7 @@ export async function createAccount(
         envFilePath = DEFAULT_ENV_PATH,
         writeEnv = process.env.WRITE_ENV_FILE !== 'false',
         deployTimeoutMs = 120_000,
+        networkFingerprint,
     } = options;
 
     const salt = Fr.random();
@@ -238,6 +282,17 @@ export async function createAccount(
         salt,
         signingKey
     );
+
+    if (writeEnv) {
+        appendAccountToEnv(
+            salt,
+            secretKey,
+            signingKey,
+            accountManager.address,
+            envFilePath,
+            networkFingerprint
+        );
+    }
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
@@ -252,15 +307,6 @@ export async function createAccount(
     };
     await deployMethod.send(deployOpts);
 
-    if (writeEnv) {
-        appendAccountToEnv(
-            salt,
-            secretKey,
-            signingKey,
-            accountManager.address,
-            envFilePath
-        );
-    }
     return accountManager.address;
 }
 
@@ -274,6 +320,12 @@ export async function getOrCreateAccount(
     aztecNode: AztecNode,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
+    const {
+        envFilePath = DEFAULT_ENV_PATH,
+        writeEnv = process.env.WRITE_ENV_FILE !== 'false',
+        networkFingerprint,
+    } = options;
+
     const hasAccount =
         process.env.ACCOUNT_SALT &&
         process.env.ACCOUNT_SECRET_KEY &&
@@ -281,9 +333,18 @@ export async function getOrCreateAccount(
     if (hasAccount) {
         return loadAccountFromEnv(wallet, aztecNode, {
             deployTimeoutMs: options.deployTimeoutMs,
+            envWriteOptions:
+                writeEnv && networkFingerprint
+                    ? { envFilePath, networkFingerprint }
+                    : undefined,
         });
     }
-    return createAccount(wallet, options);
+    return createAccount(wallet, {
+        envFilePath,
+        writeEnv,
+        deployTimeoutMs: options.deployTimeoutMs,
+        networkFingerprint,
+    });
 }
 
 /** Credentials for a test account (persist to JSON and reload with loadAccountFromCredentials). */

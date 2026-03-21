@@ -30,6 +30,7 @@ import type {
 } from "@dfpunk/types";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
+import { unwrapSimulateResult } from "../../utils/unwrapSimulateResult";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
@@ -341,12 +342,13 @@ export class TxExecutor {
               contractArgs
             );
             const simResult = await invocation.simulate(simulateOpts);
+            const unwrapped = unwrapSimulateResult(simResult);
             console.debug(
               `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
-              simResult
+              unwrapped
             );
 
-            console.log(simResult);
+            console.log(unwrapped);
           } catch (simErr) {
             console.error(
               `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,

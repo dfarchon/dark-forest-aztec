@@ -1021,11 +1021,13 @@ export function GameLandingPage() {
         .joinGame(async (e) => {
           console.error(e);
 
-          terminal.current?.println("Error Joining Game:");
           terminal.current?.println("");
           terminal.current?.println(e.message, TerminalTextStyle.Red);
           terminal.current?.println("");
-          terminal.current?.println("Press Enter to Try Again:");
+          terminal.current?.println(
+            "Press ENTER to find a home planet. This may take up to 120s."
+          );
+          terminal.current?.println("This will consume a lot of CPU.");
 
           await terminal.current?.getInput();
           return true;

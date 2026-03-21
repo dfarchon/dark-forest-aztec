@@ -126,9 +126,6 @@ importers:
       '@dfpunk/ui':
         specifier: workspace:*
         version: link:../packages/ui
-      '@dfpunk/utils':
-        specifier: workspace:*
-        version: link:../packages/utils
       '@lit/react':
         specifier: 1.0.8
         version: 1.0.8(@types/react@18.3.12)
@@ -273,10 +270,6 @@ importers:
         version: 0.25.0(rollup@4.57.1)(vite@7.3.1(@types/node@24.10.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
 
   contracts:
-    dependencies:
-      '@dfpunk/utils':
-        specifier: workspace:*
-        version: link:../packages/utils
     devDependencies:
       '@eslint/js':
         specifier: 9.39.2
@@ -511,25 +504,6 @@ importers:
       '@types/color':
         specifier: 3.0.2
         version: 3.0.2
-      prettier:
-        specifier: 3.7.4
-        version: 3.7.4
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-
-  packages/utils:
-    dependencies:
-      '@aztec/aztec.js':
-        specifier: 4.1.0-rc.4
-        version: 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/foundation':
-        specifier: 4.1.0-rc.4
-        version: 4.1.0-rc.4
-      '@dfpunk/hashing':
-        specifier: workspace:*
-        version: link:../hashing
-    devDependencies:
       prettier:
         specifier: 3.7.4
         version: 3.7.4

@@ -16,7 +16,10 @@ import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import * as dotenv from 'dotenv';
+import path from 'path';
 
+import { unwrapSimulateResult } from '../../client/src/utils/unwrapSimulateResult.ts';
+import { planetDefaultStats } from './configure-planet-default-stats.ts';
 import {
     getContractInstances,
     getSponsoredPFCContract,
@@ -24,7 +27,11 @@ import {
     setupWallet,
 } from './utils/index.ts';
 
-dotenv.config();
+// Load contracts/.env regardless of cwd (e.g. run from repo root)
+dotenv.config({
+    path: path.join(import.meta.dirname, '..', '.env'),
+    override: true,
+});
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || 'http://localhost:8080';
 const isLocalSandbox =
@@ -300,9 +307,9 @@ async function main() {
 
         const toAuthorize: AztecAddress[] = [];
         for (const addr of contractAddrs) {
-            const isAuth = await methods
-                .is_authorized(addr)
-                .simulate({ from: deployer });
+            const isAuth = unwrapSimulateResult(
+                await methods.is_authorized(addr).simulate({ from: deployer })
+            ) as boolean;
             if (!isAuth) toAuthorize.push(addr);
         }
         if (toAuthorize.length === 0) return;
@@ -366,139 +373,6 @@ async function main() {
     }
 
     // ---- planet default stats (batched: 5+5 instead of 10 individual calls) ----
-    const planetDefaultStats = [
-        {
-            level: 0,
-            stats: {
-                population_cap: 100000n,
-                population_growth: 417n,
-                range: 99n,
-                speed: 75n,
-                defense: 400n,
-                silver_growth: 0n,
-                silver_cap: 0n,
-                barbarian_percentage: 0n,
-            },
-        },
-        {
-            level: 1,
-            stats: {
-                population_cap: 400000n,
-                population_growth: 833n,
-                range: 177n,
-                speed: 75n,
-                defense: 400n,
-                silver_growth: 56n,
-                silver_cap: 100000n,
-                barbarian_percentage: 1n,
-            },
-        },
-        {
-            level: 2,
-            stats: {
-                population_cap: 1600000n,
-                population_growth: 1250n,
-                range: 315n,
-                speed: 75n,
-                defense: 300n,
-                silver_growth: 167n,
-                silver_cap: 500000n,
-                barbarian_percentage: 2n,
-            },
-        },
-        {
-            level: 3,
-            stats: {
-                population_cap: 6000000n,
-                population_growth: 1667n,
-                range: 591n,
-                speed: 75n,
-                defense: 300n,
-                silver_growth: 417n,
-                silver_cap: 2500000n,
-                barbarian_percentage: 3n,
-            },
-        },
-        {
-            level: 4,
-            stats: {
-                population_cap: 25000000n,
-                population_growth: 2083n,
-                range: 1025n,
-                speed: 75n,
-                defense: 300n,
-                silver_growth: 833n,
-                silver_cap: 12000000n,
-                barbarian_percentage: 4n,
-            },
-        },
-        {
-            level: 5,
-            stats: {
-                population_cap: 100000000n,
-                population_growth: 2500n,
-                range: 1734n,
-                speed: 75n,
-                defense: 200n,
-                silver_growth: 1667n,
-                silver_cap: 50000000n,
-                barbarian_percentage: 5n,
-            },
-        },
-        {
-            level: 6,
-            stats: {
-                population_cap: 300000000n,
-                population_growth: 2917n,
-                range: 2838n,
-                speed: 75n,
-                defense: 200n,
-                silver_growth: 2778n,
-                silver_cap: 100000000n,
-                barbarian_percentage: 7n,
-            },
-        },
-        {
-            level: 7,
-            stats: {
-                population_cap: 500000000n,
-                population_growth: 3333n,
-                range: 4414n,
-                speed: 75n,
-                defense: 200n,
-                silver_growth: 2778n,
-                silver_cap: 200000000n,
-                barbarian_percentage: 10n,
-            },
-        },
-        {
-            level: 8,
-            stats: {
-                population_cap: 700000000n,
-                population_growth: 3750n,
-                range: 6306n,
-                speed: 75n,
-                defense: 200n,
-                silver_growth: 2778n,
-                silver_cap: 300000000n,
-                barbarian_percentage: 20n,
-            },
-        },
-        {
-            level: 9,
-            stats: {
-                population_cap: 800000000n,
-                population_growth: 4167n,
-                range: 8829n,
-                speed: 75n,
-                defense: 200n,
-                silver_growth: 2778n,
-                silver_cap: 400000000n,
-                barbarian_percentage: 25n,
-            },
-        },
-    ];
-
     // Batch 1: levels 0-4
     await run('Config.set_planet_default_stats_batch(0-4)', async () => {
         const batch = planetDefaultStats.slice(0, 5);

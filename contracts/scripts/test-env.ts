@@ -1,6 +1,6 @@
 /**
  * Print all deployment-related values that dotenv reads from .env.
- * Useful to verify which values scripts will actually use (dotenv takes the FIRST occurrence).
+ * Useful to verify which values scripts will actually use (dotenv takes the LAST occurrence).
  *
  * Usage: node --experimental-transform-types scripts/test-env.ts
  */
@@ -123,7 +123,7 @@ console.log(`  Duplicated: ${duplicated}`);
 if (duplicated > 0) {
     console.log(`\n⚠️  ${duplicated} keys have duplicate entries in .env.`);
     console.log(
-        `   dotenv uses the FIRST occurrence — later values are ignored.`
+        `   dotenv uses the LAST occurrence — earlier values are shadowed.`
     );
     console.log(
         `   Run deploy with the updated script to auto-clean stale entries.`

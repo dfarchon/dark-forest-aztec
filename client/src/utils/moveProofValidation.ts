@@ -53,7 +53,7 @@ function toFr(n: number | bigint): Fr {
 export async function computePlanetHash(
   planetHashKey: bigint,
   x: number,
-  y: number,
+  y: number
 ): Promise<bigint> {
   const result = await poseidon2Hash([new Fr(planetHashKey), toFr(x), toFr(y)]);
   const hexString = result.toString().replace(/^0x/, "");
@@ -70,7 +70,7 @@ export function computeSpaceTypePerlin(
   spaceTypeKey: number,
   scale: number,
   mirrorX: boolean,
-  mirrorY: boolean,
+  mirrorY: boolean
 ): number {
   return perlin(
     { x, y },
@@ -80,7 +80,7 @@ export function computeSpaceTypePerlin(
       mirrorX,
       mirrorY,
       floor: true,
-    },
+    }
   );
 }
 
@@ -89,17 +89,17 @@ export function computeSpaceTypePerlin(
  * These match what the Noir move_proof circuit returns.
  */
 export async function computeMoveProofOutputs(
-  inputs: MoveProofInputs,
+  inputs: MoveProofInputs
 ): Promise<MoveProofOutputs> {
   const sourceHash = await computePlanetHash(
     inputs.planetHashKey,
     inputs.x1,
-    inputs.y1,
+    inputs.y1
   );
   const targetHash = await computePlanetHash(
     inputs.planetHashKey,
     inputs.x2,
-    inputs.y2,
+    inputs.y2
   );
   const perlinVal = computeSpaceTypePerlin(
     inputs.x2,
@@ -107,7 +107,7 @@ export async function computeMoveProofOutputs(
     Number(inputs.spaceTypeKey),
     Number(inputs.scale),
     inputs.xMirror,
-    inputs.yMirror,
+    inputs.yMirror
   );
   return { sourceHash, targetHash, perlin: perlinVal };
 }
@@ -137,7 +137,7 @@ export interface LocationProofOutputs {
 export function buildLocationProofInputs(
   snarkConfig: SnarkConfigLike,
   x: number,
-  y: number,
+  y: number
 ): LocationProofInputs {
   return {
     planetHashKey: BigInt(snarkConfig.planethash_key),
@@ -155,12 +155,12 @@ export function buildLocationProofInputs(
  * Matches init_proof / reveal_proof / safe_set_owner ZK checks in Noir.
  */
 export async function computeLocationProofOutputs(
-  inputs: LocationProofInputs,
+  inputs: LocationProofInputs
 ): Promise<LocationProofOutputs> {
   const locationHash = await computePlanetHash(
     inputs.planetHashKey,
     inputs.x,
-    inputs.y,
+    inputs.y
   );
   const perlinVal = computeSpaceTypePerlin(
     inputs.x,
@@ -168,7 +168,7 @@ export async function computeLocationProofOutputs(
     Number(inputs.spaceTypeKey),
     Number(inputs.scale),
     inputs.xMirror,
-    inputs.yMirror,
+    inputs.yMirror
   );
   return { locationHash, perlin: perlinVal };
 }
@@ -179,19 +179,19 @@ export async function computeLocationProofOutputs(
 export function validateLocationProofOutputs(
   expectedLocationId: bigint,
   expectedPerlin: number,
-  outputs: LocationProofOutputs,
+  outputs: LocationProofOutputs
 ): { valid: boolean; mismatches: string[] } {
   const mismatches: string[] = [];
   if (outputs.locationHash !== expectedLocationId) {
     mismatches.push(
-      `locationHash mismatch: expected ${expectedLocationId}, got ${outputs.locationHash}`,
+      `locationHash mismatch: expected ${expectedLocationId}, got ${outputs.locationHash}`
     );
   }
   const perlinExpected = Math.floor(expectedPerlin);
   const perlinGot = Math.floor(outputs.perlin);
   if (perlinGot !== perlinExpected) {
     mismatches.push(
-      `perlin mismatch: expected ${perlinExpected}, got ${perlinGot} (raw: ${outputs.perlin})`,
+      `perlin mismatch: expected ${perlinExpected}, got ${perlinGot} (raw: ${outputs.perlin})`
     );
   }
   return {
@@ -214,7 +214,7 @@ export function buildMoveProofInputs(
   x1: number,
   y1: number,
   x2: number,
-  y2: number,
+  y2: number
 ): MoveProofInputs {
   return {
     r,
@@ -239,24 +239,24 @@ export function validateMoveProofOutputs(
   sourceLoc: bigint,
   targetLoc: bigint,
   targetPerlin: number,
-  outputs: MoveProofOutputs,
+  outputs: MoveProofOutputs
 ): { valid: boolean; mismatches: string[] } {
   const mismatches: string[] = [];
   if (outputs.sourceHash !== sourceLoc) {
     mismatches.push(
-      `sourceHash mismatch: expected ${sourceLoc}, got ${outputs.sourceHash}`,
+      `sourceHash mismatch: expected ${sourceLoc}, got ${outputs.sourceHash}`
     );
   }
   if (outputs.targetHash !== targetLoc) {
     mismatches.push(
-      `targetHash mismatch: expected ${targetLoc}, got ${outputs.targetHash}`,
+      `targetHash mismatch: expected ${targetLoc}, got ${outputs.targetHash}`
     );
   }
   const perlinExpected = Math.floor(targetPerlin);
   const perlinGot = Math.floor(outputs.perlin);
   if (perlinGot !== perlinExpected) {
     mismatches.push(
-      `perlin mismatch: expected ${perlinExpected}, got ${perlinGot} (raw: ${outputs.perlin})`,
+      `perlin mismatch: expected ${perlinExpected}, got ${perlinGot} (raw: ${outputs.perlin})`
     );
   }
   if (

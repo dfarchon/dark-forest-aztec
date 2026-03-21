@@ -21,10 +21,13 @@
         "codegen-contracts": "aztec codegen ./target -o ./target",
         "compile-contracts": "aztec compile",
         "configure": "node --experimental-transform-types scripts/configure.ts",
+        "configure-config": "node --experimental-transform-types scripts/configure-config.ts",
+        "configure-config:show": "node --experimental-transform-types scripts/configure-config.ts show",
         "copy-artifacts": "mkdir -p scripts/artifacts && cp target/*.json target/*.ts scripts/artifacts",
         "deploy-contracts": "node --experimental-transform-types scripts/deploy.ts",
         "format": "pnpm run aztec:fmt & pnpm run scripts:fmt",
         "format:check": "pnpm run aztec:fmt:check & pnpm run scripts:fmt:check",
+        "inspect-core-storage": "node --experimental-transform-types scripts/inspect-core-storage.ts",
         "interact": "node --experimental-transform-types scripts/interact.ts",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
@@ -38,9 +41,6 @@
         "test:moveProof": "pnpm exec tsx scripts/test-moveProof.ts",
         "timestamp-ticker": "node --experimental-transform-types scripts/timestamp-ticker.ts",
         "update-config": "node --experimental-transform-types scripts/update-config.ts"
-    },
-    "dependencies": {
-        "@dfpunk/utils": "workspace:*"
     },
     "devDependencies": {
         "@eslint/js": "9.39.2",
