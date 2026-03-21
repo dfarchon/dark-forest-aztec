@@ -2331,7 +2331,15 @@ class GameManager extends EventEmitter {
         }
       }
 
-      await this.getSpaceships();
+      try {
+        await this.getSpaceships();
+      } catch (e) {
+        console.error("[GameManager] giveSpaceShips failed after retries:", e);
+        this.terminal.current?.println(
+          "giveSpaceShips failed after retries, but your player is initialized. Spaceships will be claimed on next login.",
+          TerminalTextStyle.Red
+        );
+      }
       await this.hardRefreshPlanet(planet.locationId);
 
       this.emit(GameManagerEvent.InitializedPlayer);
@@ -2345,7 +2353,7 @@ class GameManager extends EventEmitter {
     }
   }
 
-  private async getSpaceships() {
+  private async getSpaceships(maxRetries = 3) {
     if (!this.account || !this.homeLocation?.hash) return;
     if (
       !Object.values(this.contractConstants.SPACESHIPS).some((a) => a === true)
@@ -2358,15 +2366,38 @@ class GameManager extends EventEmitter {
     if (player?.claimedShips) return;
 
     if (this.getGameObjects().isGettingSpaceships()) return;
-    const tx = await this.contractsAPI.submitTransaction({
-      methodName: "giveSpaceShips",
-      args: Promise.resolve([
-        locationIdToDecStr(this.homeLocation.hash as LocationId),
-      ]),
-      uiTimestamp: Math.floor(this.chainClock.nowSec()),
-    });
-    await tx.confirmedPromise;
-    this.hardRefreshPlanet(this.homeLocation?.hash);
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.warn(
+            `[GameManager] retrying giveSpaceShips (attempt ${attempt + 1}/${maxRetries})...`
+          );
+          this.terminal.current?.println(
+            `Retrying giveSpaceShips (attempt ${attempt + 1}/${maxRetries})...`,
+            TerminalTextStyle.Sub
+          );
+        }
+        const tx = await this.contractsAPI.submitTransaction({
+          methodName: "giveSpaceShips",
+          args: Promise.resolve([
+            locationIdToDecStr(this.homeLocation.hash as LocationId),
+          ]),
+          uiTimestamp: Math.floor(this.chainClock.nowSec()),
+        });
+        await tx.confirmedPromise;
+        this.hardRefreshPlanet(this.homeLocation?.hash);
+        return;
+      } catch (e) {
+        console.error(
+          `[GameManager] giveSpaceShips attempt ${attempt + 1} failed:`,
+          e
+        );
+        if (attempt === maxRetries - 1) {
+          throw e;
+        }
+      }
+    }
   }
 
   // this is slow, do not call in i.e. render/draw loop

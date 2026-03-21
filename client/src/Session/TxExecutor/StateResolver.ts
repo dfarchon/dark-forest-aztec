@@ -56,6 +56,7 @@ import {
   buildMoveProofInputs,
   computeLocationProofOutputs,
   computeMoveProofOutputs,
+  unwrapSimulateResult,
   validateLocationProofOutputs,
   validateMoveProofOutputs,
 } from "@dfpunk/utils";
@@ -1481,10 +1482,11 @@ export class StateResolver {
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
+      const [localHash, rawOnChain] = await Promise.all([
         localHashPromise,
         onChainHashPromise,
       ]);
+      const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {
@@ -1689,10 +1691,11 @@ export class StateResolver {
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
+      const [localHash, rawOnChain] = await Promise.all([
         localHashPromise,
         onChainHashPromise,
       ]);
+      const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {
@@ -1757,10 +1760,11 @@ export class StateResolver {
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
       onChainHashPromise: Promise<unknown>
     ) => {
-      const [localHash, onChainHash] = await Promise.all([
+      const [localHash, rawOnChain] = await Promise.all([
         localHashPromise,
         onChainHashPromise,
       ]);
+      const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
       if (localBigInt !== onChainBigInt) {

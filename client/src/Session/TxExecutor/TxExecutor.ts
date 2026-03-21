@@ -28,6 +28,7 @@ import type {
   TransactionId,
   TxIntent,
 } from "@dfpunk/types";
+import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
@@ -326,41 +327,34 @@ export class TxExecutor {
         }
         const invocation = methodFn(...contractArgs);
 
-        if (
-          tx.intent.methodName === "initializePlayer" ||
-          tx.intent.methodName === "revealLocation" ||
-          tx.intent.methodName === "move" ||
-          tx.intent.methodName === "findArtifact"
-        ) {
-          try {
-            console.debug(
-              `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
-            );
-            console.debug(
-              `[TxExecutor] contractArgs (${contractArgs.length}):`,
-              contractArgs
-            );
-            const simResult = await invocation.simulate(simulateOpts);
-            console.debug(
-              `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
-              simResult
-            );
-
-            console.log(simResult);
-          } catch (simErr) {
-            console.error(
-              `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
-              simErr
-            );
-            if (simErr instanceof Error) {
-              console.error(`[TxExecutor] error message:`, simErr.message);
-              console.error(`[TxExecutor] error stack:`, simErr.stack);
-              if ("cause" in simErr) {
-                console.error(`[TxExecutor] error cause:`, simErr.cause);
-              }
+        try {
+          console.debug(
+            `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
+          );
+          console.debug(
+            `[TxExecutor] contractArgs (${contractArgs.length}):`,
+            contractArgs
+          );
+          const simResult = unwrapSimulateResult(
+            await invocation.simulate(simulateOpts)
+          );
+          console.debug(
+            `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
+            simResult
+          );
+        } catch (simErr) {
+          console.error(
+            `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+            simErr
+          );
+          if (simErr instanceof Error) {
+            console.error(`[TxExecutor] error message:`, simErr.message);
+            console.error(`[TxExecutor] error stack:`, simErr.stack);
+            if ("cause" in simErr) {
+              console.error(`[TxExecutor] error cause:`, simErr.cause);
             }
-            throw simErr;
           }
+          throw simErr;
         }
 
         const sendResult = (await timeout(

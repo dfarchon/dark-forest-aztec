@@ -19,3 +19,4 @@ export type {
   MoveProofOutputs,
   SnarkConfigLike,
 } from "./moveProofValidation";
+export { unwrapSimulateResult } from "./simulate";
