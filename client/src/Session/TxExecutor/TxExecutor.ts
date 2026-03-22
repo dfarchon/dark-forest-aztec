@@ -80,7 +80,7 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   });
 }
 
-const TX_SUBMIT_TIMEOUT = 120_000; // 2 minutes
+const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
 
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
   invocationIntervalMs: 500,
