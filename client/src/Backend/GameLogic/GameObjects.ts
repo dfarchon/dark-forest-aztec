@@ -568,10 +568,8 @@ export class GameObjects {
       planet.claimer = claimerEthAddress;
     }
 
-    this.setPlanet(planet);
-
     if (updatedArrivals) {
-      // apply arrivals
+      // apply arrivals before publishing so the planet state is complete
       this.clearOldArrivals(planet);
       const updatedAwts = this.processArrivalsForPlanet(
         planet.locationId,
@@ -587,6 +585,19 @@ export class GameObjects {
         }
       }
     }
+
+    // Grow energy to current chain time before publishing, so the UI never
+    // sees raw chain energy that hasn't been advanced to "now".
+    const now = this.chainClock.now();
+    if (now > 0 && now / 1000 > planet.lastUpdated) {
+      updatePlanetToTime(
+        planet,
+        this.getPlanetArtifacts(planet.locationId),
+        now,
+        this.contractConstants
+      );
+    }
+    this.setPlanet(planet);
   }
 
   // returns an empty planet if planet is not in contract
@@ -1561,7 +1572,9 @@ export class GameObjects {
 
   private updatePlanetIfStale(planet: Planet): void {
     const now = this.chainClock.now();
-    if (now / 1000 - planet.lastUpdated > 1) {
+    const diff = now / 1000 - planet.lastUpdated;
+
+    if (diff > 1) {
       updatePlanetToTime(
         planet,
         this.getPlanetArtifacts(planet.locationId),
