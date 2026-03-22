@@ -878,6 +878,10 @@ class GameManager extends EventEmitter {
           // mining manager should be initialized already via joinGame, but just in case...
           gameManager.initMiningManager(tx.intent.location.coords, 4);
         } else if (isUnconfirmedMoveTx(tx)) {
+          const receipt = await tx.confirmedPromise;
+          if (receipt.blockNumber != null) {
+            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
+          }
           const promises = [
             gameManager.bulkHardRefreshPlanets([tx.intent.from, tx.intent.to]),
           ];

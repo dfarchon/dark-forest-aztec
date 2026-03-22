@@ -568,6 +568,8 @@ export class GameObjects {
       planet.claimer = claimerEthAddress;
     }
 
+    this.setPlanet(planet);
+
     if (updatedArrivals) {
       // apply arrivals before publishing so the planet state is complete
       this.clearOldArrivals(planet);
