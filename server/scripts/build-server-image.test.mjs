@@ -111,21 +111,21 @@ test("build script pushes when IMAGE_PUSH=1", () => {
   const { result, dockerArgs } = runBuildScript({
     IMAGE_PUSH: "1",
     IMAGE_REPO: "ghcr.io/0xpabloli/dfpunk-aztec-server",
-    IMAGE_TAG: "devnet",
+    IMAGE_TAG: "testnet",
   });
 
   assert.equal(result.status, 0, result.stderr);
   assert.ok(dockerArgs.includes("--push"));
   assert.ok(!dockerArgs.includes("--load"));
-  assert.ok(dockerArgs.includes("ghcr.io/0xpabloli/dfpunk-aztec-server:devnet"));
+  assert.ok(dockerArgs.includes("ghcr.io/0xpabloli/dfpunk-aztec-server:testnet"));
 });
 
-test("publish helper defaults to the devnet GHCR release configuration", () => {
+test("publish helper defaults to the testnet GHCR release configuration", () => {
   const { result, log } = runPublishScript();
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(log, /IMAGE_REPO=ghcr\.io\/0xpabloli\/dfpunk-aztec-server/);
-  assert.match(log, /IMAGE_TAG=devnet/);
+  assert.match(log, /IMAGE_TAG=testnet/);
   assert.match(log, /IMAGE_PUSH=1/);
   assert.match(log, /ARGS=.*server\/scripts\/build-server-image\.sh/);
 });

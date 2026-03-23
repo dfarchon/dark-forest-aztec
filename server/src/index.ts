@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   }
   if (config.nodeKind === "local") {
     console.warn(
-      "[Server] AZTEC_NODE_URL points to localhost; this is local sandbox mode, not the remote devnet.",
+      "[Server] AZTEC_NODE_URL points to localhost; this is local sandbox mode, not the remote testnet.",
     );
   }
 

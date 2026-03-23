@@ -6,6 +6,7 @@ import { BlockNumber } from "@aztec/foundation/branded-types";
 import dotenv from "dotenv";
 
 import { getTestContext } from "../../contracts/scripts/test/test-setup.ts";
+import { unwrapSimulateResult } from "../../packages/utils/src/simulate.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -28,12 +29,8 @@ function sleep(ms) {
 function worldZero() {
   return {
     paused: false,
-    planet_events_count: 0n,
     radius: 53_000n,
     misc_nonce: 0n,
-    planet_ids_count: 0n,
-    revealed_planet_ids_count: 0n,
-    player_ids_count: 0n,
     next_change_block: 0,
   };
 }
@@ -124,12 +121,8 @@ async function loadWorldFromEvents(ctx) {
   const s = worldEvent.state;
   return {
     paused: Boolean(s.paused),
-    planet_events_count: toBigint(s.planet_events_count),
     radius: toBigint(s.radius),
     misc_nonce: toBigint(s.misc_nonce),
-    planet_ids_count: toBigint(s.planet_ids_count),
-    revealed_planet_ids_count: toBigint(s.revealed_planet_ids_count),
-    player_ids_count: toBigint(s.player_ids_count),
     next_change_block: Number(s.next_change_block ?? 0),
   };
 }
@@ -176,7 +169,7 @@ async function ensureDisableZkChecks(ctx, user, admin, retries) {
     throw new Error("Config contract not loaded");
   }
 
-  let snarkConfig = await Config.methods.get_snark_config().simulate({ from: user });
+  let snarkConfig = unwrapSimulateResult(await Config.methods.get_snark_config().simulate({ from: user }));
   if (snarkConfig.disable_zk_checks) {
     return snarkConfig;
   }
@@ -185,7 +178,7 @@ async function ensureDisableZkChecks(ctx, user, admin, retries) {
     try {
       const patched = { ...snarkConfig, disable_zk_checks: true };
       await Config.methods.set_snark_config(patched).send(ctx.sendOpts(admin));
-      const confirmed = await Config.methods.get_snark_config().simulate({ from: user });
+      const confirmed = unwrapSimulateResult(await Config.methods.get_snark_config().simulate({ from: user }));
       if (!confirmed.disable_zk_checks) {
         throw new Error("disable_zk_checks was not persisted");
       }
@@ -197,7 +190,7 @@ async function ensureDisableZkChecks(ctx, user, admin, retries) {
           `[safe-init] set_snark_config transient failure, retry ${attempt}/${retries - 1}`
         );
         await sleep(1200);
-        snarkConfig = await Config.methods.get_snark_config().simulate({ from: user });
+        snarkConfig = unwrapSimulateResult(await Config.methods.get_snark_config().simulate({ from: user }));
         continue;
       }
       throw err;
@@ -252,20 +245,20 @@ async function main() {
   const level = 0;
   const radius = 0n;
   const perlin = Number(
-    toBigint((await Config.methods.get_game_config_core().simulate({ from: user })).init_perlin_min)
+    toBigint(unwrapSimulateResult(await Config.methods.get_game_config_core().simulate({ from: user })).init_perlin_min)
   );
 
-  const worldConfig = await Config.methods.get_world_config().simulate({ from: user });
-  const gameConfigCore = await Config.methods.get_game_config_core().simulate({ from: user });
-  const planetLevelThresholds = await Config.methods
+  const worldConfig = unwrapSimulateResult(await Config.methods.get_world_config().simulate({ from: user }));
+  const gameConfigCore = unwrapSimulateResult(await Config.methods.get_game_config_core().simulate({ from: user }));
+  const planetLevelThresholds = unwrapSimulateResult(await Config.methods
     .get_planet_level_thresholds()
-    .simulate({ from: user });
-  const spaceJunkConfig = await Config.methods.get_space_junk_config().simulate({ from: user });
-  const tier0 = await Config.methods.get_planet_type_weights_tier(0).simulate({ from: user });
-  const tier1 = await Config.methods.get_planet_type_weights_tier(1).simulate({ from: user });
-  const tier2 = await Config.methods.get_planet_type_weights_tier(2).simulate({ from: user });
-  const tier3 = await Config.methods.get_planet_type_weights_tier(3).simulate({ from: user });
-  const planetDefaultStats = await Config.methods.get_planet_default_stats(level).simulate({ from: user });
+    .simulate({ from: user }));
+  const spaceJunkConfig = unwrapSimulateResult(await Config.methods.get_space_junk_config().simulate({ from: user }));
+  const tier0 = unwrapSimulateResult(await Config.methods.get_planet_type_weights_tier(0).simulate({ from: user }));
+  const tier1 = unwrapSimulateResult(await Config.methods.get_planet_type_weights_tier(1).simulate({ from: user }));
+  const tier2 = unwrapSimulateResult(await Config.methods.get_planet_type_weights_tier(2).simulate({ from: user }));
+  const tier3 = unwrapSimulateResult(await Config.methods.get_planet_type_weights_tier(3).simulate({ from: user }));
+  const planetDefaultStats = unwrapSimulateResult(await Config.methods.get_planet_default_stats(level).simulate({ from: user }));
 
   const locationId = locationIdForUserIndex(userIndex);
   const maxLocationId = toBigint(gameConfigCore.max_location_id);

@@ -5,10 +5,10 @@ import { START_BLOCK } from "@dfpunk/contracts";
 
 import { parseServerConfig } from "./config.ts";
 
-test("parseServerConfig defaults to devnet and known frontend origins", () => {
+test("parseServerConfig defaults to testnet and known frontend origins", () => {
   const config = parseServerConfig({});
 
-  assert.equal(config.aztecNodeUrl, "https://v4-devnet-2.aztec-labs.com");
+  assert.equal(config.aztecNodeUrl, "https://rpc.testnet.aztec-labs.com");
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.snapshotSchemaVersion, 1);
   assert.deepEqual(config.corsOrigins, [
@@ -16,6 +16,7 @@ test("parseServerConfig defaults to devnet and known frontend origins", () => {
     "http://127.0.0.1:5173",
     "https://df-aztec.netlify.app",
     "https://dfpunk-aztec.netlify.app",
+    "https://dfpunk-aztec-testnet.netlify.app",
   ]);
 });
 
