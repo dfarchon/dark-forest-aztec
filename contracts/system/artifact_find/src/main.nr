@@ -4,6 +4,7 @@ use ::aztec::macros::aztec;
 contract ArtifactFind {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
+        oracle::block_header::get_block_header_at,
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
     };
     use ::aztec::state_vars::PublicMutable;
@@ -324,16 +325,10 @@ contract ArtifactFind {
         }
 
         let biome: u8 = _get_biome(new_planet.space_type, biomebase, game_config_core);
-        // TODO: Restore get_block_header_at once EmbeddedWallet PXE oracle is fixed.
-        // Original code used the block hash for stronger randomness:
-        //   let header = get_block_header_at(prospect_block, *self.context);
-        //   let block_hash: Field = header.hash();
-        //   let artifact_seed = poseidon2_hash([location_id, block_hash]);
-        // Workaround: use prospected_block_number directly as the seed entropy source.
-        // The block number is still unpredictable at prospect time (player doesn't know
-        // which block the prospect tx will land in), preserving the no-reroll property.
-        let artifact_seed =
-            poseidon2_hash([location_id, new_planet.prospected_block_number as Field]);
+
+        let header = get_block_header_at(new_planet.prospected_block_number, *self.context);
+        let block_hash: Field = header.hash();
+        let artifact_seed = poseidon2_hash([location_id, block_hash]);
 
         let (artifact_type, level_bonus) =
             _random_artifact_type_and_level_bonus(artifact_seed, biome, new_planet.space_type);
