@@ -1,12 +1,18 @@
+import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import type { IndexerSnapshot } from "../../packages/indexer-server-core/src/index.ts";
 import {
   rawToState,
   TABLE_NAMES,
 } from "../../packages/indexer-server-core/src/index.ts";
+
+// ---------------------------------------------------------------------------
+// v1 tables (existing)
+// ---------------------------------------------------------------------------
 
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS snapshots (
@@ -24,6 +30,42 @@ const CREATE_METADATA_TABLE_SQL = `
     updated_at TEXT DEFAULT (datetime('now'))
   )
 `;
+
+// ---------------------------------------------------------------------------
+// v2 chunk tables (Phase 1)
+// ---------------------------------------------------------------------------
+
+const CREATE_SNAPSHOT_CHUNKS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS snapshot_chunks (
+    snapshot_block INTEGER NOT NULL,
+    table_name TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    row_count INTEGER NOT NULL,
+    encoding TEXT NOT NULL,
+    payload BLOB NOT NULL,
+    payload_hash TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (snapshot_block, table_name, chunk_index)
+  )
+`;
+
+const CREATE_SNAPSHOT_CHUNKS_INDEX_SQL = `
+  CREATE INDEX IF NOT EXISTS idx_snapshot_chunks_table
+  ON snapshot_chunks (table_name, snapshot_block, chunk_index)
+`;
+
+const CREATE_SNAPSHOT_MANIFESTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS snapshot_manifests (
+    snapshot_block INTEGER PRIMARY KEY,
+    chunk_rows INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )
+`;
+
+// ---------------------------------------------------------------------------
+// SQL statements
+// ---------------------------------------------------------------------------
 
 const UPSERT_SQL = `
   INSERT INTO snapshots (id, block_number, data, updated_at)
@@ -46,11 +88,50 @@ const UPSERT_METADATA_SQL = `
     updated_at = datetime('now')
 `;
 
+const UPSERT_CHUNK_SQL = `
+  INSERT INTO snapshot_chunks
+    (snapshot_block, table_name, chunk_index, row_count, encoding, payload, payload_hash, created_at)
+  VALUES (?, ?, ?, ?, 'gzip', ?, ?, datetime('now'))
+  ON CONFLICT(snapshot_block, table_name, chunk_index) DO UPDATE SET
+    row_count = excluded.row_count,
+    encoding = excluded.encoding,
+    payload = excluded.payload,
+    payload_hash = excluded.payload_hash,
+    created_at = datetime('now')
+`;
+
+const UPSERT_MANIFEST_SQL = `
+  INSERT INTO snapshot_manifests (snapshot_block, chunk_rows, manifest_json, created_at)
+  VALUES (?, ?, ?, datetime('now'))
+  ON CONFLICT(snapshot_block) DO UPDATE SET
+    chunk_rows = excluded.chunk_rows,
+    manifest_json = excluded.manifest_json,
+    created_at = datetime('now')
+`;
+
+const SELECT_CHUNK_COUNT_FOR_BLOCK_SQL = `
+  SELECT table_name, COUNT(*) AS cnt
+  FROM snapshot_chunks
+  WHERE snapshot_block = ?
+  GROUP BY table_name
+`;
+
+const DELETE_OLD_CHUNKS_SQL = `
+  DELETE FROM snapshot_chunks WHERE snapshot_block NOT IN (?, ?)
+`;
+
+const DELETE_OLD_MANIFESTS_SQL = `
+  DELETE FROM snapshot_manifests WHERE snapshot_block NOT IN (?, ?)
+`;
+
+const DEFAULT_CHUNK_ROWS = 1000;
+
 const METADATA_KEY_SNAPSHOT_SCHEMA_VERSION = "snapshot_schema_version";
 
 export interface SnapshotStoreVersionOptions {
   dbSchemaVersion?: number;
   snapshotSchemaVersion?: number;
+  chunkRows?: number;
 }
 
 export class SnapshotStore {
@@ -59,12 +140,22 @@ export class SnapshotStore {
   private readonly dbSchemaVersion: number;
   private readonly snapshotSchemaVersion: number;
   private readonly minIntervalMs: number;
+  private readonly chunkRows: number;
+  // v1 statements
   private readonly countSnapshotsStmt: Database.Statement;
   private readonly deleteSnapshotsStmt: Database.Statement;
   private readonly selectMetadataStmt: Database.Statement;
   private readonly upsertMetadataStmt: Database.Statement;
   private readonly upsertStmt: Database.Statement;
   private readonly selectStmt: Database.Statement;
+  // v2 chunk statements
+  private readonly upsertChunkStmt: Database.Statement;
+  private readonly upsertManifestStmt: Database.Statement;
+  private readonly selectChunkCountsStmt: Database.Statement;
+  private readonly deleteOldChunksStmt: Database.Statement;
+  private readonly deleteOldManifestsStmt: Database.Statement;
+  /** Previous active block — used for retention (keep N=2). */
+  private previousActiveBlock: number | null = null;
 
   constructor(
     dbPath: string,
@@ -78,25 +169,43 @@ export class SnapshotStore {
 
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    // v1 tables
     this.db.exec(CREATE_TABLE_SQL);
     this.db.exec(CREATE_METADATA_TABLE_SQL);
+    // v2 chunk tables
+    this.db.exec(CREATE_SNAPSHOT_CHUNKS_TABLE_SQL);
+    this.db.exec(CREATE_SNAPSHOT_CHUNKS_INDEX_SQL);
+    this.db.exec(CREATE_SNAPSHOT_MANIFESTS_TABLE_SQL);
+
     this.dbSchemaVersion = Math.max(1, versionOptions.dbSchemaVersion ?? 1);
     this.snapshotSchemaVersion = Math.max(
       1,
       versionOptions.snapshotSchemaVersion ?? 1,
     );
     this.minIntervalMs = minIntervalSec * 1000;
+    this.chunkRows = versionOptions.chunkRows ?? DEFAULT_CHUNK_ROWS;
+    // v1 prepared statements
     this.countSnapshotsStmt = this.db.prepare(SELECT_SNAPSHOT_COUNT_SQL);
     this.deleteSnapshotsStmt = this.db.prepare(DELETE_SNAPSHOTS_SQL);
     this.selectMetadataStmt = this.db.prepare(SELECT_METADATA_SQL);
     this.upsertMetadataStmt = this.db.prepare(UPSERT_METADATA_SQL);
     this.upsertStmt = this.db.prepare(UPSERT_SQL);
     this.selectStmt = this.db.prepare(SELECT_SQL);
+    // v2 prepared statements
+    this.upsertChunkStmt = this.db.prepare(UPSERT_CHUNK_SQL);
+    this.upsertManifestStmt = this.db.prepare(UPSERT_MANIFEST_SQL);
+    this.selectChunkCountsStmt = this.db.prepare(
+      SELECT_CHUNK_COUNT_FOR_BLOCK_SQL,
+    );
+    this.deleteOldChunksStmt = this.db.prepare(DELETE_OLD_CHUNKS_SQL);
+    this.deleteOldManifestsStmt = this.db.prepare(DELETE_OLD_MANIFESTS_SQL);
+
     this.ensureSchemaVersions();
   }
 
   /**
    * Save snapshot JSON string to SQLite. Respects minimum interval.
+   * Dual-writes to both v1 (single-row) and v2 (chunk) tables.
    * Returns true if saved, false if skipped (too soon).
    */
   save(blockNumber: number, jsonString: string): boolean {
@@ -104,7 +213,7 @@ export class SnapshotStore {
     if (now - this.lastPersistTime < this.minIntervalMs) {
       return false;
     }
-    this.upsertStmt.run(blockNumber, jsonString);
+    this.dualWrite(blockNumber, jsonString);
     this.lastPersistTime = now;
     console.log(`[Persistence] Saved snapshot at block ${blockNumber}`);
     return true;
@@ -112,7 +221,7 @@ export class SnapshotStore {
 
   /** Force save regardless of interval (e.g. on shutdown). */
   forceSave(blockNumber: number, jsonString: string): void {
-    this.upsertStmt.run(blockNumber, jsonString);
+    this.dualWrite(blockNumber, jsonString);
     this.lastPersistTime = Date.now();
     console.log(`[Persistence] Force-saved snapshot at block ${blockNumber}`);
   }
@@ -159,8 +268,207 @@ export class SnapshotStore {
     }
   }
 
+  /**
+   * Run a sampling consistency check: reconstruct the full snapshot from v2
+   * chunks for the active block and compare its SHA-256 hash with the v1 JSON.
+   * Logs a warning on mismatch. Returns true if consistent (or no chunks yet).
+   */
+  verifyChunkConsistency(v1JsonString: string): boolean {
+    const activeBlock = this.getMetadataInt("active_snapshot_block");
+    if (activeBlock == null) return true; // no chunks written yet
+
+    const rows = this.db
+      .prepare(
+        `SELECT table_name, chunk_index, payload, encoding
+         FROM snapshot_chunks
+         WHERE snapshot_block = ?
+         ORDER BY table_name, chunk_index`,
+      )
+      .all(activeBlock) as Array<{
+      table_name: string;
+      chunk_index: number;
+      payload: Buffer;
+      encoding: string;
+    }>;
+    if (rows.length === 0) return true;
+
+    // Reconstruct per-table data from chunks, matching v1 key order:
+    // { lastProcessedBlock, ...tables in TABLE_NAMES order }
+    const tableData: Record<string, Record<string, unknown>> = {};
+    let lastProcessedBlock = 0;
+    for (const row of rows) {
+      const decompressed =
+        row.encoding === "gzip" ? gunzipSync(row.payload) : row.payload;
+      const chunkPayload = JSON.parse(decompressed.toString()) as {
+        table: string;
+        rows: Record<string, unknown>;
+        lastProcessedBlock: number;
+      };
+      lastProcessedBlock = chunkPayload.lastProcessedBlock;
+      const existing = tableData[chunkPayload.table] ?? {};
+      Object.assign(existing, chunkPayload.rows);
+      tableData[chunkPayload.table] = existing;
+    }
+
+    // Build in same key order as v1 JSON
+    const reconstructed: Record<string, unknown> = { lastProcessedBlock };
+    for (const table of TABLE_NAMES) {
+      reconstructed[table] = tableData[table] ?? {};
+    }
+
+    // Normalize both to sorted-key JSON for comparison (key order may differ)
+    const v1Parsed = JSON.parse(v1JsonString) as Record<string, unknown>;
+    const v1Normalized = JSON.stringify(sortKeys(v1Parsed));
+    const v2Normalized = JSON.stringify(sortKeys(reconstructed));
+    const v1Hash = createHash("sha256").update(v1Normalized).digest("hex");
+    const v2Hash = createHash("sha256").update(v2Normalized).digest("hex");
+
+    if (v1Hash !== v2Hash) {
+      console.warn(
+        `[Persistence] v1/v2 consistency MISMATCH at block ${activeBlock} (v1=${v1Hash.slice(0, 12)}… v2=${v2Hash.slice(0, 12)}…)`,
+      );
+      return false;
+    }
+    console.log(
+      `[Persistence] v1/v2 consistency OK at block ${activeBlock}`,
+    );
+    return true;
+  }
+
   close(): void {
     this.db.close();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dual-write (v1 + v2)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Write snapshot to both v1 single-row table and v2 chunk tables.
+   * v2 follows the two-phase protocol from the design doc:
+   *   Phase A — stage chunks for targetBlock
+   *   Phase B — commit pointer switch atomically
+   */
+  private dualWrite(blockNumber: number, jsonString: string): void {
+    // v1: single-row upsert (unchanged)
+    this.upsertStmt.run(blockNumber, jsonString);
+
+    // v2: chunked write
+    try {
+      this.writeChunks(blockNumber, jsonString);
+    } catch (err) {
+      // Non-fatal during Phase 1: v1 is still the source of truth
+      console.warn("[Persistence] v2 chunk write failed (non-fatal):", err);
+    }
+  }
+
+  /**
+   * Phase A + B: stage chunks then atomically switch pointer.
+   */
+  private writeChunks(blockNumber: number, jsonString: string): void {
+    const data = JSON.parse(jsonString) as Record<string, unknown>;
+    const lastProcessedBlock =
+      typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
+
+    const manifestTables: Record<
+      string,
+      { chunkCount: number; rowCount: number }
+    > = {};
+
+    // Phase A: stage chunks
+    for (const table of TABLE_NAMES) {
+      const tableData = data[table];
+      if (
+        !tableData ||
+        typeof tableData !== "object" ||
+        Array.isArray(tableData)
+      ) {
+        manifestTables[table] = { chunkCount: 0, rowCount: 0 };
+        continue;
+      }
+      const entries = Object.entries(tableData as Record<string, unknown>);
+      entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      const rowCount = entries.length;
+      const chunkCount =
+        rowCount === 0 ? 0 : Math.ceil(rowCount / this.chunkRows);
+
+      for (let i = 0; i < chunkCount; i++) {
+        const start = i * this.chunkRows;
+        const end = start + this.chunkRows;
+        const chunkEntries = entries.slice(start, end);
+        const chunkJson = JSON.stringify({
+          version: 2,
+          table,
+          chunkIndex: i,
+          chunkCount,
+          rowCount,
+          rows: Object.fromEntries(chunkEntries),
+          lastProcessedBlock,
+        });
+        const compressed = gzipSync(Buffer.from(chunkJson));
+        const hash = createHash("sha256").update(chunkJson).digest("hex");
+        this.upsertChunkStmt.run(
+          blockNumber,
+          table,
+          i,
+          chunkEntries.length,
+          compressed,
+          hash,
+        );
+      }
+
+      manifestTables[table] = { chunkCount, rowCount };
+    }
+
+    // Write manifest
+    const manifestJson = JSON.stringify({
+      version: 2,
+      chunkRows: this.chunkRows,
+      lastProcessedBlock,
+      tables: manifestTables,
+    });
+    this.upsertManifestStmt.run(blockNumber, this.chunkRows, manifestJson);
+
+    // Phase B: commit pointer switch atomically
+    const commitTx = this.db.transaction(() => {
+      // Verify expected chunks exist
+      const counts = this.selectChunkCountsStmt.all(blockNumber) as Array<{
+        table_name: string;
+        cnt: number;
+      }>;
+      const countMap = new Map(counts.map((r) => [r.table_name, r.cnt]));
+      for (const table of TABLE_NAMES) {
+        const expected = manifestTables[table].chunkCount;
+        const actual = countMap.get(table) ?? 0;
+        if (actual !== expected) {
+          throw new Error(
+            `Chunk count mismatch for ${table}: expected ${expected}, got ${actual}`,
+          );
+        }
+      }
+
+      // Switch active pointer
+      this.setMetadataInt("active_snapshot_block", blockNumber);
+      this.setMetadataInt(
+        "snapshot_schema_version",
+        this.snapshotSchemaVersion,
+      );
+    });
+    commitTx();
+
+    // Cleanup: keep only current + previous block
+    this.cleanupOldSnapshots(blockNumber);
+  }
+
+  /**
+   * Retain only N=2 snapshot versions (active + previous).
+   */
+  private cleanupOldSnapshots(currentBlock: number): void {
+    const keepA = currentBlock;
+    const keepB = this.previousActiveBlock ?? currentBlock;
+    this.deleteOldChunksStmt.run(keepA, keepB);
+    this.deleteOldManifestsStmt.run(keepA, keepB);
+    this.previousActiveBlock = currentBlock;
   }
 
   private ensureSchemaVersions(): void {
@@ -267,4 +575,17 @@ export function jsonToSnapshot(data: Record<string, unknown>): IndexerSnapshot {
   }
 
   return snapshot;
+}
+
+/**
+ * Recursively sort object keys for deterministic JSON comparison.
+ */
+function sortKeys(obj: unknown): unknown {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(sortKeys);
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
+    sorted[key] = sortKeys((obj as Record<string, unknown>)[key]);
+  }
+  return sorted;
 }

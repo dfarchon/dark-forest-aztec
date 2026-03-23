@@ -40,6 +40,8 @@ export async function runServerRuntime({
     console.log(
       `[Server] Restored to block ${stored.blockNumber}, catching up...`,
     );
+    // Phase 1 verification: compare v1 snapshot with v2 chunk reconstruction
+    store.verifyChunkConsistency(JSON.stringify(stored.data));
   }
 
   const app = createApp({
