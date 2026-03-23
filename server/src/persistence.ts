@@ -3,11 +3,12 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
 import type { IndexerSnapshot } from "../../packages/indexer-server-core/src/index.ts";
 import {
   rawToState,
   TABLE_NAMES,
+  type TableName,
 } from "../../packages/indexer-server-core/src/index.ts";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +117,25 @@ const SELECT_CHUNK_COUNT_FOR_BLOCK_SQL = `
   GROUP BY table_name
 `;
 
+const SELECT_MANIFEST_BY_BLOCK_SQL = `
+  SELECT chunk_rows, manifest_json
+  FROM snapshot_manifests
+  WHERE snapshot_block = ?
+`;
+
+const SELECT_CHUNK_BY_BLOCK_SQL = `
+  SELECT encoding, payload
+  FROM snapshot_chunks
+  WHERE snapshot_block = ? AND table_name = ? AND chunk_index = ?
+`;
+
+const SELECT_ALL_CHUNKS_BY_BLOCK_SQL = `
+  SELECT table_name, chunk_index, encoding, payload
+  FROM snapshot_chunks
+  WHERE snapshot_block = ?
+  ORDER BY table_name, chunk_index
+`;
+
 const DELETE_OLD_CHUNKS_SQL = `
   DELETE FROM snapshot_chunks WHERE snapshot_block NOT IN (?, ?)
 `;
@@ -123,6 +143,9 @@ const DELETE_OLD_CHUNKS_SQL = `
 const DELETE_OLD_MANIFESTS_SQL = `
   DELETE FROM snapshot_manifests WHERE snapshot_block NOT IN (?, ?)
 `;
+
+const DELETE_ALL_CHUNKS_SQL = `DELETE FROM snapshot_chunks`;
+const DELETE_ALL_MANIFESTS_SQL = `DELETE FROM snapshot_manifests`;
 
 const DEFAULT_CHUNK_ROWS = 1000;
 
@@ -134,8 +157,43 @@ export interface SnapshotStoreVersionOptions {
   chunkRows?: number;
 }
 
+export interface StoredChunkManifest {
+  chunkRows: number;
+  lastProcessedBlock: number;
+  tables: Record<
+    TableName,
+    {
+      chunkCount: number;
+      rowCount: number;
+    }
+  >;
+  version: 2;
+}
+
+export interface StoredEncodedChunk {
+  chunkCount: number;
+  chunkRows: number;
+  encoding: "gzip" | "br";
+  jsonByteLength: number;
+  payload: Buffer;
+  snapshotBlock: number;
+}
+
+export interface StoredSnapshotPayload {
+  blockNumber: number;
+  jsonByteLength: number;
+  jsonString: string;
+}
+
+export interface StoredSnapshotSummary {
+  blockNumber: number;
+  jsonByteLength: number;
+}
+
 export class SnapshotStore {
   private db: Database.Database;
+  private cachedActiveSnapshotPayload: StoredSnapshotPayload | null = null;
+  private cachedActiveSnapshotPayloadBlock: number | null = null;
   private lastPersistTime = 0;
   private readonly dbSchemaVersion: number;
   private readonly snapshotSchemaVersion: number;
@@ -144,6 +202,8 @@ export class SnapshotStore {
   // v1 statements
   private readonly countSnapshotsStmt: Database.Statement;
   private readonly deleteSnapshotsStmt: Database.Statement;
+  private readonly deleteAllChunksStmt: Database.Statement;
+  private readonly deleteAllManifestsStmt: Database.Statement;
   private readonly selectMetadataStmt: Database.Statement;
   private readonly upsertMetadataStmt: Database.Statement;
   private readonly upsertStmt: Database.Statement;
@@ -152,6 +212,9 @@ export class SnapshotStore {
   private readonly upsertChunkStmt: Database.Statement;
   private readonly upsertManifestStmt: Database.Statement;
   private readonly selectChunkCountsStmt: Database.Statement;
+  private readonly selectManifestByBlockStmt: Database.Statement;
+  private readonly selectChunkByBlockStmt: Database.Statement;
+  private readonly selectAllChunksByBlockStmt: Database.Statement;
   private readonly deleteOldChunksStmt: Database.Statement;
   private readonly deleteOldManifestsStmt: Database.Statement;
   /** Previous active block — used for retention (keep N=2).
@@ -188,6 +251,8 @@ export class SnapshotStore {
     // v1 prepared statements
     this.countSnapshotsStmt = this.db.prepare(SELECT_SNAPSHOT_COUNT_SQL);
     this.deleteSnapshotsStmt = this.db.prepare(DELETE_SNAPSHOTS_SQL);
+    this.deleteAllChunksStmt = this.db.prepare(DELETE_ALL_CHUNKS_SQL);
+    this.deleteAllManifestsStmt = this.db.prepare(DELETE_ALL_MANIFESTS_SQL);
     this.selectMetadataStmt = this.db.prepare(SELECT_METADATA_SQL);
     this.upsertMetadataStmt = this.db.prepare(UPSERT_METADATA_SQL);
     this.upsertStmt = this.db.prepare(UPSERT_SQL);
@@ -197,6 +262,13 @@ export class SnapshotStore {
     this.upsertManifestStmt = this.db.prepare(UPSERT_MANIFEST_SQL);
     this.selectChunkCountsStmt = this.db.prepare(
       SELECT_CHUNK_COUNT_FOR_BLOCK_SQL,
+    );
+    this.selectManifestByBlockStmt = this.db.prepare(
+      SELECT_MANIFEST_BY_BLOCK_SQL,
+    );
+    this.selectChunkByBlockStmt = this.db.prepare(SELECT_CHUNK_BY_BLOCK_SQL);
+    this.selectAllChunksByBlockStmt = this.db.prepare(
+      SELECT_ALL_CHUNKS_BY_BLOCK_SQL,
     );
     this.deleteOldChunksStmt = this.db.prepare(DELETE_OLD_CHUNKS_SQL);
     this.deleteOldManifestsStmt = this.db.prepare(DELETE_OLD_MANIFESTS_SQL);
@@ -249,6 +321,154 @@ export class SnapshotStore {
       console.warn("[Persistence] Failed to parse stored snapshot:", err);
       return null;
     }
+  }
+
+  /**
+   * Read active v2 manifest from SQLite for a specific chunkRows request.
+   * Returns null if no active manifest exists or chunkRows does not match.
+   */
+  getActiveChunkManifest(
+    requestedChunkRows: number,
+  ): StoredChunkManifest | null {
+    if (!Number.isInteger(requestedChunkRows) || requestedChunkRows <= 0) {
+      return null;
+    }
+    const activeBlock = this.getMetadataInt("active_snapshot_block");
+    if (activeBlock == null) return null;
+
+    const row = this.selectManifestByBlockStmt.get(activeBlock) as
+      | { chunk_rows: number; manifest_json: string }
+      | undefined;
+    if (!row) return null;
+    if (row.chunk_rows !== requestedChunkRows) return null;
+
+    return parseStoredManifest(row.manifest_json);
+  }
+
+  /**
+   * Read the active snapshot payload using the store's version pointer.
+   * Prefers the legacy v1 row only when it matches the active block exactly;
+   * otherwise reconstructs from active v2 chunks to preserve version coherence.
+   */
+  getActiveSnapshotPayload(): StoredSnapshotPayload | null {
+    const activeBlock = this.getMetadataInt("active_snapshot_block");
+    if (activeBlock == null) return null;
+    if (
+      this.cachedActiveSnapshotPayload &&
+      this.cachedActiveSnapshotPayloadBlock === activeBlock
+    ) {
+      return this.cachedActiveSnapshotPayload;
+    }
+
+    const row = this.selectStmt.get() as
+      | { block_number: number; data: string }
+      | undefined;
+    if (row && row.block_number === activeBlock) {
+      try {
+        JSON.parse(row.data);
+        const payload = {
+          blockNumber: row.block_number,
+          jsonByteLength: Buffer.byteLength(row.data),
+          jsonString: row.data,
+        };
+        this.cachedActiveSnapshotPayload = payload;
+        this.cachedActiveSnapshotPayloadBlock = activeBlock;
+        return payload;
+      } catch (err) {
+        console.warn(
+          "[Persistence] Failed to parse active v1 snapshot row; reconstructing from v2:",
+          err,
+        );
+      }
+    }
+
+    const manifestRow = this.selectManifestByBlockStmt.get(activeBlock) as
+      | { chunk_rows: number; manifest_json: string }
+      | undefined;
+    if (!manifestRow) return null;
+    const manifest = parseStoredManifest(manifestRow.manifest_json);
+    if (!manifest) return null;
+    if (manifest.lastProcessedBlock !== activeBlock) {
+      console.warn(
+        `[Persistence] Active manifest block mismatch: metadata=${activeBlock} manifest=${manifest.lastProcessedBlock}`,
+      );
+      return null;
+    }
+    const payload = this.reconstructSnapshotPayload(activeBlock, manifest);
+    if (payload) {
+      this.cachedActiveSnapshotPayload = payload;
+      this.cachedActiveSnapshotPayloadBlock = activeBlock;
+    }
+    return payload;
+  }
+
+  getActiveSnapshotSummary(): StoredSnapshotSummary | null {
+    const payload = this.getActiveSnapshotPayload();
+    if (!payload) return null;
+    return {
+      blockNumber: payload.blockNumber,
+      jsonByteLength: payload.jsonByteLength,
+    };
+  }
+
+  /**
+   * Read one active v2 chunk payload from SQLite.
+   */
+  getActiveEncodedChunk(
+    table: TableName,
+    chunkIndex: number,
+    requestedChunkRows: number,
+  ): StoredEncodedChunk | null {
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return null;
+    const manifest = this.getActiveChunkManifest(requestedChunkRows);
+    if (!manifest) return null;
+
+    const activeBlock = this.getMetadataInt("active_snapshot_block");
+    if (activeBlock == null) return null;
+
+    const tableInfo = manifest.tables[table];
+    if (!tableInfo) return null;
+    if (chunkIndex >= tableInfo.chunkCount) return null;
+
+    const row = this.selectChunkByBlockStmt.get(
+      activeBlock,
+      table,
+      chunkIndex,
+    ) as
+      | {
+          encoding: string;
+          payload: Buffer;
+        }
+      | undefined;
+    if (!row) return null;
+    if (row.encoding !== "gzip" && row.encoding !== "br") return null;
+
+    const payload = Buffer.from(row.payload);
+    const parsedChunk = parseEncodedChunkPayload(payload, row.encoding);
+    if (
+      !parsedChunk ||
+      parsedChunk.table !== table ||
+      parsedChunk.chunkIndex !== chunkIndex ||
+      parsedChunk.chunkRows !== manifest.chunkRows
+    ) {
+      console.warn(
+        `[Persistence] Ignoring invalid stored chunk ${table}/${chunkIndex} for chunkRows=${manifest.chunkRows}; falling back to SnapshotCache`,
+      );
+      return null;
+    }
+    const jsonByteLength =
+      row.encoding === "gzip"
+        ? gunzipSync(payload).byteLength
+        : payload.byteLength;
+
+    return {
+      chunkCount: tableInfo.chunkCount,
+      chunkRows: manifest.chunkRows,
+      encoding: row.encoding,
+      jsonByteLength,
+      payload,
+      snapshotBlock: manifest.lastProcessedBlock,
+    };
   }
 
   /**
@@ -333,14 +553,94 @@ export class SnapshotStore {
       );
       return false;
     }
-    console.log(
-      `[Persistence] v1/v2 consistency OK at block ${activeBlock}`,
-    );
+    console.log(`[Persistence] v1/v2 consistency OK at block ${activeBlock}`);
     return true;
   }
 
   close(): void {
     this.db.close();
+  }
+
+  private reconstructSnapshotPayload(
+    snapshotBlock: number,
+    manifest: StoredChunkManifest,
+  ): StoredSnapshotPayload | null {
+    const rows = this.selectAllChunksByBlockStmt.all(snapshotBlock) as Array<{
+      table_name: string;
+      chunk_index: number;
+      encoding: string;
+      payload: Buffer;
+    }>;
+
+    const tableData: Record<string, Record<string, unknown>> = {};
+    const chunkIndexes = new Map<TableName, Set<number>>();
+    for (const table of TABLE_NAMES) {
+      tableData[table] = {};
+    }
+
+    for (const row of rows) {
+      if (!TABLE_NAMES.includes(row.table_name as TableName)) {
+        console.warn(
+          `[Persistence] Ignoring unknown table in stored chunk set: ${row.table_name}`,
+        );
+        return null;
+      }
+      const parsedChunk = parseEncodedChunkPayload(row.payload, row.encoding);
+      if (!parsedChunk) return null;
+      const table = row.table_name as TableName;
+      const tableInfo = manifest.tables[table];
+      if (
+        parsedChunk.table !== table ||
+        parsedChunk.chunkIndex !== row.chunk_index ||
+        parsedChunk.chunkRows !== manifest.chunkRows ||
+        parsedChunk.chunkCount !== tableInfo.chunkCount ||
+        parsedChunk.rowCount !== tableInfo.rowCount ||
+        parsedChunk.lastProcessedBlock !== manifest.lastProcessedBlock
+      ) {
+        console.warn(
+          `[Persistence] Invalid stored chunk while reconstructing active snapshot: ${table}/${row.chunk_index}`,
+        );
+        return null;
+      }
+      let received = chunkIndexes.get(table);
+      if (!received) {
+        received = new Set<number>();
+        chunkIndexes.set(table, received);
+      }
+      if (received.has(parsedChunk.chunkIndex)) {
+        console.warn(
+          `[Persistence] Duplicate stored chunk while reconstructing active snapshot: ${table}/${parsedChunk.chunkIndex}`,
+        );
+        return null;
+      }
+      received.add(parsedChunk.chunkIndex);
+      Object.assign(tableData[table], parsedChunk.rows);
+    }
+
+    for (const table of TABLE_NAMES) {
+      const expected = manifest.tables[table];
+      const receivedCount = chunkIndexes.get(table)?.size ?? 0;
+      const receivedRows = Object.keys(tableData[table]).length;
+      if (receivedCount !== expected.chunkCount || receivedRows !== expected.rowCount) {
+        console.warn(
+          `[Persistence] Incomplete stored chunk set while reconstructing active snapshot: ${table} chunks=${receivedCount}/${expected.chunkCount} rows=${receivedRows}/${expected.rowCount}`,
+        );
+        return null;
+      }
+    }
+
+    const reconstructed: Record<string, unknown> = {
+      lastProcessedBlock: manifest.lastProcessedBlock,
+    };
+    for (const table of TABLE_NAMES) {
+      reconstructed[table] = tableData[table];
+    }
+    const jsonString = JSON.stringify(reconstructed);
+    return {
+      blockNumber: manifest.lastProcessedBlock,
+      jsonByteLength: Buffer.byteLength(jsonString),
+      jsonString,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -354,6 +654,7 @@ export class SnapshotStore {
    *   Phase B — commit pointer switch atomically
    */
   private dualWrite(blockNumber: number, jsonString: string): void {
+    this.invalidateActiveSnapshotCache();
     // v1: single-row upsert (unchanged)
     this.upsertStmt.run(blockNumber, jsonString);
 
@@ -405,6 +706,7 @@ export class SnapshotStore {
           table,
           chunkIndex: i,
           chunkCount,
+          chunkRows: this.chunkRows,
           rowCount,
           rows: Object.fromEntries(chunkEntries),
           lastProcessedBlock,
@@ -514,7 +816,10 @@ export class SnapshotStore {
   }
 
   private clearSnapshots(reason: string): void {
+    this.invalidateActiveSnapshotCache();
     this.deleteSnapshotsStmt.run();
+    this.deleteAllChunksStmt.run();
+    this.deleteAllManifestsStmt.run();
     this.lastPersistTime = 0;
     console.warn(`[Persistence] Cleared stored snapshot: ${reason}`);
   }
@@ -535,6 +840,74 @@ export class SnapshotStore {
 
   private setMetadataInt(key: string, value: number): void {
     this.upsertMetadataStmt.run(key, String(value));
+  }
+
+  private invalidateActiveSnapshotCache(): void {
+    this.cachedActiveSnapshotPayload = null;
+    this.cachedActiveSnapshotPayloadBlock = null;
+  }
+}
+
+function parseEncodedChunkPayload(
+  payload: Buffer,
+  encoding: string,
+): {
+  chunkCount: number;
+  chunkIndex: number;
+  chunkRows: number;
+  lastProcessedBlock: number;
+  rowCount: number;
+  rows: Record<string, Record<string, unknown>>;
+  table: string;
+} | null {
+  try {
+    const decoded =
+      encoding === "gzip"
+        ? gunzipSync(payload)
+        : encoding === "br"
+          ? brotliDecompressSync(payload)
+          : payload;
+    const value = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    if (typeof value.table !== "string") return null;
+    if (!Number.isInteger(value.chunkIndex) || (value.chunkIndex as number) < 0) {
+      return null;
+    }
+    if (!Number.isInteger(value.chunkCount) || (value.chunkCount as number) <= 0) {
+      return null;
+    }
+    if (!Number.isInteger(value.chunkRows) || (value.chunkRows as number) <= 0) {
+      return null;
+    }
+    if (!Number.isInteger(value.rowCount) || (value.rowCount as number) < 0) {
+      return null;
+    }
+    if (
+      !Number.isInteger(value.lastProcessedBlock) ||
+      (value.lastProcessedBlock as number) < 0
+    ) {
+      return null;
+    }
+    if (!value.rows || typeof value.rows !== "object" || Array.isArray(value.rows)) {
+      return null;
+    }
+    const rows: Record<string, Record<string, unknown>> = {};
+    for (const [id, row] of Object.entries(
+      value.rows as Record<string, unknown>,
+    )) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+      rows[id] = row as Record<string, unknown>;
+    }
+    return {
+      chunkCount: value.chunkCount as number,
+      chunkIndex: value.chunkIndex as number,
+      chunkRows: value.chunkRows as number,
+      lastProcessedBlock: value.lastProcessedBlock as number,
+      rowCount: value.rowCount as number,
+      rows,
+      table: value.table,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -579,6 +952,61 @@ export function jsonToSnapshot(data: Record<string, unknown>): IndexerSnapshot {
   }
 
   return snapshot;
+}
+
+function parseStoredManifest(raw: string): StoredChunkManifest | null {
+  try {
+    const value = JSON.parse(raw) as {
+      version?: unknown;
+      chunkRows?: unknown;
+      lastProcessedBlock?: unknown;
+      tables?: unknown;
+    };
+    if (value.version !== 2) return null;
+    if (
+      !Number.isInteger(value.chunkRows) ||
+      (value.chunkRows as number) <= 0
+    ) {
+      return null;
+    }
+    if (
+      !Number.isInteger(value.lastProcessedBlock) ||
+      (value.lastProcessedBlock as number) < 0
+    ) {
+      return null;
+    }
+    if (
+      !value.tables ||
+      typeof value.tables !== "object" ||
+      Array.isArray(value.tables)
+    ) {
+      return null;
+    }
+
+    const tables = {} as StoredChunkManifest["tables"];
+    for (const table of TABLE_NAMES) {
+      const info = (value.tables as Record<string, unknown>)[table];
+      if (!info || typeof info !== "object" || Array.isArray(info)) return null;
+      const rowCount = (info as { rowCount?: unknown }).rowCount;
+      const chunkCount = (info as { chunkCount?: unknown }).chunkCount;
+      if (!Number.isInteger(rowCount) || (rowCount as number) < 0) return null;
+      if (!Number.isInteger(chunkCount) || (chunkCount as number) < 0)
+        return null;
+      tables[table] = {
+        chunkCount: chunkCount as number,
+        rowCount: rowCount as number,
+      };
+    }
+
+    return {
+      chunkRows: value.chunkRows as number,
+      lastProcessedBlock: value.lastProcessedBlock as number,
+      tables,
+      version: 2,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

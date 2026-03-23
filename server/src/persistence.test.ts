@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import Database from "better-sqlite3";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
 
@@ -226,6 +226,7 @@ test("dual-write: save() writes to both v1 snapshots and v2 snapshot_chunks tabl
     );
     assert.equal(chunkPayload.version, 2);
     assert.equal(chunkPayload.table, "world");
+    assert.equal(chunkPayload.chunkRows, 1000);
     assert.deepEqual(chunkPayload.rows, snapshotData.world);
 
     // metadata: active_snapshot_block set
@@ -245,6 +246,129 @@ test("dual-write: save() writes to both v1 snapshots and v2 snapshot_chunks tabl
     assert.equal(parsed.tables.world.rowCount, 1);
 
     db.close();
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("getActiveEncodedChunk ignores legacy stored chunks missing chunkRows", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-legacy-chunk-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const snapshotData = {
+      lastProcessedBlock: 100,
+      world: {
+        "0": {
+          paused: false,
+          radius: "1",
+          misc_nonce: "1",
+          next_change_block: 0,
+        },
+      },
+      planet: {},
+      player: {},
+      planet_revealed_coords: {},
+      planet_events: {},
+      planet_artifacts: {},
+      arrival: {},
+      artifact: {},
+      artifact_location: {},
+    };
+    store.save(100, JSON.stringify(snapshotData));
+
+    const db = new Database(dbPath);
+    const legacyChunkJson = JSON.stringify({
+      version: 2,
+      table: "world",
+      chunkIndex: 0,
+      chunkCount: 1,
+      rowCount: 1,
+      rows: snapshotData.world,
+      lastProcessedBlock: 100,
+    });
+    db.prepare(
+      `UPDATE snapshot_chunks
+       SET payload = ?, encoding = 'gzip'
+       WHERE snapshot_block = ? AND table_name = ? AND chunk_index = ?`,
+    ).run(gzipSync(Buffer.from(legacyChunkJson)), 100, "world", 0);
+    db.close();
+
+    const chunk = store.getActiveEncodedChunk("world", 0, 1000);
+    assert.equal(chunk, null);
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("getActiveSnapshotPayload reconstructs the active snapshot version from v2 data", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-active-snapshot-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    store.save(
+      100,
+      JSON.stringify({
+        lastProcessedBlock: 100,
+        world: {
+          "0": {
+            paused: false,
+            radius: "1",
+            misc_nonce: "1",
+            next_change_block: 0,
+          },
+        },
+        player: {},
+        planet: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      }),
+    );
+
+    const db = new Database(dbPath);
+    db.prepare(
+      "UPDATE snapshots SET block_number = ?, data = ? WHERE id = 1",
+    ).run(
+      101,
+      JSON.stringify({
+        lastProcessedBlock: 101,
+        world: {},
+        player: { rogue: { score: "999" } },
+        planet: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      }),
+    );
+    db.close();
+
+    const active = store.getActiveSnapshotPayload();
+    assert.ok(active);
+    assert.equal(active?.blockNumber, 100);
+    const parsed = JSON.parse(active!.jsonString) as {
+      lastProcessedBlock: number;
+      world: Record<string, unknown>;
+      player: Record<string, unknown>;
+    };
+    assert.equal(parsed.lastProcessedBlock, 100);
+    assert.deepEqual(Object.keys(parsed.world), ["0"]);
+    assert.deepEqual(Object.keys(parsed.player), []);
+
     store.close();
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

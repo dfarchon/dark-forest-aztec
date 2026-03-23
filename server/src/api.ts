@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
@@ -56,6 +57,32 @@ export function createApp(deps: ApiDeps): Hono {
 
   // GET /snapshot — returns pre-compressed snapshot Buffer (Brotli preferred, gzip fallback)
   app.get("/snapshot", (c) => {
+    const storedSnapshot = store.getActiveSnapshotPayload();
+    if (storedSnapshot) {
+      const accept = c.req.header("accept-encoding") ?? "";
+      const useBrotli = accept.includes("br");
+      const source = Buffer.from(storedSnapshot.jsonString);
+      const buf = useBrotli
+        ? brotliCompressSync(source, {
+            params: { [constants.BROTLI_PARAM_QUALITY]: 6 },
+          })
+        : gzipSync(source);
+      const encoding = useBrotli ? "br" : "gzip";
+      return new Response(Uint8Array.from(buf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Encoding": encoding,
+          "Content-Length": String(buf.byteLength),
+          "X-Snapshot-Block": String(storedSnapshot.blockNumber),
+          "X-Snapshot-Uncompressed-Length": String(
+            storedSnapshot.jsonByteLength,
+          ),
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
     const accept = c.req.header("accept-encoding") ?? "";
     const useBrotli = accept.includes("br");
     const buf = useBrotli ? cache.getBrotliBuffer() : cache.getGzipBuffer();
@@ -80,6 +107,10 @@ export function createApp(deps: ApiDeps): Hono {
   // GET /snapshot/manifest — v2 chunk metadata (clients can opt-in without breaking /snapshot)
   app.get("/snapshot/manifest", (c) => {
     const chunkRows = parseChunkRows(c.req.query("chunkRows"));
+    const storedManifest = store.getActiveChunkManifest(chunkRows);
+    if (storedManifest) {
+      return c.json(storedManifest);
+    }
     return c.json(cache.getChunkManifest(chunkRows));
   });
 
@@ -96,11 +127,32 @@ export function createApp(deps: ApiDeps): Hono {
     }
 
     const chunkRows = parseChunkRows(c.req.query("chunkRows"));
+    const storedChunk = store.getActiveEncodedChunk(
+      table,
+      chunkIndex,
+      chunkRows,
+    );
+    if (storedChunk) {
+      return new Response(Uint8Array.from(storedChunk.payload), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Encoding": storedChunk.encoding,
+          "Content-Length": String(storedChunk.payload.byteLength),
+          "X-Snapshot-Block": String(storedChunk.snapshotBlock),
+          "X-Snapshot-Chunk-Count": String(storedChunk.chunkCount),
+          "X-Snapshot-Chunk-Index": String(chunkIndex),
+          "X-Snapshot-Chunk-Rows": String(storedChunk.chunkRows),
+          "X-Snapshot-Uncompressed-Length": String(storedChunk.jsonByteLength),
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
     const chunk = cache.getEncodedChunk(table, chunkIndex, chunkRows);
     if (!chunk) {
       return c.json({ error: "Chunk not found" }, 404);
     }
-
     const accept = c.req.header("accept-encoding") ?? "";
     const useBrotli = accept.includes("br");
     const payload = useBrotli ? chunk.brotli : chunk.gzip;
@@ -123,6 +175,17 @@ export function createApp(deps: ApiDeps): Hono {
 
   // GET /snapshot/hash — SHA-256 hash of snapshot JSON for client-side consistency verification
   app.get("/snapshot/hash", (c) => {
+    const storedSnapshot = store.getActiveSnapshotPayload();
+    if (storedSnapshot) {
+      const hash = createHash("sha256")
+        .update(storedSnapshot.jsonString)
+        .digest("hex");
+      return c.json({
+        hash,
+        lastProcessedBlock: storedSnapshot.blockNumber,
+      });
+    }
+
     const jsonStr = cache.getJsonString();
     const hash = createHash("sha256").update(jsonStr).digest("hex");
     return c.json({
@@ -133,12 +196,16 @@ export function createApp(deps: ApiDeps): Hono {
 
   // GET /blocks/latest
   app.get("/blocks/latest", () => {
-    const snapshotBlock = cache.getProcessedBlockNumber();
+    const storedSummary = store.getActiveSnapshotSummary();
+    const snapshotBlock =
+      storedSummary?.blockNumber ?? cache.getProcessedBlockNumber();
+    const snapshotBytes =
+      storedSummary?.jsonByteLength ?? cache.getJsonByteLength();
     return new Response(
       JSON.stringify({
         blockNumber: indexer.getProcessedBlockNumber(),
         snapshotBlock,
-        snapshotBytes: cache.getJsonByteLength(),
+        snapshotBytes,
         snapshotEncoding: "br, gzip",
       }),
       {
@@ -153,8 +220,11 @@ export function createApp(deps: ApiDeps): Hono {
   // GET /health
   app.get("/health", (c) => {
     const status = indexer.getStatus();
-    const snapshotBlock = cache.getProcessedBlockNumber();
-    const snapshotBytes = cache.getJsonByteLength();
+    const storedSummary = store.getActiveSnapshotSummary();
+    const snapshotBlock =
+      storedSummary?.blockNumber ?? cache.getProcessedBlockNumber();
+    const snapshotBytes =
+      storedSummary?.jsonByteLength ?? cache.getJsonByteLength();
     const blockLag = Math.max(
       0,
       status.latestKnownBlock - status.lastProcessedBlock,

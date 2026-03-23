@@ -5,7 +5,7 @@
  * Compares a client-side snapshot JSON file against the server's live snapshot.
  *
  * Usage:
- *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL]
+ *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]
  *
  * The client snapshot file can be obtained from the browser console:
  *   dfDebug.downloadSnapshot()
@@ -13,6 +13,7 @@
  * Examples:
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --server-url http://localhost:3001
+ *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --ignore-block-mismatch
  */
 
 import { createHash } from "node:crypto";
@@ -39,11 +40,23 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let clientFile = null;
   let serverUrl = process.env.SERVER_URL ?? "http://localhost:3001";
+  let ignoreBlockMismatch = false;
 
   for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-h" || args[i] === "--help") {
+      console.log(
+        "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]"
+      );
+      console.log("");
+      console.log("Get the client snapshot from browser console:");
+      console.log("  dfDebug.downloadSnapshot()");
+      process.exit(0);
+    }
     if (args[i] === "--server-url" && args[i + 1]) {
       serverUrl = args[i + 1];
       i++;
+    } else if (args[i] === "--ignore-block-mismatch") {
+      ignoreBlockMismatch = true;
     } else if (!args[i].startsWith("--")) {
       clientFile = args[i];
     }
@@ -51,7 +64,7 @@ function parseArgs() {
 
   if (!clientFile) {
     console.error(
-      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL]"
+      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]"
     );
     console.error("");
     console.error("Get the client snapshot from browser console:");
@@ -59,7 +72,7 @@ function parseArgs() {
     process.exit(1);
   }
 
-  return { clientFile, serverUrl };
+  return { clientFile, serverUrl, ignoreBlockMismatch };
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +105,11 @@ function canonicalJson(obj) {
   return JSON.stringify(obj, (_key, value) =>
     typeof value === "bigint" ? value.toString() : value
   );
+}
+
+function tableContentOnly(snap) {
+  const { lastProcessedBlock: _ignored, ...tables } = snap;
+  return tables;
 }
 
 function rowCount(snap) {
@@ -222,7 +240,7 @@ function diffSnapshots(label, snapA, snapB, nameA, nameB) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const { clientFile, serverUrl } = parseArgs();
+  const { clientFile, serverUrl, ignoreBlockMismatch } = parseArgs();
 
   // 1. Load client snapshot
   console.log(`📂 Loading client snapshot: ${clientFile}`);
@@ -281,6 +299,8 @@ async function main() {
   // 5. Client vs Server v1
   const clientHash = sha256(canonicalJson(clientSnap));
   const serverHash = sha256(canonicalJson(serverSnap));
+  const clientContentHash = sha256(canonicalJson(tableContentOnly(clientSnap)));
+  const serverContentHash = sha256(canonicalJson(tableContentOnly(serverSnap)));
 
   console.log("");
   console.log("═══════════════════════════════════════════════════════");
@@ -289,7 +309,10 @@ async function main() {
   console.log(`🔑 Client hash: ${clientHash}`);
   console.log(`🔑 Server v1 hash: ${serverHash}`);
 
-  if (clientHash === serverHash) {
+  const clientV1Same =
+    clientHash === serverHash ||
+    (ignoreBlockMismatch && clientContentHash === serverContentHash);
+  if (clientV1Same) {
     console.log(`✅ Client vs Server v1: IDENTICAL`);
   } else {
     console.log("");
@@ -301,6 +324,7 @@ async function main() {
   // 6. Server v1 vs Server v2
   if (v2Snap) {
     const v2Hash = sha256(canonicalJson(v2Snap));
+    const v2ContentHash = sha256(canonicalJson(tableContentOnly(v2Snap)));
 
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
@@ -309,7 +333,10 @@ async function main() {
     console.log(`🔑 Server v1 hash: ${serverHash}`);
     console.log(`🔑 Server v2 hash: ${v2Hash}`);
 
-    if (serverHash === v2Hash) {
+    const v1V2Same =
+      serverHash === v2Hash ||
+      (ignoreBlockMismatch && serverContentHash === v2ContentHash);
+    if (v1V2Same) {
       console.log(`✅ Server v1 vs v2: IDENTICAL`);
     } else {
       console.log("");
@@ -324,7 +351,7 @@ async function main() {
     }
 
     // 7. Client vs Server v2
-    const clientV2Hash = sha256(canonicalJson(v2Snap));
+    const clientV2Hash = v2Hash;
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
     console.log("  Client vs Server v2 (chunks)");
@@ -332,7 +359,10 @@ async function main() {
     console.log(`🔑 Client hash: ${clientHash}`);
     console.log(`🔑 Server v2 hash: ${clientV2Hash}`);
 
-    if (clientHash === clientV2Hash) {
+    const clientV2Same =
+      clientHash === clientV2Hash ||
+      (ignoreBlockMismatch && clientContentHash === v2ContentHash);
+    if (clientV2Same) {
       console.log(`✅ Client vs Server v2: IDENTICAL`);
     } else {
       console.log("");
@@ -343,7 +373,14 @@ async function main() {
   }
 
   console.log("");
-  const allMatch = clientHash === serverHash && (!v2Snap || serverHash === sha256(canonicalJson(v2Snap)));
+  const allMatch =
+    (ignoreBlockMismatch
+      ? clientContentHash === serverContentHash
+      : clientHash === serverHash) &&
+    (!v2Snap ||
+      (ignoreBlockMismatch
+        ? serverContentHash === sha256(canonicalJson(tableContentOnly(v2Snap)))
+        : serverHash === sha256(canonicalJson(v2Snap))));
   if (allMatch) {
     console.log("🎉 All snapshots are consistent!");
     process.exit(0);
