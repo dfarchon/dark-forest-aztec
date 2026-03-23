@@ -36,6 +36,7 @@ import { Sub, TxLink } from "../Components/Text";
 import dfstyles from "../Styles/dfstyles";
 import {
   TransactionRecord,
+  useSelectedPlanetId,
   useTransactionLog,
   useUIManager,
 } from "../Utils/AppHooks";
@@ -252,13 +253,39 @@ const getPlanetFromTransaction = (
     return gameManager.getPlanetWithId(tx.intent.locationId);
 };
 
+const getPlanetIdsFromTransaction = (tx: Transaction): string[] => {
+  if (isUnconfirmedMoveTx(tx)) return [tx.intent.from, tx.intent.to];
+  if (isUnconfirmedUpgradeTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedActivateArtifactTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedRevealTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedInitTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedBuyHatTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedTransferTx(tx)) return [tx.intent.planetId];
+  if (isUnconfirmedFindArtifactTx(tx)) return [tx.intent.planetId];
+  if (isUnconfirmedDepositArtifactTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedWithdrawArtifactTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedProspectPlanetTx(tx)) return [tx.intent.planetId];
+  if (isUnconfirmedDeactivateArtifactTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedWithdrawSilverTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedInvadePlanetTx(tx)) return [tx.intent.locationId];
+  if (isUnconfirmedCapturePlanetTx(tx)) return [tx.intent.locationId];
+  return [];
+};
+
 function QueuedTransactionsTable({
   transactions,
+  selectedPlanetId,
 }: {
   transactions: Wrapper<TransactionRecord>;
+  selectedPlanetId?: string;
 }) {
   const uiManager = useUIManager();
-  const visibleTransactions = reverse(values(transactions.value));
+  const visibleTransactions = reverse(values(transactions.value)).filter(
+    (tx) => {
+      if (!selectedPlanetId) return true;
+      return getPlanetIdsFromTransaction(tx).includes(selectedPlanetId);
+    }
+  );
 
   const headers = ["Type", "Hash", "State", "Planet", "Updated", "Actions"];
   const alignments: Array<"r" | "c" | "l"> = ["c", "c", "c", "c", "c", "c"];
@@ -285,10 +312,12 @@ function QueuedTransactionsTable({
   );
 
   const queuedTransctions = useCallback(() => {
-    return values(transactions.value).filter((tx) =>
-      ["Init", "Prioritized"].includes(tx.state)
-    );
-  }, [transactions]);
+    return values(transactions.value).filter((tx) => {
+      if (!["Init", "Prioritized"].includes(tx.state)) return false;
+      if (!selectedPlanetId) return true;
+      return getPlanetIdsFromTransaction(tx).includes(selectedPlanetId);
+    });
+  }, [transactions, selectedPlanetId]);
 
   const cancelAllQueuedTransactions = useCallback(() => {
     queuedTransctions().forEach((queuedTx) => {
@@ -444,6 +473,8 @@ export function TransactionLogPane({
   visible: boolean;
   onClose: () => void;
 }) {
+  const uiManager = useUIManager();
+  const selectedPlanetId = useSelectedPlanetId(uiManager).value;
   const transactions = useTransactionLog();
 
   return (
@@ -458,7 +489,10 @@ export function TransactionLogPane({
           No transactions to be shown
         </CenterBackgroundSubtext>
       ) : (
-        <QueuedTransactionsTable transactions={transactions} />
+        <QueuedTransactionsTable
+          transactions={transactions}
+          selectedPlanetId={selectedPlanetId}
+        />
       )}
     </ModalPane>
   );
