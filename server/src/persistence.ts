@@ -154,7 +154,8 @@ export class SnapshotStore {
   private readonly selectChunkCountsStmt: Database.Statement;
   private readonly deleteOldChunksStmt: Database.Statement;
   private readonly deleteOldManifestsStmt: Database.Statement;
-  /** Previous active block — used for retention (keep N=2). */
+  /** Previous active block — used for retention (keep N=2).
+   *  Initialized from metadata on construction so it survives restarts. */
   private previousActiveBlock: number | null = null;
 
   constructor(
@@ -201,6 +202,9 @@ export class SnapshotStore {
     this.deleteOldManifestsStmt = this.db.prepare(DELETE_OLD_MANIFESTS_SQL);
 
     this.ensureSchemaVersions();
+
+    // Initialize previousActiveBlock from metadata so cleanup survives restarts
+    this.previousActiveBlock = this.getMetadataInt("active_snapshot_block");
   }
 
   /**

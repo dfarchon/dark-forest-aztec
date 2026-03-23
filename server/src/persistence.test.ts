@@ -328,3 +328,67 @@ test("cleanup retains only N=2 snapshot versions", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("cleanup after restart preserves last active block, not incomplete crash block", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-restart-cleanup-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const makeSnapshot = (block: number) =>
+      JSON.stringify({
+        lastProcessedBlock: block,
+        world: { "0": { paused: false } },
+        planet: {},
+        player: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      });
+
+    // First "run": save block 100 and 200
+    const store1 = new SnapshotStore(dbPath, 0);
+    store1.save(100, makeSnapshot(100));
+    store1.save(200, makeSnapshot(200));
+    store1.close();
+    // active_snapshot_block = 200 in metadata
+
+    // Simulate crash: manually insert incomplete chunks for block 300
+    // (only world, missing other tables — as if crash during Phase A)
+    const rawDb = new Database(dbPath);
+    rawDb
+      .prepare(
+        "INSERT INTO snapshot_chunks (snapshot_block, table_name, chunk_index, row_count, encoding, payload) VALUES (?, ?, ?, ?, 'gzip', ?)",
+      )
+      .run(300, "world", 0, 1, Buffer.from("fake"));
+    rawDb.close();
+
+    // Second "run": new SnapshotStore reads active=200 from metadata
+    const store2 = new SnapshotStore(dbPath, 0);
+    // save block 310 — cleanup should keep [310, 200], delete 100 and 300's residue
+    store2.save(310, makeSnapshot(310));
+
+    const db = new Database(dbPath, { readonly: true });
+    const blocks = db
+      .prepare(
+        "SELECT DISTINCT snapshot_block FROM snapshot_chunks ORDER BY snapshot_block",
+      )
+      .all() as Array<{ snapshot_block: number }>;
+
+    // block 200 (last complete active) + 310 (current) kept
+    // block 100 and 300 (crash residue) cleaned up
+    assert.deepEqual(
+      blocks.map((b) => b.snapshot_block),
+      [200, 310],
+    );
+
+    db.close();
+    store2.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
