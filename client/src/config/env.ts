@@ -4,6 +4,7 @@
  */
 
 const DEFAULT_NODE_URL = "http://localhost:8080";
+const DEFAULT_PROVER_URL = "http://127.0.0.1:59833";
 
 /** Default indexer bootstrap URL (devnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in devnet builds. */
 const DEFAULT_INDEXER_BOOTSTRAP_URL = "";
@@ -58,4 +59,12 @@ export function isProductionLike(): boolean {
 export function getProverEnabled(): boolean {
   const value = getString("VITE_PROVER_ENABLED");
   return value === "true";
+}
+
+/**
+ * Native accelerator / TeeRex-style prover HTTP base URL (host + port).
+ * Defaults to http://127.0.0.1:59833 when unset.
+ */
+export function getProverUrl(): string {
+  return getString("VITE_TEEREX_PROVER_URL") ?? DEFAULT_PROVER_URL;
 }

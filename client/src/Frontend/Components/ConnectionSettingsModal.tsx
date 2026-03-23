@@ -4,9 +4,14 @@ import styled from "styled-components";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
+  getEffectiveProverUrl,
   setConnectionOverrides,
 } from "../../config/connection";
-import { getIndexerBootstrapUrl, getNodeUrl } from "../../config/env";
+import {
+  getIndexerBootstrapUrl,
+  getNodeUrl,
+  getProverUrl,
+} from "../../config/env";
 import dfstyles from "../Styles/dfstyles";
 import { Btn } from "./Btn";
 import { Title } from "./CoreUI";
@@ -40,6 +45,7 @@ export function ConnectionSettingsModal({
 }) {
   const [nodeUrlInput, setNodeUrlInput] = useState("");
   const [indexerUrlInput, setIndexerUrlInput] = useState("");
+  const [proverUrlInput, setProverUrlInput] = useState("");
   const [saveMessage, setSaveMessage] = useState<
     "saved" | "restored" | "error" | null
   >(null);
@@ -47,6 +53,7 @@ export function ConnectionSettingsModal({
   const refreshForm = useCallback(() => {
     setNodeUrlInput(getEffectiveNodeUrl());
     setIndexerUrlInput(getEffectiveIndexerBootstrapUrl() ?? "");
+    setProverUrlInput(getEffectiveProverUrl());
   }, []);
 
   useEffect(() => {
@@ -59,6 +66,7 @@ export function ConnectionSettingsModal({
   const handleSave = useCallback(() => {
     const nodeTrimmed = nodeUrlInput.trim();
     const indexerTrimmed = indexerUrlInput.trim();
+    const proverTrimmed = proverUrlInput.trim();
     if (!nodeTrimmed) {
       setSaveMessage("error");
       return;
@@ -71,20 +79,27 @@ export function ConnectionSettingsModal({
       setSaveMessage("error");
       return;
     }
+    if (proverTrimmed && !isValidHttpUrl(proverTrimmed)) {
+      setSaveMessage("error");
+      return;
+    }
     setConnectionOverrides({
       nodeUrl: nodeTrimmed,
       indexerBootstrapUrl: indexerTrimmed || null,
+      proverUrl: proverTrimmed || "",
     });
     setSaveMessage("saved");
-  }, [nodeUrlInput, indexerUrlInput]);
+  }, [nodeUrlInput, indexerUrlInput, proverUrlInput]);
 
   const handleRestoreDefault = useCallback(() => {
     setConnectionOverrides({
       nodeUrl: "",
       indexerBootstrapUrl: undefined,
+      proverUrl: "",
     });
     setNodeUrlInput(getNodeUrl());
     setIndexerUrlInput(getIndexerBootstrapUrl() ?? "");
+    setProverUrlInput(getProverUrl());
     setSaveMessage("restored");
   }, []);
 
@@ -130,6 +145,17 @@ export function ConnectionSettingsModal({
             setIndexerUrlInput((e.target as HTMLInputElement).value)
           }
           placeholder="Leave empty to sync from node"
+          style={{ width: "100%", marginBottom: 12 }}
+        />
+        <label style={{ display: "block", marginBottom: 4 }}>
+          <Text>Accelerator / prover URL</Text>
+        </label>
+        <TextInput
+          value={proverUrlInput}
+          onChange={(e) =>
+            setProverUrlInput((e.target as HTMLInputElement).value)
+          }
+          placeholder={getProverUrl()}
           style={{ width: "100%", marginBottom: 12 }}
         />
         {saveMessage === "saved" && (

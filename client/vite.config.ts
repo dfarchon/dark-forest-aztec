@@ -1,8 +1,18 @@
+import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Package.json points to dist/index.js but publish layout is dist/src/index.js
+      "@alejoamiras/aztec-accelerator": path.resolve(
+        __dirname,
+        "node_modules/@alejoamiras/aztec-accelerator/dist/src/index.js"
+      ),
+    },
+  },
   worker: {
     format: "es",
   },

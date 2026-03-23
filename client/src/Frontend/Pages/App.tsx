@@ -33,6 +33,12 @@ function TestHub() {
     <div className="test-page" style={{ maxWidth: "960px" }}>
       <header className="test-page__header">
         <h1 className="test-page__title">DFPunk Aztec Client — Test</h1>
+        <p style={{ margin: "0 0 12px", opacity: 0.85, fontSize: "0.9rem" }}>
+          Wallet / TxExecutor use the same accelerator URL as the game landing
+          page: env{" "}
+          <code style={{ fontSize: "0.85em" }}>VITE_TEEREX_PROVER_URL</code> or
+          Connection settings (localStorage).
+        </p>
         <nav className="test-page__nav">
           <Link to="/">← Home</Link>
           <span className="test-page__nav-sep"> · </span>

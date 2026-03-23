@@ -24,6 +24,7 @@ import { ChainClock } from "../../../Backend/Utils/ChainClock";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
+  getEffectiveProverUrl,
 } from "../../../config/connection";
 import { getProverEnabled } from "../../../config/env";
 import type { IndexerConnection } from "../../../Session/Indexer/IndexerConnection";
@@ -177,6 +178,7 @@ export function TxExecutorTestPage() {
         nodeUrl: getEffectiveNodeUrl(),
         storagePrefix: "dfpunk",
         balancePollIntervalMs: 15_000,
+        proverUrl: getEffectiveProverUrl(),
         pxeConfig: {
           proverEnabled: getProverEnabled(),
         },
@@ -494,6 +496,26 @@ export function TxExecutorTestPage() {
             <div className="test-page__stat-value">
               <code style={{ fontSize: "0.85rem" }}>
                 {getEffectiveNodeUrl()}
+              </code>
+            </div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">
+              PXE prover / accelerator
+            </div>
+            <div className="test-page__stat-value">
+              <span
+                className={`test-page__badge ${getProverEnabled() ? "test-page__badge--success" : "test-page__badge--idle"}`}
+              >
+                {getProverEnabled() ? "Prover on" : "Prover off"}
+              </span>
+            </div>
+          </div>
+          <div className="test-page__stat">
+            <div className="test-page__stat-label">Accelerator URL</div>
+            <div className="test-page__stat-value">
+              <code style={{ fontSize: "0.85rem" }}>
+                {getEffectiveProverUrl()}
               </code>
             </div>
           </div>
