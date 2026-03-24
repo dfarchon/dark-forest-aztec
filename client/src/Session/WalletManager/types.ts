@@ -14,6 +14,8 @@ export interface WalletManagerConfig {
   nodeUrl: string;
   storagePrefix?: string;
   balancePollIntervalMs?: number;
+  /** HTTP base URL for native accelerator (host:port), e.g. from getEffectiveProverUrl(). */
+  proverUrl?: string;
   /** PXE config overrides. In browser, dataStoreMapSizeKb defaults to 128 GB which fails; use ~128 MB. */
   pxeConfig?: {
     dataStoreMapSizeKb?: number;

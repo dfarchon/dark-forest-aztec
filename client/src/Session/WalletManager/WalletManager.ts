@@ -6,6 +6,7 @@
  * and manages ECDSAR accounts with localStorage persistence via KeyStore.
  */
 
+import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
@@ -405,6 +406,22 @@ export class WalletManager {
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
         ...config.pxeConfig,
       },
+      pxeOptions:
+        config.pxeConfig?.proverEnabled && config.proverUrl
+          ? (() => {
+              const url = new URL(config.proverUrl!);
+              const prover = new AcceleratorProver({
+                accelerator: {
+                  port: parseInt(url.port, 10) || 59833,
+                  host: url.hostname,
+                },
+                onPhase: (phase, data) => {
+                  console.log(`Phase: ${phase}`, data);
+                },
+              });
+              return { proverOrOptions: prover };
+            })()
+          : undefined,
     });
 
     const sponsoredFPC = await getContractInstanceFromInstantiationParams(

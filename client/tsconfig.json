@@ -4,6 +4,12 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@alejoamiras/aztec-accelerator": [
+        "./node_modules/@alejoamiras/aztec-accelerator/dist/src/index.d.ts"
+      ]
+    },
     "strict": true,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
