@@ -1020,21 +1020,20 @@ export function GameLandingPage() {
         });
 
       gameUIManager
-        .joinGame(async (e) => {
-          console.error(e);
-
-          terminal.current?.println("Error Joining Game:");
+        .joinGame(async () => {
+          terminal.current?.println(
+            "Could not join the game right now. You can try again.",
+            TerminalTextStyle.Red
+          );
           terminal.current?.println("");
-          terminal.current?.println(e.message, TerminalTextStyle.Red);
-          terminal.current?.println("");
-          terminal.current?.println("Press Enter to Try Again:");
+          terminal.current?.println("Press ENTER to try again:");
 
           await terminal.current?.getInput();
           return true;
         })
-        .catch((error: Error) => {
+        .catch(() => {
           terminal.current?.println(
-            `[ERROR] An error occurred: ${error.toString().slice(0, 10000)}`,
+            "Initialization failed. Please refresh the page and try again.",
             TerminalTextStyle.Red
           );
         });

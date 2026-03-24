@@ -420,12 +420,14 @@ export class TxExecutor {
       // 9. Error handling — v0.6 lines 398-415
       console.error(e);
       tx.state = "Fail";
-      error = e as Error;
+      error = e instanceof Error ? e : new Error(String(e));
 
       if (!time_submitted) {
-        // Error before submission
+        // Error before submission (resolve/simulate/send setup) — reject both
+        // promises so callers awaiting only confirmedPromise still get the error.
         time_errored = Date.now();
         tx.onSubmissionError(error);
+        tx.onReceiptError(error);
       } else {
         // Error after submission (receipt error)
         if (!time_errored) {

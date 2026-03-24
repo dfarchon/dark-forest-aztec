@@ -2352,7 +2352,10 @@ class GameManager extends EventEmitter {
         "Initialization failed. Please refresh the page and try again.",
         TerminalTextStyle.Red
       );
-      this.getNotificationsManager().txInitError("initializePlayer", e.message);
+      this.getNotificationsManager().txInitError(
+        "initializePlayer",
+        "Could not complete initialization. Try again or refresh the page."
+      );
       throw e;
     }
   }

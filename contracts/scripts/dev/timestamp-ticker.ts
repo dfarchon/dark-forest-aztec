@@ -3,7 +3,7 @@
  * so you can get correct timestamps when testing.
  *
  * Usage: node --experimental-transform-types scripts/dev/timestamp-ticker.ts [intervalSeconds]
- *   intervalSeconds: interval in seconds (default 12)
+ *   intervalSeconds: interval in seconds (default 120)
  *
  * Prerequisites: deploy + configure done, .env has ACCOUNT_* and ADMIN_CONTRACT_ADDRESS
  */
@@ -26,7 +26,7 @@ loadContractsEnv();
 
 const AZTEC_NODE_URL = getAztecNodeUrl();
 const PROVER_ENABLED = getProverEnabled();
-const INTERVAL_SEC = parseInt(process.argv[2] || '12', 10) || 12;
+const INTERVAL_SEC = parseInt(process.argv[2] || '120', 10) || 120;
 
 const CONTRACT_SPECS = [
     {
