@@ -18,7 +18,7 @@
 #   - `aztec` CLI installed (~/.aztec/current/…)
 #   - `pnpm` installed
 #   - Contract JSONs already compiled in contracts/target/
-#   - packages/contracts/src/index.ts contains correct devnet addresses
+#   - packages/contracts/src/index.ts contains correct testnet addresses
 #
 
 set -euo pipefail
@@ -103,7 +103,7 @@ if $DO_CODEGEN; then
 
   ARTIFACT_COUNT=$(ls "$PKG_ARTIFACTS" | wc -l | tr -d ' ')
   ok "Synced $ARTIFACT_COUNT artifacts to $PKG_ARTIFACTS"
-  ok "packages/contracts/src/index.ts was NOT modified (devnet addresses preserved)"
+  ok "packages/contracts/src/index.ts was NOT modified (testnet addresses preserved)"
 fi
 
 # ---------- step 2: dev server ----------

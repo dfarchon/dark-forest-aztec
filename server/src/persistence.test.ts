@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import Database from "better-sqlite3";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
 
@@ -168,6 +169,349 @@ test("SnapshotStore resets stored snapshot when snapshot schema version changes"
     const restoredV2 = v2Store.restore();
     assert.equal(restoredV2, null);
     v2Store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("dual-write: save() writes to both v1 snapshots and v2 snapshot_chunks tables", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-dualwrite-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const snapshotData = {
+      lastProcessedBlock: 100,
+      world: { "0": { paused: false, radius: "1", misc_nonce: "1", next_change_block: 0 } },
+      planet: {},
+      player: {},
+      planet_revealed_coords: {},
+      planet_events: {},
+      planet_artifacts: {},
+      arrival: {},
+      artifact: {},
+      artifact_location: {},
+    };
+    store.save(100, JSON.stringify(snapshotData));
+
+    // v1: old table still populated
+    const v1Row = store.restore();
+    assert.ok(v1Row);
+    assert.equal(v1Row?.blockNumber, 100);
+
+    // v2: chunk table populated
+    const db = new Database(dbPath, { readonly: true });
+    const chunks = db
+      .prepare("SELECT * FROM snapshot_chunks WHERE snapshot_block = ?")
+      .all(100) as Array<{
+      snapshot_block: number;
+      table_name: string;
+      chunk_index: number;
+      row_count: number;
+      encoding: string;
+      payload: Buffer;
+    }>;
+
+    // Only "world" has data (1 row → 1 chunk), rest have 0 rows → 0 chunks
+    const worldChunks = chunks.filter((c) => c.table_name === "world");
+    assert.equal(worldChunks.length, 1);
+    assert.equal(worldChunks[0].chunk_index, 0);
+    assert.equal(worldChunks[0].row_count, 1);
+
+    // Decompress and verify chunk payload
+    const chunkPayload = JSON.parse(
+      gunzipSync(worldChunks[0].payload).toString(),
+    );
+    assert.equal(chunkPayload.version, 2);
+    assert.equal(chunkPayload.table, "world");
+    assert.equal(chunkPayload.chunkRows, 1000);
+    assert.deepEqual(chunkPayload.rows, snapshotData.world);
+
+    // metadata: active_snapshot_block set
+    const metaRow = db
+      .prepare("SELECT value FROM metadata WHERE key = 'active_snapshot_block'")
+      .get() as { value: string } | undefined;
+    assert.ok(metaRow);
+    assert.equal(metaRow?.value, "100");
+
+    // manifest written
+    const manifest = db
+      .prepare("SELECT * FROM snapshot_manifests WHERE snapshot_block = ?")
+      .get(100) as { manifest_json: string } | undefined;
+    assert.ok(manifest);
+    const parsed = JSON.parse(manifest!.manifest_json);
+    assert.equal(parsed.version, 2);
+    assert.equal(parsed.tables.world.rowCount, 1);
+
+    db.close();
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("getActiveEncodedChunk ignores legacy stored chunks missing chunkRows", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-legacy-chunk-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const snapshotData = {
+      lastProcessedBlock: 100,
+      world: {
+        "0": {
+          paused: false,
+          radius: "1",
+          misc_nonce: "1",
+          next_change_block: 0,
+        },
+      },
+      planet: {},
+      player: {},
+      planet_revealed_coords: {},
+      planet_events: {},
+      planet_artifacts: {},
+      arrival: {},
+      artifact: {},
+      artifact_location: {},
+    };
+    store.save(100, JSON.stringify(snapshotData));
+
+    const db = new Database(dbPath);
+    const legacyChunkJson = JSON.stringify({
+      version: 2,
+      table: "world",
+      chunkIndex: 0,
+      chunkCount: 1,
+      rowCount: 1,
+      rows: snapshotData.world,
+      lastProcessedBlock: 100,
+    });
+    db.prepare(
+      `UPDATE snapshot_chunks
+       SET payload = ?, encoding = 'gzip'
+       WHERE snapshot_block = ? AND table_name = ? AND chunk_index = ?`,
+    ).run(gzipSync(Buffer.from(legacyChunkJson)), 100, "world", 0);
+    db.close();
+
+    const chunk = store.getActiveEncodedChunk("world", 0, 1000);
+    assert.equal(chunk, null);
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("getActiveSnapshotPayload reconstructs the active snapshot version from v2 data", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-active-snapshot-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    store.save(
+      100,
+      JSON.stringify({
+        lastProcessedBlock: 100,
+        world: {
+          "0": {
+            paused: false,
+            radius: "1",
+            misc_nonce: "1",
+            next_change_block: 0,
+          },
+        },
+        player: {},
+        planet: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      }),
+    );
+
+    const db = new Database(dbPath);
+    db.prepare(
+      "UPDATE snapshots SET block_number = ?, data = ? WHERE id = 1",
+    ).run(
+      101,
+      JSON.stringify({
+        lastProcessedBlock: 101,
+        world: {},
+        player: { rogue: { score: "999" } },
+        planet: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      }),
+    );
+    db.close();
+
+    const active = store.getActiveSnapshotPayload();
+    assert.ok(active);
+    assert.equal(active?.blockNumber, 100);
+    const parsed = JSON.parse(active!.jsonString) as {
+      lastProcessedBlock: number;
+      world: Record<string, unknown>;
+      player: Record<string, unknown>;
+    };
+    assert.equal(parsed.lastProcessedBlock, 100);
+    assert.deepEqual(Object.keys(parsed.world), ["0"]);
+    assert.deepEqual(Object.keys(parsed.player), []);
+
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("verifyChunkConsistency returns true when v1 and v2 match", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-verify-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const snapshotData = {
+      lastProcessedBlock: 50,
+      world: { "0": { paused: false } },
+      planet: {},
+      player: {},
+      planet_revealed_coords: {},
+      planet_events: {},
+      planet_artifacts: {},
+      arrival: {},
+      artifact: {},
+      artifact_location: {},
+    };
+    const jsonString = JSON.stringify(snapshotData);
+    store.save(50, jsonString);
+
+    const result = store.verifyChunkConsistency(jsonString);
+    assert.equal(result, true);
+
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("cleanup retains only N=2 snapshot versions", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-cleanup-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const makeSnapshot = (block: number) =>
+      JSON.stringify({
+        lastProcessedBlock: block,
+        world: { "0": { paused: false } },
+        planet: {},
+        player: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      });
+
+    store.save(10, makeSnapshot(10));
+    store.save(20, makeSnapshot(20));
+    store.save(30, makeSnapshot(30));
+
+    const db = new Database(dbPath, { readonly: true });
+    const blocks = db
+      .prepare(
+        "SELECT DISTINCT snapshot_block FROM snapshot_chunks ORDER BY snapshot_block",
+      )
+      .all() as Array<{ snapshot_block: number }>;
+
+    // Only blocks 20 and 30 should remain (block 10 cleaned up)
+    assert.deepEqual(
+      blocks.map((b) => b.snapshot_block),
+      [20, 30],
+    );
+
+    db.close();
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("cleanup after restart preserves last active block, not incomplete crash block", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "dfpunk-restart-cleanup-"),
+  );
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const makeSnapshot = (block: number) =>
+      JSON.stringify({
+        lastProcessedBlock: block,
+        world: { "0": { paused: false } },
+        planet: {},
+        player: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      });
+
+    // First "run": save block 100 and 200
+    const store1 = new SnapshotStore(dbPath, 0);
+    store1.save(100, makeSnapshot(100));
+    store1.save(200, makeSnapshot(200));
+    store1.close();
+    // active_snapshot_block = 200 in metadata
+
+    // Simulate crash: manually insert incomplete chunks for block 300
+    // (only world, missing other tables — as if crash during Phase A)
+    const rawDb = new Database(dbPath);
+    rawDb
+      .prepare(
+        "INSERT INTO snapshot_chunks (snapshot_block, table_name, chunk_index, row_count, encoding, payload) VALUES (?, ?, ?, ?, 'gzip', ?)",
+      )
+      .run(300, "world", 0, 1, Buffer.from("fake"));
+    rawDb.close();
+
+    // Second "run": new SnapshotStore reads active=200 from metadata
+    const store2 = new SnapshotStore(dbPath, 0);
+    // save block 310 — cleanup should keep [310, 200], delete 100 and 300's residue
+    store2.save(310, makeSnapshot(310));
+
+    const db = new Database(dbPath, { readonly: true });
+    const blocks = db
+      .prepare(
+        "SELECT DISTINCT snapshot_block FROM snapshot_chunks ORDER BY snapshot_block",
+      )
+      .all() as Array<{ snapshot_block: number }>;
+
+    // block 200 (last complete active) + 310 (current) kept
+    // block 100 and 300 (crash residue) cleaned up
+    assert.deepEqual(
+      blocks.map((b) => b.snapshot_block),
+      [200, 310],
+    );
+
+    db.close();
+    store2.close();
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

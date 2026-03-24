@@ -6,7 +6,7 @@ import {
   validateContractsConfig,
 } from "./contractsConfig.ts";
 
-test("validateContractsConfig accepts workspace devnet contracts", () => {
+test("validateContractsConfig accepts workspace testnet contracts", () => {
   const config = validateContractsConfig();
 
   assert.equal(config.startBlock, CONTRACTS_CONFIG.startBlock);

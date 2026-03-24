@@ -6,7 +6,7 @@
 const DEFAULT_NODE_URL = "http://localhost:8080";
 const DEFAULT_PROVER_URL = "http://127.0.0.1:59833";
 
-/** Default indexer bootstrap URL (devnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in devnet builds. */
+/** Default indexer bootstrap URL (testnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in testnet builds. */
 const DEFAULT_INDEXER_BOOTSTRAP_URL = "";
 
 function getString(key: string): string | undefined {
@@ -27,7 +27,7 @@ export function getNodeUrl(): string {
 /**
  * Optional off-chain indexer API base URL for bootstrap snapshot.
  * When undefined, client syncs from node starting at START_BLOCK.
- * In devnet builds, defaults to the devnet server when env is unset.
+ * In testnet builds, defaults to the testnet server when env is unset.
  */
 export function getIndexerBootstrapUrl(): string | undefined {
   const fromEnv = getString("VITE_INDEXER_BOOTSTRAP_URL");

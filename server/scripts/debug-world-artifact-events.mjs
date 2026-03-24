@@ -11,7 +11,7 @@ import {
 import { ArtifactStorageContract } from "../../packages/contracts/src/artifacts/ArtifactStorage.ts";
 import { WorldStorageContract } from "../../packages/contracts/src/artifacts/WorldStorage.ts";
 
-const nodeUrl = process.env.AZTEC_NODE_URL ?? "https://v4-devnet-2.aztec-labs.com";
+const nodeUrl = process.env.AZTEC_NODE_URL ?? "https://rpc.testnet.aztec-labs.com";
 const node = createAztecNodeClient(nodeUrl);
 
 const latest = Number(await node.getBlockNumber());

@@ -170,14 +170,14 @@ This server uses **IndexerService** from `packages/indexer-server-core/src`. Ser
 Environment variable references:
 
 - `.env.example` — generic reference with all supported keys
-- `env.local.example` — recommended local devnet preset
+- `env.local.example` — recommended local testnet preset
 - `env.railway.example` — recommended Railway preset
 - `docs/README.md` — docs entrypoint + release checklist (read this first)
 
 Key variables:
 
-- `AZTEC_NODE_URL` (runtime default: `https://v4-devnet-2.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
-- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`)
+- `AZTEC_NODE_URL` (runtime default: `https://rpc.testnet.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
+- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app/`)
 - `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
 - `PORT` (default: `3001`)
 - `SQLITE_PATH` (default: `./data/indexer.db`)
@@ -196,7 +196,7 @@ IndexerService options (hardcoded in `src/index.ts`; move to env if needed):
 ```bash
 corepack pnpm install
 
-# Devnet + local API (:3001)
+# Testnet + local API (:3001)
 corepack pnpm --filter server dev
 
 # Local sandbox override
@@ -208,13 +208,73 @@ corepack pnpm --filter server dev
 
 - Frontend: `http://127.0.0.1:5173`
 - Indexer server: `http://localhost:3001`
-- Aztec node: `https://v4-devnet-2.aztec-labs.com`
+- Aztec node: `https://rpc.testnet.aztec-labs.com`
 
 Common local API checks:
 
 - `http://localhost:3001/health`
 - `http://localhost:3001/blocks/latest`
 - `http://localhost:3001/snapshot`
+
+### Hard compare: local client snapshot vs local/remote server snapshots
+
+Use the helper script to extract the **real browser client** snapshot via `window.dfDebug.snapshotJson()` (DEV mode) and compare it with local + remote server snapshots:
+
+```bash
+bash server/scripts/compare-client-server-snapshots.sh
+# or specify remote URL
+bash server/scripts/compare-client-server-snapshots.sh https://server-testnet.up.railway.app
+```
+
+Notes:
+
+- Requires local server (`pnpm --filter server dev`) and local client (`pnpm --filter client dev --host 127.0.0.1 --port 5173`) running.
+- Uses Playwright CLI under the hood; if unavailable, install `@playwright/cli`.
+- Comparison is table-level hard equality (`world/player/planet/.../artifact_location`). If only `lastProcessedBlock` differs, that is a capture-time metadata difference, not a table-data mismatch.
+
+### Dev Console Debug Commands
+
+These commands are available only in DEV client builds (the app injects `window.dfDebug` under `import.meta.env.DEV`).
+
+Check availability:
+
+```js
+import.meta.env.DEV;
+typeof window.dfDebug;
+```
+
+Core snapshot commands:
+
+```js
+window.dfDebug.snapshot();
+window.dfDebug.snapshotJson();
+window.dfDebug.downloadSnapshot();
+```
+
+Use the exposed indexer connection (examples):
+
+```js
+window.dfDebug.connection.getStatus();
+window.dfDebug.connection.getCurrentBlockNumber();
+window.dfDebug.connection.getProcessedBlockNumber();
+window.dfDebug.connection.getPlayerIds();
+window.dfDebug.connection.getPlanetIds();
+await window.dfDebug.connection.waitForBlock(123456, 30000);
+window.dfDebug.connection.getSnapshotAsJsonString();
+```
+
+Local override helpers:
+
+```js
+localStorage.getItem("dfpunk:connection:nodeUrl");
+localStorage.getItem("dfpunk:connection:indexerBootstrapUrl");
+
+localStorage.setItem("dfpunk:connection:nodeUrl", "https://rpc.testnet.aztec-labs.com");
+localStorage.setItem("dfpunk:connection:indexerBootstrapUrl", "http://localhost:3001");
+
+localStorage.removeItem("dfpunk:connection:nodeUrl");
+localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
+```
 
 If you are running the frontend from `https://dfpunk-aztec.netlify.app` (or `https://df-aztec.netlify.app`) against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
 
@@ -307,13 +367,13 @@ Notes:
 ```bash
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
-  -e AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com \
+  -e AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com \
   -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
   dfpunk-indexer-server
 ```
 
-For local sandbox instead of devnet, override:
+For local sandbox instead of testnet, override:
 
 ```bash
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
@@ -324,14 +384,14 @@ docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
 
 ## Railway
 
-**Devnet deployment:** https://server-production-b4e5.up.railway.app
+**Testnet deployment:** https://server-production-b4e5.up.railway.app
 
 Recommended Railway settings for the current server:
 
 - Build from the repo root with `server/Dockerfile` as the Dockerfile path
 - Mount a persistent volume at `/data`
 - Set `SQLITE_PATH=/data/indexer.db`
-- Set `AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com`
+- Set `AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com`
 - Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`
 - Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
 
