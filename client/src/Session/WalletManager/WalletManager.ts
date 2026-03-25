@@ -2,8 +2,8 @@
  * WalletManager: EthConnection-equivalent for Aztec.
  *
  * Connects to an Aztec Node via createAztecNodeClient, creates a browser-embedded
- * EmbeddedWallet (with internal PXE), registers SponsoredFPC for fee-free transactions,
- * and manages ECDSAR accounts with localStorage persistence via KeyStore.
+ * EmbeddedWallet (with internal PXE), and manages ECDSAR accounts with
+ * localStorage persistence via KeyStore.
  */
 
 import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
@@ -81,8 +81,8 @@ const DEPLOY_TIMEOUT_MS = 120_000;
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
 const GENESIS_PENDING_SENTINEL = "genesis-pending";
 
-/** Total steps for wallet init progress: 1 connect + 1 network + 1 storage + 1 PXE + 1 SponsoredFPC + 16 contracts + 1 restore/finalize. */
-const WALLET_INIT_TOTAL_STEPS = 22;
+const WALLET_INIT_TOTAL_STEPS_BASE = 21;
+const WALLET_INIT_SPONSOR_EXTRA_STEPS = 1;
 
 /**
  * Compute a fingerprint for the current network instance by hashing block 1's header.
@@ -141,6 +141,7 @@ async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
 async function registerGameContractsWithPxe(
   wallet: EmbeddedWallet,
   admin: AztecAddress,
+  contractStartStep: number,
   onRegisterProgress?: (currentStep: number, contractName: string) => void
 ): Promise<void> {
   const specs: Array<{
@@ -246,7 +247,7 @@ async function registerGameContractsWithPxe(
       name: "ArtifactVault",
     },
   ];
-  let step = 6; // steps 6–21 for the 16 contracts
+  let step = contractStartStep;
   for (const { deployer, salt, artifact, name } of specs) {
     if (!deployer || !salt) continue;
     onRegisterProgress?.(step, name);
@@ -273,7 +274,7 @@ async function registerGameContractsWithPxe(
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: EmbeddedWallet;
-  private readonly sponsoredFpcAddress: AztecAddress;
+  private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly keyStore: KeyStore;
   private activeAddress: AztecAddress | undefined;
   private balanceInterval: ReturnType<typeof setInterval> | undefined;
@@ -285,7 +286,7 @@ export class WalletManager {
   private constructor(
     node: AztecNode,
     wallet: EmbeddedWallet,
-    sponsoredFpcAddress: AztecAddress,
+    sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore
   ) {
     this.node = node;
@@ -303,7 +304,9 @@ export class WalletManager {
   static async create(config: WalletManagerConfig): Promise<WalletManager> {
     const node = createAztecNodeClient(config.nodeUrl);
     const onProgress = config.onWalletProgress;
-    const total = WALLET_INIT_TOTAL_STEPS;
+    const total =
+      WALLET_INIT_TOTAL_STEPS_BASE +
+      (config.sponsorMode ? WALLET_INIT_SPONSOR_EXTRA_STEPS : 0);
 
     onProgress?.(1, total, "Connecting to node");
     await waitForNode(node);
@@ -365,7 +368,9 @@ export class WalletManager {
     onProgress?: WalletManagerConfig["onWalletProgress"]
   ): Promise<WalletManager> {
     const keyStore = new KeyStore(config.storagePrefix);
-    const total = WALLET_INIT_TOTAL_STEPS;
+    const total =
+      WALLET_INIT_TOTAL_STEPS_BASE +
+      (config.sponsorMode ? WALLET_INIT_SPONSOR_EXTRA_STEPS : 0);
 
     const fingerprint = await getNetworkFingerprint(node);
     const storedFingerprint = keyStore.getNetworkFingerprint();
@@ -424,19 +429,28 @@ export class WalletManager {
           : undefined,
     });
 
-    const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-      SponsoredFPCContractArtifact,
-      { salt: new Fr(SPONSORED_FPC_SALT) }
-    );
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-    onProgress?.(5, total, "Registering Sponsored FPC");
-
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
-    await registerGameContractsWithPxe(wallet, admin, (step, name) =>
-      onProgress?.(step, total, `Registering ${name}`)
+    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+
+    if (config.sponsorMode) {
+      const sponsoredFPC = await getContractInstanceFromInstantiationParams(
+        SponsoredFPCContractArtifact,
+        { salt: new Fr(SPONSORED_FPC_SALT) }
+      );
+      await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+      onProgress?.(5, total, "Registering Sponsored FPC");
+      sponsoredFpcAddress = sponsoredFPC.address;
+    }
+
+    const contractStartStep = config.sponsorMode ? 6 : 5;
+    await registerGameContractsWithPxe(
+      wallet,
+      admin,
+      contractStartStep,
+      (step, name) => onProgress?.(step, total, `Registering ${name}`)
     );
 
-    return new WalletManager(node, wallet, sponsoredFPC.address, keyStore);
+    return new WalletManager(node, wallet, sponsoredFpcAddress, keyStore);
   }
 
   // ---------------------------------------------------------------------------
@@ -446,7 +460,7 @@ export class WalletManager {
   async createAccount(
     label?: string,
     onStatus?: (msg: string) => void
-  ): Promise<AccountRecord> {
+  ): Promise<AccountRecord & { deployed: boolean }> {
     const salt = Fr.random();
     const secretKey = Fr.random();
     const signingKeyBuf = Fr.random().toBuffer().slice(0, 32);
@@ -458,7 +472,11 @@ export class WalletManager {
       Buffer.from(signingKeyBuf)
     );
 
-    await this.deployAccountIfNeeded(accountManager, onStatus);
+    onStatus?.("Checking deployment status...");
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    const deployed = metadata.isContractInitialized;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -472,7 +490,7 @@ export class WalletManager {
     this.keyStore.saveAccount(record);
     this.setActive(accountManager.address, record.address);
 
-    return record;
+    return { ...record, deployed };
   }
 
   async restoreAccount(
@@ -490,8 +508,13 @@ export class WalletManager {
       Buffer.from(record.signingKey, "hex")
     );
 
-    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
+    onStatus?.("Checking deployment status...");
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    const deployed = metadata.isContractInitialized;
 
+    // Use the selected account address from options/list as active target.
     this.setActive(AztecAddress.fromString(address), address);
     return { deployed };
   }
@@ -516,7 +539,11 @@ export class WalletManager {
       Buffer.from(signingKey, "hex")
     );
 
-    const deployed = await this.deployAccountIfNeeded(accountManager, onStatus);
+    onStatus?.("Checking deployment status...");
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    const deployed = metadata.isContractInitialized;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -549,7 +576,11 @@ export class WalletManager {
     return this.wallet;
   }
 
-  getSponsoredFpcAddress(): AztecAddress {
+  /**
+   * When sponsorMode is enabled, returns the SponsoredFPC address so we can
+   * pay fees via SponsoredFeePaymentMethod during account deployment.
+   */
+  getSponsoredFpcAddress(): AztecAddress | undefined {
     return this.sponsoredFpcAddress;
   }
 
@@ -584,7 +615,12 @@ export class WalletManager {
       this.balance = bal;
       this.myBalance$.publish(bal);
       return bal;
-    } catch {
+    } catch (err) {
+      console.error(
+        "[WalletManager] getBalance failed for",
+        this.activeAddress.toString(),
+        err
+      );
       return this.balance;
     }
   }
@@ -629,14 +665,47 @@ export class WalletManager {
     onStatus?.("Waiting for deploy transaction...");
     await deployMethod.send({
       from: AztecAddress.ZERO,
-      fee: {
-        paymentMethod: new SponsoredFeePaymentMethod(this.sponsoredFpcAddress),
-      },
+      ...(this.sponsoredFpcAddress
+        ? {
+            fee: {
+              paymentMethod: new SponsoredFeePaymentMethod(
+                this.sponsoredFpcAddress
+              ),
+            },
+          }
+        : {}),
       skipClassPublication: true,
       skipInstancePublication: true,
       wait: { timeout: DEPLOY_TIMEOUT_MS },
     });
     return true;
+  }
+
+  /**
+   * Ensures the currently active account contract is deployed.
+   * Intended flow: after user gets FeeJuice, call this before submitting gameplay txs.
+   */
+  public async deployActiveAccountIfNeeded(
+    onStatus?: (msg: string) => void
+  ): Promise<{ deployedNow: boolean }> {
+    const active = this.activeAddress;
+    if (!active) throw new Error("No active account");
+
+    const addrStr = active.toString();
+    const record = this.keyStore.getAccount(addrStr);
+    if (!record) throw new Error(`KeyStore: no account found for ${addrStr}`);
+
+    const accountManager = await this.wallet.createECDSARAccount(
+      Fr.fromString(record.secretKey),
+      Fr.fromString(record.salt),
+      Buffer.from(record.signingKey, "hex")
+    );
+
+    const deployedNow = await this.deployAccountIfNeeded(
+      accountManager,
+      onStatus
+    );
+    return { deployedNow };
   }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {

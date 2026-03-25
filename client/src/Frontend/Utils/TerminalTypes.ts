@@ -1,5 +1,6 @@
 export const enum TerminalTextStyle {
   Green,
+  Yellow,
   Sub,
   Subber,
   Text,

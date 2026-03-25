@@ -6,7 +6,7 @@
  *
  * Key differences from v0.6:
  *   - No nonce/gas management (Aztec handles internally)
- *   - Uses SponsoredFeePaymentMethod for fee-free transactions
+ *   - Uses FeeJuice paid by the user account
  *   - send({ wait: NO_WAIT }) → TxHash, then waitForTx() for receipt
  *   - StateResolver assembles full contract args from indexer state
  *   - ContractResolver maps methodName to Aztec contract + method
@@ -305,15 +305,21 @@ export class TxExecutor {
         time_called = Date.now();
 
         // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
-        const sendOptsNoWait = {
-          from: this.walletManager.getActiveAddress()!,
-          fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(
-              this.walletManager.getSponsoredFpcAddress()
-            ),
-          },
-          wait: NO_WAIT,
-        } satisfies SendInteractionOptions<NoWait>;
+        const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
+        const sendOptsNoWait = sponsoredFpcAddress
+          ? ({
+              from: this.walletManager.getActiveAddress()!,
+              fee: {
+                paymentMethod: new SponsoredFeePaymentMethod(
+                  sponsoredFpcAddress
+                ),
+              },
+              wait: NO_WAIT,
+            } satisfies SendInteractionOptions<NoWait>)
+          : ({
+              from: this.walletManager.getActiveAddress()!,
+              wait: NO_WAIT,
+            } satisfies SendInteractionOptions<NoWait>);
         const simulateOpts = {
           from: sendOptsNoWait.from,
           fee: sendOptsNoWait.fee,

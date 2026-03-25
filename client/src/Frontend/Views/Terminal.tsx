@@ -13,6 +13,7 @@ import { MythicLabelText } from "../Components/Labels/MythicLabel";
 import { LoadingSpinner } from "../Components/LoadingSpinner";
 import {
   Blue,
+  Gold,
   Green,
   Invisible,
   Red,
@@ -123,6 +124,9 @@ function TerminalImpl(
           break;
         case TerminalTextStyle.Green:
           fragment = <Green>{innerFragment}</Green>;
+          break;
+        case TerminalTextStyle.Yellow:
+          fragment = <Gold>{innerFragment}</Gold>;
           break;
         case TerminalTextStyle.Blue:
           fragment = <Blue>{innerFragment}</Blue>;
