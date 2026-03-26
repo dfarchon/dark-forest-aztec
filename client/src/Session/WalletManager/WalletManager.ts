@@ -663,21 +663,36 @@ export class WalletManager {
     );
     const deployMethod = await accountManager.getDeployMethod();
     onStatus?.("Waiting for deploy transaction...");
-    await deployMethod.send({
-      from: AztecAddress.ZERO,
-      ...(this.sponsoredFpcAddress
-        ? {
-            fee: {
-              paymentMethod: new SponsoredFeePaymentMethod(
-                this.sponsoredFpcAddress
-              ),
-            },
-          }
-        : {}),
+    const commonOpts = {
       skipClassPublication: true,
       skipInstancePublication: true,
       wait: { timeout: DEPLOY_TIMEOUT_MS },
-    });
+    } as const;
+
+    if (this.sponsoredFpcAddress) {
+      await deployMethod.send({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(
+            this.sponsoredFpcAddress
+          ),
+        },
+        ...commonOpts,
+      });
+      return true;
+    }
+
+    // Non-sponsor mode: follow doc-recommended ZERO sender.
+    try {
+      await deployMethod.send({
+        from: AztecAddress.ZERO,
+        ...commonOpts,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[WalletManager] ZERO deploy sender failed: ${msg}`);
+      throw err;
+    }
     return true;
   }
 
