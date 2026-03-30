@@ -25,7 +25,7 @@ import {
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
 } from "../../config/connection";
-import { getProverEnabled } from "../../config/env";
+import { getProverEnabled, getSponsorMode } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import {
   createIndexerConnection,
@@ -53,6 +53,22 @@ import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
 import { Terminal, TerminalHandle } from "../Views/Terminal";
+
+function formatFeeJuice(amount: bigint): string {
+  // FeeJuice uses 18 decimals (ERC20-like).
+  const DECIMALS = 18n;
+  const BASE = 10n ** DECIMALS;
+  const whole = amount / BASE;
+  const frac = amount % BASE;
+  if (frac === 0n) return `${whole.toString()} FJ`;
+  const fracStr = frac.toString().padStart(Number(DECIMALS), "0");
+  const trimmed = fracStr.replace(/0+$/, "");
+  return `${whole.toString()}.${trimmed} FJ`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -238,6 +254,7 @@ const enum TerminalPromptStep {
   GENERATE_ACCOUNT,
   IMPORT_ACCOUNT,
   ACCOUNT_SET,
+  CHECK_FEE_JUICE,
   FETCHING_ETH_DATA,
   ASK_ADD_ACCOUNT,
   ADD_ACCOUNT,
@@ -276,6 +293,8 @@ export function GameLandingPage() {
     : address(CORE_CONTRACT_ADDRESS);
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
+  const sponsorMode = getSponsorMode();
+
   useEffect(() => {
     if (step !== TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED) {
       return;
@@ -292,6 +311,7 @@ export function GameLandingPage() {
           nodeUrl,
           storagePrefix: "dfpunk",
           proverUrl: getEffectiveProverUrl(),
+          sponsorMode,
           pxeConfig: {
             proverEnabled: getProverEnabled(),
           },
@@ -381,7 +401,7 @@ export function GameLandingPage() {
     return () => {
       destroyed = true;
     };
-  }, [step]);
+  }, [step, sponsorMode]);
 
   const advanceStateFromNone = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
@@ -560,11 +580,14 @@ export function GameLandingPage() {
           );
           if (result?.deployed) {
             terminal.current?.println(
-              "Deployed to new network.",
+              "Account already deployed on this network.",
               TerminalTextStyle.Green
             );
           } else {
-            terminal.current?.println("Done.", TerminalTextStyle.Green);
+            terminal.current?.println(
+              "Account not deployed on this network yet.",
+              TerminalTextStyle.Sub
+            );
           }
           setStep(TerminalPromptStep.ACCOUNT_SET);
         } catch (e) {
@@ -619,11 +642,14 @@ export function GameLandingPage() {
         );
         if (result?.deployed) {
           terminal.current?.println(
-            "Deployed to new network.",
+            "Account already deployed on this network.",
             TerminalTextStyle.Green
           );
         } else {
-          terminal.current?.println("Done.", TerminalTextStyle.Green);
+          terminal.current?.println(
+            "Account not deployed on this network yet.",
+            TerminalTextStyle.Sub
+          );
         }
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (e) {
@@ -645,9 +671,9 @@ export function GameLandingPage() {
       let currentStep = "";
       try {
         terminal.current?.println(``);
-        terminal.current?.println("Deploying new Aztec account...");
+        terminal.current?.println("Generating new Aztec account keys...");
         terminal.current?.println(
-          "This may take 1–2 minutes.",
+          "Key generation is quick. Deployment will happen after you get FeeJuice.",
           TerminalTextStyle.Sub
         );
         terminal.current?.print("  ");
@@ -694,12 +720,6 @@ export function GameLandingPage() {
           "accounts inaccessible, unless you export your keys."
         );
         terminal.current?.println("");
-        terminal.current?.println(
-          "Press any key to continue:",
-          TerminalTextStyle.Text
-        );
-
-        await terminal.current?.getInput();
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (e) {
         if (spinInterval) clearInterval(spinInterval);
@@ -739,11 +759,14 @@ export function GameLandingPage() {
         );
         if (record.deployed) {
           terminal.current?.println(
-            "Deployed to network.",
+            "Account already deployed on this network.",
             TerminalTextStyle.Green
           );
         } else {
-          terminal.current?.println("Done.", TerminalTextStyle.Green);
+          terminal.current?.println(
+            "Account not deployed on this network yet.",
+            TerminalTextStyle.Sub
+          );
         }
         terminal.current?.println(
           `Imported account with address ${record.address}.`
@@ -761,6 +784,15 @@ export function GameLandingPage() {
 
   const advanceStateFromAccountSet = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (!walletManager) {
+        terminal.current?.println(
+          "ERROR: wallet manager not ready.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+        return;
+      }
+
       const playerAddress = walletManager?.getActiveAddress()?.toString();
       if (!playerAddress) {
         terminal.current?.println(
@@ -773,9 +805,179 @@ export function GameLandingPage() {
 
       terminal.current?.println("");
       terminal.current?.println(`Welcome, player ${playerAddress}.`);
-      setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+      if (sponsorMode) {
+        terminal.current?.println(
+          "Sponsor mode enabled. Deploying account without FeeJuice check..."
+        );
+        await walletManager.deployActiveAccountIfNeeded((msg) =>
+          terminal.current?.println(msg, TerminalTextStyle.Sub)
+        );
+        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+        return;
+      }
+
+      // Pre-check balance so we can skip the faucet warning when already funded.
+      try {
+        const bal = await walletManager.getBalance();
+        if (bal > 0n) {
+          terminal.current?.println(
+            "FeeJuice OK. Deploying account if needed..."
+          );
+          await walletManager.deployActiveAccountIfNeeded((msg) =>
+            terminal.current?.println(msg, TerminalTextStyle.Sub)
+          );
+          setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+        } else {
+          setStep(TerminalPromptStep.CHECK_FEE_JUICE);
+        }
+      } catch (e) {
+        console.error("Failed to pre-check FeeJuice balance:", e);
+        setStep(TerminalPromptStep.CHECK_FEE_JUICE);
+      }
     },
-    [walletManager]
+    [walletManager, sponsorMode]
+  );
+
+  const advanceStateFromCheckFeeJuice = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (!walletManager) throw new Error("no wallet manager");
+
+      if (sponsorMode) {
+        terminal.current?.println(
+          "Sponsor mode enabled. Deploying account without FeeJuice faucet..."
+        );
+        await walletManager.deployActiveAccountIfNeeded((msg) =>
+          terminal.current?.println(msg, TerminalTextStyle.Sub)
+        );
+        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+        return;
+      }
+
+      let opened = false;
+      let bal: bigint = 0n;
+      let firstRender = true;
+      let balanceLinePrinted = false;
+      let requeryInFlight = false;
+      // One "balance line" is printed as:
+      // - print(...)          -> 1 fragment
+      // - printLink/print(...) -> 1 fragment
+      // - newline()           -> 1 fragment (<br/>)
+      const BALANCE_LINE_FRAGMENTS = 3;
+
+      const printBalanceLine = (
+        valueText: string,
+        refreshState: "ready" | "loading",
+        loadingIcon = "⟳"
+      ) => {
+        terminal.current?.print(`FeeJuice balance: ${valueText} `);
+        if (refreshState === "loading") {
+          terminal.current?.print(
+            `${loadingIcon} refreshing...`,
+            TerminalTextStyle.Sub
+          );
+        } else {
+          terminal.current?.printLink(
+            "⟳ refresh",
+            () => {
+              void requery().catch(() => {});
+            },
+            TerminalTextStyle.Blue
+          );
+        }
+        terminal.current?.newline();
+      };
+
+      const requery = async () => {
+        if (requeryInFlight) return;
+        requeryInFlight = true;
+        let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+        try {
+          // Replace the previous balance line with a rotating loading icon.
+          if (balanceLinePrinted) {
+            terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
+          }
+          const SPINNER_FRAMES = ["◐", "◓", "◑", "◒"];
+          let spinnerIndex = 0;
+          printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
+          balanceLinePrinted = true;
+          spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
+
+          spinnerInterval = setInterval(() => {
+            if (!terminal.current) return;
+            terminal.current.removeLast(BALANCE_LINE_FRAGMENTS);
+            printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
+            spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
+          }, 120);
+
+          const next = await walletManager.getBalance();
+          bal = next;
+
+          // Keep the loading rotation a bit longer for smoother UX.
+          await sleep(1500);
+
+          if (spinnerInterval) clearInterval(spinnerInterval);
+          spinnerInterval = undefined;
+
+          // Replace loading with final value (single-line; no stacking)
+          if (balanceLinePrinted) {
+            terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
+          }
+          printBalanceLine(formatFeeJuice(next), "ready");
+          balanceLinePrinted = true;
+        } finally {
+          if (spinnerInterval) clearInterval(spinnerInterval);
+          requeryInFlight = false;
+        }
+      };
+
+      while (bal === 0n) {
+        if (firstRender) {
+          firstRender = false;
+          terminal.current?.println("");
+          terminal.current?.println(
+            "⚠ FeeJuice is required to continue.",
+            TerminalTextStyle.Yellow
+          );
+          terminal.current?.println(
+            "Step 1: open faucet, Step 2: come back & re-check.",
+            TerminalTextStyle.Subber
+          );
+          terminal.current?.println("");
+          terminal.current?.printLink(
+            "↗ Open gregojuice faucet",
+            () => {
+              if (!opened) opened = true;
+              window.open(
+                "https://gregojuice.anothercoffeefor.me/",
+                "_blank",
+                "noopener,noreferrer"
+              );
+            },
+            TerminalTextStyle.Blue
+          );
+          terminal.current?.newline();
+          terminal.current?.println(
+            "You can click re-query, or just wait a few seconds for auto-refresh."
+          );
+        }
+
+        await requery();
+
+        if (bal > 0n) {
+          terminal.current?.println(
+            "FeeJuice OK. Deploying account if needed..."
+          );
+          await walletManager.deployActiveAccountIfNeeded((msg) =>
+            terminal.current?.println(msg, TerminalTextStyle.Sub)
+          );
+          setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+          return;
+        }
+
+        await sleep(8000);
+      }
+    },
+    [walletManager, sponsorMode]
   );
 
   const advanceStateFromFetchingEthData = useCallback(
@@ -1117,6 +1319,8 @@ export function GameLandingPage() {
         await advanceStateFromImportAccount(terminal);
       } else if (step === TerminalPromptStep.ACCOUNT_SET) {
         await advanceStateFromAccountSet(terminal);
+      } else if (step === TerminalPromptStep.CHECK_FEE_JUICE) {
+        await advanceStateFromCheckFeeJuice(terminal);
       } else if (step === TerminalPromptStep.FETCHING_ETH_DATA) {
         await advanceStateFromFetchingEthData(terminal);
       } else if (step === TerminalPromptStep.ASK_ADD_ACCOUNT) {
@@ -1136,6 +1340,7 @@ export function GameLandingPage() {
     [
       step,
       advanceStateFromAccountSet,
+      advanceStateFromCheckFeeJuice,
       advanceStateFromAddAccount,
       advanceStateFromAllChecksPass,
       advanceStateFromAskAddAccount,

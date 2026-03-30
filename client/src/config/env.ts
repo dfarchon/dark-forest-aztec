@@ -68,3 +68,24 @@ export function getProverEnabled(): boolean {
 export function getProverUrl(): string {
   return getString("VITE_TEEREX_PROVER_URL") ?? DEFAULT_PROVER_URL;
 }
+
+function getBoolean(key: string, defaultValue: boolean): boolean {
+  const value = getString(key);
+  if (value === undefined) return defaultValue;
+  return value === "true" || value === "1";
+}
+
+/**
+ * Whether to use SponsoredFeePaymentMethod/SponsoredFPC for local development.
+ * Env:
+ * - preferred: VITE_SPONSOR_MODE=true
+ * - compatibility: VITE_SPONSER_MODE=true (typo)
+ */
+export function getSponsorMode(): boolean {
+  // Prefer correctly-spelled env var.
+  const fromSponsor = getString("VITE_SPONSOR_MODE");
+  if (fromSponsor !== undefined)
+    return fromSponsor === "true" || fromSponsor === "1";
+
+  return getBoolean("VITE_SPONSER_MODE", false);
+}
