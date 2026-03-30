@@ -4,6 +4,7 @@
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
+import { ContractInitializationStatus } from '@aztec/aztec.js/wallet';
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
 import { getAztecNetwork, getAztecNodeUrl, getOptionalEnv } from './env.ts';
@@ -40,7 +41,7 @@ function accountKeysPresent(): boolean {
 
 /**
  * Inspect `.env` account material vs the **connected Aztec node** (`AZTEC_NODE_URL`) and local PXE wallet.
- * Uses `wallet.getContractMetadata(address).isContractInitialized` to check on-chain deployment
+ * Uses `wallet.getContractMetadata(address).initializationStatus === INITIALIZED` to check on-chain deployment
  * (init nullifier), which works reliably for account contracts.
  */
 export async function diagnoseDeployerAccount(
@@ -99,7 +100,9 @@ export async function diagnoseDeployerAccount(
     let onChainDeployed = false;
     try {
         const metadata = await wallet.getContractMetadata(derivedAddress);
-        onChainDeployed = metadata.isContractInitialized;
+        onChainDeployed =
+            metadata.initializationStatus ===
+            ContractInitializationStatus.INITIALIZED;
     } catch {
         // getContractMetadata may throw if PXE hasn't fully started yet; treat as unknown
     }

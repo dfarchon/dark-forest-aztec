@@ -14,7 +14,10 @@ import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { AccountManager } from "@aztec/aztec.js/wallet";
+import {
+  type AccountManager,
+  ContractInitializationStatus,
+} from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -476,7 +479,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -512,7 +517,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     // Use the selected account address from options/list as active target.
     this.setActive(AztecAddress.fromString(address), address);
@@ -543,7 +550,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -655,7 +664,10 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    if (metadata.isContractInitialized) return false;
+    if (
+      metadata.initializationStatus === ContractInitializationStatus.INITIALIZED
+    )
+      return false;
 
     onStatus?.("Account not deployed on current network. Deploying...");
     console.info(

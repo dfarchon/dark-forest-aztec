@@ -3,7 +3,10 @@ import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/cont
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import type { AccountManager } from '@aztec/aztec.js/wallet';
+import {
+    type AccountManager,
+    ContractInitializationStatus,
+} from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -113,7 +116,11 @@ async function deployAccountIfNeeded(
     timeoutMs: number
 ): Promise<boolean> {
     const metadata = await wallet.getContractMetadata(accountManager.address);
-    if (metadata.isContractInitialized) return false;
+    if (
+        metadata.initializationStatus ===
+        ContractInitializationStatus.INITIALIZED
+    )
+        return false;
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
@@ -191,7 +198,11 @@ export async function loadAccountFromEnv(
         if (await hasLocalAccount(wallet, accountAddress)) {
             if (!ensureDeployed) return accountAddress;
             const metadata = await wallet.getContractMetadata(accountAddress);
-            if (metadata.isContractInitialized) return accountAddress;
+            if (
+                metadata.initializationStatus ===
+                ContractInitializationStatus.INITIALIZED
+            )
+                return accountAddress;
         }
     }
 
@@ -386,7 +397,11 @@ export async function loadAccountFromCredentials(
     if (await hasLocalAccount(wallet, accountAddress)) {
         if (!ensureDeployed) return accountAddress;
         const metadata = await wallet.getContractMetadata(accountAddress);
-        if (metadata.isContractInitialized) return accountAddress;
+        if (
+            metadata.initializationStatus ===
+            ContractInitializationStatus.INITIALIZED
+        )
+            return accountAddress;
     }
 
     const accountManager = await wallet.createECDSARAccount(
