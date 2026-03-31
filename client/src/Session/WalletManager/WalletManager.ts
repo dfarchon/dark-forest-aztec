@@ -381,7 +381,10 @@ export class WalletManager {
       );
 
       try {
-        await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+        await wallet.registerContract(
+          sponsoredFPC,
+          SponsoredFPCContractArtifact
+        );
       } catch (err) {
         console.warn(
           "[WalletManager] Failed to register SponsoredFPC on external wallet:",
