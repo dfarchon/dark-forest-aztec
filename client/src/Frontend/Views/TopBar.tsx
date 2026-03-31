@@ -187,6 +187,7 @@ export function TopBar({
   twitterVerifyHook: Hook<boolean>;
 }) {
   const uiManager = useUIManager();
+  const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const player = usePlayer(uiManager);
   const account = player.value?.address;
   const twitter = player.value?.twitter;
@@ -216,13 +217,13 @@ export function TopBar({
       >
         <TooltipTrigger
           name={TooltipName.Empty}
-          extraContent={<Text>Your burner wallet address.</Text>}
+          extraContent={<Text>Your wallet address.</Text>}
         >
           <AccountLabel includeAddressIfHasTwitter={true} width={"50px"} />
         </TooltipTrigger>
         <TooltipTrigger
           name={TooltipName.Empty}
-          extraContent={<Text>Your burner wallet balance.</Text>}
+          extraContent={<Text>Your current wallet balance.</Text>}
         >
           <Sub>
             ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
@@ -233,7 +234,10 @@ export function TopBar({
             <TooltipTrigger
               name={TooltipName.Empty}
               extraContent={
-                <Text>Connect your burner wallet to your twitter account.</Text>
+                <Text>
+                  Connect your {isExternalWallet ? "wallet" : "local wallet"} to
+                  your twitter account.
+                </Text>
               }
             >
               <ModalToggleButton

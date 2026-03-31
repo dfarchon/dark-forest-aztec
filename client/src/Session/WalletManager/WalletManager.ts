@@ -14,7 +14,7 @@ import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { AccountManager } from "@aztec/aztec.js/wallet";
+import type { AccountManager, Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -139,7 +139,7 @@ async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
  * Optionally reports progress per contract via onRegisterProgress(currentStep, contractName).
  */
 async function registerGameContractsWithPxe(
-  wallet: EmbeddedWallet,
+  wallet: Wallet,
   admin: AztecAddress,
   contractStartStep: number,
   onRegisterProgress?: (currentStep: number, contractName: string) => void
@@ -273,9 +273,10 @@ async function registerGameContractsWithPxe(
 
 export class WalletManager {
   private readonly node: AztecNode;
-  private readonly wallet: EmbeddedWallet;
+  private readonly wallet: Wallet;
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly keyStore: KeyStore;
+  private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
   private balanceInterval: ReturnType<typeof setInterval> | undefined;
   private balance: bigint = 0n;
@@ -285,14 +286,16 @@ export class WalletManager {
 
   private constructor(
     node: AztecNode,
-    wallet: EmbeddedWallet,
+    wallet: Wallet,
     sponsoredFpcAddress: AztecAddress | undefined,
-    keyStore: KeyStore
+    keyStore: KeyStore,
+    isExternal: boolean
   ) {
     this.node = node;
     this.wallet = wallet;
     this.sponsoredFpcAddress = sponsoredFpcAddress;
     this.keyStore = keyStore;
+    this.isExternal = isExternal;
     this.walletChanged$ = monomitter(true);
     this.myBalance$ = monomitter(true);
   }
@@ -356,6 +359,69 @@ export class WalletManager {
     await clearStaleIndexedDBs();
     new KeyStore(config.storagePrefix).clearActiveAddress();
     return WalletManager.create(config);
+  }
+
+  /**
+   * Build WalletManager around an externally connected wallet (browser extension).
+   * Keeps game contract registration and sponsored fee flow unchanged.
+   */
+  static async createFromExternalWallet(
+    wallet: Wallet,
+    config: WalletManagerConfig,
+    preferredAddress?: AztecAddress
+  ): Promise<WalletManager> {
+    const node = createAztecNodeClient(config.nodeUrl);
+    await waitForNode(node);
+
+    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+    if (config.sponsorMode) {
+      const sponsoredFPC = await getContractInstanceFromInstantiationParams(
+        SponsoredFPCContractArtifact,
+        { salt: new Fr(SPONSORED_FPC_SALT) }
+      );
+
+      try {
+        await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+      } catch (err) {
+        console.warn(
+          "[WalletManager] Failed to register SponsoredFPC on external wallet:",
+          err
+        );
+      }
+      sponsoredFpcAddress = sponsoredFPC.address;
+    }
+
+    const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
+    const contractStartStep = config.sponsorMode ? 6 : 5;
+    await registerGameContractsWithPxe(wallet, admin, contractStartStep);
+
+    const keyStore = new KeyStore(
+      `${config.storagePrefix ?? "dfpunk"}:external`
+    );
+    const mgr = new WalletManager(
+      node,
+      wallet,
+      sponsoredFpcAddress,
+      keyStore,
+      true
+    );
+
+    mgr.activeAddress = await WalletManager.resolveExternalAddress(
+      wallet,
+      preferredAddress
+    );
+    if (!mgr.activeAddress) {
+      throw new Error(
+        "External wallet did not provide any account. Please reconnect and select an account."
+      );
+    }
+
+    mgr.walletChanged$.publish(mgr.activeAddress);
+    mgr.startBalancePolling(
+      config.balancePollIntervalMs ?? DEFAULT_BALANCE_POLL_MS
+    );
+
+    return mgr;
   }
 
   /**
@@ -450,7 +516,13 @@ export class WalletManager {
       (step, name) => onProgress?.(step, total, `Registering ${name}`)
     );
 
-    return new WalletManager(node, wallet, sponsoredFpcAddress, keyStore);
+    return new WalletManager(
+      node,
+      wallet,
+      sponsoredFpcAddress,
+      keyStore,
+      false
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -461,12 +533,13 @@ export class WalletManager {
     label?: string,
     onStatus?: (msg: string) => void
   ): Promise<AccountRecord & { deployed: boolean }> {
+    const wallet = this.getEmbeddedWallet("createAccount");
     const salt = Fr.random();
     const secretKey = Fr.random();
     const signingKeyBuf = Fr.random().toBuffer().slice(0, 32);
 
     onStatus?.("Creating account keys...");
-    const accountManager = await this.wallet.createECDSARAccount(
+    const accountManager = await wallet.createECDSARAccount(
       secretKey,
       salt,
       Buffer.from(signingKeyBuf)
@@ -497,12 +570,13 @@ export class WalletManager {
     address: string,
     onStatus?: (msg: string) => void
   ): Promise<{ deployed: boolean }> {
+    const wallet = this.getEmbeddedWallet("restoreAccount");
     const record = this.keyStore.getAccount(address);
     if (!record) {
       throw new Error(`KeyStore: no account found for ${address}`);
     }
 
-    const accountManager = await this.wallet.createECDSARAccount(
+    const accountManager = await wallet.createECDSARAccount(
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       Buffer.from(record.signingKey, "hex")
@@ -533,7 +607,8 @@ export class WalletManager {
     label?: string,
     onStatus?: (msg: string) => void
   ): Promise<AccountRecord & { deployed: boolean }> {
-    const accountManager = await this.wallet.createECDSARAccount(
+    const wallet = this.getEmbeddedWallet("importAccount");
+    const accountManager = await wallet.createECDSARAccount(
       Fr.fromString(secretKey),
       Fr.fromString(salt),
       Buffer.from(signingKey, "hex")
@@ -572,7 +647,7 @@ export class WalletManager {
   // Queries
   // ---------------------------------------------------------------------------
 
-  getWallet(): EmbeddedWallet {
+  getWallet(): Wallet {
     return this.wallet;
   }
 
@@ -586,6 +661,10 @@ export class WalletManager {
 
   getActiveAddress(): AztecAddress | undefined {
     return this.activeAddress;
+  }
+
+  isExternalWallet(): boolean {
+    return this.isExternal;
   }
 
   hasActiveAccount(): boolean {
@@ -710,7 +789,8 @@ export class WalletManager {
     const record = this.keyStore.getAccount(addrStr);
     if (!record) throw new Error(`KeyStore: no account found for ${addrStr}`);
 
-    const accountManager = await this.wallet.createECDSARAccount(
+    const wallet = this.getEmbeddedWallet("deployActiveAccountIfNeeded");
+    const accountManager = await wallet.createECDSARAccount(
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       Buffer.from(record.signingKey, "hex")
@@ -734,6 +814,43 @@ export class WalletManager {
     this.balanceInterval = setInterval(() => {
       this.getBalance().catch(() => {});
     }, intervalMs);
+  }
+
+  private assertEmbeddedOnly(action: string): void {
+    if (this.isExternal) {
+      throw new Error(
+        `WalletManager.${action} is unavailable for external wallets`
+      );
+    }
+  }
+
+  private getEmbeddedWallet(action: string): EmbeddedWallet {
+    this.assertEmbeddedOnly(action);
+    return this.wallet as EmbeddedWallet;
+  }
+
+  private static async resolveExternalAddress(
+    wallet: Wallet,
+    preferredAddress?: AztecAddress
+  ): Promise<AztecAddress | undefined> {
+    const accounts = await wallet.getAccounts();
+    if (preferredAddress) {
+      const preferred = preferredAddress.toString();
+      const matched = accounts.find(
+        (account) => account.item.toString() === preferred
+      );
+      if (matched) return matched.item;
+    }
+
+    const walletWithGetAddress = wallet as Wallet & {
+      getAddress?: () => Promise<AztecAddress> | AztecAddress;
+    };
+    if (typeof walletWithGetAddress.getAddress === "function") {
+      const maybeAddr = await walletWithGetAddress.getAddress();
+      if (maybeAddr) return maybeAddr;
+    }
+
+    return accounts[0]?.item;
   }
 }
 

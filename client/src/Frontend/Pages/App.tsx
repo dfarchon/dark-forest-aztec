@@ -7,6 +7,7 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { createGlobalStyle } from "styled-components";
 
 import { Theme } from "../Components/Theme";
+import { ExternalWalletProvider } from "../Contexts/ExternalWalletContext";
 import { LandingPageBackground } from "../Renderers/LandingPageCanvas";
 import dfstyles from "../Styles/dfstyles";
 import { EventsPage } from "./EventsPage";
@@ -59,33 +60,39 @@ function App() {
       <GlobalStyle />
       {/* Provides theming for WebComponents from the `@dfpunk/ui` package */}
       <Theme color="dark" scale="medium">
-        <Routes>
-          <Route
-            path="/play"
-            element={<Navigate to={`/play/${defaultAddress}`} replace />}
-          />
-          <Route path="/play/:contract" element={<GameLandingPage />} />
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/" element={<LandingPage />} />
-          <Route
-            path="/lobby"
-            element={<Navigate to={`/lobby/${defaultAddress}`} replace />}
-          />
-          <Route
-            path="/wallet/:contract/:addr/:actionId/:balance/:method"
-            element={<TxConfirmPopup />}
-          />
-          <Route path="/unsubscribe" element={<UnsubscribePage />} />
-          <Route path="/valhalla" element={<ValhallaPage />} />
-          {!isProd && <Route path="/images" element={<TestArtifactImages />} />}
-          {!isProd && <Route path="/gifs" element={<GifMaker />} />}
-          {!isProd && <Route path="/bg" element={<LandingPageBackground />} />}
-          <Route path="/test" element={<TestHub />} />
-          <Route path="/test/indexer" element={<IndexerTestPage />} />
-          <Route path="/test/wallet" element={<WalletManagerTestPage />} />
-          <Route path="/test/tx-executor" element={<TxExecutorTestPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+        <ExternalWalletProvider>
+          <Routes>
+            <Route
+              path="/play"
+              element={<Navigate to={`/play/${defaultAddress}`} replace />}
+            />
+            <Route path="/play/:contract" element={<GameLandingPage />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route
+              path="/lobby"
+              element={<Navigate to={`/lobby/${defaultAddress}`} replace />}
+            />
+            <Route
+              path="/wallet/:contract/:addr/:actionId/:balance/:method"
+              element={<TxConfirmPopup />}
+            />
+            <Route path="/unsubscribe" element={<UnsubscribePage />} />
+            <Route path="/valhalla" element={<ValhallaPage />} />
+            {!isProd && (
+              <Route path="/images" element={<TestArtifactImages />} />
+            )}
+            {!isProd && <Route path="/gifs" element={<GifMaker />} />}
+            {!isProd && (
+              <Route path="/bg" element={<LandingPageBackground />} />
+            )}
+            <Route path="/test" element={<TestHub />} />
+            <Route path="/test/indexer" element={<IndexerTestPage />} />
+            <Route path="/test/wallet" element={<WalletManagerTestPage />} />
+            <Route path="/test/tx-executor" element={<TxExecutorTestPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </ExternalWalletProvider>
       </Theme>
     </>
   );
