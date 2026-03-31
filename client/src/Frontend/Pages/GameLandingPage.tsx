@@ -1855,7 +1855,7 @@ export function GameLandingPage() {
             () => {
               if (!opened) opened = true;
               window.open(
-                "https://gregojuice.anothercoffeefor.me/",
+                "https://bridge.gregojuice.anothercoffeefor.me/",
                 "_blank",
                 "noopener,noreferrer"
               );
