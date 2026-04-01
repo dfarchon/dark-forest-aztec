@@ -98,7 +98,7 @@ importers:
         version: 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../packages/contracts/constants
+        version: link:../packages/constants
       '@dfpunk/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
@@ -318,11 +318,11 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
-  packages/contracts/constants:
+  packages/constants:
     dependencies:
       '@dfpunk/types':
         specifier: workspace:*
-        version: link:../../types
+        version: link:../types
     devDependencies:
       prettier:
         specifier: 3.7.4
@@ -344,7 +344,7 @@ importers:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../contracts/constants
+        version: link:../constants
       '@dfpunk/serde':
         specifier: workspace:*
         version: link:../serde
@@ -401,7 +401,7 @@ importers:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../contracts/constants
+        version: link:../constants
       '@dfpunk/gamelogic':
         specifier: workspace:*
         version: link:../gamelogic
@@ -426,7 +426,7 @@ importers:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../contracts/constants
+        version: link:../constants
       '@dfpunk/gamelogic':
         specifier: workspace:*
         version: link:../gamelogic
@@ -463,7 +463,7 @@ importers:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../contracts/constants
+        version: link:../constants
       '@dfpunk/hexgen':
         specifier: workspace:*
         version: link:../hexgen
@@ -494,7 +494,7 @@ importers:
     dependencies:
       '@dfpunk/constants':
         specifier: workspace:*
-        version: link:../contracts/constants
+        version: link:../constants
       '@dfpunk/types':
         specifier: workspace:*
         version: link:../types

@@ -9,7 +9,7 @@
   "main": "index.js",
   "scripts": {
     "clean": "pnpm -r run clean && del-cli dist node_modules",
-    "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json' 'packages/contracts/constants/package.json'",
+    "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json' 'packages/constants/package.json'",
     "format": "pnpm -r run format",
     "prepare": "husky",
     "reinstall": "pnpm store prune && pnpm install --force",

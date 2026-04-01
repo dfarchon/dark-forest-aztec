@@ -2,7 +2,7 @@ packages:
   - client
   - contracts
   - server
-  - packages/contracts/constants
+  - packages/constants
   - packages/contracts
   - packages/events
   - packages/gamelogic
