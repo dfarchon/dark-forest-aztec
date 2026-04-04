@@ -1,28 +1,20 @@
 # DFPunk Indexer Server
 
-This service indexes DFPunk Aztec public storage updates block-by-block, keeps an in-memory typed snapshot, persists it to SQLite, and exposes read APIs for clients.
+Indexes DFPunk Aztec public storage updates block-by-block, keeps an in-memory typed snapshot, persists to SQLite, and exposes read APIs for clients.
 
-## Goals
-
-- Keep a consistent, queryable game state mirror from Aztec public events.
-- Recover quickly after restart from local SQLite snapshot.
-- Serve large snapshot payloads efficiently (`gzip`/`brotli` cached).
-- Support v2 chunked snapshot APIs for staged client upgrades.
-- Run locally and in container environments (e.g. Railway + volume).
-
-## High-Level Architecture
+## Architecture
 
 ```text
 Aztec Node (public events)
-  -> AztecNodeSource (decode events)
-  -> IndexerService (typed Maps + sync lifecycle)
-  -> SnapshotCache (JSON mirror + cached gzip)
-  -> HTTP API (/snapshot, /snapshot/manifest, /snapshot/chunks/*, /blocks/latest, /health)
+  → AztecNodeSource (getBlockUpdates → getPublicEvents)
+  → IndexerService (typed Maps + sync lifecycle)
+  → SnapshotCache (JSON mirror + cached Brotli/gzip)
+  → HTTP API (/snapshot, /snapshot/hash, /snapshot/manifest, /snapshot/chunks/*, /blocks/latest, /health)
                      \
-                      -> SnapshotStore (SQLite WAL persistence)
+                      → SnapshotStore (SQLite WAL: v1 snapshot row + v2 chunk/manifest tables)
 ```
 
-## Directory Layout
+### Directory Layout
 
 ```text
 server/
@@ -30,339 +22,197 @@ server/
     index.ts                    # bootstrap + wiring
     api.ts                      # Hono routes
     config.ts                   # env parsing and startup validation
-    persistence.ts              # SQLite store + restore helpers
-    snapshotCache.ts            # incremental JSON + gzip cache
+    contractsConfig.ts          # contract addresses + START_BLOCK validation
+    persistence.ts              # SQLite store + restore + v2 chunk persistence
+    snapshotCache.ts            # incremental JSON + Brotli/gzip cache
 packages/
   indexer-server-core/
-    src/                        # server-consumed indexer core extracted from server/src/indexer
+    src/                        # IndexerService, AztecNodeSource, table types
       IndexerService.ts
       AztecNodeSource.ts
       convert.ts, debounce.ts, types.ts, TableTypes/
 ```
 
+The server depends on `@dfpunk/contracts` (`workspace:*`) and imports `indexer-server-core` via monorepo source path. Docker builds copy `server/`, `contracts/`, `packages/contracts/`, and `packages/indexer-server-core/` into the image.
+
 ## Data Model
 
-The indexer tracks these logical tables:
-
-- `world`
-- `player`
-- `planet`
-- `planet_revealed_coords`
-- `planet_events`
-- `planet_artifacts`
-- `arrival`
-- `artifact`
-- `artifact_location`
+Indexed tables: `world`, `player`, `planet`, `planet_revealed_coords`, `planet_events`, `planet_artifacts`, `arrival`, `artifact`, `artifact_location`.
 
 In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBlock`.
 
 ## Startup Sequence
 
-`src/index.ts` performs this flow:
+`main()` in `src/index.ts`:
 
-1. Initialize `SnapshotStore` (SQLite, WAL mode).
-2. Parse runtime config (`AZTEC_NODE_URL`, `INDEXER_START_BLOCK`, etc.).
-3. Create `IndexerService` with `AztecNodeSource`.
-4. Try restore snapshot from SQLite (`jsonToSnapshot` + `applySnapshot`).
-5. Sync from restored block (or `INDEXER_START_BLOCK` / `START_BLOCK`) to latest chain block.
-6. Build full `SnapshotCache`.
-7. Subscribe to indexer updates:
-   - apply incremental cache update
-   - persist JSON snapshot with interval throttling
-8. Start polling for new blocks.
-9. Start HTTP server (TLS is expected to terminate at the edge/reverse proxy in production).
-10. On shutdown (`SIGINT` / `SIGTERM`), force-save snapshot and close DB.
+1. Validate contracts config and parse runtime config.
+2. Initialize `SnapshotStore` (SQLite, WAL mode).
+3. Create `IndexerService` with `createAztecNodeBlockSource(aztecNodeUrl)`.
+4. Create `SnapshotCache` bound to the indexer.
+5. Run `runServerRuntime()`:
+   - Restore snapshot from SQLite; verify v1 JSON against v2 chunk reconstruction.
+   - Start HTTP listener (so `/health` responds while sync runs).
+   - `await indexer.start()` — catch up to latest chain block.
+   - `cache.buildFull()` from current indexer state.
+   - `indexer.subscribe(...)`: incremental cache updates + throttled persistence.
+   - `indexer.startPolling()` for new blocks.
+6. On shutdown (`SIGINT`/`SIGTERM`), force-save snapshot and close DB.
 
-## Indexing and Sync Design
+TLS terminates at the edge or reverse proxy in production.
 
-This server uses **IndexerService** from `packages/indexer-server-core/src`. Server-only usage:
+## Indexing
 
-- **Lifecycle**: `applySnapshot`, `start()`, `subscribe(cb)`, `startPolling()`, `destroy()`.
-- **API surface**: `getProcessedBlockNumber()`, `getStatus()` for HTTP routes; `getTable()` (and `getProcessedBlockNumber()`) for `SnapshotCache`.
-- **New-block detection**: periodic polling of `getLatestBlockNumber()` every `pollIntervalMs`; no WebSocket. When already caught up (`lastProcessedBlock === latest`), no `getBlockUpdates` calls.
+Uses **IndexerService** from `packages/indexer-server-core/src`:
 
-### Source adapter
+- **Lifecycle**: `applySnapshot` → `start()` → `subscribe(cb)` → `startPolling()` → `destroy()`.
+- **API**: `getProcessedBlockNumber()`, `getStatus()`, `getTable()`.
+- **Polling**: checks `getLatestBlockNumber()` every `pollIntervalMs` (2 s); skips `getBlockUpdates` when caught up.
 
-`AztecNodeSource` (server-side) calls the Aztec node `getPublicEvents` with contract metadata from `@dfpunk/contracts/artifacts/*`, returning `{ fromBlock, toBlock, updates[] }` per requested block range.
+**Source adapter**: `AztecNodeSource` calls Aztec `getPublicEvents` with contract metadata from `@dfpunk/contracts/artifacts/*`.
 
-## Snapshot and Persistence
+## Snapshot & Persistence
 
-### SnapshotCache
+**SnapshotCache** — JSON-serializable mirror of all tables. Incremental updates via changed IDs. Caches both Brotli and gzip buffers for `/snapshot` and chunk routes.
 
-- Maintains a JSON-serializable mirror of all tables.
-- Supports incremental updates using changed IDs only.
-- Caches serialized JSON string.
-- Caches `gzip` buffer for `/snapshot` response.
+**SnapshotStore** — `better-sqlite3` with WAL mode:
 
-### SnapshotStore
-
-- Uses `better-sqlite3` with `journal_mode = WAL`.
-- Single-row table `snapshots(id=1)`:
-  - `block_number`
-  - `data` (JSON string)
-  - `updated_at`
-- Throttled save interval (`PERSIST_MIN_INTERVAL_SEC`).
-- Force-save on shutdown.
-- Admin backup uses SQLite backup API instead of reading the live `.db` file directly.
+- **v1**: single-row `snapshots(id=1)` — `block_number`, `data` (JSON), `updated_at`.
+- **v2**: `snapshot_chunks` + `snapshot_manifests` for persisted encoded chunks.
+- Throttled saves (`PERSIST_MIN_INTERVAL_SEC`); force-save on shutdown.
+- Admin backup via SQLite backup API.
 
 ## HTTP API
 
-### `GET /snapshot`
+Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snapshot` and `/snapshot/chunks/*`.
 
-- Returns full snapshot as pre-gzipped JSON.
-- Headers:
-  - `Content-Type: application/json`
-  - `Content-Encoding: gzip`
-  - `X-Snapshot-Block: <number>`
-  - `X-Snapshot-Uncompressed-Length: <number>`
-  - `Cache-Control: no-cache`
-
-### `GET /snapshot/manifest`
-
-- Returns chunk metadata for v2 clients.
-- Query:
-  - `chunkRows` (optional, default `1000`, max `20000`)
-- Response:
-  - `version: 2`
-  - `lastProcessedBlock`
-  - `chunkRows`
-  - `tables[tableName] = { rowCount, chunkCount }`
-
-### `GET /snapshot/chunks/:table/:chunkIndex`
-
-- Returns one compressed chunk for the selected table.
-- Query:
-  - `chunkRows` (optional, same rules as manifest)
-- Headers:
-  - `X-Snapshot-Chunk-Count`
-  - `X-Snapshot-Chunk-Index`
-  - `X-Snapshot-Chunk-Rows`
-  - `X-Snapshot-Block`
-  - `X-Snapshot-Uncompressed-Length`
-- Notes:
-  - v1 `/snapshot` remains unchanged for backward compatibility.
-
-### `GET /blocks/latest`
-
-- Returns:
-  - `blockNumber`
-  - `snapshotBlock`
-  - `snapshotBytes`
-  - `snapshotEncoding`
-
-### `GET /health`
-
-- Returns:
-  - `status`
-  - `lifecycle`
-  - `lastProcessedBlock`
-  - `latestKnownBlock`
-  - `isSyncing`
-
-### `GET /admin/backup`
-
-- Bearer token protected (`Authorization: Bearer <ADMIN_TOKEN>`).
-- Disabled when `ADMIN_TOKEN` is empty.
-- Returns SQLite DB file as attachment.
+| Endpoint | Response |
+| --- | --- |
+| `GET /snapshot` | Full snapshot as pre-compressed JSON. Headers: `Content-Encoding`, `X-Snapshot-Block`, `X-Snapshot-Uncompressed-Length`, `Cache-Control: no-cache`. |
+| `GET /snapshot/hash` | `{ hash, lastProcessedBlock }` — SHA-256 hex of canonical snapshot JSON. |
+| `GET /snapshot/manifest?chunkRows=` | v2 chunk metadata: `{ version: 2, lastProcessedBlock, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`. |
+| `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`. |
+| `GET /blocks/latest` | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }` |
+| `GET /health` | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
+| `GET /admin/backup` | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty. |
 
 ## Configuration
 
-Environment variable references:
+Env file references: `.env.example` (generic), `env.local.example` (local testnet), `env.railway.example` (Railway).
 
-- `.env.example` — generic reference with all supported keys
-- `env.local.example` — recommended local testnet preset
-- `env.railway.example` — recommended Railway preset
-- `docs/README.md` — docs entrypoint + release checklist (read this first)
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `AZTEC_NODE_URL` | `https://rpc.testnet.aztec-labs.com` | Use `http://localhost:8080` for local sandbox |
+| `CORS_ORIGINS` | local Vite + Netlify origins | Comma-separated; `*` = any; empty = disabled |
+| `INDEXER_START_BLOCK` | `START_BLOCK` from contracts | Optional override |
+| `PORT` | `3001` | Local default. On Railway (and similar hosts), **omit `PORT`** and use the value the platform injects. |
+| `SQLITE_PATH` | `./data/indexer.db` | |
+| `SNAPSHOT_SCHEMA_VERSION` | `1` | Mismatch resets persisted snapshot |
+| `PERSIST_MIN_INTERVAL_SEC` | `10` | Throttles SQLite writes during live sync (see below). |
+| `ADMIN_TOKEN` | (empty) | Empty = backup endpoint disabled |
 
-Key variables:
+IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`.
 
-- `AZTEC_NODE_URL` (runtime default: `https://rpc.testnet.aztec-labs.com`; set `http://localhost:8080` for local sandbox)
-- `CORS_ORIGINS` (comma-separated; runtime default: `http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app/`)
-- `INDEXER_START_BLOCK` (optional; defaults to `START_BLOCK` from `@dfpunk/contracts`)
-- `PORT` (default: `3001`)
-- `SQLITE_PATH` (default: `./data/indexer.db`)
-- `SNAPSHOT_SCHEMA_VERSION` (default: `1`; mismatch resets persisted snapshot)
-- `PERSIST_MIN_INTERVAL_SEC` (default: `10`)
-- `ADMIN_TOKEN` (default: empty, backup endpoint disabled)
+**Timing:** Chosen for **public testnet** (seconds-scale blocks): poll only queries latest block height every 2s; `getBlockUpdates` runs when there is backlog. Debounce (1s) and `PERSIST_MIN_INTERVAL_SEC` cut redundant work. Hardcoded in `src/index.ts` (no env override).
 
-IndexerService options (hardcoded in `src/index.ts`; move to env if needed):
+## Package Scripts
 
-- `maxBlocksPerRequest`: 100 — max blocks per `getBlockUpdates` call when catching up.
-- `pollIntervalMs`: 2000 — interval for polling latest block number.
-- `debounceMs`: 1000 — debounce before processing new blocks after a poll.
+Run via `pnpm --filter server <script>`:
 
-## Local Run
+| Script | Purpose |
+| --- | --- |
+| `dev` / `start` | Run server (`node --experimental-transform-types src/index.ts`) |
+| `compare:snapshot` | Compare snapshot JSON to server `/snapshot` and v2 reconstruction |
+| `docker:build` | Build server image (`scripts/build-server-image.sh`) |
+| `docker:publish` | Build and push image (`IMAGE_PUSH=1`) |
+| `docker:publish:testnet` | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`) |
+| `e2e:up` / `e2e:down` / `e2e:runtime` / `e2e:status` / `e2e:logs` / `e2e:reset` | Local stack + E2E helpers via `scripts/test-env.sh` |
+| `prepare:contracts` / `prepare:contracts:build` | Sync contract artifacts for indexing |
+| `mock:snapshot` | Mock big-snapshot stream server for testing |
+| `format` / `format:check` | Prettier formatting |
+| `test:build:image` / `test:prepare:contracts` | Node native test runner tests |
+
+Unit tests:
+
+```bash
+cd server && node --test --experimental-transform-types src/*.test.ts
+```
+
+## Quick Start
 
 ```bash
 corepack pnpm install
 
-# Testnet + local API (:3001)
+# Testnet (default)
 corepack pnpm --filter server dev
 
-# Local sandbox override
-AZTEC_NODE_URL=http://localhost:8080 \
-corepack pnpm --filter server dev
+# Local sandbox
+AZTEC_NODE_URL=http://localhost:8080 corepack pnpm --filter server dev
 ```
 
-## Local URLs (Default)
-
-- Frontend: `http://127.0.0.1:5173`
-- Indexer server: `http://localhost:3001`
-- Aztec node: `https://rpc.testnet.aztec-labs.com`
-
-Common local API checks:
-
-- `http://localhost:3001/health`
-- `http://localhost:3001/blocks/latest`
-- `http://localhost:3001/snapshot`
-
-### Hard compare: local client snapshot vs local/remote server snapshots
-
-Use the helper script to extract the **real browser client** snapshot via `window.dfDebug.snapshotJson()` (DEV mode) and compare it with local + remote server snapshots:
+### Local API Checks
 
 ```bash
-bash server/scripts/compare-client-server-snapshots.sh
-# or specify remote URL
-bash server/scripts/compare-client-server-snapshots.sh https://server-testnet.up.railway.app
+curl -fsS http://localhost:3001/health && echo
+curl -fsS http://localhost:3001/blocks/latest && echo
+curl -fsS http://localhost:3001/snapshot/hash && echo
+curl -fsSI http://localhost:3001/snapshot
+
+# Admin backup (requires ADMIN_TOKEN)
+curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:3001/admin/backup -o /tmp/indexer-backup.db
 ```
 
-Notes:
+### Client
 
-- Requires local server (`pnpm --filter server dev`) and local client (`pnpm --filter client dev --host 127.0.0.1 --port 5173`) running.
-- Uses Playwright CLI under the hood; if unavailable, install `@playwright/cli`.
-- Comparison is table-level hard equality (`world/player/planet/.../artifact_location`). If only `lastProcessedBlock` differs, that is a capture-time metadata difference, not a table-data mismatch.
+Connection config priority: localStorage override → `VITE_*` env → built-in defaults.
 
-### Dev Console Debug Commands
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `VITE_AZTEC_NODE_URL` | `http://localhost:8080` | |
+| `VITE_INDEXER_BOOTSTRAP_URL` | (empty) | See `client/src/config/env.ts` for resolution |
+| `VITE_APP_MODE` | (auto) | `production` / `development` |
 
-These commands are available only in DEV client builds (the app injects `window.dfDebug` under `import.meta.env.DEV`).
+```bash
+corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
+```
 
-Check availability:
+Override via localStorage:
 
 ```js
-import.meta.env.DEV;
-typeof window.dfDebug;
+localStorage.setItem("dfpunk:connection:nodeUrl", "https://rpc.testnet.aztec-labs.com");
+localStorage.setItem("dfpunk:connection:indexerBootstrapUrl", "http://localhost:3001");
+// Clear:
+localStorage.removeItem("dfpunk:connection:nodeUrl");
+localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
 ```
 
-Core snapshot commands:
+### Dev Console (DEV builds only)
 
 ```js
 window.dfDebug.snapshot();
 window.dfDebug.snapshotJson();
 window.dfDebug.downloadSnapshot();
-```
 
-Use the exposed indexer connection (examples):
-
-```js
 window.dfDebug.connection.getStatus();
 window.dfDebug.connection.getCurrentBlockNumber();
 window.dfDebug.connection.getProcessedBlockNumber();
-window.dfDebug.connection.getPlayerIds();
-window.dfDebug.connection.getPlanetIds();
-await window.dfDebug.connection.waitForBlock(123456, 30000);
 window.dfDebug.connection.getSnapshotAsJsonString();
 ```
 
-Local override helpers:
-
-```js
-localStorage.getItem("dfpunk:connection:nodeUrl");
-localStorage.getItem("dfpunk:connection:indexerBootstrapUrl");
-
-localStorage.setItem("dfpunk:connection:nodeUrl", "https://rpc.testnet.aztec-labs.com");
-localStorage.setItem("dfpunk:connection:indexerBootstrapUrl", "http://localhost:3001");
-
-localStorage.removeItem("dfpunk:connection:nodeUrl");
-localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
-```
-
-If you are running the frontend from `https://dfpunk-aztec.netlify.app` (or `https://df-aztec.netlify.app`) against a local server, the default CORS list already allows that origin. If the browser still tries stale URLs, clear local overrides in DevTools Console first.
-
-### Local API checks
+## E2E Test Stack
 
 ```bash
-curl -fsS http://localhost:3001/health && echo
-curl -fsS http://localhost:3001/blocks/latest && echo
-curl -fsSI http://localhost:3001/snapshot
+pnpm --filter server run e2e:reset    # clear local test cache
+pnpm --filter server run e2e:runtime  # start anvil + aztec sandbox + server
+pnpm --filter server run e2e:up       # full stack + continuous e2e runner
+pnpm --filter server run e2e:status   # inspect status
+pnpm --filter server run e2e:logs     # tail logs
+pnpm --filter server run e2e:down     # stop everything
 ```
 
-Admin backup check (only when `ADMIN_TOKEN` is set):
+`e2e:reset` deletes: `contracts/.store`, `contracts/wallet_data_*`, `contracts/scripts/.test-accounts.json`, `server/data/indexer.db`.
 
-```bash
-curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
-  http://localhost:3001/admin/backup \
-  -o /tmp/indexer-backup.db
-```
-
-## Client Run (Latest)
-
-Client connection config now resolves in this priority:
-
-1. User override in `localStorage` (set from the in-app connection settings UI)
-2. Environment variables (`VITE_*`)
-3. Built-in defaults
-
-Environment variables used by client:
-
-- `VITE_AZTEC_NODE_URL` (default fallback: `http://localhost:8080`)
-- `VITE_INDEXER_BOOTSTRAP_URL` (optional; when unset, client syncs from chain `START_BLOCK`)
-- `VITE_APP_MODE` (`production` | `development`, optional)
-
-Start client (local dev):
-
-```bash
-corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
-```
-
-Start client with explicit node/indexer URLs:
-
-```bash
-VITE_AZTEC_NODE_URL=http://localhost:8080 \
-VITE_INDEXER_BOOTSTRAP_URL=http://localhost:3001 \
-corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
-```
-
-If env changes do not appear, clear local overrides first (because localStorage has higher priority):
-
-```js
-localStorage.removeItem("dfpunk:connection:nodeUrl");
-localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
-```
-
-## Local E2E Test Stack (One-Command)
-
-Use the server-side helper script to avoid manual coordination each time:
-
-```bash
-# Stop services and clear local test cache (PXE store, test accounts, sqlite)
-pnpm --filter server run e2e:reset
-
-# Start anvil + aztec sandbox + server
-pnpm --filter server run e2e:runtime
-
-# Start full stack + continuous server e2e runner
-pnpm --filter server run e2e:up
-
-# Inspect status and health
-pnpm --filter server run e2e:status
-
-# Tail logs
-pnpm --filter server run e2e:logs
-
-# Stop everything managed by this helper
-pnpm --filter server run e2e:down
-```
-
-Notes:
-
-- Run only one continuous e2e runner at a time in the same repo/chain.
-- `e2e:reset` deletes:
-  - `contracts/.store`
-  - `contracts/wallet_data_*`
-  - `contracts/scripts/.test-accounts.json`
-  - `server/data/indexer.db`
-
-## Docker Run
+## Docker
 
 ```bash
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
@@ -373,48 +223,31 @@ docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   dfpunk-indexer-server
 ```
 
-For local sandbox instead of testnet, override:
-
-```bash
-docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
-  -e AZTEC_NODE_URL=http://host.docker.internal:8080 \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
-  dfpunk-indexer-server
-```
+For local sandbox: replace `AZTEC_NODE_URL` with `http://host.docker.internal:8080`.
 
 ## Railway
 
-**Testnet deployment:** https://server-production-b4e5.up.railway.app
+Recommended settings:
 
-Recommended Railway settings for the current server:
-
-- Build from the repo root with `server/Dockerfile` as the Dockerfile path
-- Mount a persistent volume at `/data`
-- Set `SQLITE_PATH=/data/indexer.db`
+- **Deploy source**: empty Railway service with builder `DOCKERFILE`, path `server/Dockerfile`, build context repo root; or a prebuilt **GHCR** image (see [docs/railway-deploy.md](./docs/railway-deploy.md)).
+- Mount persistent volume at `/data`; set `SQLITE_PATH=/data/indexer.db`
 - Set `AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com`
-- Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app`
-- Prefer leaving `PORT` unset on Railway and let the platform inject it; keep `3001` only as the local/container default
+- Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app`
+- Do **not** set `PORT` yourself—Railway injects it (see Configuration table).
 
-Detailed setup, verification steps, and known deploy traps are documented in [`server/docs/railway-deploy.md`](/Users/pabloli/Documents/dfpunk-aztec/server/docs/railway-deploy.md).
+See [docs/railway-deploy.md](./docs/railway-deploy.md) for environment variable reference, publish commands, post-deploy checks, and known deploy traps.
 
-The Docker image must include `server`, `packages/contracts`, and `packages/indexer-server-core`; the current Dockerfile now copies all three runtime paths.
-Because the Docker build context is the monorepo root, the ignore file for deployment uploads lives at repo root: [`.dockerignore`](/Users/pabloli/Documents/dfpunk-aztec/.dockerignore).
+The Docker build context is the monorepo root; deploy ignore rules live in [`.dockerignore`](../.dockerignore).
 
-## Monorepo Notes
+## Failure & Recovery
 
-- `server` is a workspace package and participates in recursive commands (`pnpm -r`).
-- The service depends on `@dfpunk/contracts` via `workspace:*`.
-- `better-sqlite3` is native; build tooling must be available for the target runtime.
+- Event decode failures cause startup/polling to fail fast with logged error.
+- On restart, last persisted snapshot is restored and sync catches up from there.
+- Corrupted persisted JSON is skipped; fresh sync from `INDEXER_START_BLOCK`.
 
-## Failure and Recovery
+## Limitations
 
-- If event decode fails for a block range, startup or polling cycle fails fast and logs the error.
-- On restart, the server restores the last persisted snapshot and catches up from there.
-- If persisted JSON is corrupted, restore is skipped and a fresh sync is performed.
-
-## Current Limitations
-
-- No auth/rate-limit on public read endpoints.
-- Backup endpoint uses query token and should be treated as admin-only.
-- No pruning/versioning for historical snapshots (only latest state).
-- No explicit metrics endpoint yet.
+- No auth or application-level rate limiting on public read endpoints today. For the expected app + indexer traffic this is usually enough; if snapshot scraping or abuse shows up, add limits at the edge (CDN/proxy) or in the Hono app.
+- Backup endpoint is Bearer-protected; keep `ADMIN_TOKEN` secret.
+- No pruning/versioning for historical snapshots (latest state only).
+- No explicit metrics endpoint.

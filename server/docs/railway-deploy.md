@@ -1,197 +1,116 @@
 # Railway Deploy Guide
 
-This document records the Railway setup that was actually verified for the `server` service and the failure modes that mattered during deployment.
+Deploy the indexer server to Railway: sync from Aztec testnet, persist SQLite on a mounted volume, serve snapshot APIs with CORS for the Netlify frontend.
 
-## Goal
+For architecture, HTTP API, configuration defaults, and local development, see [server README](../README.md).
 
-Deploy the indexer server to Railway so it:
+## Service Setup
 
-- syncs `devnet`
-- persists its SQLite snapshot on a mounted volume
-- serves `/health`, `/blocks/latest`, `/snapshot`
-- allows the Netlify frontend origin through CORS
+Create an **Empty Service** in Railway. Two deployment sources are supported:
 
-## What To Create In Railway
+| Source | When to use |
+| --- | --- |
+| GHCR image (`ghcr.io/<user>/dfpunk-aztec-server:<tag>`) | Steady-state deploys |
+| Local source upload + `server/Dockerfile` | First-time setup or debugging |
 
-Use an `Empty Service`.
+Service shape: builder `DOCKERFILE`, Dockerfile path `server/Dockerfile`, build context repo root, volume mount `/data`.
 
-There are now two supported deployment sources:
-
-- `GHCR Docker Image`: preferred once you have a working image publish flow
-- local source upload plus `server/Dockerfile`: fallback for debugging or first-time setup
-
-Recommended service shape:
-
-- source: `ghcr.io/<github-user>/dfpunk-aztec-server:<tag>` for steady-state deploys
-- builder: `DOCKERFILE`
-- Dockerfile path: `server/Dockerfile`
-- build context: repo root
-- volume mount: `/data`
-
-## Required Environment Variables
-
-Recommended Railway variables:
+## Environment Variables
 
 ```bash
-AZTEC_NODE_URL=https://v4-devnet-2.aztec-labs.com
-CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app
+AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com
+CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app
 SQLITE_PATH=/data/indexer.db
+SNAPSHOT_SCHEMA_VERSION=1
 PERSIST_MIN_INTERVAL_SEC=10
-ADMIN_TOKEN=<set only if you need /admin/backup>
+# ADMIN_TOKEN=<set only if you need /admin/backup>
 ```
 
-Do not manually set `PORT` on Railway. Railway injects it at runtime. The code keeps `3001` as the local default only.
-
-Reference presets:
-
-- `server/.env.example`
-- `server/env.local.example`
-- `server/env.railway.example`
+Do **not** set `PORT` — Railway injects it at runtime. See `server/.env.example`, `env.railway.example` for full reference.
 
 ## Deploy Flow
 
-### Option A: Publish Image To GHCR
-
-The normal day-to-day publish command is:
+### Option A: Publish Image to GHCR
 
 ```bash
+# Day-to-day publish
+pnpm --filter server run docker:publish:testnet
+# Equivalent:
 bash server/scripts/publish-devnet-image.sh
 ```
 
-What this does:
+This builds `linux/amd64` via `docker buildx` and pushes to GHCR.
 
-- prepares contract artifacts if they are missing
-- builds `linux/amd64` with `docker buildx`
-- pushes the tag to GHCR
-- defaults to `ghcr.io/0xpabloli/dfpunk-aztec-server:devnet`
-
-Equivalent package script:
+One-time GHCR login:
 
 ```bash
-pnpm --filter server run docker:publish:devnet
+echo "$(gh auth token)" | docker login ghcr.io -u <github-user> --password-stdin
 ```
 
-One-time GHCR login on a machine:
+If Railway caches a stale mutable tag, publish a fresh immutable tag:
 
 ```bash
-echo "$(gh auth token)" | docker login ghcr.io -u 0xPabloLI --password-stdin
-```
-
-Important:
-
-- `docker:publish` now defaults to `IMAGE_PLATFORMS=linux/amd64`
-- you only need to override `IMAGE_PLATFORMS` if Railway starts running on a different target architecture in the future
-
-Recommended Railway source:
-
-```text
-ghcr.io/<github-user>/dfpunk-aztec-server:devnet
-```
-
-If Railway appears to cache a bad image for a mutable tag, publish a fresh immutable tag and point Railway at that new tag once:
-
-```bash
-IMAGE_REPO=ghcr.io/<github-user>/dfpunk-aztec-server \
+IMAGE_REPO=ghcr.io/<user>/dfpunk-aztec-server \
 IMAGE_TAG=devnet-YYYYMMDD-HHMM \
 pnpm --filter server run docker:publish
 ```
 
-Tag convention used here:
-
-- mutable tag: `devnet`
-- immutable tag: `devnet-YYYYMMDD-HHMM`
-
 ### Option B: Local Source Upload
 
-From the repo root:
-
 ```bash
-railway login
-railway link
-railway up
+railway login && railway link && railway up
 ```
-
-If the service already exists, `railway up` uploads the current local source tree and triggers a new deployment.
-
-## Auto Updates
-
-Railway `image auto updates` only tells Railway to redeploy when the configured image tag changes upstream.
-
-It does not build or push the image for you.
-
-Without CI, you still need to run the publish command locally whenever you want a new server release on Railway.
 
 ## Post-Deploy Checks
 
-Replace `<railway-url>` with the generated public domain:
+Replace `<url>` with the Railway public domain:
 
 ```bash
-curl -fsS https://<railway-url>/health && echo
-curl -fsS https://<railway-url>/blocks/latest && echo
-curl -fsSI https://<railway-url>/snapshot
+curl -fsS https://<url>/health && echo
+curl -fsS https://<url>/blocks/latest && echo
+curl -fsSI https://<url>/snapshot
 ```
 
 Healthy expectations:
 
-- `/health` returns `status: "ok"`
-- `lifecycle` becomes `live` after catch-up
-- `lastProcessedBlock` is close to `latestKnownBlock`
-- `/blocks/latest` reports a non-zero `snapshotBytes`
+- `/health` → `status: "ok"`, `lifecycle: "live"` after catch-up, `lastProcessedBlock` ≈ `latestKnownBlock`
+- `/blocks/latest` → non-zero `snapshotBytes`
 
-## Current Known Caveat
+## Release Checklist
 
-The currently verified Railway deployment succeeded from both:
+### Client Compatibility
 
-- local source upload
-- GHCR image source with a published amd64 image
+- [ ] `CORS_ORIGINS` (Railway env + `server/src/config.ts` `DEFAULT_CORS_ORIGINS`) includes production frontend domain
+- [ ] Snapshot response includes CORS header for frontend origin
+- [ ] Exposed headers present: `X-Snapshot-Uncompressed-Length`, `X-Snapshot-Block`
+- [ ] `VITE_INDEXER_BOOTSTRAP_URL` target is reachable and returns `/snapshot`
+- [ ] Client not pinned to stale `localStorage` overrides (`dfpunk:connection:*`)
 
-But the repo is still not fully self-contained for clean-clone image builds.
+### Contract Updates
 
-Reason:
+- [ ] Contract artifacts regenerated (`contracts/scripts/deploy/sync-env-and-artifacts.ts`)
+- [ ] `@dfpunk/contracts` exports consistent (`CORE_CONTRACT_ADDRESS`, `START_BLOCK`, etc.)
+- [ ] `INDEXER_START_BLOCK` matches if overriding default
+- [ ] If state shape changed: bump `SNAPSHOT_SCHEMA_VERSION` (resets persisted snapshot)
+- [ ] No event decode errors in startup/live logs
 
-- `packages/indexer-server-core/src/AztecNodeSource.ts` imports `../../contracts/src/artifacts/*.ts` at runtime
-- those generated contract artifact files are currently ignored by the repo-wide `.gitignore` rule `**/artifacts/`
+### Rollback Triggers
 
-Impact:
-
-- local machines that already have generated `packages/contracts/src/artifacts/*` can publish and deploy successfully
-- a clean clone that only has committed files may fail to build the image unless contract artifacts are generated first
-
-This is the remaining deploy reproducibility gap. Fixing it requires touching code or ignore rules outside `server/`.
+Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in `syncing` with growing lag, snapshot returns invalid JSON or missing headers, contract event decode errors.
 
 ## Known Failure Modes
 
-### Railway rejects Dockerfile with `VOLUME`
+**`better-sqlite3` build failure on slim images** — Dockerfile already includes `python3`, `make`, `g++`.
 
-Railway does not allow `VOLUME` instructions in the Dockerfile build path used here. The service must rely on a Railway-mounted volume instead.
+**Wrong architecture from mutable tag** — Apple Silicon defaults to `arm64`; publish flow forces `linux/amd64`. If Railway serves a cached old image, publish a fresh immutable tag.
 
-### `better-sqlite3` fails to build on slim Node images
+**Service never becomes healthy** — Server opens HTTP before catch-up completes, so health checks pass during sync. If health still fails, check Railway logs for startup exceptions.
 
-The runtime image needs native build tooling during `pnpm install`. `server/Dockerfile` already includes the required `python3`, `make`, and `g++` packages for this reason.
+**CORS blocks frontend** — Verify `CORS_ORIGINS` includes the real frontend origin and the browser isn't pointing to `localhost:3001`.
 
-### Railway pulls the wrong architecture from a mutable tag
+**Clean-clone image build fails** — `AztecNodeSource.ts` imports generated contract artifacts (`contracts/src/artifacts/*.ts`) which are `.gitignore`d. Run `pnpm --filter server run prepare:contracts` before building.
 
-Apple Silicon local builds will default to `arm64` unless the publish flow forces `linux/amd64`.
+## Notes
 
-The verified fix is:
-
-- publish through `docker buildx`
-- force `linux/amd64`
-- if Railway still serves an old cached image for the same tag, publish a fresh immutable tag and switch `source.image` once
-
-### Service never becomes healthy during initial sync
-
-The server now opens HTTP before the initial catch-up completes, so Railway health checks can pass while indexing continues in the background. If health still fails, inspect Railway logs for startup exceptions rather than assuming sync lag is the cause.
-
-### CORS blocks frontend bootstrap
-
-If the browser shows CORS errors on `/snapshot`, make sure:
-
-- Railway `CORS_ORIGINS` includes the real frontend origin
-- the frontend is not still pointing to `http://localhost:3001`
-
-## Why One Root File Still Matters
-
-This service lives in a monorepo and its Docker build context is the repo root, not `server/`.
-
-That means any upload filtering for Docker builds must be controlled by the root `.dockerignore`, not by `server/.dockerignore`. This is a Docker constraint, not a server design preference.
+- Railway `image auto updates` only redeploys when the tag changes upstream — it does not build/push for you.
+- Docker build context is the monorepo root; upload filtering is controlled by root `.dockerignore`, not `server/.dockerignore`.
