@@ -1,5 +1,9 @@
 These violent delights have violent ends.
 
+## Docs
+
+- External wallet setup and connection guide: [docs/external-wallet.md](docs/external-wallet.md)
+
 ## Devnet
 
 - **Devnet indexer server (API):** https://server-production-b4e5.up.railway.app  
