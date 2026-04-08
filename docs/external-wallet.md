@@ -81,11 +81,10 @@ Complete the wallet-side setup before trying to enter the game.
 2. Confirm the selected network is `Testnet`.
 3. Create a new account.
 4. Copy or note the new account address.
-5. Fund the address with FeeJuice.
-6. Use the GregoJuice funding link shown by the wallet UI.
-7. After funding arrives, run `Deploy`.
-8. If deployment does not complete on the first funded attempt, follow the wallet's guidance and retry `Deploy`.
-9. Wait until the account status is `Deployed`.
+5. Fund the address with FeeJuice by using the GregoJuice funding link shown by the wallet UI.
+6. After funding arrives, run `Deploy`.
+7. If deployment does not complete on the first funded attempt, follow the wallet's guidance and retry `Deploy`.
+8. Wait until the account status is `Deployed`.
 
 Notes:
 
@@ -134,7 +133,7 @@ If you deny those permissions, DFPunk will not be able to complete external-wall
 2. Start the extension browser.
 3. Keep the wallet on `Testnet`.
 4. Create an account.
-5. Fund the account with FeeJuice.
+5. Fund the account with FeeJuice from the wallet's GregoJuice link.
 6. Run `Deploy`.
 7. Retry `Deploy` if the wallet still indicates the account is not ready.
 8. Open DFPunk in the extension browser.
