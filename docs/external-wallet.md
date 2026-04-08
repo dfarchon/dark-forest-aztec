@@ -53,27 +53,7 @@ Expected result:
 
 Use this browser window for DFPunk. Do not switch to a different browser profile after the extension is loaded.
 
-## 3. Make Sure Wallet and Frontend Are Both on Testnet
-
-The demo wallet defaults to `Testnet`, and that is the recommended network for this flow.
-
-Before connecting:
-
-- keep the demo wallet network set to `Testnet`
-- if you use a hosted DFPunk frontend, confirm it is the testnet deployment
-- if you use a local DFPunk frontend, configure it to use testnet before opening the page
-
-For a local DFPunk frontend, that usually means setting the client environment to a testnet Aztec node instead of the local default:
-
-- `VITE_AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com`
-- set any other testnet-specific client overrides your environment requires
-
-The guide does not assume a single frontend URL. Both of these are valid:
-
-- a hosted DFPunk testnet URL
-- a local DFPunk URL, if that local frontend is pointed at testnet
-
-## 4. Prepare the Account in the Demo Wallet
+## 3. Prepare the Account in the Demo Wallet
 
 Complete the wallet-side setup before trying to enter the game.
 
@@ -86,26 +66,21 @@ Complete the wallet-side setup before trying to enter the game.
 7. If deployment does not complete on the first funded attempt, follow the wallet's guidance and retry `Deploy`.
 8. Wait until the account status is `Deployed`.
 
-Notes:
-
-- FeeJuice is the gas token. People may also call it "juicy".
-- Do not continue into DFPunk until the account is funded and successfully deployed.
-
-## 5. Open DFPunk in the Extension Browser
+## 4. Open DFPunk in the Extension Browser
 
 Open DFPunk in the browser window that was launched by `yarn dev`.
 
 Two common entry modes:
 
 - Hosted frontend:
-  - open your team or production DFPunk testnet URL in the extension browser
+  - open a DFPunk frontend URL that is configured for testnet in the extension browser
 - Local frontend:
   - start a local DFPunk frontend that is configured for testnet
   - open that local URL in the extension browser
 
 What matters is not whether the frontend is local or hosted. What matters is that it targets the same network as the wallet.
 
-## 6. Connect the External Wallet in DFPunk
+## 5. Connect the External Wallet in DFPunk
 
 On the DFPunk game page, follow the terminal-style onboarding flow:
 
