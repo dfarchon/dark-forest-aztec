@@ -308,6 +308,20 @@ export function GameLandingPage() {
     resetInitializationTerminalLogging,
   ]);
 
+  const resetToWalletSelectionMenu = useCallback(async () => {
+    await clearUnlockedWalletState();
+    selectedWalletModeRef.current = null;
+    setStep(TerminalPromptStep.WALLET_MENU);
+  }, [clearUnlockedWalletState]);
+
+  const selectWalletMode = useCallback(
+    async (mode: Exclude<SelectedWalletMode, null>) => {
+      await clearUnlockedWalletState();
+      selectedWalletModeRef.current = mode;
+    },
+    [clearUnlockedWalletState]
+  );
+
   const lockWalletSelection = useCallback(
     (mode: Exclude<SelectedWalletMode, null>) => {
       selectedWalletModeRef.current = mode;
@@ -1168,25 +1182,28 @@ export function GameLandingPage() {
 
         const userInput = await terminal.current?.getInput();
         if (userInput === "l") {
-          await clearUnlockedWalletState();
-          selectedWalletModeRef.current = "local";
+          await selectWalletMode("local");
           await advanceStateFromWalletMenu(terminal);
           return;
         }
         if (userInput === "e") {
-          await clearUnlockedWalletState();
-          selectedWalletModeRef.current = "external";
-          await advanceStateFromWalletMenu(terminal);
+          await selectWalletMode("external");
+          setStep(TerminalPromptStep.CONNECT_EXTERNAL);
           return;
         }
         if (userInput === "r" && rememberedSession) {
-          await clearUnlockedWalletState();
-          selectedWalletModeRef.current = "external";
+          await selectWalletMode("external");
           setStep(TerminalPromptStep.RECONNECT_EXTERNAL);
           return;
         }
 
         terminal.current?.println("Unrecognized input. Please try again.");
+        await advanceStateFromWalletMenu(terminal);
+        return;
+      }
+
+      if (selectedMode === "external") {
+        selectedWalletModeRef.current = null;
         await advanceStateFromWalletMenu(terminal);
         return;
       }
@@ -1259,37 +1276,6 @@ export function GameLandingPage() {
         }
         return;
       }
-
-      terminal.current?.println(
-        "Selected wallet mode: extension wallet.",
-        TerminalTextStyle.Text
-      );
-      terminal.current?.print("(c) ", TerminalTextStyle.Sub);
-      terminal.current?.println("Connect extension wallet.");
-      if (rememberedSession) {
-        terminal.current?.print("(r) ", TerminalTextStyle.Sub);
-        terminal.current?.println(
-          `Reconnect last extension wallet (${rememberedSession.providerName}, ${rememberedSession.accountAddress}).`
-        );
-      }
-      terminal.current?.print("(b) ", TerminalTextStyle.Sub);
-      terminal.current?.println("Back to wallet selection.");
-      terminal.current?.println("");
-      terminal.current?.println("Select an option:", TerminalTextStyle.Text);
-
-      const userInput = await terminal.current?.getInput();
-      if (userInput === "c") {
-        setStep(TerminalPromptStep.CONNECT_EXTERNAL);
-      } else if (userInput === "r" && rememberedSession) {
-        setStep(TerminalPromptStep.RECONNECT_EXTERNAL);
-      } else if (userInput === "b" && !isWalletSelectionLocked()) {
-        await clearUnlockedWalletState();
-        selectedWalletModeRef.current = null;
-        await advanceStateFromWalletMenu(terminal);
-      } else {
-        terminal.current?.println("Unrecognized input. Please try again.");
-        await advanceStateFromWalletMenu(terminal);
-      }
     },
     [
       clearUnlockedWalletState,
@@ -1298,6 +1284,7 @@ export function GameLandingPage() {
       isWalletSelectionLocked,
       isLobby,
       localAccountCount,
+      selectWalletMode,
     ]
   );
 
@@ -1379,7 +1366,7 @@ export function GameLandingPage() {
 
       const result = await connectExternalWalletInTerminal(terminal);
       if (!result) {
-        setStep(TerminalPromptStep.WALLET_MENU);
+        await resetToWalletSelectionMenu();
         return;
       }
 
@@ -1394,10 +1381,14 @@ export function GameLandingPage() {
             : "Failed to initialize the connected external wallet. Please try again.",
           TerminalTextStyle.Red
         );
-        setStep(TerminalPromptStep.WALLET_MENU);
+        await resetToWalletSelectionMenu();
       }
     },
-    [connectExternalWalletInTerminal, initializeExternalWalletManager]
+    [
+      connectExternalWalletInTerminal,
+      initializeExternalWalletManager,
+      resetToWalletSelectionMenu,
+    ]
   );
 
   const advanceStateFromReconnectExternal = useCallback(
@@ -1417,7 +1408,7 @@ export function GameLandingPage() {
           "No remembered external wallet session found.",
           TerminalTextStyle.Red
         );
-        setStep(TerminalPromptStep.WALLET_MENU);
+        await resetToWalletSelectionMenu();
         return;
       }
 
@@ -1447,12 +1438,11 @@ export function GameLandingPage() {
             err.accounts
           );
           if (!nextAddress) {
-            await releaseWalletSession();
             terminal.current?.println(
               "Extension wallet reconnection cancelled.",
               TerminalTextStyle.Sub
             );
-            setStep(TerminalPromptStep.WALLET_MENU);
+            await resetToWalletSelectionMenu();
             return;
           }
 
@@ -1481,7 +1471,7 @@ export function GameLandingPage() {
                 : "Failed to initialize the connected external wallet. Please try again.",
               TerminalTextStyle.Red
             );
-            setStep(TerminalPromptStep.WALLET_MENU);
+            await resetToWalletSelectionMenu();
           }
           return;
         }
@@ -1490,16 +1480,16 @@ export function GameLandingPage() {
           err instanceof Error ? err.message : String(err),
           TerminalTextStyle.Red
         );
-        setStep(TerminalPromptStep.WALLET_MENU);
+        await resetToWalletSelectionMenu();
       }
     },
     [
       getRememberedSession,
       initializeExternalWalletManager,
       promptForExternalAccountSelection,
-      releaseWalletSession,
       reconnectRememberedWallet,
       resetInitializationTerminalLogging,
+      resetToWalletSelectionMenu,
     ]
   );
 
