@@ -1971,6 +1971,10 @@ class GameManager extends EventEmitter {
     };
   }
 
+  isExternalWallet(): boolean {
+    return this.contractsAPI.getWalletManager().isExternalWallet();
+  }
+
   /**
    * Gets the balance of the account measured in Eth (i.e. in full units of the chain).
    */

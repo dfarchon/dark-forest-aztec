@@ -1,5 +1,7 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import type { Aliased } from "@aztec/aztec.js/wallet";
+import { hashToEmoji } from "@aztec/wallet-sdk/crypto";
 import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
   CONFIG_CONTRACT_ADDRESS,
@@ -8,9 +10,8 @@ import {
 } from "@dfpunk/contracts";
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { address } from "@dfpunk/serde";
-import { reverse } from "lodash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import GameManager, {
   GameManagerEvent,
@@ -27,6 +28,11 @@ import {
 } from "../../config/connection";
 import { getProverEnabled, getSponsorMode } from "../../config/env";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
+import { resolveExternalWalletCapabilities } from "../../Session/ExternalWallet/capabilityValidation";
+import type {
+  PendingConnection,
+  WalletProvider,
+} from "../../Session/ExternalWallet/walletService";
 import {
   createIndexerConnection,
   IndexerConnection,
@@ -38,6 +44,7 @@ import {
   createWalletManager,
   WalletManager,
 } from "../../Session/WalletManager";
+import { KeyStore } from "../../Session/WalletManager/KeyStore";
 import {
   GameWindowWrapper,
   InitRenderState,
@@ -47,6 +54,11 @@ import {
 } from "../Components/GameLandingPageComponents";
 import { MythicLabelText } from "../Components/Labels/MythicLabel";
 import { TextPreview } from "../Components/TextPreview";
+import {
+  type ExternalWalletConnectionResult,
+  RememberedExternalWalletAccountMismatchError,
+  useExternalWallet,
+} from "../Contexts/ExternalWalletContext";
 import { TopLevelDivProvider, UIManagerProvider } from "../Utils/AppHooks";
 import { Incompatibility, unsupportedFeatures } from "../Utils/BrowserChecks";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
@@ -93,6 +105,13 @@ interface LoadingPhase {
   gamestateSubStepTotal?: number;
 }
 
+type SelectedWalletMode = "local" | "external" | null;
+type WalletLockState =
+  | "unselected"
+  | "selected"
+  | "in_game"
+  | "fatal_session_loss";
+
 const LOADING_STEP_LABELS: Record<LoadingPhase["step"], string> = {
   connecting: "Connecting to node",
   wallet: "Initializing wallet",
@@ -103,118 +122,33 @@ const LOADING_STEP_LABELS: Record<LoadingPhase["step"], string> = {
   done: "Done",
 };
 
-const LOADING_STEP_ORDER: LoadingPhase["step"][] = [
-  "connecting",
-  "wallet",
-  "snapshot",
-  "syncing",
-  "contracts",
-  "gamestate",
-];
+function getWalletProgressBucket(percent?: number): number | null {
+  if (percent == null || Number.isNaN(percent) || percent < 25) {
+    return null;
+  }
+  if (percent >= 100) return 100;
+  if (percent >= 75) return 75;
+  if (percent >= 50) return 50;
+  return 25;
+}
 
-const LOADING_STEP_COUNT = LOADING_STEP_ORDER.length;
+type ExternalWalletSimulationSupport = Pick<
+  ExternalWalletConnectionResult,
+  | "supportsUtilitySimulation"
+  | "supportsTransactionSimulation"
+  | "supportsTransactionExecution"
+>;
 
-function LoadingOverlay({ phase }: { phase: LoadingPhase }) {
-  const currentIdx = LOADING_STEP_ORDER.indexOf(phase.step);
-  const hasPercent = phase.percent != null;
-  const stepNum = phase.step === "done" ? LOADING_STEP_COUNT : currentIdx + 1;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        left: "12px",
-        bottom: "12px",
-        zIndex: 1200,
-        padding: "10px 14px",
-        background: "rgba(10, 10, 10, 0.92)",
-        border: "1px solid #4d4d4d",
-        color: "#e6e6e6",
-        fontSize: "12px",
-        fontFamily: "monospace",
-        lineHeight: 1.6,
-        minWidth: "260px",
-      }}
-    >
-      <div style={{ marginBottom: "6px", color: "#999" }}>
-        Initializing... (step {stepNum}/{LOADING_STEP_COUNT})
-      </div>
-      {LOADING_STEP_ORDER.map((s, i) => {
-        const isCurrent = s === phase.step;
-        const isDone = i < currentIdx;
-        const isPending = i > currentIdx;
-        let marker: string;
-        let color: string;
-        if (isDone) {
-          marker = "\u2713";
-          color = "#5b5";
-        } else if (isCurrent) {
-          marker = "\u25b8";
-          color = "#fff";
-        } else {
-          marker = "\u00b7";
-          color = "#555";
-        }
-        const label = LOADING_STEP_LABELS[s];
-        const gamestateStepSuffix =
-          isCurrent &&
-          s === "gamestate" &&
-          phase.gamestateSubStep != null &&
-          phase.gamestateSubStepTotal != null
-            ? ` (step ${phase.gamestateSubStep}/${phase.gamestateSubStepTotal})`
-            : "";
-        return (
-          <div
-            key={s}
-            style={{
-              color,
-              opacity: isPending ? 0.5 : 1,
-            }}
-          >
-            <span style={{ display: "inline-block", width: "16px" }}>
-              {marker}
-            </span>
-            {label}
-            {gamestateStepSuffix}
-            {isCurrent && phase.detail ? (
-              <span style={{ color: "#aaa" }}> — {phase.detail}</span>
-            ) : null}
-          </div>
-        );
-      })}
-      <div
-        style={{
-          marginTop: "8px",
-          width: "100%",
-          height: "4px",
-          background: "#2a2a2a",
-          border: "1px solid #3a3a3a",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: hasPercent
-              ? `${Math.max(0, Math.min(100, phase.percent!))}%`
-              : undefined,
-            background: hasPercent ? "#e6e6e6" : "#8a8a8a",
-            transition: hasPercent ? "width 120ms linear" : "none",
-            animation: hasPercent
-              ? undefined
-              : "loadingIndeterminate 1.2s ease-in-out infinite",
-          }}
-        />
-      </div>
-      <style>{`
-        @keyframes loadingIndeterminate {
-          0% { width: 0%; margin-left: 0%; }
-          50% { width: 40%; margin-left: 30%; }
-          100% { width: 0%; margin-left: 100%; }
-        }
-      `}</style>
-    </div>
-  );
+function describeMissingExternalWalletSupport(
+  support: ExternalWalletSimulationSupport
+): string | null {
+  const missing: string[] = [];
+  if (!support.supportsUtilitySimulation) missing.push("utility simulation");
+  if (!support.supportsTransactionSimulation)
+    missing.push("transaction simulation");
+  if (!support.supportsTransactionExecution)
+    missing.push("transaction execution");
+  return missing.length > 0 ? missing.join(" and ") : null;
 }
 
 function BlockSyncStatus({ connection }: { connection: IndexerConnection }) {
@@ -249,10 +183,12 @@ function BlockSyncStatus({ connection }: { connection: IndexerConnection }) {
 
 const enum TerminalPromptStep {
   NONE,
-  COMPATIBILITY_CHECKS_PASSED,
-  DISPLAY_ACCOUNTS,
+  WALLET_MENU,
+  LOCAL_ACCOUNT_LIST,
   GENERATE_ACCOUNT,
   IMPORT_ACCOUNT,
+  CONNECT_EXTERNAL,
+  RECONNECT_EXTERNAL,
   ACCOUNT_SET,
   CHECK_FEE_JUICE,
   FETCHING_ETH_DATA,
@@ -268,140 +204,816 @@ const enum TerminalPromptStep {
 
 export function GameLandingPage() {
   const { contract } = useParams<{ contract: string }>();
-  const location = useLocation();
+  const {
+    discoverWallets,
+    initiateConnection,
+    confirmConnection,
+    cancelConnection,
+    connectWallet,
+    releaseWalletSession,
+    getRememberedSession,
+    rememberSession,
+    reconnectRememberedWallet,
+    onWalletSessionLost,
+  } = useExternalWallet();
   const terminalHandle = useRef<TerminalHandle | undefined>(undefined);
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
+  const walletManagerRef = useRef<WalletManager | undefined>(undefined);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(true);
   const [initRenderState, setInitRenderState] = useState(InitRenderState.NONE);
-  const [walletManager, setWalletManager] = useState<
-    WalletManager | undefined
-  >();
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const initialSyncDoneRef = useRef(false);
+  const externalModeBannerPrintedRef = useRef(false);
+  const walletLockMessagePrintedRef = useRef(false);
+  const fatalWalletSessionPrintedRef = useRef(false);
+  const lastLoggedLoadingStepRef = useRef<LoadingPhase["step"] | null>(null);
+  const lastLoggedWalletProgressBucketRef = useRef<number | null>(null);
+  const connectingStagePrintedRef = useRef(false);
+  const snapshotParsingPrintedRef = useRef(false);
+  const snapshotCompletePrintedRef = useRef(false);
+  const syncStartPrintedRef = useRef(false);
+  const chainClockSyncPrintedRef = useRef(false);
+  const lastLoggedGamestateSubStepRef = useRef<string | null>(null);
+  const externalWalletSimulationSupportRef =
+    useRef<ExternalWalletSimulationSupport | null>(null);
+  const selectedWalletModeRef = useRef<SelectedWalletMode>(null);
+  const walletLockStateRef = useRef<WalletLockState>("unselected");
+  const [localAccountCount, setLocalAccountCount] = useState(
+    () => new KeyStore("dfpunk").listAccounts().length
+  );
   const [step, setStep] = useState(TerminalPromptStep.NONE);
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>({
-    step: "connecting",
+    step: "done",
   });
-
-  const params = new URLSearchParams(location.search);
-  const selectedAddress = params.get("account");
   const contractAddress = contract
     ? address(contract)
     : address(CORE_CONTRACT_ADDRESS);
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
   const sponsorMode = getSponsorMode();
+  const refreshLocalAccountCount = useCallback(() => {
+    setLocalAccountCount(new KeyStore("dfpunk").listAccounts().length);
+  }, []);
+
+  const printInitializationStage = useCallback(
+    (step: Exclude<LoadingPhase["step"], "done">) => {
+      terminalHandle.current?.println(
+        `${LOADING_STEP_LABELS[step]}...`,
+        TerminalTextStyle.Text
+      );
+    },
+    []
+  );
+
+  const printInitializationMilestone = useCallback((message: string) => {
+    terminalHandle.current?.println(message, TerminalTextStyle.Sub);
+  }, []);
+
+  const resetInitializationTerminalLogging = useCallback(() => {
+    lastLoggedLoadingStepRef.current = null;
+    lastLoggedWalletProgressBucketRef.current = null;
+    connectingStagePrintedRef.current = false;
+    snapshotParsingPrintedRef.current = false;
+    snapshotCompletePrintedRef.current = false;
+    syncStartPrintedRef.current = false;
+    chainClockSyncPrintedRef.current = false;
+    lastLoggedGamestateSubStepRef.current = null;
+  }, []);
+
+  const isWalletSelectionLocked = useCallback(
+    () => walletLockStateRef.current !== "unselected",
+    []
+  );
+
+  const destroyTransientWalletManager = useCallback(() => {
+    if (walletLockStateRef.current !== "unselected") return;
+    walletManagerRef.current?.destroy();
+    walletManagerRef.current = undefined;
+    externalModeBannerPrintedRef.current = false;
+  }, []);
+
+  const clearUnlockedWalletState = useCallback(async () => {
+    if (walletLockStateRef.current !== "unselected") return;
+    destroyTransientWalletManager();
+    externalWalletSimulationSupportRef.current = null;
+    resetInitializationTerminalLogging();
+    await releaseWalletSession();
+    setLoadingPhase({ step: "done" });
+  }, [
+    destroyTransientWalletManager,
+    releaseWalletSession,
+    resetInitializationTerminalLogging,
+  ]);
+
+  const resetToWalletSelectionMenu = useCallback(async () => {
+    await clearUnlockedWalletState();
+    selectedWalletModeRef.current = null;
+    setStep(TerminalPromptStep.WALLET_MENU);
+  }, [clearUnlockedWalletState]);
+
+  const selectWalletMode = useCallback(
+    async (mode: Exclude<SelectedWalletMode, null>) => {
+      await clearUnlockedWalletState();
+      selectedWalletModeRef.current = mode;
+    },
+    [clearUnlockedWalletState]
+  );
+
+  const lockWalletSelection = useCallback(
+    (mode: Exclude<SelectedWalletMode, null>) => {
+      selectedWalletModeRef.current = mode;
+      if (walletLockStateRef.current === "unselected") {
+        walletLockStateRef.current = "selected";
+      }
+    },
+    []
+  );
+
+  const markWalletSelectionInGame = useCallback(() => {
+    if (walletLockStateRef.current === "selected") {
+      walletLockStateRef.current = "in_game";
+    }
+  }, []);
+
+  const enterFatalWalletSessionLoss = useCallback(
+    (message: string) => {
+      if (walletLockStateRef.current === "fatal_session_loss") return;
+
+      walletLockStateRef.current = "fatal_session_loss";
+      externalWalletSimulationSupportRef.current = null;
+      resetInitializationTerminalLogging();
+      setLoadingPhase({ step: "done" });
+      setTerminalVisible(true);
+      setStep(TerminalPromptStep.ERROR);
+
+      gameUIManagerRef.current?.destroy();
+      gameUIManagerRef.current = undefined;
+      walletManagerRef.current?.destroy();
+      walletManagerRef.current = undefined;
+      indexerRef.current?.destroy();
+      indexerRef.current = undefined;
+      setGameManager(undefined);
+
+      if (!fatalWalletSessionPrintedRef.current) {
+        terminalHandle.current?.println("");
+        terminalHandle.current?.println(
+          "Wallet session lost.",
+          TerminalTextStyle.Red
+        );
+        terminalHandle.current?.println(message, TerminalTextStyle.Red);
+        terminalHandle.current?.println(
+          "Refresh the page to continue.",
+          TerminalTextStyle.Red
+        );
+        fatalWalletSessionPrintedRef.current = true;
+      }
+    },
+    [resetInitializationTerminalLogging]
+  );
+
+  const buildWalletConfig = useCallback(
+    () => ({
+      nodeUrl: getEffectiveNodeUrl(),
+      storagePrefix: "dfpunk",
+      proverUrl: getEffectiveProverUrl(),
+      sponsorMode,
+      pxeConfig: {
+        proverEnabled: getProverEnabled(),
+      },
+      onWalletProgress: (current: number, total: number, message: string) => {
+        setLoadingPhase({
+          step: "wallet",
+          detail: `${message} (${current}/${total})`,
+          percent: Math.round((current / total) * 100),
+        });
+      },
+    }),
+    [sponsorMode]
+  );
+
+  const ensureEmbeddedWalletManager = useCallback(async () => {
+    if (selectedWalletModeRef.current === "external") {
+      throw new Error(
+        "Extension wallet mode is selected for this session. Refresh the page to use a local wallet."
+      );
+    }
+
+    if (walletManagerRef.current) {
+      return walletManagerRef.current;
+    }
+
+    resetInitializationTerminalLogging();
+    externalWalletSimulationSupportRef.current = null;
+    setLoadingPhase({ step: "wallet" });
+    try {
+      const wm = await createWalletManager(buildWalletConfig());
+      walletManagerRef.current = wm;
+      setLoadingPhase({ step: "done" });
+      refreshLocalAccountCount();
+      return wm;
+    } catch (err) {
+      setLoadingPhase({ step: "done" });
+      throw err;
+    }
+  }, [
+    buildWalletConfig,
+    refreshLocalAccountCount,
+    resetInitializationTerminalLogging,
+  ]);
+
+  const initializeExternalWalletManager = useCallback(
+    async (result: ExternalWalletConnectionResult) => {
+      if (selectedWalletModeRef.current !== "external") {
+        throw new Error(
+          "Extension wallet mode is not selected for this session."
+        );
+      }
+
+      resetInitializationTerminalLogging();
+      setLoadingPhase({ step: "wallet" });
+      try {
+        const missingSupport = describeMissingExternalWalletSupport(result);
+        if (missingSupport) {
+          throw new Error(
+            `External wallet session is missing required ${missingSupport} permission${
+              missingSupport.includes(" and ") ? "s" : ""
+            }. Reconnect and approve the requested permissions.`
+          );
+        }
+
+        const wm = await WalletManager.createFromExternalWallet(
+          result.wallet,
+          buildWalletConfig(),
+          result.address
+        );
+        walletManagerRef.current = wm;
+        externalWalletSimulationSupportRef.current = {
+          supportsUtilitySimulation: result.supportsUtilitySimulation,
+          supportsTransactionSimulation: result.supportsTransactionSimulation,
+          supportsTransactionExecution: result.supportsTransactionExecution,
+        };
+        connectWallet(result.wallet, result.address);
+        rememberSession(result.descriptor);
+        lockWalletSelection("external");
+        setLoadingPhase({ step: "done" });
+        return wm;
+      } catch (err) {
+        externalWalletSimulationSupportRef.current = null;
+        setLoadingPhase({ step: "done" });
+        await releaseWalletSession();
+        throw err;
+      }
+    },
+    [
+      buildWalletConfig,
+      connectWallet,
+      lockWalletSelection,
+      releaseWalletSession,
+      rememberSession,
+      resetInitializationTerminalLogging,
+    ]
+  );
+
+  const ensureIndexerConnection = useCallback(async () => {
+    if (indexerRef.current) {
+      return indexerRef.current;
+    }
+
+    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
+    const indexerConfig: IndexerConnectionConfig = {
+      nodeUrl: getEffectiveNodeUrl(),
+      startBlock: START_BLOCK,
+      debounceMs: 1000,
+      pollIntervalMs: 2000,
+      maxBlocksPerRequest: 100,
+    };
+
+    setLoadingPhase({ step: "connecting" });
+    if (bootstrapUrl) {
+      indexerConfig.bootstrapUrl = bootstrapUrl;
+      setLoadingPhase({ step: "snapshot" });
+    } else {
+      setLoadingPhase({ step: "syncing", detail: "Preparing..." });
+    }
+
+    indexerConfig.onSnapshotProgress = (progress) => {
+      const pct = progress.percent ?? undefined;
+      const detail =
+        progress.phase === "parsing"
+          ? "Parsing..."
+          : progress.phase === "complete"
+            ? "Complete"
+            : `${formatBytes(progress.loadedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ""}`;
+      setLoadingPhase({ step: "snapshot", detail, percent: pct });
+    };
+    indexerConfig.onBlockSyncProgress = (_from, to, latest) => {
+      if (initialSyncDoneRef.current) return;
+      const pct = latest > 0 ? Math.round((to / latest) * 100) : undefined;
+      setLoadingPhase({
+        step: "syncing",
+        detail: `Block ${to} / ${latest}`,
+        percent: pct,
+      });
+    };
+
+    const { connection } = await createIndexerConnection(indexerConfig);
+    indexerRef.current = connection;
+    initialSyncDoneRef.current = true;
+
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).dfDebug = {
+        snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),
+        snapshotJson: () => connection.getSnapshotAsJsonString(),
+        downloadSnapshot: () => {
+          const json = connection.getSnapshotAsJsonString();
+          const blob = new Blob([json], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `client-snapshot-block-${connection.getProcessedBlockNumber()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        connection,
+      };
+    }
+
+    setLoadingPhase({ step: "done" });
+    return connection;
+  }, []);
+
+  const promptForExternalAccountSelection = useCallback(
+    async (
+      terminal: React.MutableRefObject<TerminalHandle | undefined>,
+      accounts: Aliased<AztecAddress>[]
+    ): Promise<AztecAddress | null> => {
+      for (;;) {
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Select one of the accounts currently granted by your wallet:",
+          TerminalTextStyle.Text
+        );
+        accounts.forEach((account, index) => {
+          terminal.current?.print(`(${index + 1}) `, TerminalTextStyle.Sub);
+          terminal.current?.println(
+            account.alias
+              ? `${account.alias} (${account.item.toString()})`
+              : account.item.toString()
+          );
+        });
+        terminal.current?.print("(c) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Cancel");
+
+        const selection = (await terminal.current?.getInput()) || "";
+        if (selection === "c") {
+          return null;
+        }
+
+        const selectedIndex = Number(selection);
+        if (
+          Number.isNaN(selectedIndex) ||
+          selectedIndex < 1 ||
+          selectedIndex > accounts.length
+        ) {
+          terminal.current?.println("Unrecognized input. Please try again.");
+          continue;
+        }
+
+        return accounts[selectedIndex - 1].item;
+      }
+    },
+    []
+  );
+
+  const promptForExternalWalletProviderSelection = useCallback(
+    async (
+      terminal: React.MutableRefObject<TerminalHandle | undefined>,
+      providers: WalletProvider[]
+    ): Promise<WalletProvider | "rescan" | "back"> => {
+      for (;;) {
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Detected extension wallets:",
+          TerminalTextStyle.Text
+        );
+        providers.forEach((provider, index) => {
+          terminal.current?.print(`(${index + 1}) `, TerminalTextStyle.Sub);
+          terminal.current?.println(provider.name);
+        });
+        terminal.current?.print("(r) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Rescan");
+        terminal.current?.print("(b) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Back");
+
+        const input = (await terminal.current?.getInput()) || "";
+        if (input === "r") {
+          return "rescan";
+        }
+        if (input === "b") {
+          return "back";
+        }
+
+        const selection = Number(input);
+        if (
+          Number.isNaN(selection) ||
+          selection < 1 ||
+          selection > providers.length
+        ) {
+          terminal.current?.println("Unrecognized input. Please try again.");
+          continue;
+        }
+
+        return providers[selection - 1];
+      }
+    },
+    []
+  );
+
+  const promptForExternalWalletVerification = useCallback(
+    async (
+      terminal: React.MutableRefObject<TerminalHandle | undefined>,
+      pendingConnection: PendingConnection
+    ): Promise<"confirm" | "cancel"> => {
+      const verificationEmojis = Array.from(
+        hashToEmoji(pendingConnection.verificationHash, 9)
+      );
+
+      for (;;) {
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Confirm this emoji sequence matches your wallet before proceeding.",
+          TerminalTextStyle.Text
+        );
+        terminal.current?.println(
+          "If your wallet extension shows the same sequence, approve there and continue here.",
+          TerminalTextStyle.Text
+        );
+        for (
+          let rowStart = 0;
+          rowStart < verificationEmojis.length;
+          rowStart += 3
+        ) {
+          terminal.current?.println(
+            verificationEmojis.slice(rowStart, rowStart + 3).join(" "),
+            TerminalTextStyle.White
+          );
+        }
+        terminal.current?.print("(y) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Emojis match");
+        terminal.current?.print("(c) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Cancel");
+
+        const input = (await terminal.current?.getInput()) || "";
+        if (input === "y") {
+          return "confirm";
+        }
+        if (input === "c") {
+          cancelConnection(pendingConnection);
+          return "cancel";
+        }
+
+        terminal.current?.println("Unrecognized input. Please try again.");
+      }
+    },
+    [cancelConnection]
+  );
+
+  const connectExternalWalletInTerminal = useCallback(
+    async (
+      terminal: React.MutableRefObject<TerminalHandle | undefined>
+    ): Promise<ExternalWalletConnectionResult | null> => {
+      terminal.current?.println("");
+      terminal.current?.println(
+        "External wallets are managed by an extension.",
+        TerminalTextStyle.Text
+      );
+      terminal.current?.println(
+        "Private keys are not stored in this app.",
+        TerminalTextStyle.Text
+      );
+
+      for (;;) {
+        let providerSessionActive = false;
+
+        try {
+          terminal.current?.println("Scanning for Aztec extension wallets...");
+          const discovery = await discoverWallets();
+          const providers: WalletProvider[] = [];
+
+          try {
+            for await (const provider of discovery.wallets) {
+              if (providers.some((item) => item.id === provider.id)) continue;
+              providers.push(provider);
+            }
+          } finally {
+            discovery.cancel();
+          }
+
+          let selectedProvider: WalletProvider | null = null;
+          if (providers.length === 0) {
+            let shouldRescan = false;
+            for (;;) {
+              terminal.current?.println("No extension wallet detected yet.");
+              terminal.current?.print("(r) ", TerminalTextStyle.Sub);
+              terminal.current?.println("Rescan");
+              terminal.current?.print("(b) ", TerminalTextStyle.Sub);
+              terminal.current?.println("Back");
+
+              const input = (await terminal.current?.getInput()) || "";
+              if (input === "r") {
+                shouldRescan = true;
+                break;
+              }
+              if (input === "b") {
+                terminal.current?.println(
+                  "External wallet connection cancelled.",
+                  TerminalTextStyle.Sub
+                );
+                return null;
+              }
+
+              terminal.current?.println(
+                "Unrecognized input. Please try again."
+              );
+            }
+
+            if (shouldRescan) {
+              continue;
+            }
+          } else {
+            const providerSelection =
+              await promptForExternalWalletProviderSelection(
+                terminal,
+                providers
+              );
+
+            if (providerSelection === "rescan") {
+              continue;
+            }
+            if (providerSelection === "back") {
+              terminal.current?.println(
+                "External wallet connection cancelled.",
+                TerminalTextStyle.Sub
+              );
+              return null;
+            }
+
+            selectedProvider = providerSelection;
+          }
+
+          if (!selectedProvider) {
+            continue;
+          }
+
+          terminal.current?.println(
+            `Selected wallet: ${selectedProvider.name}`,
+            TerminalTextStyle.Text
+          );
+          terminal.current?.println(
+            "Establishing secure channel...",
+            TerminalTextStyle.Text
+          );
+          const pendingConnection = await initiateConnection(selectedProvider);
+          providerSessionActive = true;
+
+          const verificationResult = await promptForExternalWalletVerification(
+            terminal,
+            pendingConnection
+          );
+          if (verificationResult === "cancel") {
+            await releaseWalletSession();
+            terminal.current?.println(
+              "External wallet connection cancelled.",
+              TerminalTextStyle.Sub
+            );
+            return null;
+          }
+
+          terminal.current?.println(
+            "Connecting to wallet and requesting capabilities...",
+            TerminalTextStyle.Text
+          );
+          terminal.current?.println(
+            "Check your wallet extension and approve if prompted.",
+            TerminalTextStyle.Text
+          );
+
+          const wallet = await confirmConnection(pendingConnection);
+          const capabilityResolution =
+            await resolveExternalWalletCapabilities(wallet);
+          const {
+            accounts,
+            supportsUtilitySimulation,
+            supportsTransactionSimulation,
+            supportsTransactionExecution,
+          } = capabilityResolution;
+
+          if (import.meta.env.DEV) {
+            console.debug(
+              "[ExternalWallet] Connected provider capability check",
+              {
+                providerId: selectedProvider.id,
+                providerName: selectedProvider.name,
+                supportsUtilitySimulation,
+                supportsTransactionSimulation,
+                supportsTransactionExecution,
+              }
+            );
+          }
+
+          if (accounts.length === 0) {
+            terminal.current?.println(
+              "No accounts granted by wallet.",
+              TerminalTextStyle.Red
+            );
+            await releaseWalletSession();
+            return null;
+          }
+
+          const missingSupport = describeMissingExternalWalletSupport({
+            supportsUtilitySimulation,
+            supportsTransactionSimulation,
+            supportsTransactionExecution,
+          });
+          if (missingSupport) {
+            terminal.current?.println(
+              `Wallet did not grant required ${missingSupport} permission${
+                missingSupport.includes(" and ") ? "s" : ""
+              }.`,
+              TerminalTextStyle.Red
+            );
+            terminal.current?.println(
+              "Reconnect and approve the requested permissions in your wallet extension.",
+              TerminalTextStyle.Red
+            );
+            await releaseWalletSession();
+            return null;
+          }
+
+          const selectedAddress = await promptForExternalAccountSelection(
+            terminal,
+            accounts
+          );
+          if (!selectedAddress) {
+            await releaseWalletSession();
+            terminal.current?.println(
+              "External wallet connection cancelled.",
+              TerminalTextStyle.Sub
+            );
+            return null;
+          }
+
+          return {
+            wallet,
+            address: selectedAddress,
+            descriptor: {
+              providerId: selectedProvider.id,
+              providerName: selectedProvider.name,
+              accountAddress: selectedAddress.toString(),
+              savedAt: Date.now(),
+            },
+            supportsUtilitySimulation,
+            supportsTransactionSimulation,
+            supportsTransactionExecution,
+          };
+        } catch (err) {
+          terminal.current?.println(
+            err instanceof Error ? err.message : String(err),
+            TerminalTextStyle.Red
+          );
+          if (providerSessionActive) {
+            await releaseWalletSession();
+          }
+          return null;
+        }
+      }
+    },
+    [
+      confirmConnection,
+      discoverWallets,
+      initiateConnection,
+      promptForExternalAccountSelection,
+      promptForExternalWalletProviderSelection,
+      promptForExternalWalletVerification,
+      releaseWalletSession,
+    ]
+  );
 
   useEffect(() => {
-    if (step !== TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED) {
+    return onWalletSessionLost((message) => {
+      if (selectedWalletModeRef.current !== "external") return;
+      if (walletLockStateRef.current === "unselected") return;
+      enterFatalWalletSessionLoss(message);
+    });
+  }, [enterFatalWalletSessionLoss, onWalletSessionLost]);
+
+  useEffect(() => {
+    return () => {
+      gameUIManagerRef.current?.destroy();
+      walletManagerRef.current?.destroy();
+      indexerRef.current?.destroy();
+      void releaseWalletSession();
+    };
+  }, [releaseWalletSession]);
+
+  useEffect(() => {
+    if (!terminalHandle.current || loadingPhase.step === "done") {
       return;
     }
-    let destroyed = false;
-    const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
-    setLoadingPhase({ step: "connecting" });
-    (async () => {
-      try {
-        const nodeUrl = getEffectiveNodeUrl();
 
-        setLoadingPhase({ step: "wallet" });
-        const wm = await createWalletManager({
-          nodeUrl,
-          storagePrefix: "dfpunk",
-          proverUrl: getEffectiveProverUrl(),
-          sponsorMode,
-          pxeConfig: {
-            proverEnabled: getProverEnabled(),
-          },
-          onWalletProgress: (current, total, message) => {
-            if (destroyed) return;
-            setLoadingPhase({
-              step: "wallet",
-              detail: `${message} (${current}/${total})`,
-              percent: Math.round((current / total) * 100),
-            });
-          },
-        });
-        if (destroyed) {
-          wm.destroy();
-          return;
-        }
+    if (
+      (loadingPhase.step === "snapshot" || loadingPhase.step === "syncing") &&
+      !connectingStagePrintedRef.current
+    ) {
+      printInitializationStage("connecting");
+      connectingStagePrintedRef.current = true;
+    }
 
-        const indexerConfig: IndexerConnectionConfig = {
-          nodeUrl,
-          startBlock: START_BLOCK,
-          debounceMs: 1000,
-          pollIntervalMs: 2000,
-          maxBlocksPerRequest: 100,
-        };
-        if (bootstrapUrl) {
-          indexerConfig.bootstrapUrl = bootstrapUrl;
-          setLoadingPhase({ step: "snapshot" });
-        }
-        indexerConfig.onSnapshotProgress = (progress) => {
-          if (destroyed) return;
-          const pct = progress.percent ?? undefined;
-          const detail =
-            progress.phase === "parsing"
-              ? "Parsing..."
-              : progress.phase === "complete"
-                ? "Complete"
-                : `${formatBytes(progress.loadedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ""}`;
-          setLoadingPhase({ step: "snapshot", detail, percent: pct });
-        };
-        indexerConfig.onBlockSyncProgress = (_from, to, latest) => {
-          if (destroyed || initialSyncDoneRef.current) return;
-          const pct = latest > 0 ? Math.round((to / latest) * 100) : undefined;
-          setLoadingPhase({
-            step: "syncing",
-            detail: `Block ${to} / ${latest}`,
-            percent: pct,
-          });
-        };
-        if (!bootstrapUrl) {
-          setLoadingPhase({ step: "syncing", detail: "Preparing..." });
-        }
-        const { connection } = await createIndexerConnection(indexerConfig);
-        if (destroyed) {
-          connection.destroy();
-          wm.destroy();
-          return;
-        }
-
-        indexerRef.current = connection;
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).dfDebug = {
-            snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),
-            snapshotJson: () => connection.getSnapshotAsJsonString(),
-            downloadSnapshot: () => {
-              const json = connection.getSnapshotAsJsonString();
-              const blob = new Blob([json], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `client-snapshot-block-${connection.getProcessedBlockNumber()}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            },
-            connection,
-          };
-        }
-        initialSyncDoneRef.current = true;
-        setLoadingPhase({ step: "done" });
-        setWalletManager(wm);
-      } catch (e) {
-        setLoadingPhase({ step: "done" });
-        console.error("Failed to initialize Aztec session:", e);
-        alert("Error connecting to Aztec network");
+    if (lastLoggedLoadingStepRef.current !== loadingPhase.step) {
+      printInitializationStage(loadingPhase.step);
+      lastLoggedLoadingStepRef.current = loadingPhase.step;
+      if (loadingPhase.step === "connecting") {
+        connectingStagePrintedRef.current = true;
       }
-    })();
-    return () => {
-      destroyed = true;
-    };
-  }, [step, sponsorMode]);
+    }
+
+    if (loadingPhase.step === "wallet") {
+      const nextBucket = getWalletProgressBucket(loadingPhase.percent);
+      if (
+        nextBucket != null &&
+        nextBucket !== lastLoggedWalletProgressBucketRef.current
+      ) {
+        if (nextBucket === 100) {
+          printInitializationMilestone("Wallet initialization complete.");
+        } else {
+          printInitializationMilestone(
+            `Wallet initialization ${nextBucket}% complete.`
+          );
+        }
+        lastLoggedWalletProgressBucketRef.current = nextBucket;
+      }
+      return;
+    }
+
+    if (loadingPhase.step === "snapshot") {
+      if (
+        loadingPhase.detail === "Parsing..." &&
+        !snapshotParsingPrintedRef.current
+      ) {
+        printInitializationMilestone("Parsing snapshot...");
+        snapshotParsingPrintedRef.current = true;
+      }
+      if (
+        loadingPhase.detail === "Complete" &&
+        !snapshotCompletePrintedRef.current
+      ) {
+        printInitializationMilestone("Snapshot ready.");
+        snapshotCompletePrintedRef.current = true;
+      }
+      return;
+    }
+
+    if (loadingPhase.step === "syncing") {
+      if (
+        loadingPhase.detail === "Preparing..." &&
+        !syncStartPrintedRef.current
+      ) {
+        printInitializationMilestone("Preparing block sync...");
+        syncStartPrintedRef.current = true;
+      }
+      return;
+    }
+
+    if (loadingPhase.step === "contracts") {
+      if (
+        loadingPhase.detail === "Syncing chain clock..." &&
+        !chainClockSyncPrintedRef.current
+      ) {
+        printInitializationMilestone("Syncing chain clock...");
+        chainClockSyncPrintedRef.current = true;
+      }
+      return;
+    }
+
+    if (
+      loadingPhase.step === "gamestate" &&
+      loadingPhase.gamestateSubStep != null &&
+      loadingPhase.gamestateSubStepTotal != null
+    ) {
+      const nextSubStep = `${loadingPhase.gamestateSubStep}/${loadingPhase.gamestateSubStepTotal}`;
+      if (lastLoggedGamestateSubStepRef.current !== nextSubStep) {
+        const suffix = loadingPhase.detail ? `: ${loadingPhase.detail}` : "...";
+        printInitializationMilestone(
+          `Loading game data (step ${nextSubStep})${suffix}`
+        );
+        lastLoggedGamestateSubStepRef.current = nextSubStep;
+      }
+    }
+  }, [loadingPhase, printInitializationMilestone, printInitializationStage]);
 
   const advanceStateFromNone = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
@@ -441,14 +1053,17 @@ export function GameLandingPage() {
         );
         setStep(TerminalPromptStep.TERMINATED);
       } else {
-        setStep(TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED);
+        setStep(TerminalPromptStep.WALLET_MENU);
       }
     },
     []
   );
 
-  const advanceStateFromCompatibilityPassed = useCallback(
+  const advanceStateFromWalletMenu = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const rememberedSession = getRememberedSession();
+      const selectedMode = selectedWalletModeRef.current;
+
       if (isLobby) {
         terminal.current?.newline();
         terminal.current?.printElement(
@@ -536,48 +1151,184 @@ export function GameLandingPage() {
         terminal.current?.newline();
         */
       }
-
-      const accounts = walletManager?.getAccounts() ?? [];
+      terminal.current?.println("");
       terminal.current?.println(
-        `Found ${accounts.length} accounts on this device.`
+        "Wallet choice will be locked for this session after login completes.",
+        TerminalTextStyle.Sub
       );
-      terminal.current?.println(``);
+      terminal.current?.println(
+        "Refresh the page to use a different wallet.",
+        TerminalTextStyle.Sub
+      );
+      terminal.current?.println("");
 
-      if (accounts.length > 0) {
-        terminal.current?.print("(a) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Login with existing account.");
-      }
-
-      terminal.current?.print("(n) ", TerminalTextStyle.Sub);
-      terminal.current?.println(`Generate new Aztec account.`);
-      terminal.current?.print("(i) ", TerminalTextStyle.Sub);
-      terminal.current?.println(`Import account.`);
-      terminal.current?.println(``);
-      terminal.current?.println(`Select an option:`, TerminalTextStyle.Text);
-
-      if (selectedAddress !== null) {
-        terminal.current?.println(
-          `Selecting account ${selectedAddress} from url...`,
-          TerminalTextStyle.Green
-        );
-
-        const account = reverse(walletManager?.getAccounts() ?? []).find(
-          (a) => a.address === selectedAddress
-        );
-        if (!account) {
+      if (selectedMode === null) {
+        if (rememberedSession) {
+          terminal.current?.print("(r) ", TerminalTextStyle.Sub);
           terminal.current?.println(
-            "Unrecognized account found in url.",
-            TerminalTextStyle.Red
+            `Reconnect last extension wallet (${rememberedSession.providerName}, ${rememberedSession.accountAddress}).`
           );
+        }
+
+        terminal.current?.print("(l) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Use local wallet.");
+        terminal.current?.print("(e) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Connect extension wallet.");
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Select a wallet mode:",
+          TerminalTextStyle.Text
+        );
+
+        const userInput = await terminal.current?.getInput();
+        if (userInput === "l") {
+          await selectWalletMode("local");
+          await advanceStateFromWalletMenu(terminal);
+          return;
+        }
+        if (userInput === "e") {
+          await selectWalletMode("external");
+          setStep(TerminalPromptStep.CONNECT_EXTERNAL);
+          return;
+        }
+        if (userInput === "r" && rememberedSession) {
+          await selectWalletMode("external");
+          setStep(TerminalPromptStep.RECONNECT_EXTERNAL);
           return;
         }
 
+        terminal.current?.println("Unrecognized input. Please try again.");
+        await advanceStateFromWalletMenu(terminal);
+        return;
+      }
+
+      if (selectedMode === "external") {
+        selectedWalletModeRef.current = null;
+        await advanceStateFromWalletMenu(terminal);
+        return;
+      }
+
+      if (selectedMode === "local") {
+        terminal.current?.println(
+          `Found ${localAccountCount} local account${localAccountCount === 1 ? "" : "s"} on this device.`
+        );
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Selected wallet mode: local wallet.",
+          TerminalTextStyle.Text
+        );
+
+        if (localAccountCount > 0) {
+          terminal.current?.print("(a) ", TerminalTextStyle.Sub);
+          terminal.current?.println("Login with existing local account.");
+        }
+
+        terminal.current?.print("(n) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Generate new Aztec account.");
+        terminal.current?.print("(i) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Import account.");
+        terminal.current?.print("(b) ", TerminalTextStyle.Sub);
+        terminal.current?.println("Back to wallet selection.");
+        terminal.current?.println("");
+        terminal.current?.println("Select an option:", TerminalTextStyle.Text);
+
+        const userInput = await terminal.current?.getInput();
+        if (userInput === "a" && localAccountCount > 0) {
+          try {
+            await ensureEmbeddedWalletManager();
+            setStep(TerminalPromptStep.LOCAL_ACCOUNT_LIST);
+          } catch {
+            terminal.current?.println(
+              "Unable to initialize the local wallet. Please try again.",
+              TerminalTextStyle.Red
+            );
+            await advanceStateFromWalletMenu(terminal);
+          }
+        } else if (userInput === "n") {
+          try {
+            await ensureEmbeddedWalletManager();
+            setStep(TerminalPromptStep.GENERATE_ACCOUNT);
+          } catch {
+            terminal.current?.println(
+              "Unable to initialize the local wallet. Please try again.",
+              TerminalTextStyle.Red
+            );
+            await advanceStateFromWalletMenu(terminal);
+          }
+        } else if (userInput === "i") {
+          try {
+            await ensureEmbeddedWalletManager();
+            setStep(TerminalPromptStep.IMPORT_ACCOUNT);
+          } catch {
+            terminal.current?.println(
+              "Unable to initialize the local wallet. Please try again.",
+              TerminalTextStyle.Red
+            );
+            await advanceStateFromWalletMenu(terminal);
+          }
+        } else if (userInput === "b" && !isWalletSelectionLocked()) {
+          await clearUnlockedWalletState();
+          selectedWalletModeRef.current = null;
+          await advanceStateFromWalletMenu(terminal);
+        } else {
+          terminal.current?.println("Unrecognized input. Please try again.");
+          await advanceStateFromWalletMenu(terminal);
+        }
+        return;
+      }
+    },
+    [
+      clearUnlockedWalletState,
+      ensureEmbeddedWalletManager,
+      getRememberedSession,
+      isWalletSelectionLocked,
+      isLobby,
+      localAccountCount,
+      selectWalletMode,
+    ]
+  );
+
+  const advanceStateFromLocalAccountList = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      for (;;) {
+        terminal.current?.println(``);
+        const walletManager = walletManagerRef.current;
+        const accounts = walletManager?.getAccounts() ?? [];
+        if (accounts.length === 0) {
+          terminal.current?.println(
+            "No local accounts were found. Returning to the wallet menu.",
+            TerminalTextStyle.Red
+          );
+          setStep(TerminalPromptStep.WALLET_MENU);
+          return;
+        }
+
+        for (let i = 0; i < accounts.length; i += 1) {
+          terminal.current?.print(`(${i + 1}): `, TerminalTextStyle.Sub);
+          terminal.current?.println(`${accounts[i].address}`);
+        }
+        terminal.current?.println(``);
+        terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
+
+        const selection = +((await terminal.current?.getInput()) || "");
+
+        if (
+          Number.isNaN(selection) ||
+          selection < 1 ||
+          selection > accounts.length
+        ) {
+          terminal.current?.println("Unrecognized input. Please try again.");
+          continue;
+        }
+
+        const account = accounts[selection - 1];
         try {
           terminal.current?.println("Restoring account...");
           const result = await walletManager?.switchAccount(
             account.address,
             (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
           );
+          lockWalletSelection("local");
           if (result?.deployed) {
             terminal.current?.println(
               "Account already deployed on this network.",
@@ -590,80 +1341,170 @@ export function GameLandingPage() {
             );
           }
           setStep(TerminalPromptStep.ACCOUNT_SET);
+          return;
         } catch (e) {
           terminal.current?.println(
             "An unknown error occurred. please try again.",
             TerminalTextStyle.Red
           );
         }
-      } else {
-        const userInput = await terminal.current?.getInput();
-
-        if (userInput === "a" && accounts.length > 0) {
-          setStep(TerminalPromptStep.DISPLAY_ACCOUNTS);
-        } else if (userInput === "n") {
-          setStep(TerminalPromptStep.GENERATE_ACCOUNT);
-        } else if (userInput === "i") {
-          setStep(TerminalPromptStep.IMPORT_ACCOUNT);
-        } else {
-          terminal.current?.println("Unrecognized input. Please try again.");
-          await advanceStateFromCompatibilityPassed(terminal);
-        }
       }
     },
-    [isLobby, walletManager, selectedAddress]
+    [lockWalletSelection]
   );
 
-  const advanceStateFromDisplayAccounts = useCallback(
+  const advanceStateFromConnectExternal = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
-      terminal.current?.println(``);
-      const accounts = walletManager?.getAccounts() ?? [];
-      for (let i = 0; i < accounts.length; i += 1) {
-        terminal.current?.print(`(${i + 1}): `, TerminalTextStyle.Sub);
-        terminal.current?.println(`${accounts[i].address}`);
-      }
-      terminal.current?.println(``);
-      terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
-
-      const selection = +((await terminal.current?.getInput()) || "");
-
-      if (isNaN(selection) || selection > accounts.length) {
-        terminal.current?.println("Unrecognized input. Please try again.");
-        await advanceStateFromDisplayAccounts(terminal);
+      if (selectedWalletModeRef.current !== "external") {
+        terminal.current?.println(
+          "Extension wallet mode is not selected for this session.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.WALLET_MENU);
         return;
       }
 
-      const account = accounts[selection - 1];
+      const result = await connectExternalWalletInTerminal(terminal);
+      if (!result) {
+        await resetToWalletSelectionMenu();
+        return;
+      }
+
       try {
-        terminal.current?.println("Restoring account...");
-        const result = await walletManager?.switchAccount(
-          account.address,
-          (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
-        );
-        if (result?.deployed) {
-          terminal.current?.println(
-            "Account already deployed on this network.",
-            TerminalTextStyle.Green
-          );
-        } else {
-          terminal.current?.println(
-            "Account not deployed on this network yet.",
-            TerminalTextStyle.Sub
-          );
-        }
+        await initializeExternalWalletManager(result);
         setStep(TerminalPromptStep.ACCOUNT_SET);
-      } catch (e) {
+      } catch (err) {
+        console.error("Failed to initialize external wallet:", err);
         terminal.current?.println(
-          "An unknown error occurred. please try again.",
+          err instanceof Error
+            ? err.message
+            : "Failed to initialize the connected external wallet. Please try again.",
           TerminalTextStyle.Red
         );
+        await resetToWalletSelectionMenu();
       }
     },
-    [walletManager]
+    [
+      connectExternalWalletInTerminal,
+      initializeExternalWalletManager,
+      resetToWalletSelectionMenu,
+    ]
+  );
+
+  const advanceStateFromReconnectExternal = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (selectedWalletModeRef.current !== "external") {
+        terminal.current?.println(
+          "Extension wallet mode is not selected for this session.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.WALLET_MENU);
+        return;
+      }
+
+      const rememberedSession = getRememberedSession();
+      if (!rememberedSession) {
+        terminal.current?.println(
+          "No remembered external wallet session found.",
+          TerminalTextStyle.Red
+        );
+        await resetToWalletSelectionMenu();
+        return;
+      }
+
+      terminal.current?.println("");
+      terminal.current?.println(
+        `Reconnecting ${rememberedSession.providerName}...`,
+        TerminalTextStyle.Text
+      );
+      terminal.current?.println(
+        `Remembered account: ${rememberedSession.accountAddress}`
+      );
+      terminal.current?.println(
+        "Check your wallet extension and approve if prompted.",
+        TerminalTextStyle.Text
+      );
+
+      try {
+        resetInitializationTerminalLogging();
+        const result = await reconnectRememberedWallet();
+        await initializeExternalWalletManager(result);
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (err) {
+        if (err instanceof RememberedExternalWalletAccountMismatchError) {
+          terminal.current?.println(err.message, TerminalTextStyle.Red);
+          const nextAddress = await promptForExternalAccountSelection(
+            terminal,
+            err.accounts
+          );
+          if (!nextAddress) {
+            terminal.current?.println(
+              "Extension wallet reconnection cancelled.",
+              TerminalTextStyle.Sub
+            );
+            await resetToWalletSelectionMenu();
+            return;
+          }
+
+          try {
+            await initializeExternalWalletManager({
+              wallet: err.wallet,
+              address: nextAddress,
+              descriptor: {
+                ...rememberedSession,
+                accountAddress: nextAddress.toString(),
+                savedAt: Date.now(),
+              },
+              supportsUtilitySimulation: err.supportsUtilitySimulation,
+              supportsTransactionSimulation: err.supportsTransactionSimulation,
+              supportsTransactionExecution: err.supportsTransactionExecution,
+            });
+            setStep(TerminalPromptStep.ACCOUNT_SET);
+          } catch (innerErr) {
+            console.error(
+              "Failed to initialize reselected external wallet:",
+              innerErr
+            );
+            terminal.current?.println(
+              innerErr instanceof Error
+                ? innerErr.message
+                : "Failed to initialize the connected external wallet. Please try again.",
+              TerminalTextStyle.Red
+            );
+            await resetToWalletSelectionMenu();
+          }
+          return;
+        }
+
+        terminal.current?.println(
+          err instanceof Error ? err.message : String(err),
+          TerminalTextStyle.Red
+        );
+        await resetToWalletSelectionMenu();
+      }
+    },
+    [
+      getRememberedSession,
+      initializeExternalWalletManager,
+      promptForExternalAccountSelection,
+      reconnectRememberedWallet,
+      resetInitializationTerminalLogging,
+      resetToWalletSelectionMenu,
+    ]
   );
 
   const advanceStateFromGenerateAccount = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const walletManager = walletManagerRef.current;
+      if (!walletManager) {
+        terminal.current?.println(
+          "ERROR: Local wallet is unavailable. Please refresh and try again.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.WALLET_MENU);
+        return;
+      }
+
       const SPIN_CHARS = ["|", "/", "-", "\\"];
       const SPIN_MS = 120;
       let spinInterval: ReturnType<typeof setInterval> | undefined;
@@ -686,7 +1527,7 @@ export function GameLandingPage() {
           terminal.current.print(line, TerminalTextStyle.Sub);
           spinIndex = (spinIndex + 1) % SPIN_CHARS.length;
         }, SPIN_MS);
-        const record = await walletManager!.createAccount(undefined, (msg) => {
+        const record = await walletManager.createAccount(undefined, (msg) => {
           if (!terminal.current) return;
           terminal.current.removeLast(1);
           currentStep = msg;
@@ -720,6 +1561,14 @@ export function GameLandingPage() {
           "accounts inaccessible, unless you export your keys."
         );
         terminal.current?.println("");
+        terminal.current?.println(
+          "Press any key to continue:",
+          TerminalTextStyle.Text
+        );
+
+        await terminal.current?.getInput();
+        lockWalletSelection("local");
+        refreshLocalAccountCount();
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (e) {
         if (spinInterval) clearInterval(spinInterval);
@@ -731,11 +1580,21 @@ export function GameLandingPage() {
         );
       }
     },
-    [walletManager]
+    [lockWalletSelection, refreshLocalAccountCount]
   );
 
   const advanceStateFromImportAccount = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const walletManager = walletManagerRef.current;
+      if (!walletManager) {
+        terminal.current?.println(
+          "ERROR: Local wallet is unavailable. Please refresh and try again.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.WALLET_MENU);
+        return;
+      }
+
       terminal.current?.println(
         "Enter the secretKey of the account you wish to import:",
         TerminalTextStyle.Text
@@ -750,7 +1609,7 @@ export function GameLandingPage() {
       const signingKey = (await terminal.current?.getInput()) || "";
       try {
         terminal.current?.println("Importing account...");
-        const record = await walletManager!.importAccount(
+        const record = await walletManager.importAccount(
           secretKey,
           salt,
           signingKey,
@@ -771,6 +1630,8 @@ export function GameLandingPage() {
         terminal.current?.println(
           `Imported account with address ${record.address}.`
         );
+        lockWalletSelection("local");
+        refreshLocalAccountCount();
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (e) {
         terminal.current?.println(
@@ -779,11 +1640,12 @@ export function GameLandingPage() {
         );
       }
     },
-    [walletManager]
+    [lockWalletSelection, refreshLocalAccountCount]
   );
 
   const advanceStateFromAccountSet = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const walletManager = walletManagerRef.current;
       if (!walletManager) {
         terminal.current?.println(
           "ERROR: wallet manager not ready.",
@@ -792,7 +1654,6 @@ export function GameLandingPage() {
         setStep(TerminalPromptStep.TERMINATED);
         return;
       }
-
       const playerAddress = walletManager?.getActiveAddress()?.toString();
       if (!playerAddress) {
         terminal.current?.println(
@@ -803,8 +1664,39 @@ export function GameLandingPage() {
         return;
       }
 
+      if (
+        walletManager.isExternalWallet() &&
+        !externalModeBannerPrintedRef.current
+      ) {
+        terminal.current?.println(
+          "Using external wallet",
+          TerminalTextStyle.Green
+        );
+        terminal.current?.println(`Account: ${playerAddress}`);
+        terminal.current?.println("");
+        externalModeBannerPrintedRef.current = true;
+      }
+
+      if (!walletLockMessagePrintedRef.current) {
+        terminal.current?.println(
+          "Wallet choice is locked for this session.",
+          TerminalTextStyle.Sub
+        );
+        terminal.current?.println(
+          "Refresh the page to use a different wallet.",
+          TerminalTextStyle.Sub
+        );
+        terminal.current?.println("");
+        walletLockMessagePrintedRef.current = true;
+      }
+
       terminal.current?.println("");
       terminal.current?.println(`Welcome, player ${playerAddress}.`);
+      if (walletManager.isExternalWallet()) {
+        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+        return;
+      }
+
       if (sponsorMode) {
         terminal.current?.println(
           "Sponsor mode enabled. Deploying account without FeeJuice check..."
@@ -835,12 +1727,17 @@ export function GameLandingPage() {
         setStep(TerminalPromptStep.CHECK_FEE_JUICE);
       }
     },
-    [walletManager, sponsorMode]
+    [sponsorMode]
   );
 
   const advanceStateFromCheckFeeJuice = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const walletManager = walletManagerRef.current;
       if (!walletManager) throw new Error("no wallet manager");
+      if (walletManager.isExternalWallet()) {
+        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
+        return;
+      }
 
       if (sponsorMode) {
         terminal.current?.println(
@@ -948,7 +1845,7 @@ export function GameLandingPage() {
             () => {
               if (!opened) opened = true;
               window.open(
-                "https://gregojuice.anothercoffeefor.me/",
+                "https://bridge.gregojuice.anothercoffeefor.me/",
                 "_blank",
                 "noopener,noreferrer"
               );
@@ -977,17 +1874,33 @@ export function GameLandingPage() {
         await sleep(8000);
       }
     },
-    [walletManager, sponsorMode]
+    [sponsorMode]
   );
 
   const advanceStateFromFetchingEthData = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
       let newGameManager: GameManager;
+      markWalletSelectionInGame();
 
       try {
+        if (selectedWalletModeRef.current === "external") {
+          const support = externalWalletSimulationSupportRef.current;
+          const missingSupport =
+            support && describeMissingExternalWalletSupport(support);
+          if (!support || missingSupport) {
+            throw new Error(
+              missingSupport
+                ? `External wallet session is missing required ${missingSupport} permission${
+                    missingSupport.includes(" and ") ? "s" : ""
+                  }. Reconnect and approve the requested permissions.`
+                : "External wallet session is missing required wallet permissions. Reconnect and approve the requested permissions."
+            );
+          }
+        }
+
+        const walletManager = walletManagerRef.current;
         if (!walletManager) throw new Error("no wallet manager");
-        const indexerConnection = indexerRef.current;
-        if (!indexerConnection) throw new Error("no indexer connection");
+        const indexerConnection = await ensureIndexerConnection();
 
         setLoadingPhase({
           step: "contracts",
@@ -1060,12 +1973,36 @@ export function GameLandingPage() {
       } catch (e) {
         console.error(e);
 
+        setLoadingPhase({ step: "done" });
         setStep(TerminalPromptStep.ERROR);
 
-        terminal.current?.println(
-          "Network under heavy load. Please refresh the page and try again.",
-          TerminalTextStyle.Red
-        );
+        if (selectedWalletModeRef.current === "external") {
+          if (import.meta.env.DEV) {
+            console.debug("[ExternalWallet] Startup failed", {
+              error: e instanceof Error ? e.message : String(e),
+              support: externalWalletSimulationSupportRef.current,
+            });
+          }
+          terminal.current?.println(
+            "External wallet failed during startup.",
+            TerminalTextStyle.Red
+          );
+          terminal.current?.println(
+            e instanceof Error
+              ? e.message
+              : "Required startup simulation did not complete.",
+            TerminalTextStyle.Red
+          );
+          terminal.current?.println(
+            "Refresh the page or reconnect your wallet and approve the requested permissions.",
+            TerminalTextStyle.Red
+          );
+        } else {
+          terminal.current?.println(
+            "Network under heavy load. Please refresh the page and try again.",
+            TerminalTextStyle.Red
+          );
+        }
 
         return;
       }
@@ -1102,7 +2039,7 @@ export function GameLandingPage() {
         setStep(TerminalPromptStep.ALL_CHECKS_PASS);
       }
     },
-    [walletManager, contractAddress]
+    [contractAddress, ensureIndexerConnection, markWalletSelectionInGame]
   );
 
   const advanceStateFromAskAddAccount = useCallback(
@@ -1223,6 +2160,8 @@ export function GameLandingPage() {
 
       gameUIManager
         .joinGame(async () => {
+          terminal.current?.println("Error Joining Game:");
+          terminal.current?.println("");
           terminal.current?.println(
             "Could not join the game right now. You can try again.",
             TerminalTextStyle.Red
@@ -1258,6 +2197,7 @@ export function GameLandingPage() {
         gameUIManager?.getGameManager()?.setSafeMode(true);
       }
 
+      resetInitializationTerminalLogging();
       setStep(TerminalPromptStep.COMPLETE);
       setInitRenderState(InitRenderState.COMPLETE);
       terminal.current?.clear();
@@ -1274,7 +2214,7 @@ export function GameLandingPage() {
       terminal.current?.println("Try running: df.getAccount()");
       terminal.current?.println("");
     },
-    []
+    [resetInitializationTerminalLogging]
   );
 
   const advanceStateFromComplete = useCallback(
@@ -1306,17 +2246,18 @@ export function GameLandingPage() {
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
       if (step === TerminalPromptStep.NONE) {
         await advanceStateFromNone(terminal);
-      } else if (
-        step === TerminalPromptStep.COMPATIBILITY_CHECKS_PASSED &&
-        walletManager
-      ) {
-        await advanceStateFromCompatibilityPassed(terminal);
-      } else if (step === TerminalPromptStep.DISPLAY_ACCOUNTS) {
-        await advanceStateFromDisplayAccounts(terminal);
+      } else if (step === TerminalPromptStep.WALLET_MENU) {
+        await advanceStateFromWalletMenu(terminal);
+      } else if (step === TerminalPromptStep.LOCAL_ACCOUNT_LIST) {
+        await advanceStateFromLocalAccountList(terminal);
       } else if (step === TerminalPromptStep.GENERATE_ACCOUNT) {
         await advanceStateFromGenerateAccount(terminal);
       } else if (step === TerminalPromptStep.IMPORT_ACCOUNT) {
         await advanceStateFromImportAccount(terminal);
+      } else if (step === TerminalPromptStep.CONNECT_EXTERNAL) {
+        await advanceStateFromConnectExternal(terminal);
+      } else if (step === TerminalPromptStep.RECONNECT_EXTERNAL) {
+        await advanceStateFromReconnectExternal(terminal);
       } else if (step === TerminalPromptStep.ACCOUNT_SET) {
         await advanceStateFromAccountSet(terminal);
       } else if (step === TerminalPromptStep.CHECK_FEE_JUICE) {
@@ -1344,16 +2285,17 @@ export function GameLandingPage() {
       advanceStateFromAddAccount,
       advanceStateFromAllChecksPass,
       advanceStateFromAskAddAccount,
-      advanceStateFromCompatibilityPassed,
+      advanceStateFromConnectExternal,
       advanceStateFromComplete,
-      advanceStateFromDisplayAccounts,
       advanceStateFromError,
       advanceStateFromFetchingEthData,
       advanceStateFromGenerateAccount,
       advanceStateFromImportAccount,
+      advanceStateFromLocalAccountList,
       advanceStateFromNoHomePlanet,
       advanceStateFromNone,
-      walletManager,
+      advanceStateFromReconnectExternal,
+      advanceStateFromWalletMenu,
     ]
   );
 
@@ -1412,10 +2354,6 @@ export function GameLandingPage() {
           <BlockSyncStatus connection={indexerRef.current} />
         )}
       </TerminalWrapper>
-      {loadingPhase.step !== "done" &&
-        initRenderState !== InitRenderState.COMPLETE && (
-          <LoadingOverlay phase={loadingPhase} />
-        )}
       <div ref={topLevelContainer}></div>
     </Wrapper>
   );

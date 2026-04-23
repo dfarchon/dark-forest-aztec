@@ -53,6 +53,7 @@ export function SettingsPane({
   onOpenPrivate: () => void;
 }) {
   const uiManager = useUIManager();
+  const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const account = useAccount(uiManager);
   const isDevelopment = process.env.NODE_ENV !== "production";
 
@@ -183,7 +184,7 @@ export function SettingsPane({
         )}
 
         <Section>
-          <SectionHeader>Burner Wallet Info</SectionHeader>
+          <SectionHeader>Current Wallet</SectionHeader>
           <Row>
             <span>Public Key</span>
             <span>{account}</span>
@@ -196,18 +197,26 @@ export function SettingsPane({
 
         {/* Gas price section removed: Aztec uses sponsored fee payment */}
 
-        <Section>
-          <SectionHeader>Burner Wallet Info (Private)</SectionHeader>
-          Your secret key, together with your home planet's coordinates, grant
-          you access to your Dark Forest account on different browsers. You
-          should save this info somewhere on your computer.
-          <Spacer height={16} />
-          <Red>WARNING:</Red> Never ever send this to anyone!
-          <Spacer height={8} />
-          <Btn size="stretch" variant="danger" onClick={doPrivateClick}>
-            Click {clicks} times to view info
-          </Btn>
-        </Section>
+        {!isExternalWallet ? (
+          <Section>
+            <SectionHeader>Wallet Keys</SectionHeader>
+            Your secret key, together with your home planet's coordinates, grant
+            you access to your Dark Forest account on different browsers. You
+            should save this info somewhere on your computer.
+            <Spacer height={16} />
+            <Red>WARNING:</Red> Never ever send this to anyone!
+            <Spacer height={8} />
+            <Btn size="stretch" variant="danger" onClick={doPrivateClick}>
+              Click {clicks} times to view info
+            </Btn>
+          </Section>
+        ) : (
+          <Section>
+            <SectionHeader>Wallet Keys</SectionHeader>
+            This session is using an external wallet. Private keys stay in the
+            connected extension and are not available in this app.
+          </Section>
+        )}
 
         <Section>
           <SectionHeader>Auto Confirm Transactions</SectionHeader>

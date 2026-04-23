@@ -309,11 +309,7 @@ importers:
         specifier: 8.53.0
         version: 8.53.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
 
-  packages/constants:
-    dependencies:
-      '@dfpunk/types':
-        specifier: workspace:*
-        version: link:../types
+  packages/contracts:
     devDependencies:
       prettier:
         specifier: 3.7.4
@@ -322,7 +318,11 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
-  packages/contracts:
+  packages/constants:
+    dependencies:
+      '@dfpunk/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       prettier:
         specifier: 3.7.4
