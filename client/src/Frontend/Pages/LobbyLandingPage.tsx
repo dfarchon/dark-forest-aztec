@@ -342,7 +342,6 @@ const lobbyTips = [
   "Use the Admin Controls plugin for god-mode control over your lobby.",
   "You can spawn in any space type by adjusting the player spawn perlin range",
   "Disable ZK to make mining the unverse super fast. WARNING: insecure.",
-  "Don't like Space Junk? Disable it!",
   "Don't like Capture Zones? Disable them!",
   "Change the Planet Hash Key to change where planets are. Think of it as the seed for planet generation.",
   "Change the Space Type Key to vary the space type zones in your lobby.",

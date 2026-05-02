@@ -84,8 +84,8 @@ export function HatPane({
         </div>
 
         <EmSpacer height={1} />
-        <Link to={"https://blog.zkga.me/df-04-faq"}>
-          Get More {L2_TOKEN_SYMBOL}
+        <Link to={"https://bridge.gregojuice.anothercoffeefor.me/"}>
+          Get FeeJuice / {L2_TOKEN_SYMBOL}
         </Link>
         <EmSpacer height={0.5} />
 

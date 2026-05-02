@@ -59,11 +59,14 @@ const styles: {
 };
 
 const links = {
-  twitter: "http://twitter.com/darkforest_eth",
-  email: "mailto:ivan@0xparc.org",
-  blog: "https://blog.zkga.me/",
-  telegram: "https://t.me/zk_forest",
-  github: "https://github.com/darkforest-eth",
+  twitter: "https://x.com/DFArchon",
+  // email: "mailto:ivan@0xparc.org",
+  blog: "https://onchainreality.xyz/blog",
+  discord: "https://discord.gg/WGrBje23",
+  github: "https://github.com/dfarchon",
+  // todo: make a new one?
+  wiki: "https://dfwiki.net/wiki/Main_Page",
+  plugins: "https://dfares-plugins.netlify.app/",
 };
 
 // note: prefer styled-components when possible because semantically easier to debug

@@ -20,13 +20,14 @@ export const enum LandingPageZIndex {
 }
 
 const links = {
-  twitter: "http://twitter.com/darkforest_eth",
-  email: "mailto:ivan@0xparc.org",
-  blog: "https://blog.zkga.me/",
-  discord: "https://discord.gg/2u2TN6v8r6",
-  github: "https://github.com/darkforest-eth",
+  twitter: "https://x.com/DFArchon",
+  // email: "mailto:ivan@0xparc.org",
+  blog: "https://onchainreality.xyz/blog",
+  discord: "https://discord.gg/WGrBje23",
+  github: "https://github.com/dfarchon",
+  // todo: make a new one?
   wiki: "https://dfwiki.net/wiki/Main_Page",
-  plugins: "https://plugins.zkga.me/",
+  plugins: "https://dfares-plugins.netlify.app/",
 };
 
 const defaultAddress = address(CORE_CONTRACT_ADDRESS);
@@ -127,7 +128,6 @@ export default function LandingPage() {
               <White>Dark Forest</White> <Text>zkSNARK space warfare</Text>
               <br />
               <Text>Round 5: </Text>
-              <White>The Junk Wars</White>
             </p>
 
             <Spacer height={16} />

@@ -34,7 +34,7 @@ export function ManagePlanetArtifactsHelpContent() {
       <p>
         If your planet is a <Underline>Spacetime Rip</Underline>, you can also
         withdraw and deposit artifacts. When you withdraw an artifact, it is
-        transferred to your address as an ERC 721 token.
+        transferred to your address as an AIP-721 token.
       </p>
     </div>
   );

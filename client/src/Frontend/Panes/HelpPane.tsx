@@ -42,23 +42,23 @@ export function HelpPane({
       <HelpContent>
         {uiManager.isRoundOver() && (
           <Section>
-            <SectionHeader>Round 5 Complete</SectionHeader>
-            Dark Forest v0.6 Round 5 is now complete! Scores are being compiled
-            and winners will be announced shortly. Also, Artifacts will no
-            longer be mintable. Thanks for playing!
+            <SectionHeader>Round Complete</SectionHeader>
+            Dark Forest v0.6 is now complete! Scores are being compiled and
+            winners will be announced shortly. Also, Artifacts will no longer be
+            mintable. Thanks for playing!
           </Section>
         )}
-
         <Section>
           <SectionHeader>Firstly, Some Links:</SectionHeader>
-          <Link to="https://blog.zkga.me">Official Info and Announcements</Link>
-          <br />
-          <Link to="https://twitter.com/darkforest_eth">Official Twitter</Link>
-          <br />
-          <Link to="https://discord.gg/2u2TN6v8r6">
-            Official Discord Server
+          <Link to="https://onchainreality.xyz/blog">
+            Official Info and Announcements
           </Link>
           <br />
+          <Link to="https://x.com/DFArchon">Official Twitter</Link>
+          <br />
+          <Link to="https://discord.gg/WGrBje23">Official Discord Server</Link>
+          <br />
+          {/* todo: new wiki? */}
           <Link to="https://dfwiki.net/">Community-Run Wiki</Link>
           <br />
           <br />
@@ -66,7 +66,7 @@ export function HelpPane({
         </Section>
 
         <Section>
-          <SectionHeader>Dark Forest v0.6 R5: The Junk Wars</SectionHeader>
+          <SectionHeader>Dark Forest v0.6 R5</SectionHeader>
           Dark Forest is a vast universe, obfuscated by zero-knowledge
           cryptography. Your <White>explorer</White> (bottom left) explores the
           universe, searching for <White>Planets</White> and other players.
@@ -78,19 +78,20 @@ export function HelpPane({
           , which produce <White>Silver</White>. Silver can be sent to planets
           and can be spent on <White>Upgrades</White>.
           <EmSpacer height={1} /> Some planets contain <White>Artifacts</White>{" "}
-          - ERC721 tokens that can be traded with other players. Artifacts can
+          - AIP-721 tokens that can be traded with other players. Artifacts can
           be harvested and deposited onto planets, buffing their stats.
         </Section>
 
         <Section>
-          <SectionHeader>Prizes and Scoring</SectionHeader>A snapshot of scores
+          {/* todo: decide Prizes and Scoring*/}
+          {/* <SectionHeader>Prizes and Scoring</SectionHeader>A snapshot of scores
           will be taken on <White>February 28, 2022</White> at 9PM Pacific Time.
           At that time, the top 63 highest-scoring players will be awarded
           prizes from a pool 63 prize planets. You can see the current rankings
-          by scrolling down on the landing page of the game.
+          by scrolling down on the landing page of the game. */}
           <EmSpacer height={1} />
           Scoring this round is made up of three parts: finding artifacts using
-          you Gear ship, withdrawing silver from Spacetime Rips, and invading
+          your Gear ship, withdrawing silver from Spacetime Rips, and invading
           and capturing planets inside of Capture Zones. For more information
           about capture zones, hover over the 'Capture Zones' sections at the
           top of the screen.

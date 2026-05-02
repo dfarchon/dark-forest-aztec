@@ -226,11 +226,11 @@ const tips = [
     <Link to="https://discord.gg/C23An5qNGv">Dark Forest Discord</Link>!
   </>,
   "There are many different artifact types, each with unique properties... try activating one on a planet!",
-  "The top 63 players get NFT rewards at the end of each v0.6 round!",
+  // todo: reward for this round
   "There are many different ways to enjoy Dark Forest - as long as you're having fun, you're doing it right.",
   "Be careful when capturing planets - if you attack a player-owned planet, it may look like an act of war!",
   "A planet can have at most one active artifact.",
-  "Withdrawing an artifact (via a Spacetime Rip) gives you full control of that artifact as an ERC 721 token. You can deposit artifacts you have withdrawn back into the universe via Spacetime Rips.",
+  "Withdrawing an artifact (via a Spacetime Rip) gives you full control of that artifact as an AIP-721 token. You can deposit artifacts you have withdrawn back into the universe via Spacetime Rips.",
   "You can use plugins to enhance your capabilities by automating repetitive tasks. The top players are probably using plugins (:",
   "Quasars can store lots of energy and silver, at the expense of being able to generate neither.",
   "Never share your private key with anyone else!",
@@ -242,7 +242,10 @@ const tips = [
   <>
     If mining the universe is slow on your computer, you can try the Remote
     Miner plugin. Find that and other plugins on{" "}
-    <Link to="https://plugins.zkga.me">plugins.zkga.me</Link>.
+    <Link to="https://dfares-plugins.netlify.app/">
+      dfares-plugins.netlify.app
+    </Link>
+    .
   </>,
   "A planet can only have 6 artifacts on it at any given time. Sometimes more if you get lucky. It's the blockchain, after all.",
   'A foundry must be prospected before you can attempt to find an artifact, but make sure to click "Find" before 256 blocks or it will be lost forever.',
@@ -253,6 +256,7 @@ const tips = [
   "Planetary Shield artifacts will massively boost a planet's defense, but at the cost of energy and energy growth stats. Planetary Shield artifacts are destroyed upon deactivation.",
   "Bloom Filter artifacts instantly set a planet's energy and silver to full, but are destroyed upon activation. Try using them on a Quasar!",
   "Dark Forest exists on the blockchain, so you can play with an entirely different client if you want.",
+  // todo: our docs
   <>
     Writing plugins? Check out some documentation{" "}
     <Link to="https://github.com/darkforest-eth/client/blob/master/docs/classes/Backend_GameLogic_GameManager.default.md">

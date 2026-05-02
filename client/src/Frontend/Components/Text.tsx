@@ -147,6 +147,7 @@ export function CenterChunkLink({
   );
 }
 
+// todo: link to new FAQ
 export function FAQ04Link({ children }: { children: React.ReactNode }) {
   return <Link to={"https://blog.zkga.me/df-04-faq"}>{children} </Link>;
 }

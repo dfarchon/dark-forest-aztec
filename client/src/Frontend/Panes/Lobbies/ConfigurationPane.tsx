@@ -36,7 +36,6 @@ import {
 } from "./Reducer";
 import { RewardsPane } from "./RewardsPane";
 import { SnarkPane } from "./SnarkPane";
-import { SpaceJunkPane } from "./SpaceJunkPane";
 import { SpaceshipsPane } from "./SpaceshipsPane";
 import { SpaceTypeBiomePane } from "./SpaceTypeBiomePane";
 import { WorldSizePane } from "./WorldSizePane";
@@ -80,26 +79,20 @@ const panes: ReadonlyArray<PaneConfig> = [
     Pane: (props: LobbiesPaneProps) => <PlayerSpawnPane {...props} />,
   },
   {
-    title: "Space junk",
-    shortcut: `6`,
-    path: "/settings/junk",
-    Pane: (props: LobbiesPaneProps) => <SpaceJunkPane {...props} />,
-  },
-  {
     title: "Capture zones",
-    shortcut: `7`,
+    shortcut: `6`,
     path: "/settings/zones",
     Pane: (props: LobbiesPaneProps) => <CaptureZonesPane {...props} />,
   },
   {
     title: "Artifacts",
-    shortcut: `8`,
+    shortcut: `7`,
     path: "/settings/artifact",
     Pane: (props: LobbiesPaneProps) => <ArtifactSettingsPane {...props} />,
   },
   {
     title: "Admin permissions",
-    shortcut: `9`,
+    shortcut: `8`,
     path: "/settings/admin",
     Pane: (props: LobbiesPaneProps) => <AdminPermissionsPane {...props} />,
   },
