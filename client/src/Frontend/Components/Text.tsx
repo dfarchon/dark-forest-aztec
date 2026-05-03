@@ -12,6 +12,7 @@ import {
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
+import { externalLinks } from "../../config/externalLinks";
 import Viewport from "../Game/Viewport";
 import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
@@ -147,8 +148,9 @@ export function CenterChunkLink({
   );
 }
 
+// todo: link to new FAQ
 export function FAQ04Link({ children }: { children: React.ReactNode }) {
-  return <Link to={"https://blog.zkga.me/df-04-faq"}>{children} </Link>;
+  return <Link to={externalLinks.darkForest.blog.faq04}>{children} </Link>;
 }
 
 export const LongDash = () => (

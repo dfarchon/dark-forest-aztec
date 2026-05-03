@@ -636,7 +636,7 @@ class GameManager extends EventEmitter {
       2,
       GAMESTATE_SUBSTEP_TOTAL
     );
-    terminal.current?.println("Downloading data from Ethereum blockchain...");
+    terminal.current?.println("Downloading data from Aztec blockchain...");
     terminal.current?.println(
       "(the contract is very big. this may take a while)"
     );

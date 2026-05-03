@@ -27,6 +27,7 @@ import {
   getEffectiveProverUrl,
 } from "../../config/connection";
 import { getProverEnabled, getSponsorMode } from "../../config/env";
+import { externalLinks } from "../../config/externalLinks";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import { resolveExternalWalletCapabilities } from "../../Session/ExternalWallet/capabilityValidation";
 import type {
@@ -1845,7 +1846,7 @@ export function GameLandingPage() {
             () => {
               if (!opened) opened = true;
               window.open(
-                "https://bridge.gregojuice.anothercoffeefor.me/",
+                externalLinks.aztecTestnet.feeJuiceBridge,
                 "_blank",
                 "noopener,noreferrer"
               );

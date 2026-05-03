@@ -51,7 +51,7 @@ export function createDfpunkCapabilities(): AppCapabilities {
     metadata: {
       name: "DF Punk Aztec",
       version: "0.0.0",
-      description: "Dark Forest Punk Round 5 on Aztec",
+      description: "Dark Forest Aztec",
       url: window.location.origin,
     },
     capabilities: [

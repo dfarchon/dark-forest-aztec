@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
 import { SerializedPlugin } from "../../Backend/Plugins/SerializedPlugin";
+import { dfArchonLinks } from "../../config/externalLinks";
 import { Btn } from "../Components/Btn";
 import { Link, Spacer, Truncate } from "../Components/CoreUI";
 import { PluginModal } from "../Components/PluginModal";
@@ -33,9 +34,9 @@ function HelpContent() {
       </p>
       <Spacer height={8} />
       <p>
-        Dark Forest maintains a repository to which community members can submit
+        DFArchon maintains a repository to which community members can submit
         their own plugins. You can find it{" "}
-        <Link to="https://plugins.zkga.me/">here</Link>.
+        <Link to={dfArchonLinks.plugins}>here</Link>.
       </p>
       <Spacer height={8} />
       <p>Try editing one of the default plugins to see how it works!</p>

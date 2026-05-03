@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
+import { dfArchonLinks as links } from "../../config/externalLinks";
 import Button from "../Components/Button";
 // import { EmailCTA, EmailCTAMode } from "../Components/Email";
 import {
@@ -56,14 +57,6 @@ const styles: {
     borderBottom: `1px solid ${dfstyles.colors.subtext}`,
     lineHeight: "1em",
   },
-};
-
-const links = {
-  twitter: "http://twitter.com/darkforest_eth",
-  email: "mailto:ivan@0xparc.org",
-  blog: "https://blog.zkga.me/",
-  telegram: "https://t.me/zk_forest",
-  github: "https://github.com/darkforest-eth",
 };
 
 // note: prefer styled-components when possible because semantically easier to debug
@@ -166,9 +159,7 @@ export default function UnsubscribePage() {
           </Title>
 
           <p>
-            <Sub>
-              zkSNARK space warfare <HideSmall>(v0.6)</HideSmall>
-            </Sub>
+            <Sub>zkSNARK space warfare</Sub>
           </p>
         </Header>
 
@@ -187,7 +178,7 @@ export default function UnsubscribePage() {
             <a className={"link-twitter"} href={links.twitter}>
               <span className={"icon-twitter"}></span>
             </a>
-            <a className={"link-discord"} href={links.telegram}>
+            <a className={"link-discord"} href={links.discord}>
               <span className={"icon-discord"}></span>
             </a>
             <a className={"link-github"} href={links.github}>

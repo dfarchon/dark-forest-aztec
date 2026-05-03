@@ -163,7 +163,7 @@ function TutorialPaneContent({
   } else if (tutorialState === TutorialState.HowToGetScore) {
     return (
       <div className="tutzoom">
-        <White>It's a Junk War!</White> <br />
+        <White>Scoring and winning</White> <br />
         <br />
         Have the highest score at the end of the round to win!
         <br />
@@ -202,8 +202,7 @@ function TutorialPaneContent({
   } else if (tutorialState === TutorialState.Valhalla) {
     return (
       <div className="tutalmost">
-        Winners of each round of Dark Forest v0.6.x will receive a prize, and be
-        added to the <Underline>Valhalla</Underline> universe.
+        {/* todo: decide on how to handle prizes for this round */}
         <br />
         <br />
         To win, have the highest score (^:
