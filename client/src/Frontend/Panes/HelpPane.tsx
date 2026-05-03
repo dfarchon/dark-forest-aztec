@@ -76,9 +76,9 @@ export function HelpPane({
           Also scattered through the universe are <White>Asteroid Fields</White>
           , which produce <White>Silver</White>. Silver can be sent to planets
           and can be spent on <White>Upgrades</White>.
-          <EmSpacer height={1} /> Some planets contain <White>Artifacts</White>{" "}
-          - AIP-721 tokens that can be traded with other players. Artifacts can
-          be harvested and deposited onto planets, buffing their stats.
+          <EmSpacer height={1} /> Some planets contain <White>Artifacts</White>.
+          Artifacts can be harvested and deposited onto planets, buffing their
+          stats.
         </Section>
 
         <Section>

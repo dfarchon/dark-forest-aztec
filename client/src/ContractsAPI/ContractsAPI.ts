@@ -524,7 +524,7 @@ export class ContractsAPI extends EventEmitter {
     return result;
   }
 
-  /** Artifacts owned by the given player (via owner field, mirrors v0.6; Aztec uses AIP-721-style ownership). */
+  /** Artifacts owned by the given player (via owner field, mirrors v0.6). */
   public async getPlayerArtifacts(
     playerId?: EthAddress,
     onProgress?: (percent: number) => void

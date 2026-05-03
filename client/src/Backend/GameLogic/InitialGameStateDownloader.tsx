@@ -232,7 +232,7 @@ const tips = [
   "There are many different ways to enjoy Dark Forest - as long as you're having fun, you're doing it right.",
   "Be careful when capturing planets - if you attack a player-owned planet, it may look like an act of war!",
   "A planet can have at most one active artifact.",
-  "Withdrawing an artifact (via a Spacetime Rip) gives you full control of that artifact as an AIP-721 token. You can deposit artifacts you have withdrawn back into the universe via Spacetime Rips.",
+  "Withdrawing an artifact (via a Spacetime Rip) gives you full control of that artifact. You can deposit artifacts you have withdrawn back into the universe via Spacetime Rips.",
   "You can use plugins to enhance your capabilities by automating repetitive tasks. The top players are probably using plugins (:",
   "Quasars can store lots of energy and silver, at the expense of being able to generate neither.",
   "Never share your private key with anyone else!",
@@ -244,7 +244,10 @@ const tips = [
   <>
     If mining the universe is slow on your computer, you can try the Remote
     Miner plugin. Find that and other plugins on{" "}
-    <Link to={externalLinks.dfArchon.plugins}>dfares-plugins.netlify.app</Link>.
+    <Link to={externalLinks.dfArchon.plugins}>
+      {externalLinks.dfArchon.plugins}
+    </Link>
+    .
   </>,
   "A planet can only have 6 artifacts on it at any given time. Sometimes more if you get lucky. It's the blockchain, after all.",
   'A foundry must be prospected before you can attempt to find an artifact, but make sure to click "Find" before 256 blocks or it will be lost forever.',

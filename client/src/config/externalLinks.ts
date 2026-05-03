@@ -55,15 +55,6 @@ export const externalLinks = {
       notion:
         "https://ivanchub.notion.site/Dark-Forest-is-Hiring-ad1f0cbe816640fb9b4c663dacaaca04",
     },
-    twitter: {
-      zoink: "https://twitter.com/zoink",
-      hideandcleanse: "https://twitter.com/hideandcleanse",
-      jacobrosenthal: "https://twitter.com/jacobrosenthal",
-      adietrichs: "https://twitter.com/adietrichs",
-      orden_gg: "https://twitter.com/orden_gg",
-      dropswap_gg: "https://twitter.com/dropswap_gg",
-      d_fdao: "https://twitter.com/d_fdao",
-    },
   },
 
   aztecTestnet: {

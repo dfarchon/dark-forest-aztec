@@ -408,7 +408,7 @@ export class IndexerConnection {
     return pa.ids.slice(0, pa.count);
   }
 
-  /** Artifact ids owned by the given player (via owner field, mirrors v0.6; Aztec uses AIP-721-style ownership). */
+  /** Artifact ids owned by the given player (via owner field, mirrors v0.6). */
   public getPlayerArtifactIds(playerId: string): string[] {
     return this.indexer.getArtifactIdsByOwner(playerId);
   }
