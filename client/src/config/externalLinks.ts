@@ -5,7 +5,7 @@
 export const externalLinks = {
   dfArchon: {
     /** Footer “email” link (legacy contact). */
-    email: "mailto:ivan@0xparc.org",
+    email: "mailto:dfarchon@gmail.com",
     twitter: "https://x.com/DFArchon",
     blog: "https://onchainreality.xyz/blog",
     discord: "https://discord.gg/WGrBje23",
