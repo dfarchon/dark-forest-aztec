@@ -34,7 +34,7 @@ function HelpContent() {
       </p>
       <Spacer height={8} />
       <p>
-        Dark Forest maintains a repository to which community members can submit
+        DFArchon maintains a repository to which community members can submit
         their own plugins. You can find it{" "}
         <Link to={dfArchonLinks.plugins}>here</Link>.
       </p>

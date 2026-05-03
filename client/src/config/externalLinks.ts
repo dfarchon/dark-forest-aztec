@@ -16,7 +16,7 @@ export const externalLinks = {
 
   /** Upstream Dark Forest / zkga references (docs, legacy community). */
   darkForest: {
-    communityDiscord: "https://discord.gg/C23An5qNGv",
+    communityDiscord: "https://discord.gg/WGrBje23",
     valhalla: "https://valhalla.zkga.me",
     zkgaMe: "https://zkga.me",
     twitterIntentTweet: "https://twitter.com/intent/tweet",

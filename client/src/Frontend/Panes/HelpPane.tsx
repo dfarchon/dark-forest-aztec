@@ -51,11 +51,11 @@ export function HelpPane({
         )}
         <Section>
           <SectionHeader>Firstly, Some Links:</SectionHeader>
-          <Link to={dfArchonLinks.blog}>Official Info and Announcements</Link>
+          <Link to={dfArchonLinks.blog}>DFArchon Info and Announcements</Link>
           <br />
-          <Link to={dfArchonLinks.twitter}>Official Twitter</Link>
+          <Link to={dfArchonLinks.twitter}>DFArchon Twitter</Link>
           <br />
-          <Link to={dfArchonLinks.discord}>Official Discord Server</Link>
+          <Link to={dfArchonLinks.discord}>DFArchon Discord Server</Link>
           <br />
           {/* todo: new wiki? */}
           <Link to={dfArchonLinks.wiki}>Community-Run Wiki</Link>

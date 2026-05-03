@@ -51,26 +51,14 @@ function OnboardMoney({ advance }: { advance: () => void }) {
   const uiManager = useUIManager();
   const account = useAccount(uiManager);
 
-  const explorerAddressLink = `https://blockscout.com/poa/xdai/address/${account}`;
+  const explorerAddressLink = `https://testnet.aztecscan.xyz/address/${account}`;
 
   return (
     <StyledOnboardingContent>
       <p>
         Welcome to <Green>Dark Forest</Green>!
       </p>
-      <p>
-        <Red>There is real money being transacted in-game!</Red> We have
-        initialized a{" "}
-        <a
-          onClick={() =>
-            window.open("https://github.com/austintgriffith/burner-wallet")
-          }
-        >
-          burner wallet
-        </a>{" "}
-        for you and dripped 15c to it, courtesy of Dark Forest Team and{" "}
-        {CHAIN_DISPLAY_NAME}.
-      </p>
+      <p>We have initialized a {CHAIN_DISPLAY_NAME} burner wallet for you.</p>
       <p className="indent">
         Your burner wallet address is: <br />
         <White>
