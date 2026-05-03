@@ -159,9 +159,7 @@ export default function UnsubscribePage() {
           </Title>
 
           <p>
-            <Sub>
-              zkSNARK space warfare <HideSmall>(v0.6)</HideSmall>
-            </Sub>
+            <Sub>zkSNARK space warfare</Sub>
           </p>
         </Header>
 

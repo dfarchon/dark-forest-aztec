@@ -41,7 +41,7 @@ export function TwitterVerifyPane({
       const tweetText = await uiManager.generateVerificationTweet(
         twitterHandleInputValue
       );
-      const str = `Verifying my @dfpunk v0.6 account (${externalLinks.darkForest.zkgaMe}): ${tweetText}`;
+      const str = `Verifying my @dfpunk Aztec account (${externalLinks.darkForest.zkgaMe}): ${tweetText}`;
       window.open(
         `${externalLinks.darkForest.twitterIntentTweet}?hashtags=darkforest&text=${encodeURI(str)}`
       );

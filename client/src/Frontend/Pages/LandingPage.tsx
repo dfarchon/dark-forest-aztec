@@ -118,9 +118,9 @@ export default function LandingPage() {
             <LandingPageRoundArt />
 
             <p>
-              <White>Dark Forest</White> <Text>zkSNARK space warfare</Text>
+              <White>Dark Forest Aztec</White>{" "}
+              <Text>zkSNARK space warfare</Text>
               <br />
-              <Text>Round 5: </Text>
             </p>
 
             <Spacer height={16} />
@@ -130,7 +130,7 @@ export default function LandingPage() {
                 size="large"
                 onClick={() => navigate(`/play/${defaultAddress}`)}
               >
-                Enter Round 5
+                Enter Game
               </Btn>
               <div ref={networkSettingsRef} style={{ display: "inline-block" }}>
                 <Btn size="large" onClick={toggleConnectionSettings}>

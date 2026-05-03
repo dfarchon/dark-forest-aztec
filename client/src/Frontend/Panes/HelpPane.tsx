@@ -44,7 +44,7 @@ export function HelpPane({
         {uiManager.isRoundOver() && (
           <Section>
             <SectionHeader>Round Complete</SectionHeader>
-            Dark Forest v0.6 is now complete! Scores are being compiled and
+            Dark Forest Aztec is now complete! Scores are being compiled and
             winners will be announced shortly. Also, Artifacts will no longer be
             mintable. Thanks for playing!
           </Section>
@@ -65,7 +65,7 @@ export function HelpPane({
         </Section>
 
         <Section>
-          <SectionHeader>Dark Forest v0.6 R5</SectionHeader>
+          <SectionHeader>Dark Forest Aztec</SectionHeader>
           Dark Forest is a vast universe, obfuscated by zero-knowledge
           cryptography. Your <White>explorer</White> (bottom left) explores the
           universe, searching for <White>Planets</White> and other players.

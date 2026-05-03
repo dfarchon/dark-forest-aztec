@@ -224,9 +224,7 @@ const tips = [
   "Beware of pirates! To capture a planet with pirates, simply send an attack large enough to overcome its current energy.",
   <>
     Navigate the Dark Forest with allies (and enemies) - join the{" "}
-    <Link to={externalLinks.darkForest.communityDiscord}>
-      Dark Forest Discord
-    </Link>
+    <Link to={externalLinks.darkForest.communityDiscord}>DFArchon Discord</Link>
     !
   </>,
   "There are many different artifact types, each with unique properties... try activating one on a planet!",
