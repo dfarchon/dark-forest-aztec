@@ -6,6 +6,7 @@ import React from "react";
 import styled from "styled-components";
 
 import { weiToEth } from "../../Backend/Utils/Utils";
+import { externalLinks } from "../../config/externalLinks";
 import { Btn } from "../Components/Btn";
 import { CenterBackgroundSubtext, EmSpacer, Link } from "../Components/CoreUI";
 import { Sub } from "../Components/Text";
@@ -84,7 +85,7 @@ export function HatPane({
         </div>
 
         <EmSpacer height={1} />
-        <Link to={"https://bridge.gregojuice.anothercoffeefor.me/"}>
+        <Link to={externalLinks.aztecTestnet.feeJuiceBridge}>
           Get FeeJuice / {L2_TOKEN_SYMBOL}
         </Link>
         <EmSpacer height={0.5} />

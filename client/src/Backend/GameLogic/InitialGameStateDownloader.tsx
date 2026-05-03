@@ -11,6 +11,7 @@ import {
 } from "@dfpunk/types";
 import React from "react";
 
+import { externalLinks } from "../../config/externalLinks";
 import { ContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import { ContractConstants } from "../../ContractsAPI/ContractsAPITypes";
 import { Link } from "../../Frontend/Components/CoreUI";
@@ -223,7 +224,10 @@ const tips = [
   "Beware of pirates! To capture a planet with pirates, simply send an attack large enough to overcome its current energy.",
   <>
     Navigate the Dark Forest with allies (and enemies) - join the{" "}
-    <Link to="https://discord.gg/C23An5qNGv">Dark Forest Discord</Link>!
+    <Link to={externalLinks.darkForest.communityDiscord}>
+      Dark Forest Discord
+    </Link>
+    !
   </>,
   "There are many different artifact types, each with unique properties... try activating one on a planet!",
   // todo: reward for this round
@@ -242,10 +246,7 @@ const tips = [
   <>
     If mining the universe is slow on your computer, you can try the Remote
     Miner plugin. Find that and other plugins on{" "}
-    <Link to="https://dfares-plugins.netlify.app/">
-      dfares-plugins.netlify.app
-    </Link>
-    .
+    <Link to={externalLinks.dfArchon.plugins}>dfares-plugins.netlify.app</Link>.
   </>,
   "A planet can only have 6 artifacts on it at any given time. Sometimes more if you get lucky. It's the blockchain, after all.",
   'A foundry must be prospected before you can attempt to find an artifact, but make sure to click "Find" before 256 blocks or it will be lost forever.',
@@ -259,13 +260,7 @@ const tips = [
   // todo: our docs
   <>
     Writing plugins? Check out some documentation{" "}
-    <Link to="https://github.com/darkforest-eth/client/blob/master/docs/classes/Backend_GameLogic_GameManager.default.md">
-      here
-    </Link>{" "}
-    and{" "}
-    <Link to="https://github.com/darkforest-eth/client/blob/master/docs/classes/Backend_GameLogic_GameUIManager.default.md">
-      here
-    </Link>
-    .
+    <Link to={externalLinks.darkForest.clientGameManagerDocs}>here</Link> and{" "}
+    <Link to={externalLinks.darkForest.clientGameUIManagerDocs}>here</Link>.
   </>,
 ];

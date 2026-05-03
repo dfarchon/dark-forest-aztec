@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
+import { dfArchonLinks as links } from "../../config/externalLinks";
 import Button from "../Components/Button";
 // import { EmailCTA, EmailCTAMode } from "../Components/Email";
 import {
@@ -56,17 +57,6 @@ const styles: {
     borderBottom: `1px solid ${dfstyles.colors.subtext}`,
     lineHeight: "1em",
   },
-};
-
-const links = {
-  twitter: "https://x.com/DFArchon",
-  // email: "mailto:ivan@0xparc.org",
-  blog: "https://onchainreality.xyz/blog",
-  discord: "https://discord.gg/WGrBje23",
-  github: "https://github.com/dfarchon",
-  // todo: make a new one?
-  wiki: "https://dfwiki.net/wiki/Main_Page",
-  plugins: "https://dfares-plugins.netlify.app/",
 };
 
 // note: prefer styled-components when possible because semantically easier to debug
@@ -190,7 +180,7 @@ export default function UnsubscribePage() {
             <a className={"link-twitter"} href={links.twitter}>
               <span className={"icon-twitter"}></span>
             </a>
-            <a className={"link-discord"} href={links.telegram}>
+            <a className={"link-discord"} href={links.discord}>
               <span className={"icon-discord"}></span>
             </a>
             <a className={"link-github"} href={links.github}>

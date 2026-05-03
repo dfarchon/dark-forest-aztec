@@ -4,6 +4,10 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
+import {
+  dfArchonLinks as links,
+  externalLinks,
+} from "../../config/externalLinks";
 import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { EmSpacer, Link, Spacer, Title } from "../Components/CoreUI";
@@ -18,17 +22,6 @@ export const enum LandingPageZIndex {
   Canvas = 1,
   BasePage = 2,
 }
-
-const links = {
-  twitter: "https://x.com/DFArchon",
-  // email: "mailto:ivan@0xparc.org",
-  blog: "https://onchainreality.xyz/blog",
-  discord: "https://discord.gg/WGrBje23",
-  github: "https://github.com/dfarchon",
-  // todo: make a new one?
-  wiki: "https://dfwiki.net/wiki/Main_Page",
-  plugins: "https://dfares-plugins.netlify.app/",
-};
 
 const defaultAddress = address(CORE_CONTRACT_ADDRESS);
 
@@ -452,21 +445,18 @@ function Hiring() {
         <div style={{ maxWidth: "300px", textAlign: "justify" }}>
           We are looking for experienced full stack and solidity developers to
           join our team! If you like what you see,{" "}
-          <Link to="https://docs.google.com/forms/d/e/1FAIpQLSdaWvjxX4TrDDLidPXtgk6UW3rC082rpvi3AIPkCPxAahg_rg/viewform?usp=sf_link">
+          <Link to={externalLinks.darkForest.hiring.applicantForm}>
             consider applying
           </Link>
           . If you know someone who you think would be a great fit for our team,{" "}
-          <Link to="https://docs.google.com/forms/d/e/1FAIpQLScku_bQDbkPqpHrwBzOBfQ4SV6Nw6Tgxi6zWQL8Bb0olyBE3w/viewform?usp=sf_link">
+          <Link to={externalLinks.darkForest.hiring.referralForm}>
             please refer them here
           </Link>
           .
           <br />
           <br />
           Learn more about the role{" "}
-          <Link to="https://ivanchub.notion.site/Dark-Forest-is-Hiring-ad1f0cbe816640fb9b4c663dacaaca04">
-            here
-          </Link>
-          .
+          <Link to={externalLinks.darkForest.hiring.notion}>here</Link>.
         </div>
       </Modal>
     </HideOnMobile>

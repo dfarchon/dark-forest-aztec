@@ -2,6 +2,7 @@ import { ArtifactRarity, ModalName, PlanetLevel } from "@dfpunk/types";
 import React from "react";
 import styled from "styled-components";
 
+import { dfArchonLinks } from "../../config/externalLinks";
 import { EmSpacer, Link, Section, SectionHeader } from "../Components/CoreUI";
 import { ArtifactRarityLabel } from "../Components/Labels/ArtifactLabels";
 import { Gold, White } from "../Components/Text";
@@ -50,16 +51,14 @@ export function HelpPane({
         )}
         <Section>
           <SectionHeader>Firstly, Some Links:</SectionHeader>
-          <Link to="https://onchainreality.xyz/blog">
-            Official Info and Announcements
-          </Link>
+          <Link to={dfArchonLinks.blog}>Official Info and Announcements</Link>
           <br />
-          <Link to="https://x.com/DFArchon">Official Twitter</Link>
+          <Link to={dfArchonLinks.twitter}>Official Twitter</Link>
           <br />
-          <Link to="https://discord.gg/WGrBje23">Official Discord Server</Link>
+          <Link to={dfArchonLinks.discord}>Official Discord Server</Link>
           <br />
           {/* todo: new wiki? */}
-          <Link to="https://dfwiki.net/">Community-Run Wiki</Link>
+          <Link to={dfArchonLinks.wiki}>Community-Run Wiki</Link>
           <br />
           <br />
           Secondly... welcome to
