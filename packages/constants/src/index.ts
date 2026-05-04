@@ -10,7 +10,7 @@ import {
 } from "@dfpunk/types";
 
 /** Display name of the game / universe. */
-export const GAME_NAME = "Dark Forest";
+export const GAME_NAME = "Dark Forest Aztec";
 /** Token symbol on the L1 base chain (e.g. Ethereum mainnet). Shown in UI for deposits/withdrawals. */
 export const L1_TOKEN_SYMBOL = "ETH";
 /** Token symbol on the L2 chain (Aztec). Shown in UI for in-game balance, gas, etc. */

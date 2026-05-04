@@ -12,6 +12,7 @@ import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { address } from "@dfpunk/serde";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import styled from "styled-components";
 
 import GameManager, {
   GameManagerEvent,
@@ -60,12 +61,21 @@ import {
   RememberedExternalWalletAccountMismatchError,
   useExternalWallet,
 } from "../Contexts/ExternalWalletContext";
+import dfstyles from "../Styles/dfstyles";
 import { TopLevelDivProvider, UIManagerProvider } from "../Utils/AppHooks";
 import { Incompatibility, unsupportedFeatures } from "../Utils/BrowserChecks";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { GameWindowLayout } from "../Views/GameWindowLayout";
-import { Terminal, TerminalHandle } from "../Views/Terminal";
+import {
+  Terminal,
+  TerminalHandle,
+  type TerminalOptionMode,
+} from "../Views/Terminal";
+import {
+  type EntryModeChoice,
+  GameLandingEntryOverlay,
+} from "./GameLandingEntryOverlay";
 
 function formatFeeJuice(amount: bigint): string {
   // FeeJuice uses 18 decimals (ERC20-like).
@@ -82,6 +92,9 @@ function formatFeeJuice(amount: bigint): string {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Full-screen enter effect for Quick play (matches LandingPage enter duration). */
+const QUICK_PLAY_ENTER_TRANSITION_MS = 1100;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -107,6 +120,9 @@ interface LoadingPhase {
 }
 
 type SelectedWalletMode = "local" | "external" | null;
+
+type EntryMode = "pending" | "quick" | "standard" | "terminal";
+
 type WalletLockState =
   | "unselected"
   | "selected"
@@ -223,7 +239,9 @@ export function GameLandingPage() {
   const walletManagerRef = useRef<WalletManager | undefined>(undefined);
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
-  const [terminalVisible, setTerminalVisible] = useState(true);
+  const [terminalVisible, setTerminalVisible] = useState(false);
+  const [entryMode, setEntryMode] = useState<EntryMode>("pending");
+  const [walletModeUi, setWalletModeUi] = useState<SelectedWalletMode>(null);
   const [initRenderState, setInitRenderState] = useState(InitRenderState.NONE);
   const indexerRef = useRef<IndexerConnection | undefined>(undefined);
   const initialSyncDoneRef = useRef(false);
@@ -242,6 +260,13 @@ export function GameLandingPage() {
     useRef<ExternalWalletSimulationSupport | null>(null);
   const selectedWalletModeRef = useRef<SelectedWalletMode>(null);
   const walletLockStateRef = useRef<WalletLockState>("unselected");
+  const entryModeRef = useRef<EntryMode>("pending");
+  const skipTerminalPromptsRef = useRef(false);
+  const quickBootstrapDoneRef = useRef(false);
+  const quickBootstrapEffectGenRef = useRef(0);
+  const quickEnterTimeoutRef = useRef<number | null>(null);
+  const quickEnterFinalizeScheduledRef = useRef(false);
+  const [enterTransitionVisible, setEnterTransitionVisible] = useState(false);
   const [localAccountCount, setLocalAccountCount] = useState(
     () => new KeyStore("dfpunk").listAccounts().length
   );
@@ -255,6 +280,19 @@ export function GameLandingPage() {
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
   const sponsorMode = getSponsorMode();
+
+  useEffect(() => {
+    entryModeRef.current = entryMode;
+  }, [entryMode]);
+
+  useEffect(() => {
+    return () => {
+      if (quickEnterTimeoutRef.current !== null) {
+        window.clearTimeout(quickEnterTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const refreshLocalAccountCount = useCallback(() => {
     setLocalAccountCount(new KeyStore("dfpunk").listAccounts().length);
   }, []);
@@ -312,6 +350,7 @@ export function GameLandingPage() {
   const resetToWalletSelectionMenu = useCallback(async () => {
     await clearUnlockedWalletState();
     selectedWalletModeRef.current = null;
+    setWalletModeUi(null);
     setStep(TerminalPromptStep.WALLET_MENU);
   }, [clearUnlockedWalletState]);
 
@@ -319,6 +358,7 @@ export function GameLandingPage() {
     async (mode: Exclude<SelectedWalletMode, null>) => {
       await clearUnlockedWalletState();
       selectedWalletModeRef.current = mode;
+      setWalletModeUi(mode);
     },
     [clearUnlockedWalletState]
   );
@@ -423,6 +463,106 @@ export function GameLandingPage() {
     buildWalletConfig,
     refreshLocalAccountCount,
     resetInitializationTerminalLogging,
+  ]);
+
+  useEffect(() => {
+    if (entryMode !== "quick") return;
+
+    quickBootstrapEffectGenRef.current += 1;
+    const generation = quickBootstrapEffectGenRef.current;
+
+    void (async () => {
+      try {
+        const issues = await unsupportedFeatures();
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+
+        if (issues.includes(Incompatibility.MobileOrTablet)) {
+          terminalHandle.current?.println(
+            "ERROR: Mobile or tablet device detected. Please use desktop.",
+            TerminalTextStyle.Red
+          );
+        }
+
+        if (issues.includes(Incompatibility.NoIDB)) {
+          terminalHandle.current?.println(
+            "ERROR: IndexedDB not found. Try using a different browser.",
+            TerminalTextStyle.Red
+          );
+        }
+
+        if (issues.includes(Incompatibility.UnsupportedBrowser)) {
+          terminalHandle.current?.println(
+            "ERROR: Browser unsupported. Try Brave, Firefox, or Chrome.",
+            TerminalTextStyle.Red
+          );
+        }
+
+        if (issues.length > 0) {
+          const count = issues.length;
+          terminalHandle.current?.print(
+            `${count} ${count === 1 ? "error" : "errors"} found. `,
+            TerminalTextStyle.Red
+          );
+          terminalHandle.current?.println(
+            count === 1
+              ? "Please resolve it and refresh the page."
+              : "Please resolve them and refresh the page."
+          );
+          if (generation !== quickBootstrapEffectGenRef.current) return;
+          quickBootstrapDoneRef.current = true;
+          setTerminalVisible(true);
+          setStep(TerminalPromptStep.TERMINATED);
+          return;
+        }
+
+        skipTerminalPromptsRef.current = true;
+        await selectWalletMode("local");
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+        await ensureEmbeddedWalletManager();
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+        const wm = walletManagerRef.current;
+        if (!wm) {
+          throw new Error("Local wallet failed to initialize.");
+        }
+
+        const accounts = wm.getAccounts();
+        if (accounts.length === 0) {
+          await wm.createAccount(undefined, (msg) => {
+            terminalHandle.current?.println(msg, TerminalTextStyle.Sub);
+          });
+        } else {
+          await wm.switchAccount(accounts[0].address, (msg) =>
+            terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
+          );
+        }
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+
+        lockWalletSelection("local");
+        refreshLocalAccountCount();
+        quickBootstrapDoneRef.current = true;
+        setStep(TerminalPromptStep.ACCOUNT_SET);
+      } catch (err) {
+        console.error(err);
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+        quickBootstrapDoneRef.current = true;
+        setTerminalVisible(true);
+        terminalHandle.current?.println(
+          err instanceof Error ? err.message : String(err),
+          TerminalTextStyle.Red
+        );
+        terminalHandle.current?.println(
+          "Refresh the page to try again.",
+          TerminalTextStyle.Red
+        );
+        setStep(TerminalPromptStep.TERMINATED);
+      }
+    })();
+  }, [
+    entryMode,
+    ensureEmbeddedWalletManager,
+    lockWalletSelection,
+    refreshLocalAccountCount,
+    selectWalletMode,
   ]);
 
   const initializeExternalWalletManager = useCallback(
@@ -559,15 +699,14 @@ export function GameLandingPage() {
           TerminalTextStyle.Text
         );
         accounts.forEach((account, index) => {
-          terminal.current?.print(`(${index + 1}) `, TerminalTextStyle.Sub);
-          terminal.current?.println(
+          terminal.current?.printOption(
+            String(index + 1),
             account.alias
               ? `${account.alias} (${account.item.toString()})`
               : account.item.toString()
           );
         });
-        terminal.current?.print("(c) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Cancel");
+        terminal.current?.printOption("c", "Cancel");
 
         const selection = (await terminal.current?.getInput()) || "";
         if (selection === "c") {
@@ -602,13 +741,10 @@ export function GameLandingPage() {
           TerminalTextStyle.Text
         );
         providers.forEach((provider, index) => {
-          terminal.current?.print(`(${index + 1}) `, TerminalTextStyle.Sub);
-          terminal.current?.println(provider.name);
+          terminal.current?.printOption(String(index + 1), provider.name);
         });
-        terminal.current?.print("(r) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Rescan");
-        terminal.current?.print("(b) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Back");
+        terminal.current?.printOption("r", "Rescan");
+        terminal.current?.printOption("b", "Back");
 
         const input = (await terminal.current?.getInput()) || "";
         if (input === "r") {
@@ -663,10 +799,8 @@ export function GameLandingPage() {
             TerminalTextStyle.White
           );
         }
-        terminal.current?.print("(y) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Emojis match");
-        terminal.current?.print("(c) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Cancel");
+        terminal.current?.printOption("y", "Emojis match");
+        terminal.current?.printOption("c", "Cancel");
 
         const input = (await terminal.current?.getInput()) || "";
         if (input === "y") {
@@ -719,10 +853,8 @@ export function GameLandingPage() {
             let shouldRescan = false;
             for (;;) {
               terminal.current?.println("No extension wallet detected yet.");
-              terminal.current?.print("(r) ", TerminalTextStyle.Sub);
-              terminal.current?.println("Rescan");
-              terminal.current?.print("(b) ", TerminalTextStyle.Sub);
-              terminal.current?.println("Back");
+              terminal.current?.printOption("r", "Rescan");
+              terminal.current?.printOption("b", "Back");
 
               const input = (await terminal.current?.getInput()) || "";
               if (input === "r") {
@@ -1164,35 +1296,33 @@ export function GameLandingPage() {
       terminal.current?.println("");
 
       if (selectedMode === null) {
+        terminal.current?.printOption("1", "Use local wallet.");
+        terminal.current?.printOption("2", "Connect extension wallet.");
         if (rememberedSession) {
-          terminal.current?.print("(r) ", TerminalTextStyle.Sub);
-          terminal.current?.println(
+          terminal.current?.printOption(
+            "3",
             `Reconnect last extension wallet (${rememberedSession.providerName}, ${rememberedSession.accountAddress}).`
           );
         }
-
-        terminal.current?.print("(l) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Use local wallet.");
-        terminal.current?.print("(e) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Connect extension wallet.");
         terminal.current?.println("");
-        terminal.current?.println(
-          "Select a wallet mode:",
-          TerminalTextStyle.Text
-        );
+        const walletHint =
+          entryModeRef.current === "terminal"
+            ? "Type a number and press ENTER to select:"
+            : "Click an option or type a number and press ENTER:";
+        terminal.current?.println(walletHint, TerminalTextStyle.Text);
 
         const userInput = await terminal.current?.getInput();
-        if (userInput === "l") {
+        if (userInput === "1") {
           await selectWalletMode("local");
           await advanceStateFromWalletMenu(terminal);
           return;
         }
-        if (userInput === "e") {
+        if (userInput === "2") {
           await selectWalletMode("external");
           setStep(TerminalPromptStep.CONNECT_EXTERNAL);
           return;
         }
-        if (userInput === "r" && rememberedSession) {
+        if (userInput === "3" && rememberedSession) {
           await selectWalletMode("external");
           setStep(TerminalPromptStep.RECONNECT_EXTERNAL);
           return;
@@ -1205,6 +1335,7 @@ export function GameLandingPage() {
 
       if (selectedMode === "external") {
         selectedWalletModeRef.current = null;
+        setWalletModeUi(null);
         await advanceStateFromWalletMenu(terminal);
         return;
       }
@@ -1220,21 +1351,35 @@ export function GameLandingPage() {
         );
 
         if (localAccountCount > 0) {
-          terminal.current?.print("(a) ", TerminalTextStyle.Sub);
-          terminal.current?.println("Login with existing local account.");
+          terminal.current?.printOption(
+            "1",
+            "Login with existing local account."
+          );
+          terminal.current?.printOption("2", "Generate new Aztec account.");
+          terminal.current?.printOption("3", "Import account.");
+          terminal.current?.printOption("4", "Back to wallet selection.");
+        } else {
+          terminal.current?.printOption("1", "Generate new Aztec account.");
+          terminal.current?.printOption("2", "Import account.");
+          terminal.current?.printOption("3", "Back to wallet selection.");
         }
-
-        terminal.current?.print("(n) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Generate new Aztec account.");
-        terminal.current?.print("(i) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Import account.");
-        terminal.current?.print("(b) ", TerminalTextStyle.Sub);
-        terminal.current?.println("Back to wallet selection.");
         terminal.current?.println("");
-        terminal.current?.println("Select an option:", TerminalTextStyle.Text);
+        const localWalletHint =
+          entryModeRef.current === "terminal"
+            ? "Type a number and press ENTER to select:"
+            : "Click an option or type a number and press ENTER:";
+        terminal.current?.println(localWalletHint, TerminalTextStyle.Text);
 
         const userInput = await terminal.current?.getInput();
-        if (userInput === "a" && localAccountCount > 0) {
+        const pickExisting = localAccountCount > 0 && userInput === "1";
+        const pickNew =
+          localAccountCount > 0 ? userInput === "2" : userInput === "1";
+        const pickImport =
+          localAccountCount > 0 ? userInput === "3" : userInput === "2";
+        const pickBack =
+          localAccountCount > 0 ? userInput === "4" : userInput === "3";
+
+        if (pickExisting) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.LOCAL_ACCOUNT_LIST);
@@ -1245,7 +1390,7 @@ export function GameLandingPage() {
             );
             await advanceStateFromWalletMenu(terminal);
           }
-        } else if (userInput === "n") {
+        } else if (pickNew) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.GENERATE_ACCOUNT);
@@ -1256,7 +1401,7 @@ export function GameLandingPage() {
             );
             await advanceStateFromWalletMenu(terminal);
           }
-        } else if (userInput === "i") {
+        } else if (pickImport) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.IMPORT_ACCOUNT);
@@ -1267,9 +1412,10 @@ export function GameLandingPage() {
             );
             await advanceStateFromWalletMenu(terminal);
           }
-        } else if (userInput === "b" && !isWalletSelectionLocked()) {
+        } else if (pickBack && !isWalletSelectionLocked()) {
           await clearUnlockedWalletState();
           selectedWalletModeRef.current = null;
+          setWalletModeUi(null);
           await advanceStateFromWalletMenu(terminal);
         } else {
           terminal.current?.println("Unrecognized input. Please try again.");
@@ -1305,8 +1451,13 @@ export function GameLandingPage() {
         }
 
         for (let i = 0; i < accounts.length; i += 1) {
-          terminal.current?.print(`(${i + 1}): `, TerminalTextStyle.Sub);
-          terminal.current?.println(`${accounts[i].address}`);
+          terminal.current?.printOption(
+            String(i + 1),
+            `${accounts[i].address}`,
+            {
+              tailAfterKey: ": ",
+            }
+          );
         }
         terminal.current?.println(``);
         terminal.current?.println(`Select an account:`, TerminalTextStyle.Text);
@@ -1721,10 +1872,16 @@ export function GameLandingPage() {
           );
           setStep(TerminalPromptStep.FETCHING_ETH_DATA);
         } else {
+          if (entryModeRef.current === "quick") {
+            setTerminalVisible(true);
+          }
           setStep(TerminalPromptStep.CHECK_FEE_JUICE);
         }
       } catch (e) {
         console.error("Failed to pre-check FeeJuice balance:", e);
+        if (entryModeRef.current === "quick") {
+          setTerminalVisible(true);
+        }
         setStep(TerminalPromptStep.CHECK_FEE_JUICE);
       }
     },
@@ -2108,7 +2265,7 @@ export function GameLandingPage() {
 
   const advanceStateFromNoHomePlanet = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
-      terminal.current?.println("Welcome to DARK FOREST.");
+      terminal.current?.println(`Welcome to ${GAME_NAME}.`);
 
       const gameUIManager = gameUIManagerRef.current;
       if (!gameUIManager) {
@@ -2148,7 +2305,9 @@ export function GameLandingPage() {
       );
       terminal.current?.println("This will consume a lot of CPU.");
 
-      await terminal.current?.getInput();
+      if (!skipTerminalPromptsRef.current) {
+        await terminal.current?.getInput();
+      }
 
       gameUIManager
         .getGameManager()
@@ -2170,7 +2329,11 @@ export function GameLandingPage() {
           terminal.current?.println("");
           terminal.current?.println("Press ENTER to try again:");
 
-          await terminal.current?.getInput();
+          if (!skipTerminalPromptsRef.current) {
+            await terminal.current?.getInput();
+          } else {
+            await sleep(2000);
+          }
           return true;
         })
         .catch(() => {
@@ -2183,28 +2346,31 @@ export function GameLandingPage() {
     []
   );
 
-  const advanceStateFromAllChecksPass = useCallback(
-    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
-      terminal.current?.println("");
-      terminal.current?.println("Press ENTER to begin");
-      terminal.current?.println(
-        "Press 's' then ENTER to begin in SAFE MODE - plugins disabled"
-      );
+  const finalizeQuickPlayGameEntry = useCallback(() => {
+    resetInitializationTerminalLogging();
+    setStep(TerminalPromptStep.COMPLETE);
+    setInitRenderState(InitRenderState.COMPLETE);
+    const t = terminalHandle.current;
+    t?.clear();
+    t?.println(`Welcome to ${GAME_NAME}.`, TerminalTextStyle.Green);
+    t?.println("");
+    t?.println(
+      "This is the Dark Forest interactive JavaScript terminal. Only use this if you know exactly what you're doing."
+    );
+    t?.println("");
+    t?.println("Try running: df.getAccount()");
+    t?.println("");
+  }, [resetInitializationTerminalLogging]);
 
-      const input = await terminal.current?.getInput();
-
-      if (input === "s") {
-        const gameUIManager = gameUIManagerRef.current;
-        gameUIManager?.getGameManager()?.setSafeMode(true);
-      }
-
+  const finalizeTerminalGameEntry = useCallback(
+    (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
       resetInitializationTerminalLogging();
       setStep(TerminalPromptStep.COMPLETE);
       setInitRenderState(InitRenderState.COMPLETE);
       terminal.current?.clear();
 
       terminal.current?.println(
-        "Welcome to the Dark Forest.",
+        `Welcome to ${GAME_NAME}.`,
         TerminalTextStyle.Green
       );
       terminal.current?.println("");
@@ -2216,6 +2382,68 @@ export function GameLandingPage() {
       terminal.current?.println("");
     },
     [resetInitializationTerminalLogging]
+  );
+
+  const playEnterTransition = useCallback(async (onComplete: () => void) => {
+    if (quickEnterTimeoutRef.current !== null) {
+      window.clearTimeout(quickEnterTimeoutRef.current);
+    }
+    setEnterTransitionVisible(true);
+    await new Promise<void>((resolve) => {
+      quickEnterTimeoutRef.current = window.setTimeout(() => {
+        quickEnterTimeoutRef.current = null;
+        resolve();
+      }, QUICK_PLAY_ENTER_TRANSITION_MS);
+    });
+    onComplete();
+    setEnterTransitionVisible(false);
+  }, []);
+
+  const advanceStateFromAllChecksPass = useCallback(
+    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      if (skipTerminalPromptsRef.current) {
+        if (quickEnterFinalizeScheduledRef.current) {
+          return;
+        }
+        quickEnterFinalizeScheduledRef.current = true;
+        if (quickEnterTimeoutRef.current !== null) {
+          window.clearTimeout(quickEnterTimeoutRef.current);
+        }
+        await playEnterTransition(() => {
+          finalizeQuickPlayGameEntry();
+          quickEnterFinalizeScheduledRef.current = false;
+        });
+        return;
+      }
+
+      terminal.current?.println("");
+      if (entryModeRef.current === "standard") {
+        terminal.current?.printOption("", "Enter game", { hideKey: true });
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Click Enter game, or press 's' then ENTER to begin in SAFE MODE - plugins disabled"
+        );
+      } else {
+        terminal.current?.println("Press ENTER to begin");
+        terminal.current?.println(
+          "Press 's' then ENTER to begin in SAFE MODE - plugins disabled"
+        );
+      }
+
+      const input = await terminal.current?.getInput();
+
+      if (input === "s") {
+        const gameUIManager = gameUIManagerRef.current;
+        gameUIManager?.getGameManager()?.setSafeMode(true);
+      }
+
+      if (entryModeRef.current === "standard") {
+        await playEnterTransition(() => finalizeTerminalGameEntry(terminal));
+      } else {
+        finalizeTerminalGameEntry(terminal);
+      }
+    },
+    [finalizeQuickPlayGameEntry, finalizeTerminalGameEntry, playEnterTransition]
   );
 
   const advanceStateFromComplete = useCallback(
@@ -2313,49 +2541,150 @@ export function GameLandingPage() {
     }
   }, [terminalVisible]);
 
-  useEffect(() => {
-    if (terminalHandle.current && topLevelContainer.current) {
-      advanceState(terminalHandle);
+  const handleEntryModeSelected = useCallback((choice: EntryModeChoice) => {
+    setEntryMode(choice);
+    if (choice === "quick") {
+      setTerminalVisible(false);
+    } else {
+      setTerminalVisible(true);
     }
-  }, [terminalHandle, topLevelContainer, advanceState]);
+  }, []);
+
+  useEffect(() => {
+    if (entryMode === "pending") return;
+    if (entryMode === "quick" && !quickBootstrapDoneRef.current) return;
+    if (terminalHandle.current && topLevelContainer.current) {
+      void advanceState(terminalHandle);
+    }
+  }, [terminalHandle, topLevelContainer, advanceState, entryMode]);
+
+  const terminalOptionMode: TerminalOptionMode =
+    entryMode === "standard" || entryMode === "quick" ? "buttons" : "classic";
 
   return (
-    <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
-      <GameWindowWrapper
-        initRender={initRenderState}
-        terminalEnabled={terminalVisible}
-      >
-        {gameUIManagerRef.current &&
-          topLevelContainer.current &&
-          gameManager && (
-            <TopLevelDivProvider value={topLevelContainer.current}>
-              <UIManagerProvider value={gameUIManagerRef.current}>
-                <GameWindowLayout
-                  terminalVisible={terminalVisible}
-                  setTerminalVisible={setTerminalVisible}
-                />
-              </UIManagerProvider>
-            </TopLevelDivProvider>
-          )}
-      </GameWindowWrapper>
-      <TerminalToggler
-        terminalEnabled={terminalVisible}
-        setTerminalEnabled={setTerminalVisible}
-        initRender={initRenderState}
-      />
-      <TerminalWrapper
-        initRender={initRenderState}
-        terminalEnabled={terminalVisible}
-      >
-        <Terminal
-          ref={terminalHandle as React.Ref<TerminalHandle>}
-          promptCharacter={"$"}
+    <>
+      {entryMode === "pending" && (
+        <GameLandingEntryOverlay onSelect={handleEntryModeSelected} />
+      )}
+      {enterTransitionVisible && <EnterTransition aria-hidden />}
+      <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
+        <GameWindowWrapper
+          initRender={initRenderState}
+          terminalEnabled={terminalVisible}
+        >
+          {gameUIManagerRef.current &&
+            topLevelContainer.current &&
+            gameManager && (
+              <TopLevelDivProvider value={topLevelContainer.current}>
+                <UIManagerProvider value={gameUIManagerRef.current}>
+                  <GameWindowLayout
+                    terminalVisible={terminalVisible}
+                    setTerminalVisible={setTerminalVisible}
+                  />
+                </UIManagerProvider>
+              </TopLevelDivProvider>
+            )}
+        </GameWindowWrapper>
+        <TerminalToggler
+          terminalEnabled={terminalVisible}
+          setTerminalEnabled={setTerminalVisible}
+          initRender={initRenderState}
         />
-        {initRenderState === InitRenderState.COMPLETE && indexerRef.current && (
-          <BlockSyncStatus connection={indexerRef.current} />
-        )}
-      </TerminalWrapper>
-      <div ref={topLevelContainer}></div>
-    </Wrapper>
+        <TerminalWrapper
+          initRender={initRenderState}
+          terminalEnabled={terminalVisible}
+        >
+          <Terminal
+            ref={terminalHandle as React.Ref<TerminalHandle>}
+            promptCharacter={"$"}
+            optionMode={terminalOptionMode}
+          />
+          {initRenderState === InitRenderState.COMPLETE &&
+            indexerRef.current && (
+              <BlockSyncStatus connection={indexerRef.current} />
+            )}
+        </TerminalWrapper>
+        <div ref={topLevelContainer}></div>
+      </Wrapper>
+    </>
   );
 }
+
+const EnterTransition = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  pointer-events: none;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4vmin;
+    height: 4vmin;
+    border-radius: 50%;
+    background: #000;
+    transform: translate(-50%, -50%) scale(0);
+    animation: quick-play-enter-core ${QUICK_PLAY_ENTER_TRANSITION_MS}ms
+      forwards;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at 50% 45%,
+      rgba(0, 220, 130, 0.22),
+      transparent 55%
+    );
+    opacity: 0;
+    animation: quick-play-enter-flash ${QUICK_PLAY_ENTER_TRANSITION_MS}ms
+      ease-out forwards;
+  }
+
+  @keyframes quick-play-enter-core {
+    0% {
+      transform: translate(-50%, -50%) scale(0);
+      box-shadow: 0 0 0 0 transparent;
+    }
+    4% {
+      transform: translate(-50%, -50%) scale(1);
+      box-shadow:
+        0 0 0 2px rgba(255, 255, 255, 0.9),
+        0 0 60px 20px rgba(0, 220, 130, 0.8),
+        0 0 120px 40px rgba(187, 187, 187, 0.3);
+    }
+    15% {
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.6),
+        0 0 40px 10px rgba(0, 220, 130, 0.6),
+        0 0 80px 20px rgba(187, 187, 187, 0.2);
+    }
+    60% {
+      transform: translate(-50%, -50%) scale(1.4);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.4),
+        0 0 80px 20px rgba(0, 220, 130, 0.8),
+        0 0 160px 40px rgba(187, 187, 187, 0.2);
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(150);
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
+  @keyframes quick-play-enter-flash {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+`;

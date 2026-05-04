@@ -90,14 +90,11 @@ class LobbyPageTerminal {
     this.terminal.newline();
 
     if (accounts.length > 0) {
-      this.terminal.print("(a) ", TerminalTextStyle.Sub);
-      this.terminal.println("Login with existing account.");
+      this.terminal.printOption("a", "Login with existing account.");
     }
 
-    this.terminal.print("(n) ", TerminalTextStyle.Sub);
-    this.terminal.println(`Generate new burner wallet account.`);
-    this.terminal.print("(i) ", TerminalTextStyle.Sub);
-    this.terminal.println(`Import private key.`);
+    this.terminal.printOption("n", `Generate new burner wallet account.`);
+    this.terminal.printOption("i", `Import private key.`);
     this.terminal.println(``);
     this.terminal.println(`Select an option:`, TerminalTextStyle.Text);
 
@@ -122,8 +119,10 @@ class LobbyPageTerminal {
     this.terminal.println(``);
     const accounts = getAccounts();
     for (let i = 0; i < accounts.length; i += 1) {
-      this.terminal.print(`(${i + 1}): `, TerminalTextStyle.Sub);
-      this.terminal.print(`${accounts[i].address} `);
+      this.terminal.printOption(String(i + 1), `${accounts[i].address} `, {
+        tailAfterKey: ": ",
+        newline: false,
+      });
 
       if (this.balancesEth[i] < 0.25) {
         this.terminal.println(
