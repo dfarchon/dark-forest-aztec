@@ -1976,6 +1976,23 @@ class GameManager extends EventEmitter {
   }
 
   /**
+   * SponsoredFPC Aztec address used for sponsored fees (sponsor mode), if any.
+   */
+  getSponsoredFpcAddress(): string | undefined {
+    const addr = this.contractsAPI.getWalletManager().getSponsoredFpcAddress();
+    return addr?.toString();
+  }
+
+  /**
+   * FeeJuice balance of the SponsoredFPC payer (sponsor mode), when configured.
+   */
+  async getSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
+    return this.contractsAPI
+      .getWalletManager()
+      .getSponsoredFpcFeeJuiceBalance();
+  }
+
+  /**
    * Gets the balance of the account measured in Eth (i.e. in full units of the chain).
    */
   getMyBalanceEth(): number {

@@ -56,7 +56,7 @@ function OnboardMoney({ advance }: { advance: () => void }) {
   return (
     <StyledOnboardingContent>
       <p>
-        Welcome to <Green>Dark Forest</Green>!
+        Welcome to <Green>Dark Forest Aztec</Green>!
       </p>
       <p>We have initialized a {CHAIN_DISPLAY_NAME} burner wallet for you.</p>
       <p className="indent">
@@ -66,18 +66,22 @@ function OnboardMoney({ advance }: { advance: () => void }) {
         </White>
       </p>
       <p>
-        This means that when you make moves on Dark Forest,{" "}
+        This means that when you make moves on Dark Forest Aztec,{" "}
         <White>
           {" "}
           you are authorizing the client to pay gas fees on your behalf
         </White>
         .
       </p>
-      <p>
+      {/* <p>
         To ensure the safety of your balance,{" "}
         <White>we require you to enable popups</White> so that all transactions
         may be confirmed by you. Note that you can disable popups for small
         transactions in settings. <Icon type={IconType.Settings} />
+      </p> */}
+      <p>
+        This is a fully onchain application, which means{" "}
+        <White>every action</White> you take will require gas fees.
       </p>
       <p>
         <White>
@@ -247,7 +251,7 @@ export default function OnboardingPane({
   return (
     <ModalPane
       id={ModalName.Onboarding}
-      title={"Welcome to Dark Forest"}
+      title={"Welcome to Dark Forest Aztec"}
       hideClose
       visible={visible}
       onClose={onClose}

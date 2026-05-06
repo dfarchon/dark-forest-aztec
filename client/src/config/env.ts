@@ -1,3 +1,9 @@
+import {
+  DEFAULT_ACCOUNT_MIN_BALANCE_FJ,
+  DEFAULT_SPONSORED_FPC_MIN_FJ,
+  parseFjDecimalToWei,
+} from "../utils/feeJuiceUnits";
+
 /**
  * Client env config: reads VITE_* from import.meta.env with defaults.
  * Used for node URL, indexer bootstrap, and default setting behavior (VITE_APP_MODE).
@@ -88,4 +94,44 @@ export function getSponsorMode(): boolean {
     return fromSponsor === "true" || fromSponsor === "1";
 
   return getBoolean("VITE_SPONSER_MODE", false);
+}
+
+/**
+ * Optional SponsoredFPC contract address (Aztec address string) when it differs
+ * from the default salt-derived instance (e.g. public testnet). Used only in sponsor mode.
+ * Build-time: `VITE_SPONSORED_FPC_ADDRESS`.
+ */
+export function getSponsoredFpcAddressFromEnv(): string | undefined {
+  const v = getString("VITE_SPONSORED_FPC_ADDRESS");
+  if (v === undefined) return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
+}
+
+/**
+ * Minimum SponsoredFPC FeeJuice balance (in wei) required before sponsored deploy / txs preflight.
+ * Env: `VITE_SPONSORED_FPC_MIN_BALANCE_FJ` as a decimal FJ string (e.g. "0.01").
+ * Falls back to {@link DEFAULT_SPONSORED_FPC_MIN_FJ} when unset or invalid.
+ */
+export function getSponsoredFpcMinBalanceFjWei(): bigint {
+  const raw = getString("VITE_SPONSORED_FPC_MIN_BALANCE_FJ");
+  if (raw !== undefined) {
+    const parsed = parseFjDecimalToWei(raw.trim());
+    if (parsed !== undefined && parsed > 0n) return parsed;
+  }
+  return parseFjDecimalToWei(DEFAULT_SPONSORED_FPC_MIN_FJ)!;
+}
+
+/**
+ * Minimum active-account FeeJuice balance (in wei) required before entering the game
+ * when `VITE_SPONSOR_MODE` is false. Env: `VITE_ACCOUNT_MIN_BALANCE_FJ` as decimal FJ (e.g. "5").
+ * Falls back to {@link DEFAULT_ACCOUNT_MIN_BALANCE_FJ} when unset or invalid.
+ */
+export function getAccountMinBalanceFjWei(): bigint {
+  const raw = getString("VITE_ACCOUNT_MIN_BALANCE_FJ");
+  if (raw !== undefined) {
+    const parsed = parseFjDecimalToWei(raw.trim());
+    if (parsed !== undefined && parsed > 0n) return parsed;
+  }
+  return parseFjDecimalToWei(DEFAULT_ACCOUNT_MIN_BALANCE_FJ)!;
 }

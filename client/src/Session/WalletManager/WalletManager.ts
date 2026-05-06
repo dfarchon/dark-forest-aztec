@@ -72,8 +72,14 @@ import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldS
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
+import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
+import { feeJuiceWeiFromGasPair } from "../../utils/sponsorFeeJuice";
 import { KeyStore } from "./KeyStore";
-import type { AccountRecord, WalletManagerConfig } from "./types";
+import type {
+  AccountRecord,
+  SponsorDeployPreflight,
+  WalletManagerConfig,
+} from "./types";
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 const DEPLOY_TIMEOUT_MS = 120_000;
@@ -271,6 +277,41 @@ async function registerGameContractsWithPxe(
   }
 }
 
+/**
+ * Register SponsoredFPC with the wallet for sponsor mode: optional address override
+ * (fetched from node) or canonical salt-derived instance.
+ */
+async function registerSponsoredFpcWithWallet(
+  node: AztecNode,
+  wallet: Wallet,
+  config: WalletManagerConfig,
+  onRegisterProgress?: (message: string) => void
+): Promise<AztecAddress | undefined> {
+  if (!config.sponsorMode) return undefined;
+
+  const override = config.sponsoredFpcAddressOverride?.trim();
+  if (override) {
+    const addr = AztecAddress.fromString(override);
+    const instance = await node.getContract(addr);
+    if (!instance) {
+      throw new Error(
+        `SponsoredFPC not found on node at ${override}. Check Aztec node URL and address, or clear the override in Connection settings.`
+      );
+    }
+    onRegisterProgress?.("Registering Sponsored FPC (custom address)");
+    await wallet.registerContract(instance, SponsoredFPCContractArtifact);
+    return instance.address;
+  }
+
+  const sponsoredFPC = await getContractInstanceFromInstantiationParams(
+    SponsoredFPCContractArtifact,
+    { salt: new Fr(SPONSORED_FPC_SALT) }
+  );
+  onRegisterProgress?.("Registering Sponsored FPC");
+  await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+  return sponsoredFPC.address;
+}
+
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: Wallet;
@@ -375,15 +416,11 @@ export class WalletManager {
 
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
     if (config.sponsorMode) {
-      const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-        SponsoredFPCContractArtifact,
-        { salt: new Fr(SPONSORED_FPC_SALT) }
-      );
-
       try {
-        await wallet.registerContract(
-          sponsoredFPC,
-          SponsoredFPCContractArtifact
+        sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
+          node,
+          wallet,
+          config
         );
       } catch (err) {
         console.warn(
@@ -391,7 +428,6 @@ export class WalletManager {
           err
         );
       }
-      sponsoredFpcAddress = sponsoredFPC.address;
     }
 
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
@@ -502,13 +538,12 @@ export class WalletManager {
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
 
     if (config.sponsorMode) {
-      const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-        SponsoredFPCContractArtifact,
-        { salt: new Fr(SPONSORED_FPC_SALT) }
+      sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
+        node,
+        wallet,
+        config,
+        (msg) => onProgress?.(5, total, msg)
       );
-      await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-      onProgress?.(5, total, "Registering Sponsored FPC");
-      sponsoredFpcAddress = sponsoredFPC.address;
     }
 
     const contractStartStep = config.sponsorMode ? 6 : 5;
@@ -707,6 +742,120 @@ export class WalletManager {
     }
   }
 
+  /**
+   * FeeJuice balance held by the SponsoredFPC used for sponsored fees.
+   * @returns `undefined` when not using sponsored fees; `0n` when depleted or on query failure.
+   */
+  async getSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
+    if (!this.sponsoredFpcAddress) return undefined;
+    try {
+      return await getFeeJuiceBalance(this.sponsoredFpcAddress, this.node);
+    } catch (err) {
+      console.error(
+        "[WalletManager] getSponsoredFpcFeeJuiceBalance failed for",
+        this.sponsoredFpcAddress.toString(),
+        err
+      );
+      return 0n;
+    }
+  }
+
+  /**
+   * Preflight SponsoredFPC FeeJuice vs estimated account-deploy cost (simulate when embedded).
+   */
+  async getSponsorDeployPreflight(): Promise<
+    SponsorDeployPreflight | undefined
+  > {
+    if (!this.sponsoredFpcAddress) return undefined;
+
+    const minWei = getSponsoredFpcMinBalanceFjWei();
+    const balanceWei = await getFeeJuiceBalance(
+      this.sponsoredFpcAddress,
+      this.node
+    );
+
+    if (this.isExternal) {
+      return {
+        balanceWei,
+        requiredWei: minWei,
+        sufficient: balanceWei >= minWei,
+        estimateSource: "threshold",
+      };
+    }
+
+    const active = this.activeAddress;
+    if (!active) return undefined;
+    const addrStr = active.toString();
+    const record = this.keyStore.getAccount(addrStr);
+    if (!record) return undefined;
+
+    const wallet = this.getEmbeddedWallet("getSponsorDeployPreflight");
+    const accountManager = await wallet.createECDSARAccount(
+      Fr.fromString(record.secretKey),
+      Fr.fromString(record.salt),
+      Buffer.from(record.signingKey, "hex")
+    );
+
+    const metadata = await this.wallet.getContractMetadata(
+      accountManager.address
+    );
+    if (metadata.isContractInitialized) {
+      return {
+        balanceWei,
+        requiredWei: minWei,
+        sufficient: balanceWei >= minWei,
+        estimateSource: "threshold",
+      };
+    }
+
+    try {
+      const deployMethod = await accountManager.getDeployMethod();
+      const sim = await deployMethod.simulate({
+        from: AztecAddress.ZERO,
+        fee: {
+          paymentMethod: new SponsoredFeePaymentMethod(
+            this.sponsoredFpcAddress
+          ),
+        },
+        skipClassPublication: true,
+        skipInstancePublication: true,
+      });
+      const fees = await this.node.getCurrentMinFees();
+      const estimatedGas = sim.estimatedGas;
+      if (!estimatedGas) {
+        console.warn(
+          "[WalletManager] sponsor deploy simulate returned no estimatedGas"
+        );
+        return {
+          balanceWei,
+          requiredWei: minWei,
+          sufficient: balanceWei >= minWei,
+          estimateSource: "simulate_failed",
+        };
+      }
+      const estWei = feeJuiceWeiFromGasPair(
+        estimatedGas.gasLimits,
+        estimatedGas.teardownGasLimits,
+        fees
+      );
+      const requiredWei = estWei > minWei ? estWei : minWei;
+      return {
+        balanceWei,
+        requiredWei,
+        sufficient: balanceWei >= requiredWei,
+        estimateSource: "simulate",
+      };
+    } catch (err) {
+      console.warn("[WalletManager] sponsor deploy simulate failed:", err);
+      return {
+        balanceWei,
+        requiredWei: minWei,
+        sufficient: balanceWei >= minWei,
+        estimateSource: "simulate_failed",
+      };
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -752,15 +901,28 @@ export class WalletManager {
     } as const;
 
     if (this.sponsoredFpcAddress) {
-      await deployMethod.send({
-        from: AztecAddress.ZERO,
-        fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(
-            this.sponsoredFpcAddress
-          ),
-        },
-        ...commonOpts,
-      });
+      try {
+        await deployMethod.send({
+          from: AztecAddress.ZERO,
+          fee: {
+            paymentMethod: new SponsoredFeePaymentMethod(
+              this.sponsoredFpcAddress
+            ),
+          },
+          ...commonOpts,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes("Insufficient fee payer balance") ||
+          msg.includes("insufficient fee payer balance")
+        ) {
+          throw new Error(
+            `Account deployment failed: SponsoredFPC fee payer balance too low (${msg}). Fund the SponsoredFPC contract or update SponsoredFPC in Connection settings, save, then choose Continue after updating SponsoredFPC in the terminal to retry. Use Refresh page if the app still does not pick up your changes.`
+          );
+        }
+        throw err;
+      }
       return true;
     }
 

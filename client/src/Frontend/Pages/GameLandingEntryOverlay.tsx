@@ -1,17 +1,20 @@
 import { GAME_NAME } from "@dfpunk/constants";
 import React from "react";
-import styled from "styled-components";
+import styled, { css } from "styled-components";
 
-import { Btn } from "../Components/Btn";
 import dfstyles from "../Styles/dfstyles";
 
 export type EntryModeChoice = "quick" | "standard" | "terminal";
 
 type Props = {
   onSelect: (mode: EntryModeChoice) => void;
+  onConfigureQuickJoin?: () => void;
 };
 
-export function GameLandingEntryOverlay({ onSelect }: Props) {
+export function GameLandingEntryOverlay({
+  onSelect,
+  onConfigureQuickJoin,
+}: Props) {
   return (
     <Backdrop role="dialog" aria-modal aria-labelledby="entry-overlay-title">
       <Card>
@@ -19,25 +22,49 @@ export function GameLandingEntryOverlay({ onSelect }: Props) {
         <Subtitle>Choose how you want to sign in</Subtitle>
         <Hint>Pick one. You can refresh the page later to switch.</Hint>
         <ButtonCol>
-          <PrimaryWrap>
-            <Btn size="large" onClick={() => onSelect("quick")}>
-              Quick join
-            </Btn>
-          </PrimaryWrap>
-          <Desc>
-            Fastest: creates or resumes a local wallet and keeps going.
-          </Desc>
+          <PrimaryRow>
+            <BigBtn
+              type="button"
+              $variant="primary"
+              onClick={() => onSelect("quick")}
+            >
+              Quick join (auto)
+            </BigBtn>
+            {onConfigureQuickJoin ? (
+              <GearBtn
+                type="button"
+                aria-label="Quick join settings"
+                title="Quick join settings"
+                onClick={onConfigureQuickJoin}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </GearBtn>
+            ) : null}
+          </PrimaryRow>
+          <Desc>Fastest: auto-selects your default local wallet.</Desc>
 
-          <Btn size="large" onClick={() => onSelect("standard")}>
+          <BigBtn type="button" onClick={() => onSelect("standard")}>
             Standard (buttons + prompts)
-          </Btn>
+          </BigBtn>
           <Desc>
             Guided clicks for wallet choices; terminal still shows status.
           </Desc>
 
-          <Btn size="large" onClick={() => onSelect("terminal")}>
+          <BigBtn type="button" onClick={() => onSelect("terminal")}>
             Terminal (advanced)
-          </Btn>
+          </BigBtn>
           <Desc>
             Classic typing flow: type numbers at the prompt and press Enter.
           </Desc>
@@ -95,20 +122,109 @@ const Hint = styled.p`
 const ButtonCol = styled.div`
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
+`;
 
-  df-button {
-    width: 100%;
-    justify-content: center;
+const primaryStyles = css`
+  justify-content: center;
+  text-align: center;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: ${dfstyles.colors.background};
+  background: ${dfstyles.colors.dfgreen};
+  border-color: ${dfstyles.colors.dfgreen};
+
+  &:hover {
+    color: ${dfstyles.colors.background};
+    background: ${dfstyles.colors.dfgreenlight};
+    border-color: ${dfstyles.colors.dfgreenlight};
   }
 `;
 
-const PrimaryWrap = styled.div`
-  --df-button-color: ${dfstyles.colors.dfgreen};
-  --df-button-background: rgba(0, 220, 130, 0.14);
-  --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
-  --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+const BigBtn = styled.button<{ $variant?: "primary" | "default" }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 48px;
+  min-width: calc(19ch + 50px);
+  padding: 4px 24px;
+  margin: 0;
+  font-family: inherit;
+  font-size: 16pt;
+  line-height: 1;
+  text-align: left;
+  border-radius: 4px;
+  border: 1px solid ${dfstyles.colors.borderDark};
+  background: transparent;
+  color: ${dfstyles.colors.text};
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition:
+    filter 0.15s,
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:focus-visible {
+    outline: 2px solid ${dfstyles.colors.dfgreen};
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  &:hover {
+    color: ${dfstyles.colors.background};
+    background: ${dfstyles.colors.text};
+    border-color: ${dfstyles.colors.border};
+    filter: brightness(80%);
+  }
+
+  ${({ $variant }) => $variant === "primary" && primaryStyles}
+`;
+
+const PrimaryRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const GearBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid ${dfstyles.colors.borderDark};
+  background: transparent;
+  color: ${dfstyles.colors.subtext};
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    filter 0.15s,
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:focus-visible {
+    outline: 2px solid ${dfstyles.colors.dfgreen};
+    outline-offset: 2px;
+  }
+
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  &:hover {
+    color: ${dfstyles.colors.dfgreen};
+    border-color: ${dfstyles.colors.dfgreen};
+    background: rgba(0, 220, 130, 0.06);
+  }
 `;
 
 const Desc = styled.p`

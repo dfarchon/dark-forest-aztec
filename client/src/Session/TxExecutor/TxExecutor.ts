@@ -21,6 +21,7 @@ import {
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { waitForTx } from "@aztec/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import type { TxHash, TxReceipt } from "@aztec/stdlib/tx";
 import type {
   PersistedTransaction,
@@ -31,6 +32,11 @@ import type {
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
+import {
+  getAccountMinBalanceFjWei,
+  getSponsoredFpcMinBalanceFjWei,
+} from "../../config/env";
+import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
@@ -306,6 +312,36 @@ export class TxExecutor {
 
         // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
         const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
+        if (sponsoredFpcAddress) {
+          const sponsorFjBal =
+            await this.walletManager.getSponsoredFpcFeeJuiceBalance();
+          const minWei = getSponsoredFpcMinBalanceFjWei();
+          if (sponsorFjBal === undefined || sponsorFjBal < minWei) {
+            throw new Error(
+              `[TxExecutor] SponsoredFPC at ${sponsoredFpcAddress.toString()} FeeJuice balance is below minimum (${minWei.toString()} wei units). Fund SponsoredFPC or change SponsoredFPC address in Connection settings and refresh the page.`
+            );
+          }
+        } else {
+          const activeAddr = this.walletManager.getActiveAddress();
+          const minAccountFj = getAccountMinBalanceFjWei();
+          if (activeAddr) {
+            let bal: bigint;
+            try {
+              bal = await getFeeJuiceBalance(activeAddr, this.node);
+            } catch (e) {
+              throw new Error(
+                `[TxExecutor] Could not verify account FeeJuice balance: ${
+                  e instanceof Error ? e.message : String(e)
+                }`
+              );
+            }
+            if (bal < minAccountFj) {
+              throw new Error(
+                `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice (e.g. gregojuice) before sending transactions.`
+              );
+            }
+          }
+        }
         const sendOptsNoWait = sponsoredFpcAddress
           ? ({
               from: this.walletManager.getActiveAddress()!,

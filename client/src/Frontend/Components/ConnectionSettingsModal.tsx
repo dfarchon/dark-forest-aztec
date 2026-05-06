@@ -1,7 +1,9 @@
+import { AztecAddress } from "@aztec/aztec.js/addresses";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 
 import {
+  getConnectionOverrides,
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
@@ -11,6 +13,8 @@ import {
   getIndexerBootstrapUrl,
   getNodeUrl,
   getProverUrl,
+  getSponsoredFpcAddressFromEnv,
+  getSponsorMode,
 } from "../../config/env";
 import dfstyles from "../Styles/dfstyles";
 import { Btn } from "./Btn";
@@ -46,14 +50,23 @@ export function ConnectionSettingsModal({
   const [nodeUrlInput, setNodeUrlInput] = useState("");
   const [indexerUrlInput, setIndexerUrlInput] = useState("");
   const [proverUrlInput, setProverUrlInput] = useState("");
+  const [sponsoredFpcInput, setSponsoredFpcInput] = useState("");
   const [saveMessage, setSaveMessage] = useState<
     "saved" | "restored" | "error" | null
   >(null);
+
+  const sponsorMode = getSponsorMode();
 
   const refreshForm = useCallback(() => {
     setNodeUrlInput(getEffectiveNodeUrl());
     setIndexerUrlInput(getEffectiveIndexerBootstrapUrl() ?? "");
     setProverUrlInput(getEffectiveProverUrl());
+    const localSponsor = getConnectionOverrides().sponsoredFpcAddress;
+    setSponsoredFpcInput(
+      localSponsor !== undefined && localSponsor !== null
+        ? localSponsor.trim()
+        : ""
+    );
   }, []);
 
   useEffect(() => {
@@ -83,25 +96,48 @@ export function ConnectionSettingsModal({
       setSaveMessage("error");
       return;
     }
+    const sponsorTrimmed = sponsoredFpcInput.trim();
+    if (sponsorMode && sponsorTrimmed.length > 0) {
+      try {
+        AztecAddress.fromString(sponsorTrimmed);
+      } catch {
+        setSaveMessage("error");
+        return;
+      }
+    }
     setConnectionOverrides({
       nodeUrl: nodeTrimmed,
       indexerBootstrapUrl: indexerTrimmed || null,
       proverUrl: proverTrimmed || "",
+      ...(sponsorMode
+        ? {
+            sponsoredFpcAddress:
+              sponsorTrimmed.length > 0 ? sponsorTrimmed : "",
+          }
+        : {}),
     });
     setSaveMessage("saved");
-  }, [nodeUrlInput, indexerUrlInput, proverUrlInput]);
+  }, [
+    nodeUrlInput,
+    indexerUrlInput,
+    proverUrlInput,
+    sponsoredFpcInput,
+    sponsorMode,
+  ]);
 
   const handleRestoreDefault = useCallback(() => {
     setConnectionOverrides({
       nodeUrl: "",
       indexerBootstrapUrl: undefined,
       proverUrl: "",
+      ...(sponsorMode ? { sponsoredFpcAddress: "" } : {}),
     });
     setNodeUrlInput(getNodeUrl());
     setIndexerUrlInput(getIndexerBootstrapUrl() ?? "");
     setProverUrlInput(getProverUrl());
+    setSponsoredFpcInput("");
     setSaveMessage("restored");
-  }, []);
+  }, [sponsorMode]);
 
   if (!open) return null;
 
@@ -158,6 +194,34 @@ export function ConnectionSettingsModal({
           placeholder={getProverUrl()}
           style={{ width: "100%", marginBottom: 12 }}
         />
+        {sponsorMode && (
+          <>
+            <label style={{ display: "block", marginBottom: 4 }}>
+              <Text>SponsoredFPC address (sponsor gas)</Text>
+            </label>
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: dfstyles.fontSizeS,
+                color: dfstyles.colors.subtext,
+              }}
+            >
+              Leave empty to use build default (
+              <code>VITE_SPONSORED_FPC_ADDRESS</code> or canonical salt-derived
+              instance). Save, then refresh the page so the wallet picks it up.
+            </p>
+            <TextInput
+              value={sponsoredFpcInput}
+              onChange={(e) =>
+                setSponsoredFpcInput((e.target as HTMLInputElement).value)
+              }
+              placeholder={
+                getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
+              }
+              style={{ width: "100%", marginBottom: 12 }}
+            />
+          </>
+        )}
         {saveMessage === "saved" && (
           <Text
             style={{
@@ -183,7 +247,9 @@ export function ConnectionSettingsModal({
         )}
         {saveMessage === "error" && (
           <Text style={{ color: dfstyles.colors.dfred, marginBottom: 8 }}>
-            Please enter valid HTTP(S) URLs.
+            {sponsorMode
+              ? "Please enter valid HTTP(S) URLs and a valid Aztec SponsoredFPC address (or leave sponsor empty)."
+              : "Please enter valid HTTP(S) URLs."}
           </Text>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>

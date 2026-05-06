@@ -1,6 +1,11 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
+import { Fr } from "@aztec/aztec.js/fields";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import type { Aliased } from "@aztec/aztec.js/wallet";
+import { SPONSORED_FPC_SALT } from "@aztec/constants";
+import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { hashToEmoji } from "@aztec/wallet-sdk/crypto";
 import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
@@ -26,9 +31,16 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
+  getEffectiveSponsoredFpcAddressOverride,
 } from "../../config/connection";
-import { getProverEnabled, getSponsorMode } from "../../config/env";
+import {
+  getAccountMinBalanceFjWei,
+  getProverEnabled,
+  getSponsoredFpcMinBalanceFjWei,
+  getSponsorMode,
+} from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
+import { resolveQuickJoinAccount } from "../../config/quickJoin";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import { resolveExternalWalletCapabilities } from "../../Session/ExternalWallet/capabilityValidation";
 import type {
@@ -47,6 +59,9 @@ import {
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
+import type { SponsorDeployPreflight } from "../../Session/WalletManager/types";
+import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
+import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
   GameWindowWrapper,
   InitRenderState,
@@ -55,6 +70,7 @@ import {
   Wrapper,
 } from "../Components/GameLandingPageComponents";
 import { MythicLabelText } from "../Components/Labels/MythicLabel";
+import { QuickJoinSettingsModal } from "../Components/QuickJoinSettingsModal";
 import { TextPreview } from "../Components/TextPreview";
 import {
   type ExternalWalletConnectionResult,
@@ -78,23 +94,619 @@ import {
 } from "./GameLandingEntryOverlay";
 
 function formatFeeJuice(amount: bigint): string {
-  // FeeJuice uses 18 decimals (ERC20-like).
-  const DECIMALS = 18n;
-  const BASE = 10n ** DECIMALS;
-  const whole = amount / BASE;
-  const frac = amount % BASE;
-  if (frac === 0n) return `${whole.toString()} FJ`;
-  const fracStr = frac.toString().padStart(Number(DECIMALS), "0");
-  const trimmed = fracStr.replace(/0+$/, "");
-  return `${whole.toString()}.${trimmed} FJ`;
+  return formatFeeJuiceWei(amount);
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function printSponsorDeployPreflight(
+  terminal: React.MutableRefObject<TerminalHandle | undefined>,
+  sponsoredAddr: { toString: () => string },
+  pf: SponsorDeployPreflight
+): void {
+  terminal.current?.println("");
+  terminal.current?.println(
+    `SponsoredFPC address: ${sponsoredAddr.toString()}`,
+    TerminalTextStyle.Sub
+  );
+  terminal.current?.println(
+    `SponsoredFPC FeeJuice balance: ${formatFeeJuiceWei(pf.balanceWei)}`,
+    TerminalTextStyle.Sub
+  );
+  terminal.current?.println(
+    `Minimum required (preflight): ${formatFeeJuiceWei(pf.requiredWei)} [source: ${pf.estimateSource}]`,
+    TerminalTextStyle.Sub
+  );
+}
+
+async function resolveInitialSponsoredFpcAddress(): Promise<AztecAddress> {
+  const override = getEffectiveSponsoredFpcAddressOverride();
+  if (override) return AztecAddress.fromString(override);
+
+  const instance = await getContractInstanceFromInstantiationParams(
+    SponsoredFPCContractArtifact,
+    { salt: new Fr(SPONSORED_FPC_SALT) }
+  );
+  return instance.address;
+}
+
+async function printInitialSponsorStatus(
+  terminal: React.MutableRefObject<TerminalHandle | undefined>
+): Promise<void> {
+  terminal.current?.println("Sponsor mode enabled.", TerminalTextStyle.Green);
+  try {
+    const sponsoredAddr = await resolveInitialSponsoredFpcAddress();
+    const node = createAztecNodeClient(getEffectiveNodeUrl());
+    const balanceWei = await getFeeJuiceBalance(sponsoredAddr, node);
+    const minWei = getSponsoredFpcMinBalanceFjWei();
+
+    terminal.current?.println(
+      `SponsoredFPC address: ${sponsoredAddr.toString()}`,
+      TerminalTextStyle.Sub
+    );
+    terminal.current?.println(
+      `SponsoredFPC FeeJuice balance: ${formatFeeJuiceWei(balanceWei)}`,
+      TerminalTextStyle.Sub
+    );
+    terminal.current?.println(
+      `Minimum required (preflight): ${formatFeeJuiceWei(minWei)}`,
+      TerminalTextStyle.Sub
+    );
+    if (balanceWei < minWei) {
+      terminal.current?.println(
+        "SponsoredFPC balance is too low. Fund this contract or set a funded SponsoredFPC address in Connection settings before continuing.",
+        TerminalTextStyle.Red
+      );
+    }
+  } catch (err) {
+    console.error("Failed to print initial SponsoredFPC status:", err);
+    terminal.current?.println(
+      "Could not read SponsoredFPC status. Check Connection settings and the Aztec node URL before continuing.",
+      TerminalTextStyle.Red
+    );
+  }
+  terminal.current?.println("");
+}
+
+function isInsufficientSponsoredFeeError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("Insufficient fee payer balance") ||
+    msg.includes("insufficient fee payer balance") ||
+    msg.includes("SponsoredFPC fee payer balance too low")
+  );
+}
+
+function printSponsorRecoveryMenu(
+  terminal: React.MutableRefObject<TerminalHandle | undefined>,
+  setConnectionSettingsOpen: (open: boolean) => void
+): void {
+  terminal.current?.println(
+    "After funding or changing SponsoredFPC in Connection settings, choose an action below.",
+    TerminalTextStyle.Sub
+  );
+  terminal.current?.printLink(
+    "Open connection settings",
+    () => setConnectionSettingsOpen(true),
+    TerminalTextStyle.Blue
+  );
+  terminal.current?.newline();
+  terminal.current?.printOption("c", "Continue after updating SponsoredFPC", {
+    hideKey: true,
+  });
+  terminal.current?.printOption("r", "Refresh page", { hideKey: true });
+}
+
+type SponsorPreflightPurpose = "deploy" | "transactions";
+
+/**
+ * Sponsor-mode infrastructure check with recovery: rebuild WalletManager after
+ * Connection settings changes, or full page reload.
+ */
+async function runSponsorInfrastructurePreflightGate(params: {
+  terminal: React.MutableRefObject<TerminalHandle | undefined>;
+  getWalletManager: () => WalletManager | undefined;
+  purpose: SponsorPreflightPurpose;
+  setConnectionSettingsOpen: (open: boolean) => void;
+  setTerminalVisible: (visible: boolean) => void;
+  /** Landing entry mode (`terminal` is treated like standard for visibility). */
+  entryMode: "pending" | "quick" | "standard" | "terminal";
+  rebuildWalletAfterConnectionSave: () => Promise<void>;
+  onRefreshPage: () => Promise<void>;
+}): Promise<void> {
+  const {
+    terminal,
+    getWalletManager,
+    purpose,
+    setConnectionSettingsOpen,
+    setTerminalVisible,
+    entryMode,
+    rebuildWalletAfterConnectionSave,
+    onRefreshPage,
+  } = params;
+
+  if (entryMode === "quick") {
+    setTerminalVisible(true);
+  }
+
+  while (true) {
+    const wm = getWalletManager();
+    if (!wm) {
+      terminal.current?.println(
+        "Wallet manager is unavailable. Choose Continue to retry after checking Connection settings, or refresh the page.",
+        TerminalTextStyle.Red
+      );
+      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+      continue;
+    }
+
+    const sponsoredAddr = wm.getSponsoredFpcAddress();
+    if (!sponsoredAddr) {
+      terminal.current?.println(
+        wm.isExternalWallet()
+          ? "Sponsor mode is on but SponsoredFPC could not be registered on the extension wallet. Check Connection settings and the Aztec node URL."
+          : "Sponsor mode is on but SponsoredFPC could not be registered. Check Connection settings and the Aztec node URL.",
+        TerminalTextStyle.Red
+      );
+      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+      continue;
+    }
+
+    const pf = await wm.getSponsorDeployPreflight();
+    if (!pf) {
+      terminal.current?.println(
+        "Could not read SponsoredFPC FeeJuice balance. Check the Aztec node URL and SponsoredFPC address in Connection settings.",
+        TerminalTextStyle.Red
+      );
+      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+      continue;
+    }
+
+    printSponsorDeployPreflight(terminal, sponsoredAddr, pf);
+
+    if (pf.sufficient) return;
+
+    terminal.current?.println(
+      purpose === "transactions"
+        ? "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings."
+        : "SponsoredFPC balance is too low for account deployment. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
+      TerminalTextStyle.Red
+    );
+    printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
+    const input = (await terminal.current?.getInput()) || "";
+    if (input === "r") {
+      await onRefreshPage();
+      return;
+    }
+    if (input === "c") {
+      try {
+        await rebuildWalletAfterConnectionSave();
+      } catch (e) {
+        terminal.current?.println(
+          e instanceof Error ? e.message : String(e),
+          TerminalTextStyle.Red
+        );
+      }
+    }
+  }
+}
+
+async function deployActiveAccountWithSponsorRecovery(params: {
+  terminal: React.MutableRefObject<TerminalHandle | undefined>;
+  getWalletManager: () => WalletManager | undefined;
+  setConnectionSettingsOpen: (open: boolean) => void;
+  rebuildWalletAfterConnectionSave: () => Promise<void>;
+  onRefreshPage: () => Promise<void>;
+}): Promise<void> {
+  const {
+    terminal,
+    getWalletManager,
+    setConnectionSettingsOpen,
+    rebuildWalletAfterConnectionSave,
+    onRefreshPage,
+  } = params;
+
+  while (true) {
+    const wm = getWalletManager();
+    if (!wm) throw new Error("no wallet manager");
+    try {
+      await wm.deployActiveAccountIfNeeded((msg) =>
+        terminal.current?.println(msg, TerminalTextStyle.Sub)
+      );
+      return;
+    } catch (err) {
+      if (!isInsufficientSponsoredFeeError(err)) throw err;
+      terminal.current?.println(
+        err instanceof Error ? err.message : String(err),
+        TerminalTextStyle.Red
+      );
+      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Print recovery options when the account FeeJuice query fails or the user must
+ * update connection settings.
+ */
+function printAccountFeeJuiceRecoveryMenu(
+  terminal: React.MutableRefObject<TerminalHandle | undefined>,
+  setConnectionSettingsOpen: (open: boolean) => void,
+  useCompactOptions: boolean
+): void {
+  terminal.current?.println(
+    "Check Connection settings (Aztec node URL), fund FeeJuice, then retry.",
+    TerminalTextStyle.Sub
+  );
+  terminal.current?.printLink(
+    "Open connection settings",
+    () => setConnectionSettingsOpen(true),
+    TerminalTextStyle.Blue
+  );
+  terminal.current?.newline();
+  if (useCompactOptions) {
+    terminal.current?.printOption("b", "Retry balance query", {
+      hideKey: true,
+    });
+    terminal.current?.printOption("c", "Continue after updating connection", {
+      hideKey: true,
+    });
+    terminal.current?.printOption("r", "Refresh page", { hideKey: true });
+  } else {
+    terminal.current?.printOption("b", "Retry balance query");
+    terminal.current?.printOption("c", "Continue after updating connection");
+    terminal.current?.printOption("r", "Refresh page");
+  }
+}
+
+/** Non-sponsored mode: ensure active account has enough FeeJuice before continuing. */
+async function runAccountFeeJuicePreflightGate(params: {
+  terminal: React.MutableRefObject<TerminalHandle | undefined>;
+  getWalletManager: () => WalletManager | undefined;
+  setConnectionSettingsOpen: (open: boolean) => void;
+  setTerminalVisible: (visible: boolean) => void;
+  entryMode: "pending" | "quick" | "standard" | "terminal";
+  rebuildWalletAfterConnectionSave: () => Promise<void>;
+  onRefreshPage: () => Promise<void>;
+}): Promise<void> {
+  const {
+    terminal,
+    getWalletManager,
+    setConnectionSettingsOpen,
+    setTerminalVisible,
+    entryMode,
+    rebuildWalletAfterConnectionSave,
+    onRefreshPage,
+  } = params;
+
+  const minWei = getAccountMinBalanceFjWei();
+  const useCompactOptions = entryMode !== "terminal";
+
+  if (entryMode === "quick") {
+    setTerminalVisible(true);
+  }
+
+  async function queryFreshBalance(
+    wm: WalletManager
+  ): Promise<{ ok: true; balance: bigint } | { ok: false; error: unknown }> {
+    const addr = wm.getActiveAddress();
+    if (!addr) return { ok: false, error: new Error("No active account") };
+    try {
+      const node = createAztecNodeClient(getEffectiveNodeUrl());
+      const balance = await getFeeJuiceBalance(addr, node);
+      await wm.getBalance();
+      return { ok: true, balance };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
+  outer: while (true) {
+    const wm = getWalletManager();
+    if (!wm) {
+      terminal.current?.println(
+        "Wallet manager is unavailable. Choose Continue after Connection settings, or refresh the page.",
+        TerminalTextStyle.Red
+      );
+      printAccountFeeJuiceRecoveryMenu(
+        terminal,
+        setConnectionSettingsOpen,
+        useCompactOptions
+      );
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+      continue;
+    }
+
+    const initial = await queryFreshBalance(wm);
+    if (!initial.ok) {
+      console.error("Account FeeJuice query failed:", initial.error);
+      terminal.current?.println(
+        "Could not read your FeeJuice balance. Check the Aztec node URL in Connection settings.",
+        TerminalTextStyle.Red
+      );
+      printAccountFeeJuiceRecoveryMenu(
+        terminal,
+        setConnectionSettingsOpen,
+        useCompactOptions
+      );
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return;
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+      }
+      continue;
+    }
+
+    if (initial.balance >= minWei) {
+      terminal.current?.println(
+        `FeeJuice OK (${formatFeeJuiceWei(initial.balance)} ≥ minimum ${formatFeeJuiceWei(minWei)}).`,
+        TerminalTextStyle.Green
+      );
+      return;
+    }
+
+    terminal.current?.println("");
+    terminal.current?.println(
+      "⚠ FeeJuice is required to continue.",
+      TerminalTextStyle.Yellow
+    );
+    terminal.current?.println(
+      `Minimum required: ${formatFeeJuiceWei(minWei)}. Current: ${formatFeeJuiceWei(initial.balance)}.`,
+      TerminalTextStyle.Subber
+    );
+    terminal.current?.println(
+      "Bridge FeeJuice on Aztec (e.g. gregojuice), then confirm your balance here.",
+      TerminalTextStyle.Subber
+    );
+    terminal.current?.println("");
+
+    let opened = false;
+    terminal.current?.printLink(
+      "↗ Open gregojuice faucet",
+      () => {
+        if (!opened) opened = true;
+        window.open(
+          externalLinks.aztecTestnet.feeJuiceBridge,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      },
+      TerminalTextStyle.Blue
+    );
+    terminal.current?.newline();
+    terminal.current?.println(
+      useCompactOptions
+        ? "Use ⟳ refresh on the balance line, or wait a few seconds for auto-refresh."
+        : "Click the link above to open the faucet, use ⟳ refresh on the balance line, or wait for auto-refresh.",
+      TerminalTextStyle.Sub
+    );
+
+    let bal = initial.balance;
+    let balanceLinePrinted = false;
+    let requeryInFlight = false;
+    const BALANCE_LINE_FRAGMENTS = 3;
+
+    const printBalanceLine = (
+      valueText: string,
+      refreshState: "ready" | "loading",
+      loadingIcon = "⟳"
+    ) => {
+      terminal.current?.print(`FeeJuice balance: ${valueText} `);
+      if (refreshState === "loading") {
+        terminal.current?.print(
+          `${loadingIcon} refreshing...`,
+          TerminalTextStyle.Sub
+        );
+      } else {
+        terminal.current?.printLink(
+          "⟳ refresh",
+          () => {
+            void runRequerySpinner().catch(() => {});
+          },
+          TerminalTextStyle.Blue
+        );
+      }
+      terminal.current?.newline();
+    };
+
+    async function promptAfterFailedBalanceQuery(
+      context: string
+    ): Promise<"restart_outer" | "retry_inner" | "exit"> {
+      console.error(context);
+      terminal.current?.println(
+        "Could not read FeeJuice balance. Check Connection settings or retry.",
+        TerminalTextStyle.Red
+      );
+      printAccountFeeJuiceRecoveryMenu(
+        terminal,
+        setConnectionSettingsOpen,
+        useCompactOptions
+      );
+      const input = (await terminal.current?.getInput()) || "";
+      if (input === "r") {
+        await onRefreshPage();
+        return "exit";
+      }
+      if (input === "c") {
+        try {
+          await rebuildWalletAfterConnectionSave();
+        } catch (e) {
+          terminal.current?.println(
+            e instanceof Error ? e.message : String(e),
+            TerminalTextStyle.Red
+          );
+        }
+        return "restart_outer";
+      }
+      if (input === "b") return "retry_inner";
+      return "restart_outer";
+    }
+
+    const runRequerySpinner = async (): Promise<
+      { ok: true; balance: bigint } | { ok: false }
+    > => {
+      if (requeryInFlight) {
+        return { ok: true, balance: bal };
+      }
+      requeryInFlight = true;
+      let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+      try {
+        if (balanceLinePrinted) {
+          terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
+        }
+        const SPINNER_FRAMES = ["◐", "◓", "◑", "◒"];
+        let spinnerIndex = 0;
+        printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
+        balanceLinePrinted = true;
+        spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
+
+        spinnerInterval = setInterval(() => {
+          if (!terminal.current) return;
+          terminal.current.removeLast(BALANCE_LINE_FRAGMENTS);
+          printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
+          spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
+        }, 120);
+
+        const nextQuery = await queryFreshBalance(wm);
+        if (!nextQuery.ok) {
+          return { ok: false };
+        }
+
+        await sleep(1500);
+
+        if (balanceLinePrinted) {
+          terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
+        }
+        printBalanceLine(formatFeeJuiceWei(nextQuery.balance), "ready");
+        balanceLinePrinted = true;
+        return { ok: true, balance: nextQuery.balance };
+      } catch (err) {
+        console.error("FeeJuice balance refresh failed:", err);
+        if (balanceLinePrinted && terminal.current) {
+          terminal.current.removeLast(BALANCE_LINE_FRAGMENTS);
+          balanceLinePrinted = false;
+        }
+        return { ok: false };
+      } finally {
+        if (spinnerInterval) clearInterval(spinnerInterval);
+        requeryInFlight = false;
+      }
+    };
+
+    inner: while (bal < minWei) {
+      const rq = await runRequerySpinner();
+      if (!rq.ok) {
+        const recovery = await promptAfterFailedBalanceQuery(
+          "Account FeeJuice query failed during refresh."
+        );
+        if (recovery === "exit") return;
+        if (recovery === "restart_outer") continue outer;
+        continue inner;
+      }
+
+      bal = rq.balance;
+      if (bal >= minWei) {
+        terminal.current?.println(
+          `FeeJuice OK (${formatFeeJuiceWei(bal)} ≥ minimum ${formatFeeJuiceWei(minWei)}).`,
+          TerminalTextStyle.Green
+        );
+        return;
+      }
+
+      await sleep(8000);
+    }
+  }
+}
+
 /** Full-screen enter effect for Quick play (matches LandingPage enter duration). */
 const QUICK_PLAY_ENTER_TRANSITION_MS = 1100;
+const REFRESH_PAGE_TRANSITION_MS = 1100;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -256,6 +868,7 @@ export function GameLandingPage() {
   const syncStartPrintedRef = useRef(false);
   const chainClockSyncPrintedRef = useRef(false);
   const lastLoggedGamestateSubStepRef = useRef<string | null>(null);
+  const walletMenuSponsorStatusPrintedRef = useRef(false);
   const externalWalletSimulationSupportRef =
     useRef<ExternalWalletSimulationSupport | null>(null);
   const selectedWalletModeRef = useRef<SelectedWalletMode>(null);
@@ -267,6 +880,10 @@ export function GameLandingPage() {
   const quickEnterTimeoutRef = useRef<number | null>(null);
   const quickEnterFinalizeScheduledRef = useRef(false);
   const [enterTransitionVisible, setEnterTransitionVisible] = useState(false);
+  const [refreshTransitionVisible, setRefreshTransitionVisible] =
+    useState(false);
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
+  const [quickJoinSettingsOpen, setQuickJoinSettingsOpen] = useState(false);
   const [localAccountCount, setLocalAccountCount] = useState(
     () => new KeyStore("dfpunk").listAccounts().length
   );
@@ -295,6 +912,12 @@ export function GameLandingPage() {
 
   const refreshLocalAccountCount = useCallback(() => {
     setLocalAccountCount(new KeyStore("dfpunk").listAccounts().length);
+  }, []);
+
+  const playRefreshPageTransition = useCallback(async () => {
+    setRefreshTransitionVisible(true);
+    await sleep(REFRESH_PAGE_TRANSITION_MS);
+    window.location.reload();
   }, []);
 
   const printInitializationStage = useCallback(
@@ -421,6 +1044,7 @@ export function GameLandingPage() {
       storagePrefix: "dfpunk",
       proverUrl: getEffectiveProverUrl(),
       sponsorMode,
+      sponsoredFpcAddressOverride: getEffectiveSponsoredFpcAddressOverride(),
       pxeConfig: {
         proverEnabled: getProverEnabled(),
       },
@@ -463,6 +1087,91 @@ export function GameLandingPage() {
     buildWalletConfig,
     refreshLocalAccountCount,
     resetInitializationTerminalLogging,
+  ]);
+
+  const initializeExternalWalletManager = useCallback(
+    async (result: ExternalWalletConnectionResult) => {
+      if (selectedWalletModeRef.current !== "external") {
+        throw new Error(
+          "Extension wallet mode is not selected for this session."
+        );
+      }
+
+      resetInitializationTerminalLogging();
+      setLoadingPhase({ step: "wallet" });
+      try {
+        const missingSupport = describeMissingExternalWalletSupport(result);
+        if (missingSupport) {
+          throw new Error(
+            `External wallet session is missing required ${missingSupport} permission${
+              missingSupport.includes(" and ") ? "s" : ""
+            }. Reconnect and approve the requested permissions.`
+          );
+        }
+
+        const wm = await WalletManager.createFromExternalWallet(
+          result.wallet,
+          buildWalletConfig(),
+          result.address
+        );
+        walletManagerRef.current = wm;
+        externalWalletSimulationSupportRef.current = {
+          supportsUtilitySimulation: result.supportsUtilitySimulation,
+          supportsTransactionSimulation: result.supportsTransactionSimulation,
+          supportsTransactionExecution: result.supportsTransactionExecution,
+        };
+        connectWallet(result.wallet, result.address);
+        rememberSession(result.descriptor);
+        lockWalletSelection("external");
+        setLoadingPhase({ step: "done" });
+        return wm;
+      } catch (err) {
+        externalWalletSimulationSupportRef.current = null;
+        setLoadingPhase({ step: "done" });
+        await releaseWalletSession();
+        throw err;
+      }
+    },
+    [
+      buildWalletConfig,
+      connectWallet,
+      lockWalletSelection,
+      releaseWalletSession,
+      rememberSession,
+      resetInitializationTerminalLogging,
+    ]
+  );
+
+  /**
+   * Destroy and recreate WalletManager so sponsor Connection settings overrides
+   * (node URL, SponsoredFPC address) take effect without a full page reload.
+   */
+  const rebuildWalletAfterConnectionSave = useCallback(async () => {
+    const prev = walletManagerRef.current;
+    const activeStr = prev?.getActiveAddress()?.toString();
+    if (!activeStr) {
+      throw new Error("No active account to restore after connection change.");
+    }
+    const mode = selectedWalletModeRef.current;
+    prev?.destroy();
+    walletManagerRef.current = undefined;
+    externalWalletSimulationSupportRef.current = null;
+
+    if (mode === "local") {
+      const next = await ensureEmbeddedWalletManager();
+      await next.switchAccount(activeStr, () => {});
+      return;
+    }
+    if (mode === "external") {
+      const result = await reconnectRememberedWallet();
+      await initializeExternalWalletManager(result);
+      return;
+    }
+    throw new Error("Wallet mode is not selected.");
+  }, [
+    ensureEmbeddedWalletManager,
+    initializeExternalWalletManager,
+    reconnectRememberedWallet,
   ]);
 
   useEffect(() => {
@@ -531,9 +1240,27 @@ export function GameLandingPage() {
             terminalHandle.current?.println(msg, TerminalTextStyle.Sub);
           });
         } else {
-          await wm.switchAccount(accounts[0].address, (msg) =>
+          const chosen = resolveQuickJoinAccount(accounts);
+          if (!chosen) {
+            throw new Error("Local accounts list was unexpectedly empty.");
+          }
+          await wm.switchAccount(chosen.address, (msg) =>
             terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
           );
+        }
+        if (generation !== quickBootstrapEffectGenRef.current) return;
+
+        if (sponsorMode) {
+          await runSponsorInfrastructurePreflightGate({
+            terminal: terminalHandle,
+            getWalletManager: () => walletManagerRef.current,
+            purpose: "deploy",
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: "quick",
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 
@@ -561,62 +1288,14 @@ export function GameLandingPage() {
     entryMode,
     ensureEmbeddedWalletManager,
     lockWalletSelection,
+    playRefreshPageTransition,
+    rebuildWalletAfterConnectionSave,
     refreshLocalAccountCount,
     selectWalletMode,
+    sponsorMode,
+    setConnectionSettingsOpen,
+    setTerminalVisible,
   ]);
-
-  const initializeExternalWalletManager = useCallback(
-    async (result: ExternalWalletConnectionResult) => {
-      if (selectedWalletModeRef.current !== "external") {
-        throw new Error(
-          "Extension wallet mode is not selected for this session."
-        );
-      }
-
-      resetInitializationTerminalLogging();
-      setLoadingPhase({ step: "wallet" });
-      try {
-        const missingSupport = describeMissingExternalWalletSupport(result);
-        if (missingSupport) {
-          throw new Error(
-            `External wallet session is missing required ${missingSupport} permission${
-              missingSupport.includes(" and ") ? "s" : ""
-            }. Reconnect and approve the requested permissions.`
-          );
-        }
-
-        const wm = await WalletManager.createFromExternalWallet(
-          result.wallet,
-          buildWalletConfig(),
-          result.address
-        );
-        walletManagerRef.current = wm;
-        externalWalletSimulationSupportRef.current = {
-          supportsUtilitySimulation: result.supportsUtilitySimulation,
-          supportsTransactionSimulation: result.supportsTransactionSimulation,
-          supportsTransactionExecution: result.supportsTransactionExecution,
-        };
-        connectWallet(result.wallet, result.address);
-        rememberSession(result.descriptor);
-        lockWalletSelection("external");
-        setLoadingPhase({ step: "done" });
-        return wm;
-      } catch (err) {
-        externalWalletSimulationSupportRef.current = null;
-        setLoadingPhase({ step: "done" });
-        await releaseWalletSession();
-        throw err;
-      }
-    },
-    [
-      buildWalletConfig,
-      connectWallet,
-      lockWalletSelection,
-      releaseWalletSession,
-      rememberSession,
-      resetInitializationTerminalLogging,
-    ]
-  );
 
   const ensureIndexerConnection = useCallback(async () => {
     if (indexerRef.current) {
@@ -1197,43 +1876,49 @@ export function GameLandingPage() {
       const rememberedSession = getRememberedSession();
       const selectedMode = selectedWalletModeRef.current;
 
-      if (isLobby) {
-        terminal.current?.newline();
-        terminal.current?.printElement(
-          <MythicLabelText text={`You are joining a Dark Forest lobby`} />
-        );
-        terminal.current?.newline();
-        terminal.current?.newline();
-      } else {
-        terminal.current?.newline();
-        terminal.current?.newline();
-        terminal.current?.printElement(
-          <MythicLabelText text={`                 ${GAME_NAME}`} />
-        );
-        terminal.current?.newline();
-        terminal.current?.newline();
+      if (selectedMode === null) {
+        if (isLobby) {
+          terminal.current?.newline();
+          terminal.current?.printElement(
+            <MythicLabelText text={`You are joining a Dark Forest lobby`} />
+          );
+          terminal.current?.newline();
+          terminal.current?.newline();
+        } else {
+          terminal.current?.newline();
+          terminal.current?.newline();
+          terminal.current?.printElement(
+            <MythicLabelText text={`                 ${GAME_NAME}`} />
+          );
+          terminal.current?.newline();
+          terminal.current?.newline();
 
-        // Project description (Version/Date/Champion table commented out below)
-        terminal.current?.println(
-          "Decentralized space conquest. Explore, expand, and compete in a",
-          TerminalTextStyle.Text
-        );
-        terminal.current?.println(
-          "universe of planets and artifacts. Runs on " +
-            CHAIN_DISPLAY_NAME +
-            ".",
-          TerminalTextStyle.Text
-        );
+          // Project description (Version/Date/Champion table commented out below)
+          terminal.current?.println(
+            "Decentralized space conquest. Explore, expand, and compete in a",
+            TerminalTextStyle.Text
+          );
+          terminal.current?.println(
+            "universe of planets and artifacts. Runs on " +
+              CHAIN_DISPLAY_NAME +
+              ".",
+            TerminalTextStyle.Text
+          );
 
-        terminal.current?.println(
-          `APP VERSION ${APP_VERSION}.`,
-          TerminalTextStyle.Sub
-        );
+          terminal.current?.println(
+            `APP VERSION ${APP_VERSION}.`,
+            TerminalTextStyle.Sub
+          );
 
-        terminal.current?.newline();
-        terminal.current?.newline();
+          terminal.current?.newline();
+          terminal.current?.newline();
 
-        /* Version / Date / Champion table (commented out)
+          if (sponsorMode && !walletMenuSponsorStatusPrintedRef.current) {
+            walletMenuSponsorStatusPrintedRef.current = true;
+            await printInitialSponsorStatus(terminal);
+          }
+
+          /* Version / Date / Champion table (commented out)
         terminal.current?.print("    ");
         terminal.current?.print("Version", TerminalTextStyle.Sub);
         terminal.current?.print("    ");
@@ -1283,17 +1968,18 @@ export function GameLandingPage() {
         terminal.current?.newline();
         terminal.current?.newline();
         */
+        }
+        terminal.current?.println("");
+        terminal.current?.println(
+          "Wallet choice will be locked for this session after login completes.",
+          TerminalTextStyle.Sub
+        );
+        terminal.current?.println(
+          "Refresh the page to use a different wallet.",
+          TerminalTextStyle.Sub
+        );
+        terminal.current?.println("");
       }
-      terminal.current?.println("");
-      terminal.current?.println(
-        "Wallet choice will be locked for this session after login completes.",
-        TerminalTextStyle.Sub
-      );
-      terminal.current?.println(
-        "Refresh the page to use a different wallet.",
-        TerminalTextStyle.Sub
-      );
-      terminal.current?.println("");
 
       if (selectedMode === null) {
         terminal.current?.printOption("1", "Use local wallet.");
@@ -1432,6 +2118,7 @@ export function GameLandingPage() {
       isLobby,
       localAccountCount,
       selectWalletMode,
+      sponsorMode,
     ]
   );
 
@@ -1845,194 +2532,186 @@ export function GameLandingPage() {
       terminal.current?.println("");
       terminal.current?.println(`Welcome, player ${playerAddress}.`);
       if (walletManager.isExternalWallet()) {
+        if (sponsorMode) {
+          await runSponsorInfrastructurePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            purpose: "transactions",
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        } else {
+          await runAccountFeeJuicePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        }
+        if (entryModeRef.current === "quick") {
+          setTerminalVisible(false);
+        }
         setStep(TerminalPromptStep.FETCHING_ETH_DATA);
         return;
       }
 
       if (sponsorMode) {
+        await runSponsorInfrastructurePreflightGate({
+          terminal,
+          getWalletManager: () => walletManagerRef.current,
+          purpose: "deploy",
+          setConnectionSettingsOpen,
+          setTerminalVisible,
+          entryMode: entryModeRef.current,
+          rebuildWalletAfterConnectionSave,
+          onRefreshPage: playRefreshPageTransition,
+        });
         terminal.current?.println(
-          "Sponsor mode enabled. Deploying account without FeeJuice check..."
+          "Sponsor mode: deploying account if needed (sponsored fees)..."
         );
-        await walletManager.deployActiveAccountIfNeeded((msg) =>
-          terminal.current?.println(msg, TerminalTextStyle.Sub)
-        );
+        try {
+          await deployActiveAccountWithSponsorRecovery({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        } catch (err) {
+          console.error(err);
+          terminal.current?.println(
+            err instanceof Error ? err.message : String(err),
+            TerminalTextStyle.Red
+          );
+          setStep(TerminalPromptStep.TERMINATED);
+          return;
+        }
+        if (entryModeRef.current === "quick") {
+          setTerminalVisible(false);
+        }
         setStep(TerminalPromptStep.FETCHING_ETH_DATA);
         return;
       }
 
-      // Pre-check balance so we can skip the faucet warning when already funded.
-      try {
-        const bal = await walletManager.getBalance();
-        if (bal > 0n) {
-          terminal.current?.println(
-            "FeeJuice OK. Deploying account if needed..."
-          );
-          await walletManager.deployActiveAccountIfNeeded((msg) =>
-            terminal.current?.println(msg, TerminalTextStyle.Sub)
-          );
-          setStep(TerminalPromptStep.FETCHING_ETH_DATA);
-        } else {
-          if (entryModeRef.current === "quick") {
-            setTerminalVisible(true);
-          }
-          setStep(TerminalPromptStep.CHECK_FEE_JUICE);
-        }
-      } catch (e) {
-        console.error("Failed to pre-check FeeJuice balance:", e);
-        if (entryModeRef.current === "quick") {
-          setTerminalVisible(true);
-        }
-        setStep(TerminalPromptStep.CHECK_FEE_JUICE);
+      await runAccountFeeJuicePreflightGate({
+        terminal,
+        getWalletManager: () => walletManagerRef.current,
+        setConnectionSettingsOpen,
+        setTerminalVisible,
+        entryMode: entryModeRef.current,
+        rebuildWalletAfterConnectionSave,
+        onRefreshPage: playRefreshPageTransition,
+      });
+      terminal.current?.println("Deploying account if needed...");
+      await walletManager.deployActiveAccountIfNeeded((msg) =>
+        terminal.current?.println(msg, TerminalTextStyle.Sub)
+      );
+      if (entryModeRef.current === "quick") {
+        setTerminalVisible(false);
       }
+      setStep(TerminalPromptStep.FETCHING_ETH_DATA);
     },
-    [sponsorMode]
+    [playRefreshPageTransition, rebuildWalletAfterConnectionSave, sponsorMode]
   );
 
   const advanceStateFromCheckFeeJuice = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
       const walletManager = walletManagerRef.current;
       if (!walletManager) throw new Error("no wallet manager");
+
       if (walletManager.isExternalWallet()) {
+        if (sponsorMode) {
+          await runSponsorInfrastructurePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            purpose: "transactions",
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        } else {
+          await runAccountFeeJuicePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        }
+        if (entryModeRef.current === "quick") {
+          setTerminalVisible(false);
+        }
         setStep(TerminalPromptStep.FETCHING_ETH_DATA);
         return;
       }
 
       if (sponsorMode) {
+        await runSponsorInfrastructurePreflightGate({
+          terminal,
+          getWalletManager: () => walletManagerRef.current,
+          purpose: "deploy",
+          setConnectionSettingsOpen,
+          setTerminalVisible,
+          entryMode: entryModeRef.current,
+          rebuildWalletAfterConnectionSave,
+          onRefreshPage: playRefreshPageTransition,
+        });
         terminal.current?.println(
-          "Sponsor mode enabled. Deploying account without FeeJuice faucet..."
+          "Sponsor mode: deploying account if needed (sponsored fees)..."
         );
-        await walletManager.deployActiveAccountIfNeeded((msg) =>
-          terminal.current?.println(msg, TerminalTextStyle.Sub)
-        );
+        try {
+          await deployActiveAccountWithSponsorRecovery({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        } catch (err) {
+          console.error(err);
+          terminal.current?.println(
+            err instanceof Error ? err.message : String(err),
+            TerminalTextStyle.Red
+          );
+          setStep(TerminalPromptStep.TERMINATED);
+          return;
+        }
+        if (entryModeRef.current === "quick") {
+          setTerminalVisible(false);
+        }
         setStep(TerminalPromptStep.FETCHING_ETH_DATA);
         return;
       }
 
-      let opened = false;
-      let bal: bigint = 0n;
-      let firstRender = true;
-      let balanceLinePrinted = false;
-      let requeryInFlight = false;
-      // One "balance line" is printed as:
-      // - print(...)          -> 1 fragment
-      // - printLink/print(...) -> 1 fragment
-      // - newline()           -> 1 fragment (<br/>)
-      const BALANCE_LINE_FRAGMENTS = 3;
-
-      const printBalanceLine = (
-        valueText: string,
-        refreshState: "ready" | "loading",
-        loadingIcon = "⟳"
-      ) => {
-        terminal.current?.print(`FeeJuice balance: ${valueText} `);
-        if (refreshState === "loading") {
-          terminal.current?.print(
-            `${loadingIcon} refreshing...`,
-            TerminalTextStyle.Sub
-          );
-        } else {
-          terminal.current?.printLink(
-            "⟳ refresh",
-            () => {
-              void requery().catch(() => {});
-            },
-            TerminalTextStyle.Blue
-          );
-        }
-        terminal.current?.newline();
-      };
-
-      const requery = async () => {
-        if (requeryInFlight) return;
-        requeryInFlight = true;
-        let spinnerInterval: ReturnType<typeof setInterval> | undefined;
-        try {
-          // Replace the previous balance line with a rotating loading icon.
-          if (balanceLinePrinted) {
-            terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
-          }
-          const SPINNER_FRAMES = ["◐", "◓", "◑", "◒"];
-          let spinnerIndex = 0;
-          printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
-          balanceLinePrinted = true;
-          spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
-
-          spinnerInterval = setInterval(() => {
-            if (!terminal.current) return;
-            terminal.current.removeLast(BALANCE_LINE_FRAGMENTS);
-            printBalanceLine("...", "loading", SPINNER_FRAMES[spinnerIndex]);
-            spinnerIndex = (spinnerIndex + 1) % SPINNER_FRAMES.length;
-          }, 120);
-
-          const next = await walletManager.getBalance();
-          bal = next;
-
-          // Keep the loading rotation a bit longer for smoother UX.
-          await sleep(1500);
-
-          if (spinnerInterval) clearInterval(spinnerInterval);
-          spinnerInterval = undefined;
-
-          // Replace loading with final value (single-line; no stacking)
-          if (balanceLinePrinted) {
-            terminal.current?.removeLast(BALANCE_LINE_FRAGMENTS);
-          }
-          printBalanceLine(formatFeeJuice(next), "ready");
-          balanceLinePrinted = true;
-        } finally {
-          if (spinnerInterval) clearInterval(spinnerInterval);
-          requeryInFlight = false;
-        }
-      };
-
-      while (bal === 0n) {
-        if (firstRender) {
-          firstRender = false;
-          terminal.current?.println("");
-          terminal.current?.println(
-            "⚠ FeeJuice is required to continue.",
-            TerminalTextStyle.Yellow
-          );
-          terminal.current?.println(
-            "Step 1: open faucet, Step 2: come back & re-check.",
-            TerminalTextStyle.Subber
-          );
-          terminal.current?.println("");
-          terminal.current?.printLink(
-            "↗ Open gregojuice faucet",
-            () => {
-              if (!opened) opened = true;
-              window.open(
-                externalLinks.aztecTestnet.feeJuiceBridge,
-                "_blank",
-                "noopener,noreferrer"
-              );
-            },
-            TerminalTextStyle.Blue
-          );
-          terminal.current?.newline();
-          terminal.current?.println(
-            "You can click re-query, or just wait a few seconds for auto-refresh."
-          );
-        }
-
-        await requery();
-
-        if (bal > 0n) {
-          terminal.current?.println(
-            "FeeJuice OK. Deploying account if needed..."
-          );
-          await walletManager.deployActiveAccountIfNeeded((msg) =>
-            terminal.current?.println(msg, TerminalTextStyle.Sub)
-          );
-          setStep(TerminalPromptStep.FETCHING_ETH_DATA);
-          return;
-        }
-
-        await sleep(8000);
+      await runAccountFeeJuicePreflightGate({
+        terminal,
+        getWalletManager: () => walletManagerRef.current,
+        setConnectionSettingsOpen,
+        setTerminalVisible,
+        entryMode: entryModeRef.current,
+        rebuildWalletAfterConnectionSave,
+        onRefreshPage: playRefreshPageTransition,
+      });
+      terminal.current?.println("Deploying account if needed...");
+      await walletManager.deployActiveAccountIfNeeded((msg) =>
+        terminal.current?.println(msg, TerminalTextStyle.Sub)
+      );
+      if (entryModeRef.current === "quick") {
+        setTerminalVisible(false);
       }
+      setStep(TerminalPromptStep.FETCHING_ETH_DATA);
     },
-    [sponsorMode]
+    [playRefreshPageTransition, rebuildWalletAfterConnectionSave, sponsorMode]
   );
 
   const advanceStateFromFetchingEthData = useCallback(
@@ -2563,10 +3242,30 @@ export function GameLandingPage() {
 
   return (
     <>
+      <ConnectionSettingsModal
+        open={connectionSettingsOpen}
+        onClose={() => setConnectionSettingsOpen(false)}
+      />
+      <QuickJoinSettingsModal
+        open={quickJoinSettingsOpen}
+        onClose={() => setQuickJoinSettingsOpen(false)}
+        onPreferenceSaved={refreshLocalAccountCount}
+      />
       {entryMode === "pending" && (
-        <GameLandingEntryOverlay onSelect={handleEntryModeSelected} />
+        <GameLandingEntryOverlay
+          onSelect={handleEntryModeSelected}
+          onConfigureQuickJoin={() => setQuickJoinSettingsOpen(true)}
+        />
       )}
       {enterTransitionVisible && <EnterTransition aria-hidden />}
+      {refreshTransitionVisible && (
+        <RefreshPageTransition aria-hidden>
+          <RefreshTransitionHud>
+            <span>RECALIBRATING STARFIELD</span>
+            <strong>REFRESHING UNIVERSE</strong>
+          </RefreshTransitionHud>
+        </RefreshPageTransition>
+      )}
       <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
         <GameWindowWrapper
           initRender={initRenderState}
@@ -2685,6 +3384,274 @@ const EnterTransition = styled.div`
     }
     100% {
       opacity: 0;
+    }
+  }
+`;
+
+const RefreshPageTransition = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 4500;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(0, 220, 130, 0.18),
+      transparent 30%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 49.85%,
+      rgba(0, 220, 130, 0.32) 50%,
+      transparent 50.15%
+    ),
+    linear-gradient(
+      0deg,
+      transparent 49.85%,
+      rgba(0, 220, 130, 0.32) 50%,
+      transparent 50.15%
+    ),
+    rgba(0, 0, 0, 0.18);
+  animation: refresh-page-veil ${REFRESH_PAGE_TRANSITION_MS}ms ease-in forwards;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4vmin;
+    height: 4vmin;
+    border-radius: 50%;
+    background: #000;
+    transform: translate(-50%, -50%) scale(0);
+    animation: refresh-page-core ${REFRESH_PAGE_TRANSITION_MS}ms forwards;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0 22px,
+        rgba(0, 220, 130, 0.16) 23px,
+        transparent 26px
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 0 10vmin,
+        rgba(255, 255, 255, 0.65) 10.3vmin,
+        transparent 10.8vmin,
+        transparent 18vmin,
+        rgba(0, 220, 130, 0.58) 18.4vmin,
+        transparent 19.2vmin,
+        transparent 30vmin,
+        rgba(0, 220, 130, 0.28) 30.5vmin,
+        transparent 31.5vmin
+      );
+    opacity: 0;
+    mix-blend-mode: screen;
+    transform: scale(0.55) rotate(0deg);
+    animation: refresh-page-orbits ${REFRESH_PAGE_TRANSITION_MS}ms ease-out
+      forwards;
+  }
+
+  @keyframes refresh-page-veil {
+    0% {
+      opacity: 0;
+      filter: saturate(1) contrast(1);
+    }
+    8% {
+      opacity: 1;
+      filter: saturate(1.8) contrast(1.2);
+    }
+    72% {
+      opacity: 1;
+      filter: saturate(2.4) contrast(1.45);
+    }
+    100% {
+      opacity: 1;
+      filter: saturate(0.7) contrast(1.9);
+    }
+  }
+
+  @keyframes refresh-page-core {
+    0% {
+      transform: translate(-50%, -50%) scale(0);
+      box-shadow: 0 0 0 0 transparent;
+    }
+    4% {
+      transform: translate(-50%, -50%) scale(1);
+      box-shadow:
+        0 0 0 2px rgba(255, 255, 255, 0.95),
+        0 0 50px 16px rgba(0, 220, 130, 0.95),
+        0 0 120px 46px rgba(0, 140, 255, 0.28);
+    }
+    22% {
+      transform: translate(-50%, -50%) scale(1.15);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.75),
+        0 0 72px 22px rgba(0, 220, 130, 0.9),
+        0 0 170px 56px rgba(0, 140, 255, 0.34);
+    }
+    58% {
+      transform: translate(-50%, -50%) scale(1.45);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 0 110px 32px rgba(0, 220, 130, 0.95),
+        0 0 220px 76px rgba(255, 255, 255, 0.16);
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(170);
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
+  @keyframes refresh-page-orbits {
+    0% {
+      opacity: 0;
+      transform: scale(0.55) rotate(-12deg);
+      filter: blur(4px);
+    }
+    10% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    62% {
+      opacity: 0.95;
+      transform: scale(1.08) rotate(32deg);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.55) rotate(78deg);
+      filter: blur(3px);
+    }
+  }
+`;
+
+const RefreshTransitionHud = styled.div`
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: min(520px, calc(100vw - 48px));
+  height: min(520px, calc(100vw - 48px));
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border-radius: 50%;
+  color: ${dfstyles.colors.dfgreen};
+  text-align: center;
+  text-shadow:
+    0 0 10px rgba(0, 220, 130, 0.9),
+    0 0 28px rgba(0, 220, 130, 0.58);
+  transform: translate(-50%, -50%) scale(0.86);
+  animation: refresh-hud-collapse ${REFRESH_PAGE_TRANSITION_MS}ms ease-in
+    forwards;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 220, 130, 0.82);
+    box-shadow:
+      inset 0 0 32px rgba(0, 220, 130, 0.24),
+      0 0 42px rgba(0, 220, 130, 0.38);
+  }
+
+  &::before {
+    animation: refresh-hud-spin ${REFRESH_PAGE_TRANSITION_MS}ms linear forwards;
+  }
+
+  &::after {
+    inset: 8%;
+    border-color: rgba(255, 255, 255, 0.48);
+    border-style: dashed;
+    animation: refresh-hud-spin-reverse ${REFRESH_PAGE_TRANSITION_MS}ms linear
+      forwards;
+  }
+
+  span {
+    color: ${dfstyles.colors.subbertext};
+    font-size: clamp(10px, 1.2vw, 14px);
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: refresh-hud-text ${REFRESH_PAGE_TRANSITION_MS}ms ease-out
+      forwards;
+  }
+
+  strong {
+    margin-top: 10px;
+    color: ${dfstyles.colors.textLight};
+    font-size: clamp(18px, 3vw, 34px);
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: refresh-hud-text ${REFRESH_PAGE_TRANSITION_MS}ms ease-out 80ms
+      forwards;
+  }
+
+  @keyframes refresh-hud-collapse {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.62);
+    }
+    12% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    58% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.08);
+      filter: blur(10px);
+    }
+  }
+
+  @keyframes refresh-hud-spin {
+    0% {
+      transform: rotate(0deg) scale(0.82);
+    }
+    100% {
+      transform: rotate(390deg) scale(1.42);
+    }
+  }
+
+  @keyframes refresh-hud-spin-reverse {
+    0% {
+      transform: rotate(0deg) scale(1.18);
+    }
+    100% {
+      transform: rotate(-300deg) scale(0.72);
+    }
+  }
+
+  @keyframes refresh-hud-text {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    16% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    62% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.92);
     }
   }
 `;

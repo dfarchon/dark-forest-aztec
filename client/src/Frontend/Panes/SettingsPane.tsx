@@ -4,6 +4,12 @@ import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
 import TutorialManager from "../../Backend/GameLogic/TutorialManager";
+import { getEffectiveSponsoredFpcAddressOverride } from "../../config/connection";
+import {
+  getSponsoredFpcMinBalanceFjWei,
+  getSponsorMode,
+} from "../../config/env";
+import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { Btn } from "../Components/Btn";
 import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
 import { TextInput } from "../Components/Input";
@@ -58,6 +64,9 @@ export function SettingsPane({
   const isDevelopment = process.env.NODE_ENV !== "production";
 
   const [balance, setBalance] = useState<number>(0);
+  const [sponsorFjWei, setSponsorFjWei] = useState<bigint | undefined>(
+    undefined
+  );
 
   useEffect(() => {
     if (!uiManager) return;
@@ -72,6 +81,34 @@ export function SettingsPane({
       clearInterval(intervalId);
     };
   }, [uiManager]);
+
+  useEffect(() => {
+    if (!visible || !getSponsorMode()) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const b = await uiManager
+          .getGameManager()
+          .getSponsoredFpcFeeJuiceBalance();
+        if (!cancelled) setSponsorFjWei(b);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setSponsorFjWei(undefined);
+      }
+    };
+    void tick();
+    const intervalId = setInterval(() => {
+      void tick();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [visible, uiManager]);
+
+  const sponsorFjMinWei = getSponsoredFpcMinBalanceFjWei();
+  const sponsorFjLow =
+    sponsorFjWei !== undefined && sponsorFjWei < sponsorFjMinWei;
 
   const [failure, setFailure] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
@@ -194,6 +231,107 @@ export function SettingsPane({
             <span>{balance}</span>
           </Row>
         </Section>
+
+        {getSponsorMode() && (
+          <Section>
+            <SectionHeader>Sponsor gas (SponsoredFPC)</SectionHeader>
+            Fees can be paid by a SponsoredFPC contract on Aztec. Set or change
+            the address in <b>Connection settings</b> on the landing page before
+            you enter, then refresh so the wallet reloads it.
+            <Spacer height={12} />
+            <Row>
+              <span>Local / env override</span>
+              <span
+                style={{
+                  wordBreak: "break-all",
+                  maxWidth: 260,
+                  textAlign: "right",
+                  fontFamily: "monospace",
+                  fontSize: "11px",
+                }}
+              >
+                {getEffectiveSponsoredFpcAddressOverride() ??
+                  "(none — canonical)"}
+              </span>
+            </Row>
+            <Row>
+              <span>Active payer (this session)</span>
+              <span
+                style={{
+                  wordBreak: "break-all",
+                  maxWidth: 260,
+                  textAlign: "right",
+                  fontFamily: "monospace",
+                  fontSize: "11px",
+                }}
+              >
+                {uiManager.getGameManager().getSponsoredFpcAddress() ?? "—"}
+              </span>
+            </Row>
+            <Row>
+              <span>SponsoredFPC FeeJuice</span>
+              <span
+                style={{
+                  wordBreak: "break-all",
+                  maxWidth: 260,
+                  textAlign: "right",
+                  fontFamily: "monospace",
+                  fontSize: "11px",
+                }}
+              >
+                {sponsorFjWei === undefined
+                  ? "—"
+                  : formatFeeJuiceWei(sponsorFjWei)}
+              </span>
+            </Row>
+            <Row>
+              <span>Minimum balance (preflight)</span>
+              <span
+                style={{
+                  wordBreak: "break-all",
+                  maxWidth: 260,
+                  textAlign: "right",
+                  fontFamily: "monospace",
+                  fontSize: "11px",
+                }}
+              >
+                {formatFeeJuiceWei(sponsorFjMinWei)}
+              </span>
+            </Row>
+            {sponsorFjLow && (
+              <>
+                <Spacer height={8} />
+                <Red>
+                  SponsoredFPC balance is below the configured minimum. Fund it
+                  or change SponsoredFPC address in Connection settings, save,
+                  then refresh the page.
+                </Red>
+              </>
+            )}
+            <Spacer height={8} />
+            <Btn
+              size="stretch"
+              onClick={async () => {
+                const addr = uiManager
+                  .getGameManager()
+                  .getSponsoredFpcAddress();
+                if (!addr) {
+                  setFailure("No SponsoredFPC address for this session.");
+                  return;
+                }
+                try {
+                  await window.navigator.clipboard.writeText(addr);
+                  setSuccess("Copied SponsoredFPC address.");
+                } catch (err) {
+                  console.error(err);
+                  setFailure("Failed to copy to clipboard.");
+                }
+              }}
+            >
+              Copy active SponsoredFPC address
+            </Btn>
+          </Section>
+        )}
 
         {/* Gas price section removed: Aztec uses sponsored fee payment */}
 

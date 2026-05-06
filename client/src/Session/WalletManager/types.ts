@@ -16,6 +16,11 @@ export interface WalletManagerConfig {
   balancePollIntervalMs?: number;
   /** When enabled, use SponsoredFPC/SponsoredFeePaymentMethod for fees (local dev convenience). */
   sponsorMode?: boolean;
+  /**
+   * Optional SponsoredFPC Aztec address (see `getEffectiveSponsoredFpcAddressOverride()`).
+   * When unset, uses canonical instance from `SPONSORED_FPC_SALT`.
+   */
+  sponsoredFpcAddressOverride?: string;
   /** HTTP base URL for native accelerator (host:port), e.g. from getEffectiveProverUrl(). */
   proverUrl?: string;
   /** PXE config overrides. In browser, dataStoreMapSizeKb defaults to 128 GB which fails; use ~128 MB. */
@@ -46,4 +51,18 @@ export interface WalletStatus {
   activeAddress: string | undefined;
   accounts: AccountRecord[];
   balance: bigint;
+}
+
+/** How required FeeJuice was derived for sponsor-mode account deploy preflight. */
+export type SponsorDeployPreflightSource =
+  | "simulate"
+  | "threshold"
+  | "simulate_failed";
+
+/** Sponsor-mode account deployment FeeJuice preflight result. */
+export interface SponsorDeployPreflight {
+  balanceWei: bigint;
+  requiredWei: bigint;
+  sufficient: boolean;
+  estimateSource: SponsorDeployPreflightSource;
 }

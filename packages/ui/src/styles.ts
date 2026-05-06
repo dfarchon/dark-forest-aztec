@@ -32,7 +32,7 @@ export const colors = {
 export const zIndex = {
   MenuBar: "4",
   HoverPlanet: "1001",
-  Modal: "1001",
+  Modal: "3000",
   Tooltip: "16000000",
   Notification: "1000",
 };
