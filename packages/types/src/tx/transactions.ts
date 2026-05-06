@@ -35,7 +35,8 @@ export type ContractMethodName =
   | "createPlanet"
   | "safeSetOwner"
   | "adminGiveArtifact"
-  | "adminGiveSpaceship";
+  | "adminGiveSpaceship"
+  | "adminSetWorldRadius";
 
 /**
  * Client-side transaction status (UI/executor lifecycle). Aztec counterpart of EthTxStatus.
@@ -183,6 +184,11 @@ export type UnconfirmedCapturePlanet = TxIntent & {
 
 export type UnconfirmedSetWorldConfig = TxIntent & {
   methodName: "setWorldConfig";
+};
+
+export type UnconfirmedAdminSetWorldRadius = TxIntent & {
+  methodName: "adminSetWorldRadius";
+  newRadius: bigint;
 };
 
 export type UnconfirmedPauseGame = TxIntent & {

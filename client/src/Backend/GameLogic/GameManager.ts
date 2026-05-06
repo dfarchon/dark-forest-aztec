@@ -74,6 +74,7 @@ import {
   UnconfirmedActivateArtifact,
   UnconfirmedAdminGiveArtifact,
   UnconfirmedAdminGiveSpaceship,
+  UnconfirmedAdminSetWorldRadius,
   UnconfirmedBuyHat,
   UnconfirmedCapturePlanet,
   UnconfirmedClaimReward,
@@ -3515,6 +3516,27 @@ class GameManager extends EventEmitter {
       return await this.contractsAPI.submitTransaction(txIntent);
     } catch (e) {
       this.getNotificationsManager().txInitError("unpauseGame", e.message);
+      throw e;
+    }
+  }
+
+  public async adminSetWorldRadius(
+    newRadius: bigint | number
+  ): Promise<Transaction<UnconfirmedAdminSetWorldRadius>> {
+    try {
+      const r = BigInt(newRadius);
+      if (r <= 0n) throw new Error("Radius must be positive");
+      const txIntent: UnconfirmedAdminSetWorldRadius = {
+        methodName: "adminSetWorldRadius",
+        newRadius: r,
+        args: Promise.resolve([r]),
+      };
+      return await this.contractsAPI.submitTransaction(txIntent);
+    } catch (e) {
+      this.getNotificationsManager().txInitError(
+        "adminSetWorldRadius",
+        e.message
+      );
       throw e;
     }
   }

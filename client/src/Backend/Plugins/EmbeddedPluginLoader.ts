@@ -24,9 +24,13 @@ function cleanFilename(path: string): string {
   return basename.replace(/[_-]/g, " ");
 }
 
+function isAdminOnlyEmbeddedPlugin(path: string): boolean {
+  return path.includes("Admin-Controls") || path.includes("Test-Harness");
+}
+
 export function getEmbeddedPlugins(isAdmin: boolean): EmbeddedPlugin[] {
   return Object.entries(pluginsModules)
-    .filter(([path]) => isAdmin || !path.includes("Admin-Controls"))
+    .filter(([path]) => isAdmin || !isAdminOnlyEmbeddedPlugin(path))
     .map(([path, mod]) => ({
       id: path as PluginId,
       name: cleanFilename(path),

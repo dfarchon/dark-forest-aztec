@@ -93,6 +93,8 @@ export class ContractResolver {
         return { contract: this.admin, method: "pause" };
       case "unpauseGame":
         return { contract: this.admin, method: "unpause" };
+      case "adminSetWorldRadius":
+        return { contract: this.admin, method: "admin_set_world_radius" };
       case "createPlanet":
         return { contract: this.admin, method: "create_planet" };
       case "safeSetOwner":

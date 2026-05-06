@@ -34,6 +34,7 @@ import { locationIdToDecStr } from "@dfpunk/serde";
 import type {
   TxIntent,
   UnconfirmedActivateArtifact,
+  UnconfirmedAdminSetWorldRadius,
   UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
@@ -297,6 +298,10 @@ export class StateResolver {
         return this.resolvePauseGame(intent as UnconfirmedPauseGame);
       case "unpauseGame":
         return this.resolveUnpauseGame(intent as UnconfirmedUnpauseGame);
+      case "adminSetWorldRadius":
+        return this.resolveAdminSetWorldRadius(
+          intent as UnconfirmedAdminSetWorldRadius
+        );
       case "createPlanet":
         return this.resolveCreatePlanet(intent as UnconfirmedCreatePlanet);
       case "safeSetOwner":
@@ -1208,6 +1213,14 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
     return [world];
+  }
+
+  private async resolveAdminSetWorldRadius(
+    intent: UnconfirmedAdminSetWorldRadius
+  ): Promise<unknown[]> {
+    const worldRaw = this.indexer.getWorld();
+    const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
+    return [BigInt(intent.newRadius), world];
   }
 
   // -------------------------------------------------------------------------

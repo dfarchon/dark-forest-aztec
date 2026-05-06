@@ -1,5 +1,5 @@
 /**
- * Admin Controls — Pause, unpause, game speed, give planet, whitelist, spaceships, artifacts, create planet.
+ * Admin Controls — Pause, unpause, game speed, world radius, give planet, whitelist, spaceships, artifacts, create planet.
  * Embedded plugin for dfpunk-aztec. Uses only globals df + ui; single CDN for Preact/htm.
  * Features not implemented in this client show "Not available".
  */
@@ -401,6 +401,9 @@ function App() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [updatingSpeed, setUpdatingSpeed] = useState(false);
   const [updatingPause, setUpdatingPause] = useState(false);
+  const [chainRadius, setChainRadius] = useState(null);
+  const [radiusInput, setRadiusInput] = useState(null);
+  const [updatingRadius, setUpdatingRadius] = useState(false);
   const [status, setStatus] = useState(undefined);
   const [error, setError] = useState(undefined);
 
@@ -445,6 +448,25 @@ function App() {
       clearInterval(interval);
     };
   }, []);
+
+  // Chain world radius: poll so UI updates after admin_set_world_radius confirms
+  useEffect(() => {
+    const syncRadius = () => {
+      const r = df.getWorldRadius?.();
+      if (typeof r === "number" && !Number.isNaN(r)) {
+        setChainRadius(r);
+      }
+    };
+    syncRadius();
+    const interval = setInterval(syncRadius, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (chainRadius != null && radiusInput === null) {
+      setRadiusInput(String(chainRadius));
+    }
+  }, [chainRadius, radiusInput]);
 
   useEffect(() => {
     if (!df.getWorldConfig) return;
@@ -517,6 +539,35 @@ function App() {
       setUpdatingSpeed(false);
     }
   }, [worldConfig, speedHundredths, setErr]);
+
+  const updateRadius = useCallback(async () => {
+    const parsed = Number(radiusInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setErr(new Error("Radius must be positive."));
+      return;
+    }
+    if (typeof df.adminSetWorldRadius !== "function") {
+      setErr(new Error("adminSetWorldRadius is not available in this client."));
+      return;
+    }
+    setUpdatingRadius(true);
+    setError(undefined);
+    setStatus(undefined);
+    try {
+      const tx = await df.adminSetWorldRadius(parsed);
+      await tx?.confirmedPromise;
+      const next = df.getWorldRadius?.();
+      if (typeof next === "number" && !Number.isNaN(next)) {
+        setChainRadius(next);
+        setRadiusInput(String(next));
+      }
+      setStatus("World radius updated.");
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setUpdatingRadius(false);
+    }
+  }, [radiusInput, setErr]);
 
   const onGivePlanet = useCallback(async () => {
     setError(undefined);
@@ -607,6 +658,20 @@ function App() {
       speedHundredths
     : false;
 
+  const parsedRadius = Number(radiusInput);
+  const radiusChanged =
+    chainRadius != null &&
+    radiusInput != null &&
+    Number.isFinite(parsedRadius) &&
+    parsedRadius > 0 &&
+    parsedRadius !== chainRadius;
+
+  const radiusLocked = !!worldConfig?.world_radius_locked;
+  const radiusMinHint =
+    worldConfig?.world_radius_min != null
+      ? String(worldConfig.world_radius_min)
+      : null;
+
   return html`
     <div style=${wrapperStyle}>
       <div style=${{ marginBottom: "4px" }}>
@@ -642,10 +707,62 @@ function App() {
         disabled=${loadingConfig ||
         updatingSpeed ||
         updatingPause ||
+        updatingRadius ||
         !speedChanged}
         onClick=${updateSpeed}
       >
         ${updatingSpeed ? "Updating…" : "Update game speed"}
+      </button>
+
+      <${Heading} title="World radius" />
+      <div style=${rowStyle}>
+        <span style=${{ color: "#888" }}>Current (chain)</span>
+        <span style=${{ color: "#ddd" }}
+          >${chainRadius != null ? chainRadius : "…"}</span
+        >
+      </div>
+      ${radiusMinHint != null
+        ? html`<div
+            style=${{ fontSize: "10pt", color: "#888", marginTop: "4px" }}
+          >
+            Config min radius (hint): ${radiusMinHint}
+          </div>`
+        : ""}
+      ${radiusLocked
+        ? html`<div
+            style=${{
+              ...bannerBase,
+              borderLeft: "3px solid #FFB020",
+              background: "rgba(255,176,32,0.08)",
+              color: "#FFB020",
+              marginTop: "6px",
+            }}
+          >
+            world_radius_locked is true in config (informational only; this
+            client still submits admin_set_world_radius).
+          </div>`
+        : ""}
+      <div style=${{ ...rowStyle, marginTop: "6px" }}>
+        <label>New radius</label>
+        <input
+          type="number"
+          min=${1}
+          value=${radiusInput ?? ""}
+          onInput=${(e) => setRadiusInput(e.target?.value ?? "")}
+          style=${narrowInput}
+        />
+      </div>
+      <button
+        disabled=${loadingConfig ||
+        updatingRadius ||
+        updatingPause ||
+        updatingSpeed ||
+        chainRadius == null ||
+        radiusInput == null ||
+        !radiusChanged}
+        onClick=${updateRadius}
+      >
+        ${updatingRadius ? "Updating…" : "Update radius"}
       </button>
 
       <${Heading} title="Pause / Unpause" />
@@ -656,7 +773,10 @@ function App() {
         >
       </div>
       <button
-        disabled=${loadingConfig || updatingPause || updatingSpeed}
+        disabled=${loadingConfig ||
+        updatingPause ||
+        updatingSpeed ||
+        updatingRadius}
         onClick=${togglePause}
       >
         ${updatingPause
