@@ -241,7 +241,8 @@ export class Renderer {
     this.viewport = viewport;
 
     this.frameCount = 0;
-    this.now = Date.now();
+    const chainMs = this.context.getChainTimeMs();
+    this.now = chainMs > 0 ? chainMs : Date.now();
     this.config = config;
     autoBind(this);
 
@@ -328,7 +329,8 @@ export class Renderer {
 
   private loop() {
     this.frameCount++;
-    this.now = Date.now();
+    const chainMs = this.context.getChainTimeMs();
+    this.now = chainMs > 0 ? chainMs : Date.now();
     this.draw();
     this.recordRender(Date.now());
     this.frameRequestId = window.requestAnimationFrame(() => this.loop());

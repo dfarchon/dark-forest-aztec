@@ -14,7 +14,7 @@ export const GAME_NAME = "Dark Forest Aztec";
 /** Token symbol on the L1 base chain (e.g. Ethereum mainnet). Shown in UI for deposits/withdrawals. */
 export const L1_TOKEN_SYMBOL = "ETH";
 /** Token symbol on the L2 chain (Aztec). Shown in UI for in-game balance, gas, etc. */
-export const L2_TOKEN_SYMBOL = "ETH";
+export const L2_TOKEN_SYMBOL = "Juice";
 /** Chain name shown in UI (e.g. "Powered by Aztec"). */
 export const CHAIN_DISPLAY_NAME = "Aztec";
 /** Organizer / host name for the game instance (e.g. round operator). */

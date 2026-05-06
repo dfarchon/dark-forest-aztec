@@ -1214,35 +1214,11 @@ export class GameObjects {
             if (artifact) this.setArtifact(artifact);
           }
         } else {
-          // otherwise, set a timer to do this arrival in the future
-          // and append it to arrivalsWithTimers
-          const applyFutureArrival = setTimeout(
-            () => {
-              // Re-fetch planet from store to avoid stale closure reference
-              const currentPlanet = this.planets.get(planetId);
-              if (!currentPlanet) return;
-              const update = arrive(
-                currentPlanet,
-                this.getPlanetArtifacts(currentPlanet.locationId),
-                arrival,
-                this.getArtifactById(arrival.artifactId),
-                this.contractConstants
-              );
-              this.emitArrivalNotifications(update);
-              this.removeArrival(planetId, update.arrival.eventId);
-              // Persist changes and publish events
-              this.setPlanet(currentPlanet);
-              if (arrival.artifactId) {
-                const artifact = this.getArtifactById(arrival.artifactId);
-                if (artifact) this.setArtifact(artifact);
-              }
-            },
-            arrival.arrivalTime * 1000 - this.chainClock.now()
-          );
-
-          const arrivalWithTimer = {
+          // Future arrivals are applied in flushMaturedArrivals() after each
+          // chainClock resync (block tick), not via wall-clock setTimeout.
+          const arrivalWithTimer: ArrivalWithTimer = {
             arrivalData: arrival,
-            timer: applyFutureArrival,
+            timer: null,
           };
           arrivalsWithTimers.push(arrivalWithTimer);
         }
@@ -1264,7 +1240,9 @@ export class GameObjects {
       for (const arrivalId of arrivalIds) {
         const arrivalWithTimer = this.arrivals.get(arrivalId);
         if (arrivalWithTimer) {
-          clearTimeout(arrivalWithTimer.timer);
+          if (arrivalWithTimer.timer !== null) {
+            clearTimeout(arrivalWithTimer.timer);
+          }
         } else {
           console.error(`arrival with id ${arrivalId} wasn't found`);
         }
@@ -1283,7 +1261,9 @@ export class GameObjects {
     const nowSec = this.chainClock.nowSec();
     for (const [voyageId, awt] of this.arrivals) {
       if (nowSec >= awt.arrivalData.arrivalTime) {
-        clearTimeout(awt.timer);
+        if (awt.timer !== null) {
+          clearTimeout(awt.timer);
+        }
         const planet = this.planets.get(awt.arrivalData.toPlanet);
         if (planet) {
           try {

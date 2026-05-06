@@ -6,5 +6,6 @@ import type { QueuedArrival } from "../world/arrival";
  */
 export interface ArrivalWithTimer {
   arrivalData: QueuedArrival;
-  timer: ReturnType<typeof setTimeout>;
+  /** Null when arrival is applied only via flushMaturedArrivals on block ticks. */
+  timer: ReturnType<typeof setTimeout> | null;
 }
