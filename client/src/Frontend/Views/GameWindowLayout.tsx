@@ -31,7 +31,11 @@ import { ZoomPane } from "../Panes/ZoomPane";
 import { useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 import { useOnUp } from "../Utils/KeyEmitters";
 import { useBooleanSetting } from "../Utils/SettingsHooks";
-import { TOGGLE_DIAGNOSTICS_PANE } from "../Utils/ShortcutConstants";
+import {
+  TOGGLE_DIAGNOSTICS_PANE,
+  TOGGLE_UNIVERSE_VIEW,
+} from "../Utils/ShortcutConstants";
+import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { NotificationsPane } from "./Notifications";
 import { SidebarPane } from "./SidebarPane";
 import { TopBar } from "./TopBar";
@@ -39,9 +43,13 @@ import { TopBar } from "./TopBar";
 export function GameWindowLayout({
   terminalVisible,
   setTerminalVisible,
+  universeView,
+  setUniverseView,
 }: {
   terminalVisible: boolean;
   setTerminalVisible: (visible: boolean) => void;
+  universeView: boolean;
+  setUniverseView: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const uiManager = useUIManager();
   const modalManager = uiManager.getModalManager();
@@ -141,15 +149,35 @@ export function GameWindowLayout({
     }, [setDiagnosticsVisible])
   );
 
+  useOnUp(
+    TOGGLE_UNIVERSE_VIEW,
+    useCallback(() => {
+      setUniverseView((v) => !v);
+    }, [setUniverseView])
+  );
+
+  useEffect(() => {
+    const uiEmitter = UIEmitter.getInstance();
+    uiEmitter.emit(UIEmitterEvent.UIChange);
+  }, [universeView]);
+
+  /** Universe view hides only edge chrome; open modals/plugins stay visible. */
+  const showEdgeChrome = !universeView;
+
   return (
     <WindowWrapper>
-      <TopBarPaneContainer>
-        <BorderlessPane>
-          <TopBar
-            twitterVerifyHook={[twitterVerifyVisible, setTwitterVerifyVisible]}
-          />
-        </BorderlessPane>
-      </TopBarPaneContainer>
+      {showEdgeChrome && (
+        <TopBarPaneContainer>
+          <BorderlessPane>
+            <TopBar
+              twitterVerifyHook={[
+                twitterVerifyVisible,
+                setTwitterVerifyVisible,
+              ]}
+            />
+          </BorderlessPane>
+        </TopBarPaneContainer>
+      )}
 
       {/* all modals rendered into here */}
       <div ref={modalsContainerCB}>
@@ -205,35 +233,41 @@ export function GameWindowLayout({
 
       <MainWindow>
         <CanvasContainer>
-          <UpperLeft>
-            <ZoomPane />
-          </UpperLeft>
-          <SidebarPane
-            transactionLogHook={[
-              transactionLogVisible,
-              setTransactionLogVisible,
-            ]}
-            settingsHook={[settingsVisible, setSettingsVisible]}
-            helpHook={[helpVisible, setHelpVisible]}
-            pluginsHook={[pluginsVisible, setPluginsVisible]}
-            yourArtifactsHook={[
-              playerArtifactsVisible,
-              setPlayerArtifactsVisible,
-            ]}
-            planetdexHook={[planetdexVisible, setPlanetdexVisible]}
-          />
+          {showEdgeChrome && (
+            <UpperLeft>
+              <ZoomPane />
+            </UpperLeft>
+          )}
+          <HiddenEdgeChrome $hidden={!showEdgeChrome}>
+            <SidebarPane
+              transactionLogHook={[
+                transactionLogVisible,
+                setTransactionLogVisible,
+              ]}
+              settingsHook={[settingsVisible, setSettingsVisible]}
+              helpHook={[helpVisible, setHelpVisible]}
+              pluginsHook={[pluginsVisible, setPluginsVisible]}
+              yourArtifactsHook={[
+                playerArtifactsVisible,
+                setPlayerArtifactsVisible,
+              ]}
+              planetdexHook={[planetdexVisible, setPlanetdexVisible]}
+            />
+          </HiddenEdgeChrome>
           <CanvasWrapper>
             <ControllableCanvas />
           </CanvasWrapper>
 
-          <NotificationsPane />
-          <CoordsPane />
-          <ExplorePane />
+          {showEdgeChrome && <NotificationsPane />}
+          {showEdgeChrome && <CoordsPane />}
+          <HiddenEdgeChrome $hidden={!showEdgeChrome}>
+            <ExplorePane />
+          </HiddenEdgeChrome>
 
           <HoverPlanetPane />
           <ArtifactHoverPane />
 
-          <TutorialPane tutorialHook={tutorialHook} />
+          {showEdgeChrome && <TutorialPane tutorialHook={tutorialHook} />}
         </CanvasContainer>
       </MainWindow>
     </WindowWrapper>
@@ -248,4 +282,12 @@ const TopBarPaneContainer = styled.div`
   position: absolute;
   top: 0;
   left: 0;
+`;
+
+/**
+ * Hides edge UI in universe view but keeps it mounted so df-shortcut-button
+ * global key listeners (h, j, k, space, etc.) keep working.
+ */
+const HiddenEdgeChrome = styled.div<{ $hidden: boolean }>`
+  ${({ $hidden }) => ($hidden ? `display: none;` : "")}
 `;

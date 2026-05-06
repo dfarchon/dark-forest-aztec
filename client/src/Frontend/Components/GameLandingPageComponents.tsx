@@ -102,6 +102,7 @@ export function TerminalWrapper({
 const StyledTerminalToggler = styled.div<{
   terminalEnabled: boolean;
   initRender: InitRenderState;
+  universeView: boolean;
 }>`
   position: ${({ terminalEnabled }) =>
     terminalEnabled ? "absolute" : "fixed"};
@@ -116,8 +117,12 @@ const StyledTerminalToggler = styled.div<{
 
   color: ${dfstyles.colors.background};
 
-  display: ${({ initRender }) =>
-    initRender !== InitRenderState.NONE ? "flex" : "none"};
+  display: ${({ initRender, universeView }) =>
+    universeView
+      ? "none"
+      : initRender !== InitRenderState.NONE
+        ? "flex"
+        : "none"};
   flex-direction: column;
   justify-content: space-around;
   align-items: center;
@@ -139,10 +144,12 @@ export function TerminalToggler({
   terminalEnabled,
   setTerminalEnabled,
   initRender,
+  universeView = false,
 }: {
   terminalEnabled: boolean;
   setTerminalEnabled: Dispatch<SetStateAction<boolean>>;
   initRender: InitRenderState;
+  universeView?: boolean;
 }) {
   const uiEmitter = UIEmitter.getInstance();
   useLayoutEffect(() => {
@@ -153,6 +160,7 @@ export function TerminalToggler({
     <StyledTerminalToggler
       terminalEnabled={terminalEnabled}
       initRender={initRender}
+      universeView={universeView}
       onClick={() => setTerminalEnabled((b: boolean): boolean => !b)}
     >
       <span>{terminalEnabled ? ">" : "<"}</span>

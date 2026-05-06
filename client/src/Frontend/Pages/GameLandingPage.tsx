@@ -852,6 +852,7 @@ export function GameLandingPage() {
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(false);
+  const [universeView, setUniverseView] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("pending");
   const [walletModeUi, setWalletModeUi] = useState<SelectedWalletMode>(null);
   const [initRenderState, setInitRenderState] = useState(InitRenderState.NONE);
@@ -3269,7 +3270,7 @@ export function GameLandingPage() {
       <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
         <GameWindowWrapper
           initRender={initRenderState}
-          terminalEnabled={terminalVisible}
+          terminalEnabled={terminalVisible && !universeView}
         >
           {gameUIManagerRef.current &&
             topLevelContainer.current &&
@@ -3279,6 +3280,8 @@ export function GameLandingPage() {
                   <GameWindowLayout
                     terminalVisible={terminalVisible}
                     setTerminalVisible={setTerminalVisible}
+                    universeView={universeView}
+                    setUniverseView={setUniverseView}
                   />
                 </UIManagerProvider>
               </TopLevelDivProvider>
@@ -3288,10 +3291,11 @@ export function GameLandingPage() {
           terminalEnabled={terminalVisible}
           setTerminalEnabled={setTerminalVisible}
           initRender={initRenderState}
+          universeView={universeView}
         />
         <TerminalWrapper
           initRender={initRenderState}
-          terminalEnabled={terminalVisible}
+          terminalEnabled={terminalVisible && !universeView}
         >
           <Terminal
             ref={terminalHandle as React.Ref<TerminalHandle>}
