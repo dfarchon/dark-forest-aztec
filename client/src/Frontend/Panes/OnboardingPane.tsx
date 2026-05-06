@@ -1,4 +1,4 @@
-import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
+import { CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import { ModalName } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -36,6 +36,20 @@ const StyledOnboardingContent = styled.div`
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+  }
+
+  .footer-actions {
+    position: absolute;
+    right: 0.5em;
+    bottom: 0.5em;
+    display: flex;
+    flex-direction: row;
+    gap: 0.5em;
+    align-items: center;
+  }
+
+  .footer-actions .btn {
+    position: static;
   }
 `;
 
@@ -134,6 +148,7 @@ function OnboardStorage({ advance }: { advance: () => void }) {
 }
 function OnboardKeys({ advance }: { advance: () => void }) {
   const uiManager = useUIManager();
+  const account = useAccount(uiManager);
   const [credentials, setCredentials] = useState<{
     secretKey: string;
     salt: string;
@@ -147,6 +162,36 @@ function OnboardKeys({ advance }: { advance: () => void }) {
     const coords = uiManager.getHomeCoords();
     setHome(coords ? `(${coords.x}, ${coords.y})` : "");
   }, [uiManager]);
+
+  const canDownloadPrivacy =
+    !!credentials?.secretKey &&
+    !!credentials?.salt &&
+    !!credentials?.signingKey;
+
+  function downloadPrivacyInfo() {
+    if (!credentials || !canDownloadPrivacy) return;
+    try {
+      const payload = {
+        secretKey: credentials.secretKey,
+        salt: credentials.salt,
+        signingKey: credentials.signingKey,
+        address: account ?? "",
+        homeCoordinates: home ?? "",
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeAddr =
+        account && account.length >= 10 ? `${account.slice(0, 10)}` : "account";
+      a.download = `dark-forest-privacy-${safeAddr}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   return (
     <StyledOnboardingContent>
@@ -184,8 +229,14 @@ function OnboardKeys({ advance }: { advance: () => void }) {
         proceed.
       </p>
 
-      <div>
-        <span></span>
+      <div className="footer-actions">
+        <Btn
+          className="btn"
+          disabled={!canDownloadPrivacy}
+          onClick={downloadPrivacyInfo}
+        >
+          Download privacy info
+        </Btn>
         <Btn onClick={advance} className="btn">
           Proceed
         </Btn>
@@ -217,7 +268,7 @@ function OnboardFinished({ advance }: { advance: () => void }) {
       <p>That's all! You're now ready to play the game!</p>
       <p>
         We invite you to log into the universe. Click <White>Proceed</White> to
-        join the world of <White>DARK FOREST...</White>
+        join the world of <White>{GAME_NAME}...</White>
       </p>
       <div>
         <span></span>

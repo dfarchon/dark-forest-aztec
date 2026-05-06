@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
 import {
@@ -11,7 +11,7 @@ import type { AccountRecord } from "../../Session/WalletManager/types";
 import dfstyles from "../Styles/dfstyles";
 import { Btn } from "./Btn";
 import { Title } from "./CoreUI";
-import { Modal } from "./Modal";
+import { DarkForestModal, Modal } from "./Modal";
 import { Text } from "./Text";
 
 function shortAddress(address: string): string {
@@ -150,6 +150,7 @@ export function QuickJoinSettingsModal({
   /** Called after save or clear so parent can refresh derived UI (e.g. account count). */
   onPreferenceSaved?: () => void;
 }) {
+  const modalRef = useRef<DarkForestModal | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [selection, setSelection] = useState<"auto" | string>("auto");
 
@@ -170,6 +171,25 @@ export function QuickJoinSettingsModal({
     }
   }, [open, reload]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const handleOutsideMouseDown = (event: MouseEvent) => {
+      const modal = modalRef.current;
+      if (!modal) return;
+
+      const path = event.composedPath();
+      if (!path.includes(modal)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideMouseDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideMouseDown);
+    };
+  }, [onClose, open]);
+
   const chooseSelection = useCallback(
     (value: "auto" | string) => {
       setSelection(value);
@@ -179,9 +199,8 @@ export function QuickJoinSettingsModal({
         setQuickJoinDefaultAccount(value);
       }
       onPreferenceSaved?.();
-      onClose();
     },
-    [onClose, onPreferenceSaved]
+    [onPreferenceSaved]
   );
 
   const newest = accounts.reduce<AccountRecord | undefined>(
@@ -194,17 +213,7 @@ export function QuickJoinSettingsModal({
   if (!open) return null;
 
   return (
-    <Modal
-      contain={["top", "left", "right"]}
-      onMouseDown={(e) => {
-        if (
-          (e.target as HTMLElement)?.tagName?.toLowerCase() ===
-          "darkforest-modal"
-        ) {
-          onClose();
-        }
-      }}
-    >
+    <Modal ref={modalRef} contain={["top", "left", "right"]}>
       <Title slot="title">Quick join account</Title>
       <TitleBarActions slot="title">
         <Btn

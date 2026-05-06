@@ -1480,12 +1480,10 @@ export class StateResolver {
     const check = async (
       label: string,
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
-      onChainHashPromise: Promise<unknown>
+      loadOnChainHash: () => Promise<unknown>
     ) => {
-      const [localHash, rawOnChain] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const localHash = await localHashPromise;
+      const rawOnChain = await loadOnChainHash();
       const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
@@ -1496,29 +1494,21 @@ export class StateResolver {
       }
     };
 
-    const checks: Promise<void>[] = [];
-
     // Source entity hashes
-    checks.push(
-      check(
-        "source planet",
-        computePlanetHash(sourcePlanet),
-        ps.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
-      )
+    await check("source planet", computePlanetHash(sourcePlanet), () =>
+      ps.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
     );
-    checks.push(
-      check(
-        "source planet_events",
-        computePlanetEventsHash(sourcePlanetEvents),
+    await check(
+      "source planet_events",
+      computePlanetEventsHash(sourcePlanetEvents),
+      () =>
         pes.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
-      )
     );
-    checks.push(
-      check(
-        "source planet_artifacts",
-        computePlanetArtifactsHash(sourcePlanetArtifacts),
+    await check(
+      "source planet_artifacts",
+      computePlanetArtifactsHash(sourcePlanetArtifacts),
+      () =>
         pas.methods.get_state_root_unconstrained(sourceLoc).simulate({ from })
-      )
     );
 
     // Source arrivals batch
@@ -1526,58 +1516,43 @@ export class StateResolver {
       const arrival = sourceArrivalData.arrivals[i];
       const arrId = BigInt(Number(arrival["id"] ?? 0));
       if (arrId === 0n) continue;
-      checks.push(
-        check(
-          `source arrival[${i}]`,
-          computeArrivalHash(arrival),
-          arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
-        )
+      await check(`source arrival[${i}]`, computeArrivalHash(arrival), () =>
+        arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
       );
       const art = sourceArrivalData.artifacts[i];
       const artCarried = BigInt(String(arrival["carried_artifact_id"] ?? 0));
       if (artCarried !== 0n) {
-        checks.push(
-          check(
-            `source artifact[${i}]`,
-            computeArtifactHash(art),
-            arts.methods
-              .get_state_root_unconstrained(artCarried)
-              .simulate({ from })
-          )
+        await check(`source artifact[${i}]`, computeArtifactHash(art), () =>
+          arts.methods
+            .get_state_root_unconstrained(artCarried)
+            .simulate({ from })
         );
-        checks.push(
-          check(
-            `source artifact_location[${i}]`,
-            computeArtifactLocationHash(sourceArrivalData.artifactLocations[i]),
+        await check(
+          `source artifact_location[${i}]`,
+          computeArtifactLocationHash(sourceArrivalData.artifactLocations[i]),
+          () =>
             als.methods
               .get_state_root_unconstrained(artCarried)
               .simulate({ from })
-          )
         );
       }
     }
 
     // Target entity hashes
-    checks.push(
-      check(
-        "target planet",
-        computePlanetHash(targetPlanet),
-        ps.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
-      )
+    await check("target planet", computePlanetHash(targetPlanet), () =>
+      ps.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
     );
-    checks.push(
-      check(
-        "target planet_events",
-        computePlanetEventsHash(targetPlanetEvents),
+    await check(
+      "target planet_events",
+      computePlanetEventsHash(targetPlanetEvents),
+      () =>
         pes.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
-      )
     );
-    checks.push(
-      check(
-        "target planet_artifacts",
-        computePlanetArtifactsHash(targetPlanetArtifacts),
+    await check(
+      "target planet_artifacts",
+      computePlanetArtifactsHash(targetPlanetArtifacts),
+      () =>
         pas.methods.get_state_root_unconstrained(targetLoc).simulate({ from })
-      )
     );
 
     // Target arrivals batch
@@ -1585,86 +1560,65 @@ export class StateResolver {
       const arrival = targetArrivalData.arrivals[i];
       const arrId = BigInt(Number(arrival["id"] ?? 0));
       if (arrId === 0n) continue;
-      checks.push(
-        check(
-          `target arrival[${i}]`,
-          computeArrivalHash(arrival),
-          arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
-        )
+      await check(`target arrival[${i}]`, computeArrivalHash(arrival), () =>
+        arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
       );
       const art = targetArrivalData.artifacts[i];
       const artCarried = BigInt(String(arrival["carried_artifact_id"] ?? 0));
       if (artCarried !== 0n) {
-        checks.push(
-          check(
-            `target artifact[${i}]`,
-            computeArtifactHash(art),
-            arts.methods
-              .get_state_root_unconstrained(artCarried)
-              .simulate({ from })
-          )
+        await check(`target artifact[${i}]`, computeArtifactHash(art), () =>
+          arts.methods
+            .get_state_root_unconstrained(artCarried)
+            .simulate({ from })
         );
-        checks.push(
-          check(
-            `target artifact_location[${i}]`,
-            computeArtifactLocationHash(targetArrivalData.artifactLocations[i]),
+        await check(
+          `target artifact_location[${i}]`,
+          computeArtifactLocationHash(targetArrivalData.artifactLocations[i]),
+          () =>
             als.methods
               .get_state_root_unconstrained(artCarried)
               .simulate({ from })
-          )
         );
       }
     }
 
     // World hash
-    checks.push(
-      check(
-        "world",
-        computeWorldHash(world),
-        ws.methods.get_state_root_unconstrained(0).simulate({ from })
-      )
+    await check("world", computeWorldHash(world), () =>
+      ws.methods.get_state_root_unconstrained(0).simulate({ from })
     );
 
     // Moved artifact
     if (movedArtifactId !== 0n) {
-      checks.push(
-        check(
-          "moved artifact",
-          computeArtifactHash(movedArtifact),
-          arts.methods
-            .get_state_root_unconstrained(movedArtifactId)
-            .simulate({ from })
-        )
+      await check("moved artifact", computeArtifactHash(movedArtifact), () =>
+        arts.methods
+          .get_state_root_unconstrained(movedArtifactId)
+          .simulate({ from })
       );
     }
 
     // Source activated artifact
     if (sourceActivatedArtifactId !== 0n) {
-      checks.push(
-        check(
-          "source activated artifact",
-          computeArtifactHash(sourceActivatedArtifact),
+      await check(
+        "source activated artifact",
+        computeArtifactHash(sourceActivatedArtifact),
+        () =>
           arts.methods
             .get_state_root_unconstrained(sourceActivatedArtifactId)
             .simulate({ from })
-        )
       );
     }
 
     // Target activated artifact
     if (targetActivatedArtifactId !== 0n) {
-      checks.push(
-        check(
-          "target activated artifact",
-          computeArtifactHash(targetActivatedArtifact),
+      await check(
+        "target activated artifact",
+        computeArtifactHash(targetActivatedArtifact),
+        () =>
           arts.methods
             .get_state_root_unconstrained(targetActivatedArtifactId)
             .simulate({ from })
-        )
       );
     }
-
-    await Promise.all(checks);
 
     if (mismatches.length > 0) {
       const msg = `[StateResolver] Hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
@@ -1689,12 +1643,10 @@ export class StateResolver {
     const check = async (
       label: string,
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
-      onChainHashPromise: Promise<unknown>
+      loadOnChainHash: () => Promise<unknown>
     ) => {
-      const [localHash, rawOnChain] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const localHash = await localHashPromise;
+      const rawOnChain = await loadOnChainHash();
       const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
@@ -1705,36 +1657,29 @@ export class StateResolver {
       }
     };
 
-    await Promise.all([
-      check(
-        "planet",
-        computePlanetHash(planetState),
-        this.planetStorage.methods
-          .get_state_root_unconstrained(locationId)
-          .simulate({ from })
-      ),
-      check(
-        "planetRevealedCoords",
-        computePlanetRevealedCoordsHash(planetRevealedCoords),
+    await check("planet", computePlanetHash(planetState), () =>
+      this.planetStorage.methods
+        .get_state_root_unconstrained(locationId)
+        .simulate({ from })
+    );
+    await check(
+      "planetRevealedCoords",
+      computePlanetRevealedCoordsHash(planetRevealedCoords),
+      () =>
         this.planetRevealedCoordsStorage.methods
           .get_state_root_unconstrained(locationId)
           .simulate({ from })
-      ),
-      check(
-        "player",
-        computePlayerHash(playerState),
-        this.playerStorage.methods
-          .get_state_root_unconstrained(from)
-          .simulate({ from })
-      ),
-      check(
-        "world",
-        computeWorldHash(world),
-        this.worldStorage.methods
-          .get_state_root_unconstrained(0)
-          .simulate({ from })
-      ),
-    ]);
+    );
+    await check("player", computePlayerHash(playerState), () =>
+      this.playerStorage.methods
+        .get_state_root_unconstrained(from)
+        .simulate({ from })
+    );
+    await check("world", computeWorldHash(world), () =>
+      this.worldStorage.methods
+        .get_state_root_unconstrained(0)
+        .simulate({ from })
+    );
 
     if (mismatches.length > 0) {
       const msg = `[StateResolver] Reveal hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
@@ -1758,12 +1703,10 @@ export class StateResolver {
     const check = async (
       label: string,
       localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
-      onChainHashPromise: Promise<unknown>
+      loadOnChainHash: () => Promise<unknown>
     ) => {
-      const [localHash, rawOnChain] = await Promise.all([
-        localHashPromise,
-        onChainHashPromise,
-      ]);
+      const localHash = await localHashPromise;
+      const rawOnChain = await loadOnChainHash();
       const onChainHash = unwrapSimulateResult(rawOnChain);
       const localBigInt = localHash.toBigInt();
       const onChainBigInt = BigInt(String(onChainHash));
@@ -1774,29 +1717,21 @@ export class StateResolver {
       }
     };
 
-    await Promise.all([
-      check(
-        "planet",
-        computePlanetHash(planetState),
-        this.planetStorage.methods
-          .get_state_root_unconstrained(locationId)
-          .simulate({ from })
-      ),
-      check(
-        "player",
-        computePlayerHash(playerState),
-        this.playerStorage.methods
-          .get_state_root_unconstrained(from)
-          .simulate({ from })
-      ),
-      check(
-        "world",
-        computeWorldHash(world),
-        this.worldStorage.methods
-          .get_state_root_unconstrained(0)
-          .simulate({ from })
-      ),
-    ]);
+    await check("planet", computePlanetHash(planetState), () =>
+      this.planetStorage.methods
+        .get_state_root_unconstrained(locationId)
+        .simulate({ from })
+    );
+    await check("player", computePlayerHash(playerState), () =>
+      this.playerStorage.methods
+        .get_state_root_unconstrained(from)
+        .simulate({ from })
+    );
+    await check("world", computeWorldHash(world), () =>
+      this.worldStorage.methods
+        .get_state_root_unconstrained(0)
+        .simulate({ from })
+    );
 
     if (mismatches.length > 0) {
       const msg = `[StateResolver] Init hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;

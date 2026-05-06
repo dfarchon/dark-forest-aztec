@@ -1,4 +1,4 @@
-import { CHAIN_DISPLAY_NAME } from "@dfpunk/constants";
+import { CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import { Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
@@ -26,7 +26,7 @@ function TutorialPaneContent({
   if (tutorialState === TutorialState.None) {
     return (
       <div className="tutintro">
-        Welcome to the universe of <White>DARK FOREST</White>. Would you like to
+        Welcome to the universe of <White>{GAME_NAME}</White>. Would you like to
         play the tutorial?
         <div>
           <Btn
@@ -184,9 +184,10 @@ function TutorialPaneContent({
       <div className="tutzoom">
         You can increase your score by withdrawing silver via space time rips,
         and by finding artifacts. The rarer the artifact, the more points it
-        gives you! You can also increase your score via Capture Zones. Hover
+        gives you!
+        {/* You can also increase your score via Capture Zones. Hover
         over the 'Capture Zone' section in the top bar for more info about
-        capture zones.
+        capture zones. */}
         <div>
           <Btn
             className="btn"
