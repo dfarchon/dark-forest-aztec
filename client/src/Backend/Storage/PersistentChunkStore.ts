@@ -68,6 +68,14 @@ interface PersistentChunkStoreConfig {
 
 export const MODAL_POSITIONS_KEY = "modal_positions";
 
+function toJsonPersistable<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, nestedValue) =>
+      typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue
+    )
+  ) as T;
+}
+
 class PersistentChunkStore implements ChunkStore {
   private diagnosticUpdater?: DiagnosticUpdater;
   private db: IDBPDatabase;
@@ -522,7 +530,7 @@ class PersistentChunkStore implements ChunkStore {
     const ser: PersistedTransaction = { hash: tx.hash, intent: tx.intent };
     await this.db.put(
       ObjectStore.UNCONFIRMED_ETH_TXS,
-      JSON.parse(JSON.stringify(ser)),
+      toJsonPersistable(ser),
       tx.hash.toString()
     );
   }
