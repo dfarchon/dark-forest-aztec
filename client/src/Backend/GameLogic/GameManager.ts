@@ -375,10 +375,11 @@ class GameManager extends EventEmitter {
   private safeMode: boolean;
 
   /**
-   * Planets currently being refreshed from chain data. Prevents concurrent
-   * hardRefreshPlanet calls from racing against each other.
+   * Planets currently being refreshed from chain data. One in-flight refresh per
+   * planet; overlapping callers set `pending` so we run at least one more
+   * refresh after the current one finishes (no dropped updates).
    */
-  private refreshingPlanets = new Set<LocationId>();
+  private refreshingPlanets = new Map<LocationId, { pending: boolean }>();
 
   public get planetRarity(): number {
     return this.contractConstants.PLANET_RARITY;
@@ -1012,50 +1013,60 @@ class GameManager extends EventEmitter {
     planetId: LocationId,
     show?: boolean
   ): Promise<void> {
-    // Skip if this planet is already being refreshed (prevents concurrent races)
-    if (this.refreshingPlanets.has(planetId)) return;
-    this.refreshingPlanets.add(planetId);
+    const existing = this.refreshingPlanets.get(planetId);
+    if (existing) {
+      existing.pending = true;
+      return;
+    }
+
+    const slot = { pending: false };
+    this.refreshingPlanets.set(planetId, slot);
 
     try {
-      if (show) console.log(planetId);
-      const planet = await this.contractsAPI.getPlanetById(planetId);
-      if (!planet) {
-        return;
-      }
+      do {
+        slot.pending = false;
+        if (show) console.log(planetId);
+        const planet = await this.contractsAPI.getPlanetById(planetId);
+        if (!planet) {
+          return;
+        }
 
-      const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
-      const artifactsOnPlanets =
-        await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
-      const artifactsOnPlanet = artifactsOnPlanets[0];
+        const arrivals = await this.contractsAPI.getArrivalsForPlanet(planetId);
+        const artifactsOnPlanets =
+          await this.contractsAPI.bulkGetArtifactsOnPlanets([planetId]);
+        const artifactsOnPlanet = artifactsOnPlanets[0];
 
-      const revealedCoords =
-        await this.contractsAPI.getRevealedCoordsByIdIfExists(planetId);
-      let revealedLocation: RevealedLocation | undefined;
-      let claimedCoords: ClaimedCoords | undefined;
+        const revealedCoords =
+          await this.contractsAPI.getRevealedCoordsByIdIfExists(planetId);
+        let revealedLocation: RevealedLocation | undefined;
+        let claimedCoords: ClaimedCoords | undefined;
 
-      if (revealedCoords) {
-        const loc = await this.locationFromCoords(revealedCoords);
-        revealedLocation = {
-          ...loc,
-          revealer: revealedCoords.revealer,
-        };
-      }
+        if (revealedCoords) {
+          const loc = await this.locationFromCoords(revealedCoords);
+          revealedLocation = {
+            ...loc,
+            revealer: revealedCoords.revealer,
+          };
+        }
 
-      this.entityStore.replacePlanetFromContractData(
-        planet,
-        arrivals,
-        artifactsOnPlanet.map((a) => a.id),
-        revealedLocation,
-        claimedCoords?.revealer
-      );
+        this.entityStore.replacePlanetFromContractData(
+          planet,
+          arrivals,
+          artifactsOnPlanet.map((a) => a.id),
+          revealedLocation,
+          claimedCoords?.revealer
+        );
 
-      // it's important that we reload the artifacts that are on the planet after the move
-      // completes because this move could have been a photoid canon move. one of the side
-      // effects of this type of move is that the active photoid canon deactivates upon a move
-      // meaning we need to reload its data from the blockchain.
-      artifactsOnPlanet.forEach((a) =>
-        this.entityStore.replaceArtifactFromContractData(a)
-      );
+        // it's important that we reload the artifacts that are on the planet after the move
+        // completes because this move could have been a photoid canon move. one of the side
+        // effects of this type of move is that the active photoid canon deactivates upon a move
+        // meaning we need to reload its data from the blockchain.
+        artifactsOnPlanet.forEach((a) =>
+          this.entityStore.replaceArtifactFromContractData(a)
+        );
+      } while (slot.pending);
+    } catch (err) {
+      console.error("[hardRefreshPlanet]", planetId, err);
     } finally {
       this.refreshingPlanets.delete(planetId);
     }

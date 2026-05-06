@@ -849,9 +849,6 @@ class GameUIManager extends EventEmitter {
     if (!planet) {
       const tutorialManager = TutorialManager.getInstance(this);
       tutorialManager.acceptInput(TutorialState.Deselect);
-    } else {
-      // Refresh from chain when user clicks/selects a planet so display matches indexer
-      this.gameManager.hardRefreshPlanet(planet.locationId, true);
     }
 
     const uiEmitter = UIEmitter.getInstance();
