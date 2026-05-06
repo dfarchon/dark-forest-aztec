@@ -38,7 +38,6 @@ export function CapturePlanetButton({
     undefined
   );
   const owned = planetWrapper.value?.owner === account;
-  // @ts-expect-error TODO: getCaptureZoneGenerator not implemented yet (capture feature)
   const captureZoneGenerator = uiManager.getCaptureZoneGenerator();
 
   const canGiveScore = useMemo(() => {

@@ -71,6 +71,10 @@ export const enum GameUIManagerEvent {
   InitializedPlayerError = "InitializedPlayerError",
 }
 
+type CaptureZoneGeneratorLike = {
+  isInZone(locationId: LocationId): boolean;
+};
+
 class GameUIManager extends EventEmitter {
   private readonly radiusMap: { [PlanetLevel: number]: number };
   private readonly gameManager: GameManager;
@@ -1283,9 +1287,10 @@ class GameUIManager extends EventEmitter {
   //   return this.gameManager.getCaptureZones();
   // }
 
-  // public getCaptureZoneGenerator() {
-  //   return this.gameManager.getCaptureZoneGenerator();
-  // }
+  public getCaptureZoneGenerator(): CaptureZoneGeneratorLike | undefined {
+    // Capture zone generation is not wired up in the Aztec client yet.
+    return undefined;
+  }
 
   public getIsHighPerfMode(): boolean {
     const account = this.getAccount();

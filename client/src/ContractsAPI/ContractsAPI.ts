@@ -591,15 +591,15 @@ export class ContractsAPI extends EventEmitter {
   /** Reveal cooldown in seconds from game config. Mirrors v0.6 getRevealCooldown. */
   public async getRevealCooldown(): Promise<number> {
     const config = await this.configCache.getConfig();
-    const core = config.gameConfigCore as Record<string, unknown>;
-    return Number(core?.location_reveal_cooldown ?? 0);
+    const world = config.worldConfig as Record<string, unknown>;
+    return Number(world?.location_reveal_cooldown ?? 0);
   }
 
   /** Artifact point values by rarity. Mirrors v0.6 getArtifactPointValues. */
   public async getArtifactPointValues(): Promise<number[]> {
     const config = await this.configCache.getConfig();
-    const core = config.gameConfigCore as Record<string, unknown>;
-    const raw = core?.artifact_point_values;
+    const artifacts = config.artifactsConfig as Record<string, unknown>;
+    const raw = artifacts?.artifact_point_values;
     if (Array.isArray(raw)) return raw.map((v) => Number(v ?? 0));
     return [0, 0, 0, 0, 0, 0];
   }

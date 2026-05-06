@@ -30,6 +30,7 @@ export interface GameConfig {
   upgrades: RawUpgrade[][];
   artifactsConfig: unknown;
   spaceshipsConfig: unknown;
+  captureZonesConfig: unknown;
   /** Cumulative rarities for levels 0-9, from get_cumulative_rarity */
   planetCumulativeRarities: number[];
 }
@@ -122,6 +123,11 @@ export class ConfigCache {
     const spaceshipsConfig = unwrapSimulateResult(
       await c.methods.get_spaceships_config_unconstrained().simulate({ from })
     );
+    const captureZonesConfig = unwrapSimulateResult(
+      await c.methods
+        .get_capture_zones_config_unconstrained()
+        .simulate({ from })
+    );
 
     const cumulativeRaritiesRaw: unknown[] = [];
     for (let i = 0; i < 10; i++) {
@@ -161,6 +167,7 @@ export class ConfigCache {
       upgrades,
       artifactsConfig,
       spaceshipsConfig,
+      captureZonesConfig,
       planetCumulativeRarities,
     };
   }

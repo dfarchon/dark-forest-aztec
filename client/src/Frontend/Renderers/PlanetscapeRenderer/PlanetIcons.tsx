@@ -56,7 +56,6 @@ export function PlanetIcons({ planet }: { planet: Planet | undefined }) {
 
   let captureZoneIcons = null;
   if (uiManager.captureZonesEnabled) {
-    // @ts-expect-error TODO: getCaptureZoneGenerator not implemented yet
     const captureZoneGenerator = uiManager.getCaptureZoneGenerator();
     if (captureZoneGenerator) {
       captureZoneIcons = (

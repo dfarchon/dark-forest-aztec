@@ -1,8 +1,8 @@
-import { ArtifactRarity, ModalName, PlanetLevel } from "@dfpunk/types";
+import { ArtifactRarity, ModalName } from "@dfpunk/types";
 import React from "react";
 import styled from "styled-components";
 
-import { dfArchonLinks } from "../../config/externalLinks";
+import { dfArchonLinks, externalLinks } from "../../config/externalLinks";
 import { EmSpacer, Link, Section, SectionHeader } from "../Components/CoreUI";
 import { ArtifactRarityLabel } from "../Components/Labels/ArtifactLabels";
 import { Gold, White } from "../Components/Text";
@@ -31,7 +31,6 @@ export function HelpPane({
 
   const silverScoreValue = uiManager.getSilverScoreValue();
   const artifactPointValues = uiManager.getArtifactPointValues();
-  const captureZonePointValues = uiManager.getCaptureZonePointValues();
 
   return (
     <ModalPane
@@ -49,61 +48,52 @@ export function HelpPane({
             mintable. Thanks for playing!
           </Section>
         )}
+
         <Section>
-          <SectionHeader>Firstly, Some Links:</SectionHeader>
-          <Link to={dfArchonLinks.blog}>DFArchon Info and Announcements</Link>
-          <br />
-          <Link to={dfArchonLinks.twitter}>DFArchon Twitter</Link>
-          <br />
-          <Link to={dfArchonLinks.discord}>DFArchon Discord Server</Link>
-          <br />
-          {/* todo: new wiki? */}
-          <Link to={dfArchonLinks.wiki}>Community-Run Wiki</Link>
-          <br />
-          <br />
-          Secondly... welcome to
+          <SectionHeader>Welcome to Dark Forest Aztec</SectionHeader>
+          Dark Forest Aztec is a competitive strategy game set in a vast
+          universe where most of the map is hidden. Your moves and plans are
+          backed by zero-knowledge cryptography on <White>Aztec</White>, so
+          players explore and fight without fully exposing their positions
+          on-chain. Expand your empire, outthink rivals, and climb the
+          scoreboard.
         </Section>
 
         <Section>
-          <SectionHeader>Dark Forest Aztec</SectionHeader>
-          Dark Forest is a vast universe, obfuscated by zero-knowledge
-          cryptography. Your <White>explorer</White> (bottom left) explores the
-          universe, searching for <White>Planets</White> and other players.
+          <SectionHeader>How to Play</SectionHeader>
+          Use your <White>explorer</White> (bottom left) to uncover{" "}
+          <White>planets</White>, resources, and other players.
           <EmSpacer height={1} />
-          All planets produce <White>Energy</White>. You can click-drag to move
-          energy from planets you own to new planets to conquer them.
+          Most planets produce <White>energy</White>. Click and drag to send
+          energy from planets you own toward new targets to capture or weaken
+          them.
           <EmSpacer height={1} />
-          Also scattered through the universe are <White>Asteroid Fields</White>
-          , which produce <White>Silver</White>. Silver can be sent to planets
-          and can be spent on <White>Upgrades</White>.
-          <EmSpacer height={1} /> Some planets contain <White>Artifacts</White>.
-          Artifacts can be harvested and deposited onto planets, buffing their
-          stats.
+          <White>Asteroid fields</White> produce <White>silver</White>. Route
+          silver to your planets and spend it on <White>upgrades</White>.
+          <EmSpacer height={1} />
+          Some planets hold <White>artifacts</White>. Use your{" "}
+          <White>Gear</White> ship to discover them, then harvest and deposit
+          artifacts on planets to boost stats.
         </Section>
 
         <Section>
-          {/* todo: decide Prizes and Scoring*/}
-          {/* <SectionHeader>Prizes and Scoring</SectionHeader>A snapshot of scores
-          will be taken on <White>February 28, 2022</White> at 9PM Pacific Time.
-          At that time, the top 63 highest-scoring players will be awarded
-          prizes from a pool 63 prize planets. You can see the current rankings
-          by scrolling down on the landing page of the game. */}
+          <SectionHeader>Scoring</SectionHeader>
+          This round&apos;s score comes from two activities: discovering
+          artifacts with your Gear ship, and withdrawing silver from{" "}
+          <White>Spacetime Rips</White>.
           <EmSpacer height={1} />
-          Scoring this round is made up of three parts: finding artifacts using
-          your Gear ship, withdrawing silver from Spacetime Rips, and invading
-          and capturing planets inside of Capture Zones. For more information
-          about capture zones, hover over the 'Capture Zones' sections at the
-          top of the screen.
-          <EmSpacer height={1} />
-          The values for each scoring type are provided below:
+          Current point values from on-chain config:
         </Section>
 
         <Section>
-          <SectionHeader>Scoring values</SectionHeader>
-          Each single <Gold>silver</Gold> you withdraw increases your score by{" "}
-          {silverScoreValue / 100}.
-          <EmSpacer height={1} />
-          Discovering an artifact increases your score based on its rarity:
+          <SectionHeader>Silver (Spacetime Rip withdrawals)</SectionHeader>
+          Each unit of <Gold>silver</Gold> you withdraw adds{" "}
+          {silverScoreValue / 100} to your score.
+        </Section>
+
+        <Section>
+          <SectionHeader>Artifacts (by rarity)</SectionHeader>
+          Discovering an artifact adds points based on rarity:
           <br />
           <ArtifactRarityLabel rarity={ArtifactRarity.Common} />:{" "}
           {artifactPointValues[ArtifactRarity.Common]}
@@ -119,28 +109,40 @@ export function HelpPane({
           <br />
           <ArtifactRarityLabel rarity={ArtifactRarity.Mythic} />:{" "}
           {artifactPointValues[ArtifactRarity.Mythic]}
+        </Section>
+
+        <Section>
+          <SectionHeader>Credits</SectionHeader>
+          <White>Dark Forest</White> was created by the original{" "}
+          <Link to={externalLinks.darkForest.zkgaMe}>zkga.me</Link> team, who
+          pioneered the use of zk-SNARKs to build a fully on-chain game with
+          hidden information. Their work, open-sourced over multiple community
+          rounds, is the foundation that makes this experience possible.
           <EmSpacer height={1} />
-          Capturing an invaded planet increases your score based on its level:
+          <White>Dark Forest Aztec</White> is a port by{" "}
+          <Link to={dfArchonLinks.twitter}>DFArchon</Link>, built on top of that
+          open-source codebase and reimagined for the{" "}
+          <White>Aztec Network</White>, bringing private, programmable
+          zero-knowledge state to the Dark Forest universe.
+        </Section>
+
+        <Section>
+          <SectionHeader>Need Help?</SectionHeader>
+          Run into a bug, have a question, or want to share feedback? Join us on{" "}
+          <Link to={dfArchonLinks.discord}>DFArchon Discord</Link>. The team and
+          community are happy to help.
+        </Section>
+
+        <Section>
+          <SectionHeader>Useful Links</SectionHeader>
+          <Link to={dfArchonLinks.blog}>Onchain Reality Blog</Link>
           <br />
-          Level {PlanetLevel.ZERO}: {captureZonePointValues[PlanetLevel.ZERO]}
+          <Link to={dfArchonLinks.twitter}>DFArchon on X</Link>
           <br />
-          Level {PlanetLevel.ONE}: {captureZonePointValues[PlanetLevel.ONE]}
+          <Link to={dfArchonLinks.discord}>DFArchon Discord</Link>
           <br />
-          Level {PlanetLevel.TWO}: {captureZonePointValues[PlanetLevel.TWO]}
+          <Link to={dfArchonLinks.github}>DFArchon on GitHub</Link>
           <br />
-          Level {PlanetLevel.THREE}: {captureZonePointValues[PlanetLevel.THREE]}
-          <br />
-          Level {PlanetLevel.FOUR}: {captureZonePointValues[PlanetLevel.FOUR]}
-          <br />
-          Level {PlanetLevel.FIVE}: {captureZonePointValues[PlanetLevel.FIVE]}
-          <br />
-          Level {PlanetLevel.SIX}: {captureZonePointValues[PlanetLevel.SIX]}
-          <br />
-          Level {PlanetLevel.SEVEN}: {captureZonePointValues[PlanetLevel.SEVEN]}
-          <br />
-          Level {PlanetLevel.EIGHT}: {captureZonePointValues[PlanetLevel.EIGHT]}
-          <br />
-          Level {PlanetLevel.NINE}: {captureZonePointValues[PlanetLevel.NINE]}
         </Section>
       </HelpContent>
     </ModalPane>

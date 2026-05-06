@@ -9,8 +9,13 @@
  */
 
 import { CONTRACT_PRECISION } from "@dfpunk/constants";
-import type { EthAddress } from "@dfpunk/types";
-import type { Upgrade, UpgradeBranches } from "@dfpunk/types";
+import {
+  type ArtifactPointValues,
+  ArtifactRarity,
+  type EthAddress,
+  type Upgrade,
+  type UpgradeBranches,
+} from "@dfpunk/types";
 
 import type { GameConfig, RawUpgrade } from "../Session/TxExecutor/ConfigCache";
 import type {
@@ -33,6 +38,23 @@ function num(v: unknown): number {
 
 function bool(v: unknown): boolean {
   return !!v;
+}
+
+function artifactPointValuesFromRaw(raw: unknown): ArtifactPointValues {
+  const arr = Array.isArray(raw) ? raw : [];
+  const rarityOrder = [
+    ArtifactRarity.Unknown,
+    ArtifactRarity.Common,
+    ArtifactRarity.Rare,
+    ArtifactRarity.Epic,
+    ArtifactRarity.Legendary,
+    ArtifactRarity.Mythic,
+  ] as const;
+  const out = {} as ArtifactPointValues;
+  for (let i = 0; i < rarityOrder.length; i++) {
+    out[rarityOrder[i]] = num(arr[i]);
+  }
+  return out;
 }
 
 function tenNumbers(
@@ -168,6 +190,9 @@ export function gameConfigToContractConstants(
   const snark = (config.snarkConfig as Record<string, unknown>) ?? {};
   const core = (config.gameConfigCore as Record<string, unknown>) ?? {};
   const world = (config.worldConfig as Record<string, unknown>) ?? {};
+  const artifacts = (config.artifactsConfig as Record<string, unknown>) ?? {};
+  const captureZones =
+    (config.captureZonesConfig as Record<string, unknown>) ?? {};
   const junk = (config.spaceJunkConfig as Record<string, unknown>) ?? {};
   const rawThresholds = config.planetLevelThresholds as
     | { thresholds: unknown[] }
@@ -190,7 +215,7 @@ export function gameConfigToContractConstants(
   ): number[] => arr.map((s) => num(s[key]) / CONTRACT_PRECISION);
 
   return {
-    ADMIN_CAN_ADD_PLANETS: bool(core.admin_can_add_planets),
+    ADMIN_CAN_ADD_PLANETS: bool(world.admin_can_add_planets),
     WORLD_RADIUS_LOCKED: bool(world.world_radius_locked),
     WORLD_RADIUS_MIN: num(world.world_radius_min),
 
@@ -203,24 +228,26 @@ export function gameConfigToContractConstants(
     PERLIN_MIRROR_X: bool(snark.perlin_mirror_x),
     PERLIN_MIRROR_Y: bool(snark.perlin_mirror_y),
 
-    TOKEN_MINT_END_SECONDS: num(core.token_mint_end_seconds),
+    TOKEN_MINT_END_SECONDS: num(artifacts.token_mint_end_timestamp),
 
     MAX_NATURAL_PLANET_LEVEL: num(core.max_natural_planet_level),
-    TIME_FACTOR_HUNDREDTHS: num(core.time_factor_hundredths),
+    TIME_FACTOR_HUNDREDTHS: num(world.time_factor_hundredths),
     PERLIN_THRESHOLD_1: num(core.perlin_threshold_1),
     PERLIN_THRESHOLD_2: num(core.perlin_threshold_2),
     PERLIN_THRESHOLD_3: num(core.perlin_threshold_3),
     INIT_PERLIN_MIN: num(core.init_perlin_min),
     INIT_PERLIN_MAX: num(core.init_perlin_max),
-    SPAWN_RIM_AREA: num(core.spawn_rim_area),
+    SPAWN_RIM_AREA: num(world.spawn_rim_area),
     BIOME_THRESHOLD_1: num(core.biome_threshold_1),
     BIOME_THRESHOLD_2: num(core.biome_threshold_2),
     PLANET_RARITY: num(core.planet_rarity),
     PLANET_LEVEL_THRESHOLDS: tenNumbers(thresholds),
-    PLANET_TRANSFER_ENABLED: bool(core.planet_transfer_enabled),
+    PLANET_TRANSFER_ENABLED: bool(world.planet_transfer_enabled),
     PLANET_TYPE_WEIGHTS: buildPlanetTypeWeights(tiers),
-    ARTIFACT_POINT_VALUES: (core.artifact_point_values ?? {}) as any,
-    SILVER_SCORE_VALUE: num(core.silver_score_value),
+    ARTIFACT_POINT_VALUES: artifactPointValuesFromRaw(
+      artifacts.artifact_point_values
+    ),
+    SILVER_SCORE_VALUE: num(world.silver_score_value),
 
     SPACE_JUNK_ENABLED: bool(junk.space_junk_enabled),
     SPACE_JUNK_LIMIT: num(junk.space_junk_limit),
@@ -228,8 +255,8 @@ export function gameConfigToContractConstants(
     ABANDON_SPEED_CHANGE_PERCENT: num(junk.abandon_speed_change_percent),
     ABANDON_RANGE_CHANGE_PERCENT: num(junk.abandon_range_change_percent),
 
-    PHOTOID_ACTIVATION_DELAY: num(core.photoid_activation_delay),
-    LOCATION_REVEAL_COOLDOWN: num(core.location_reveal_cooldown),
+    PHOTOID_ACTIVATION_DELAY: num(artifacts.photoid_activation_delay),
+    LOCATION_REVEAL_COOLDOWN: num(world.location_reveal_cooldown),
 
     defaultPopulationCap: extractScaled(planetDefaults, "population_cap"),
     defaultPopulationGrowth: extractScaled(planetDefaults, "population_growth"),
@@ -246,19 +273,19 @@ export function gameConfigToContractConstants(
     adminAddress: (config.admin ?? "") as EthAddress,
 
     GAME_START_BLOCK: num(core.game_start_block),
-    CAPTURE_ZONES_ENABLED: bool(core.capture_zones_enabled),
+    CAPTURE_ZONES_ENABLED: bool(captureZones.capture_zones_enabled),
     CAPTURE_ZONE_CHANGE_BLOCK_INTERVAL: num(
-      core.capture_zone_change_block_interval
+      captureZones.capture_zone_change_block_interval
     ),
-    CAPTURE_ZONE_RADIUS: num(core.capture_zone_radius),
+    CAPTURE_ZONE_RADIUS: num(captureZones.capture_zone_radius),
     CAPTURE_ZONE_PLANET_LEVEL_SCORE: tenNumbers(
-      core.capture_zone_planet_level_score
+      captureZones.capture_zone_planet_level_score
     ),
     CAPTURE_ZONE_HOLD_BLOCKS_REQUIRED: num(
-      core.capture_zone_hold_blocks_required
+      captureZones.capture_zone_hold_blocks_required
     ),
     CAPTURE_ZONES_PER_5000_WORLD_RADIUS: num(
-      core.capture_zones_per_5000_world_radius
+      captureZones.capture_zones_per_5000_world_radius
     ),
     SPACESHIPS: {
       GEAR: bool((config.spaceshipsConfig as any)?.gear),
