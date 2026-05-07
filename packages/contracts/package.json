@@ -1,6 +1,6 @@
 {
   "name": "@dfpunk/contracts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Contract addresses, deployment constants, and helpers for dfpunk-aztec",
   "keywords": [],
   "license": "",

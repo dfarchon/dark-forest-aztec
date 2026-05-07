@@ -20,7 +20,7 @@ export const CHAIN_DISPLAY_NAME = "Aztec";
 /** Organizer / host name for the game instance (e.g. round operator). */
 export const ORGANIZER_NAME = "DFArchon";
 /** Client / app version string. */
-export const APP_VERSION = "v0.0.1";
+export const APP_VERSION = "0.1.0";
 
 /**
  * The precision of Energy & Silver stored in the Dark Forest smart contracts.

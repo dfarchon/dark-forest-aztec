@@ -1,6 +1,6 @@
 {
   "name": "@dfpunk/events",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed single pub/sub (monomitter) for dfpunk-aztec",
   "keywords": [],
   "license": "",

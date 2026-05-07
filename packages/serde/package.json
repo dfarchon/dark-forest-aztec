@@ -1,6 +1,6 @@
 {
   "name": "@dfpunk/serde",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Decode chain state (key + State) to @dfpunk/types; no ethers/contracts",
   "keywords": [],
   "license": "",

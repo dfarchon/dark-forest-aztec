@@ -1,6 +1,6 @@
 {
   "name": "@dfpunk/hexgen",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Procedural properties from hex IDs (e.g. planet bonuses from LocationId)",
   "keywords": [],
   "license": "",

@@ -1,6 +1,6 @@
 {
   "name": "@dfpunk/gamelogic",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Game logic helpers (planet, artifact, number formatting)",
   "keywords": [],
   "license": "",
