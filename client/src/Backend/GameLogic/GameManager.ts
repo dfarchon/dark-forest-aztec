@@ -1072,50 +1072,11 @@ class GameManager extends EventEmitter {
     }
   }
 
+  // Delegates each planet to hardRefreshPlanet so the per-planet refresh lock
+  // (refreshingPlanets) deduplicates with other in-flight refreshes and avoids
+  // stale writes overwriting fresher state.
   private async bulkHardRefreshPlanets(planetIds: LocationId[]): Promise<void> {
-    const planetVoyageMap: Map<LocationId, QueuedArrival[]> = new Map();
-
-    const allVoyages = await this.contractsAPI.getAllArrivals(planetIds);
-    const planetsToUpdateMap =
-      await this.contractsAPI.bulkGetPlanets(planetIds);
-    const artifactsOnPlanets =
-      await this.contractsAPI.bulkGetArtifactsOnPlanets(planetIds);
-    planetsToUpdateMap.forEach((planet, locId) => {
-      if (planetsToUpdateMap.has(locId)) {
-        planetVoyageMap.set(locId, []);
-      }
-    });
-
-    for (const voyage of allVoyages) {
-      const voyagesForToPlanet = planetVoyageMap.get(voyage.toPlanet);
-      if (voyagesForToPlanet) {
-        voyagesForToPlanet.push(voyage);
-        planetVoyageMap.set(voyage.toPlanet, voyagesForToPlanet);
-      }
-    }
-
-    for (let i = 0; i < planetIds.length; i++) {
-      const planetId = planetIds[i];
-      const planet = planetsToUpdateMap.get(planetId);
-
-      // This shouldn't really happen, but we are better off being safe - opposed to throwing
-      if (!planet) {
-        continue;
-      }
-
-      const voyagesForPlanet = planetVoyageMap.get(planet.locationId);
-      if (voyagesForPlanet) {
-        this.entityStore.replacePlanetFromContractData(
-          planet,
-          voyagesForPlanet,
-          artifactsOnPlanets[i].map((a) => a.id)
-        );
-      }
-    }
-
-    for (const artifacts of artifactsOnPlanets) {
-      this.entityStore.replaceArtifactsFromContractData(artifacts);
-    }
+    await Promise.all(planetIds.map((id) => this.hardRefreshPlanet(id)));
   }
 
   public async hardRefreshArtifact(artifactId: ArtifactId): Promise<void> {
