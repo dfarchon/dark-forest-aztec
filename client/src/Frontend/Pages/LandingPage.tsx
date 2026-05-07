@@ -69,29 +69,38 @@ const ENTER_TRANSITION_DURATION_MS = 1100;
 export default function LandingPage() {
   const navigate = useNavigate();
   const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
-  const [entering, setEntering] = useState(false);
+  const [phase, setPhase] = useState<
+    "idle" | "blackhole1" | "disclaimer" | "blackhole2"
+  >("idle");
   const [modalAnchor, setModalAnchor] = useState<{
     x: number;
     y: number;
   } | null>(null);
   const networkSettingsRef = useRef<HTMLDivElement>(null);
-  const enterTimeoutRef = useRef<number | null>(null);
+  const phaseTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
-      if (enterTimeoutRef.current !== null) {
-        window.clearTimeout(enterTimeoutRef.current);
+      if (phaseTimeoutRef.current !== null) {
+        window.clearTimeout(phaseTimeoutRef.current);
       }
     };
   }, []);
 
   const enterUniverse = () => {
-    if (enterTimeoutRef.current !== null) {
-      return;
-    }
+    if (phase !== "idle") return;
+    setPhase("blackhole1");
+    phaseTimeoutRef.current = window.setTimeout(() => {
+      setPhase("disclaimer");
+      phaseTimeoutRef.current = null;
+    }, ENTER_TRANSITION_DURATION_MS);
+  };
 
-    setEntering(true);
-    enterTimeoutRef.current = window.setTimeout(() => {
+  const acceptDisclaimer = (e: Event) => {
+    e.stopPropagation();
+    if (phase !== "disclaimer") return;
+    setPhase("blackhole2");
+    phaseTimeoutRef.current = window.setTimeout(() => {
       navigate(`/play/${defaultAddress}`);
     }, ENTER_TRANSITION_DURATION_MS);
   };
@@ -115,7 +124,7 @@ export default function LandingPage() {
       <PrettyOverlayGradient />
       {/* <Hiring /> */}
 
-      <Page onClick={enterUniverse} $entering={entering}>
+      <Page onClick={enterUniverse} $entering={phase === "blackhole1"}>
         <OnlyMobile>
           <Spacer height={8} />
         </OnlyMobile>
@@ -362,7 +371,60 @@ export default function LandingPage() {
         <LeadboardDisplay /> 
         <Spacer height={256} /> */}
       </Page>
-      {entering && <BlackHoleTransition aria-hidden />}
+      {phase !== "idle" && <BlackHoleTransition aria-hidden />}
+
+      {(phase === "disclaimer" || phase === "blackhole2") && (
+        <DisclaimerOverlay $leaving={phase === "blackhole2"}>
+          <DisclaimerPanel>
+            <DisclaimerSignal>Caution: Experimental Protocol</DisclaimerSignal>
+            <DisclaimerHeading>Before You Enter</DisclaimerHeading>
+            <DisclaimerBody>
+              <p>
+                Dark Forest Aztec is experimental software built on the Aztec
+                Network. By proceeding, you acknowledge:
+              </p>
+              <DisclaimerList>
+                <li>
+                  This software is provided &ldquo;as is&rdquo; without warranty
+                  of any kind
+                </li>
+                <li>
+                  You may experience bugs, data loss, or unexpected behavior
+                </li>
+                <li>Blockchain transactions are irreversible once confirmed</li>
+                <li>
+                  You are solely responsible for your interactions with the
+                  protocol
+                </li>
+                <li>
+                  This is not financial advice, do not risk funds you cannot
+                  afford to lose
+                </li>
+              </DisclaimerList>
+            </DisclaimerBody>
+            <DisclaimerActions>
+              <DisclaimerAccept>
+                <Btn size="large" onClick={acceptDisclaimer}>
+                  Enter Universe
+                </Btn>
+              </DisclaimerAccept>
+              <DisclaimerDecline>
+                <Btn
+                  size="large"
+                  onClick={(e: Event) => {
+                    e.stopPropagation();
+                    setPhase("idle");
+                  }}
+                >
+                  Decline
+                </Btn>
+              </DisclaimerDecline>
+            </DisclaimerActions>
+          </DisclaimerPanel>
+        </DisclaimerOverlay>
+      )}
+
+      {phase === "blackhole2" && <SecondBlackHoleTransition aria-hidden />}
     </>
   );
 }
@@ -462,6 +524,153 @@ const BlackHoleTransition = styled.div`
       box-shadow: 0 0 0 0 transparent;
     }
   }
+`;
+
+const DISCLAIMER_FADE_IN_MS = 500;
+
+const DisclaimerOverlay = styled.div<{ $leaving?: boolean }>`
+  position: fixed;
+  inset: 0;
+  z-index: ${LandingPageZIndex.Transition + 1};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${dfstyles.colors.background};
+  animation: disclaimer-overlay-in ${DISCLAIMER_FADE_IN_MS}ms ease-out both;
+
+  transition:
+    opacity 0.3s ease-out,
+    filter 0.3s ease-out,
+    transform 0.8s ease-in;
+  ${({ $leaving }) =>
+    $leaving &&
+    `
+    opacity: 0;
+    filter: blur(12px);
+    transform: scale(0.92);
+  `}
+
+  @keyframes disclaimer-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+`;
+
+const DisclaimerPanel = styled.div`
+  width: min(700px, calc(100vw - 48px));
+  padding: 42px 52px 38px;
+  border: 1px solid ${dfstyles.colors.borderDarkest};
+  border-radius: ${dfstyles.borderRadius};
+  background: rgba(21, 21, 21, 0.88);
+  text-align: center;
+  animation: disclaimer-panel-in ${DISCLAIMER_FADE_IN_MS + 150}ms ease-out both;
+
+  @keyframes disclaimer-panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @media only screen and (max-device-width: 1000px) {
+    padding: 28px 22px 24px;
+  }
+`;
+
+const DisclaimerSignal = styled.div`
+  margin-bottom: 18px;
+  color: ${dfstyles.colors.dfgreen};
+  font-size: 0.88em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+`;
+
+const DisclaimerHeading = styled.h2`
+  margin: 0 0 24px;
+  color: ${dfstyles.colors.textLight};
+  font-size: 1.6em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+`;
+
+const DisclaimerBody = styled.div`
+  text-align: left;
+  color: ${dfstyles.colors.text};
+  font-size: 1.05em;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+
+  & > p {
+    margin: 0 0 16px;
+  }
+`;
+
+const DisclaimerList = styled.ul`
+  margin: 0;
+  padding-left: 22px;
+  list-style: none;
+
+  li {
+    margin-bottom: 8px;
+    color: ${dfstyles.colors.subtext};
+    position: relative;
+    padding-left: 4px;
+  }
+
+  li::before {
+    content: "\\203A";
+    position: absolute;
+    left: -18px;
+    color: ${dfstyles.colors.dfgreen};
+    opacity: 0.6;
+  }
+`;
+
+const DisclaimerActions = styled.div`
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+
+  @media only screen and (max-device-width: 1000px) {
+    flex-direction: column;
+    align-items: center;
+  }
+`;
+
+const DisclaimerAccept = styled.div`
+  --df-button-color: ${dfstyles.colors.dfgreen};
+  --df-button-background: rgba(0, 220, 130, 0.14);
+  --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-hover-background: ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+
+  df-button {
+    min-width: 320px;
+  }
+`;
+
+const DisclaimerDecline = styled.div`
+  --df-button-color: ${dfstyles.colors.subtext};
+  --df-button-border: 1px solid ${dfstyles.colors.borderDark};
+  --df-button-hover-background: ${dfstyles.colors.backgroundlighter};
+  --df-button-hover-border: 1px solid ${dfstyles.colors.borderDark};
+
+  df-button {
+    min-width: 140px;
+  }
+`;
+
+const SecondBlackHoleTransition = styled(BlackHoleTransition)`
+  z-index: ${LandingPageZIndex.Transition + 2};
 `;
 
 const Header = styled.div`
