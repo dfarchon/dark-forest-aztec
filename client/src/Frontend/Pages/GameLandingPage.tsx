@@ -101,6 +101,42 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function CopyAccountAddressButton({
+  accountAddress,
+}: {
+  accountAddress: string;
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle"
+  );
+
+  const copyAddress = async () => {
+    try {
+      await window.navigator.clipboard.writeText(accountAddress);
+      setCopyState("copied");
+    } catch (err) {
+      console.error("Failed to copy account address:", err);
+      setCopyState("failed");
+    }
+  };
+
+  return (
+    <CopyAccountAddressRow>
+      <CopyAccountAddressButtonElement type="button" onClick={copyAddress}>
+        Copy account address
+      </CopyAccountAddressButtonElement>
+      {copyState === "copied" && (
+        <CopyAccountAddressStatus>Copied.</CopyAccountAddressStatus>
+      )}
+      {copyState === "failed" && (
+        <CopyAccountAddressStatus>
+          Failed to copy. Select the address above manually.
+        </CopyAccountAddressStatus>
+      )}
+    </CopyAccountAddressRow>
+  );
+}
+
 function printSponsorDeployPreflight(
   terminal: React.MutableRefObject<TerminalHandle | undefined>,
   sponsoredAddr: { toString: () => string },
@@ -545,6 +581,14 @@ async function runAccountFeeJuicePreflightGate(params: {
       TerminalTextStyle.Subber
     );
     terminal.current?.println("");
+
+    const activeAddress = wm.getActiveAddress();
+    if (activeAddress) {
+      terminal.current?.printElement(
+        <CopyAccountAddressButton accountAddress={activeAddress.toString()} />
+      );
+      terminal.current?.newline();
+    }
 
     let opened = false;
     terminal.current?.printLink(
@@ -3312,6 +3356,38 @@ export function GameLandingPage() {
     </>
   );
 }
+
+const CopyAccountAddressRow = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+`;
+
+const CopyAccountAddressButtonElement = styled.button`
+  color: ${dfstyles.colors.dfgreen};
+  background: rgba(0, 220, 130, 0.08);
+  border: 1px solid ${dfstyles.colors.dfgreen};
+  border-radius: 2px;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+
+  &:hover {
+    color: ${dfstyles.colors.background};
+    background: ${dfstyles.colors.dfgreen};
+  }
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+`;
+
+const CopyAccountAddressStatus = styled.span`
+  color: ${dfstyles.colors.subtext};
+`;
 
 const EnterTransition = styled.div`
   position: fixed;
