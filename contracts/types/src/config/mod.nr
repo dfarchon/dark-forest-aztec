@@ -8,3 +8,4 @@ pub mod capture_zones;
 pub mod default_stats;
 pub mod upgrade;
 pub mod planet_init;
+pub mod full_config;

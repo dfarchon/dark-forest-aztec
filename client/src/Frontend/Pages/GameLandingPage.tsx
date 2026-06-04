@@ -38,6 +38,7 @@ import {
   getProverEnabled,
   getSponsoredFpcMinBalanceFjWei,
   getSponsorMode,
+  isProductionLike,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
 import { resolveQuickJoinAccount } from "../../config/quickJoin";
@@ -101,6 +102,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function printGameLandingDebugConfig({
+  contractAddress,
+  isLobby,
+}: {
+  contractAddress: string;
+  isLobby: boolean;
+}): void {
+  console.group("[DFPunk] Game landing config");
+  console.table({
+    mode: import.meta.env.MODE,
+    isProductionLike: isProductionLike(),
+    contractAddress,
+    isLobby,
+    coreContractAddress: CORE_CONTRACT_ADDRESS,
+    configContractAddress: CONFIG_CONTRACT_ADDRESS,
+    startBlock: START_BLOCK,
+    nodeUrl: getEffectiveNodeUrl(),
+    indexerBootstrapUrl: getEffectiveIndexerBootstrapUrl() ?? "(unset)",
+    proverEnabled: getProverEnabled(),
+    proverUrl: getEffectiveProverUrl(),
+    sponsorMode: getSponsorMode(),
+    sponsoredFpcAddress:
+      getEffectiveSponsoredFpcAddressOverride() ?? "(default from salt)",
+    sponsoredFpcMinBalanceFjWei: getSponsoredFpcMinBalanceFjWei().toString(),
+    accountMinBalanceFjWei: getAccountMinBalanceFjWei().toString(),
+  });
+  console.groupEnd();
+}
+
 function CopyAccountAddressButton({
   accountAddress,
 }: {
@@ -142,6 +172,11 @@ function printSponsorDeployPreflight(
   sponsoredAddr: { toString: () => string },
   pf: SponsorDeployPreflight
 ): void {
+  const estimateSourceLabel =
+    pf.estimateSource === "threshold"
+      ? "configured minimum"
+      : pf.estimateSource;
+
   terminal.current?.println("");
   terminal.current?.println(
     `SponsoredFPC address: ${sponsoredAddr.toString()}`,
@@ -152,7 +187,7 @@ function printSponsorDeployPreflight(
     TerminalTextStyle.Sub
   );
   terminal.current?.println(
-    `Minimum required (preflight): ${formatFeeJuiceWei(pf.requiredWei)} [source: ${pf.estimateSource}]`,
+    `Minimum required (preflight): ${formatFeeJuiceWei(pf.requiredWei)} [source: ${estimateSourceLabel}]`,
     TerminalTextStyle.Sub
   );
 }
@@ -1015,6 +1050,10 @@ export function GameLandingPage() {
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
   const sponsorMode = getSponsorMode();
+
+  useEffect(() => {
+    printGameLandingDebugConfig({ contractAddress, isLobby });
+  }, [contractAddress, isLobby]);
 
   useEffect(() => {
     loadingPhaseStartedAtRef.current = Date.now();

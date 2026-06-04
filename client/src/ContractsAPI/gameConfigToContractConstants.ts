@@ -31,13 +31,43 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function scalar(v: unknown): unknown {
+  if (!isRecord(v)) return v;
+  if ("value" in v) return scalar(v.value);
+  if ("inner" in v) return scalar(v.inner);
+  if ("field" in v) return scalar(v.field);
+  if (
+    typeof v.toString === "function" &&
+    v.toString !== Object.prototype.toString
+  ) {
+    return v.toString();
+  }
+  return v;
+}
+
 function num(v: unknown): number {
-  if (v === undefined || v === null) return 0;
-  return Number(v);
+  const value = scalar(v);
+  if (value === undefined || value === null) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function bool(v: unknown): boolean {
-  return !!v;
+  const value = scalar(v);
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase().trim();
+    if (normalized === "true") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "") {
+      return false;
+    }
+  }
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "bigint") return value !== 0n;
+  return !!value;
 }
 
 function artifactPointValuesFromRaw(raw: unknown): ArtifactPointValues {

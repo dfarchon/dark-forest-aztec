@@ -29,6 +29,7 @@
         "lint:fix": "eslint . --fix",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
         "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
+        "read:config": "pnpm exec tsx scripts/read/read-config.ts",
         "scripts:fmt": "pnpm run lint:fix && pnpm run prettier",
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
         "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",

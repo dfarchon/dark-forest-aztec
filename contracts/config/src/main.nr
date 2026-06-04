@@ -12,6 +12,7 @@ pub contract Config {
         artifacts::ArtifactsConfig,
         capture_zones::CaptureZonesConfig,
         default_stats::PlanetDefaultStats,
+        full_config::FullConfig,
         game::{GameConfigCore, PlanetLevelThresholds, PlanetTypeWeightsTier},
         planet_init::PlanetInitConfig,
         snark::SnarkConfig,
@@ -1136,5 +1137,80 @@ pub contract Config {
             self.storage.capture_zones_config_hash.read(),
             self.storage.upgrade_config_hash.read(),
         ]
+    }
+
+    /// Returns the entire client-facing config in a single call (unconstrained).
+    /// Lets the client fetch all config with one PXE `simulate` instead of many
+    /// serial calls. Reuses the same storage reads as the individual getters.
+    #[external("utility")]
+    unconstrained fn get_full_config_unconstrained() -> FullConfig {
+        let default_stats: [PlanetDefaultStats; 10] = [
+            self.storage.planet_default_stats.at(0).read(),
+            self.storage.planet_default_stats.at(1).read(),
+            self.storage.planet_default_stats.at(2).read(),
+            self.storage.planet_default_stats.at(3).read(),
+            self.storage.planet_default_stats.at(4).read(),
+            self.storage.planet_default_stats.at(5).read(),
+            self.storage.planet_default_stats.at(6).read(),
+            self.storage.planet_default_stats.at(7).read(),
+            self.storage.planet_default_stats.at(8).read(),
+            self.storage.planet_default_stats.at(9).read(),
+        ];
+
+        // Branch 0 (Defense): keys 0..3, Branch 1 (Range): keys 10..13,
+        // Branch 2 (Speed): keys 20..23. Matches get_upgrades_unconstrained.
+        let upgrades: [[Upgrade; 4]; 3] = [
+            [
+                self.storage.upgrades.at(0).read(),
+                self.storage.upgrades.at(1).read(),
+                self.storage.upgrades.at(2).read(),
+                self.storage.upgrades.at(3).read(),
+            ],
+            [
+                self.storage.upgrades.at(10).read(),
+                self.storage.upgrades.at(11).read(),
+                self.storage.upgrades.at(12).read(),
+                self.storage.upgrades.at(13).read(),
+            ],
+            [
+                self.storage.upgrades.at(20).read(),
+                self.storage.upgrades.at(21).read(),
+                self.storage.upgrades.at(22).read(),
+                self.storage.upgrades.at(23).read(),
+            ],
+        ];
+
+        let cumulative_rarities: [u128; 10] = [
+            self.storage.cumulative_rarities.at(0).read(),
+            self.storage.cumulative_rarities.at(1).read(),
+            self.storage.cumulative_rarities.at(2).read(),
+            self.storage.cumulative_rarities.at(3).read(),
+            self.storage.cumulative_rarities.at(4).read(),
+            self.storage.cumulative_rarities.at(5).read(),
+            self.storage.cumulative_rarities.at(6).read(),
+            self.storage.cumulative_rarities.at(7).read(),
+            self.storage.cumulative_rarities.at(8).read(),
+            self.storage.cumulative_rarities.at(9).read(),
+        ];
+
+        FullConfig {
+            admin: self.storage.admin.read(),
+            snark_config: self.storage.snark_config.read(),
+            world_config: self.storage.world_config.read(),
+            game_config_core: self.storage.game_config_core.read(),
+            upgrade_config: self.storage.upgrade_config.read(),
+            planet_level_thresholds: self.storage.planet_level_thresholds.read(),
+            space_junk_config: self.storage.space_junk_config.read(),
+            planet_type_weights_tier_0: self.storage.planet_type_weights_tier_0.read(),
+            planet_type_weights_tier_1: self.storage.planet_type_weights_tier_1.read(),
+            planet_type_weights_tier_2: self.storage.planet_type_weights_tier_2.read(),
+            planet_type_weights_tier_3: self.storage.planet_type_weights_tier_3.read(),
+            artifacts_config: self.storage.artifacts_config.read(),
+            spaceships_config: self.storage.spaceships_config.read(),
+            capture_zones_config: self.storage.capture_zones_config.read(),
+            default_stats,
+            upgrades,
+            cumulative_rarities,
+        }
     }
 }
