@@ -283,8 +283,8 @@ export function SilverCapTooltipPane() {
 export function PiratesTooltipPane() {
   return (
     <>
-      <Red>This planet has space pirates!</Red> Move energy to unoccupied
-      planets to conquer them!
+      <Red>This unoccupied planet is defended by space pirates.</Red> Send
+      enough energy to defeat them and conquer the planet.
     </>
   );
 }

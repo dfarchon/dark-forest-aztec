@@ -322,7 +322,8 @@ class NotificationManager extends EventEmitter {
     this.notify(
       NotificationType.FoundPirates,
       <span>
-        You found space pirates! Unconquered planets must be defeated first.
+        This unoccupied planet is defended by space pirates. Send enough energy
+        to defeat them and conquer the planet.
         <br />
         Click to view <PlanetNameLink planet={planet} />.
       </span>
