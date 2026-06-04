@@ -102,7 +102,6 @@ export function TerminalWrapper({
 const StyledTerminalToggler = styled.div<{
   terminalEnabled: boolean;
   initRender: InitRenderState;
-  universeView: boolean;
 }>`
   position: ${({ terminalEnabled }) =>
     terminalEnabled ? "absolute" : "fixed"};
@@ -110,19 +109,15 @@ const StyledTerminalToggler = styled.div<{
     terminalEnabled ? dfstyles.game.terminalWidth : "0"};
   top: 0;
   height: 100%;
-  width: ${({ terminalEnabled }) => (terminalEnabled ? "1em" : "1.5em")};
+  width: 1.3em;
 
   background: ${dfstyles.colors.text};
   z-index: 1000;
 
   color: ${dfstyles.colors.background};
 
-  display: ${({ initRender, universeView }) =>
-    universeView
-      ? "none"
-      : initRender !== InitRenderState.NONE
-        ? "flex"
-        : "none"};
+  display: ${({ initRender }) =>
+    initRender !== InitRenderState.NONE ? "flex" : "none"};
   flex-direction: column;
   justify-content: space-around;
   align-items: center;
@@ -144,12 +139,10 @@ export function TerminalToggler({
   terminalEnabled,
   setTerminalEnabled,
   initRender,
-  universeView = false,
 }: {
   terminalEnabled: boolean;
   setTerminalEnabled: Dispatch<SetStateAction<boolean>>;
   initRender: InitRenderState;
-  universeView?: boolean;
 }) {
   const uiEmitter = UIEmitter.getInstance();
   useLayoutEffect(() => {
@@ -160,7 +153,6 @@ export function TerminalToggler({
     <StyledTerminalToggler
       terminalEnabled={terminalEnabled}
       initRender={initRender}
-      universeView={universeView}
       onClick={() => setTerminalEnabled((b: boolean): boolean => !b)}
     >
       <span>{terminalEnabled ? ">" : "<"}</span>

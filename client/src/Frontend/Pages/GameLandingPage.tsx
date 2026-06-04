@@ -3314,7 +3314,7 @@ export function GameLandingPage() {
       <Wrapper initRender={initRenderState} terminalEnabled={terminalVisible}>
         <GameWindowWrapper
           initRender={initRenderState}
-          terminalEnabled={terminalVisible && !universeView}
+          terminalEnabled={terminalVisible}
         >
           {gameUIManagerRef.current &&
             topLevelContainer.current &&
@@ -3335,11 +3335,10 @@ export function GameLandingPage() {
           terminalEnabled={terminalVisible}
           setTerminalEnabled={setTerminalVisible}
           initRender={initRenderState}
-          universeView={universeView}
         />
         <TerminalWrapper
           initRender={initRenderState}
-          terminalEnabled={terminalVisible && !universeView}
+          terminalEnabled={terminalVisible}
         >
           <Terminal
             ref={terminalHandle as React.Ref<TerminalHandle>}
