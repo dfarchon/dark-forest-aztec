@@ -43,11 +43,32 @@ export interface InitialGameState {
   paused: boolean;
 }
 
+export type InitialGameStateDownloadProgress = {
+  detail: string;
+  entityName?: string;
+  percent?: number;
+};
+
 export class InitialGameStateDownloader {
   private terminal: TerminalHandle;
 
-  public constructor(terminal: TerminalHandle) {
+  public constructor(
+    terminal: TerminalHandle,
+    private onProgress?: (progress: InitialGameStateDownloadProgress) => void
+  ) {
     this.terminal = terminal;
+  }
+
+  private reportProgress(
+    detail: string,
+    entityName?: string,
+    percent?: number
+  ) {
+    this.onProgress?.({
+      detail,
+      entityName,
+      percent,
+    });
   }
 
   private makeProgressListener(prettyEntityName: string) {
@@ -77,8 +98,14 @@ export class InitialGameStateDownloader {
     this.terminal.newline();
 
     return (percent: number) => {
-      latestPercent = percent;
-      handle?.setFractionCompleted(percent);
+      const clampedPercent = Math.max(0, Math.min(1, percent));
+      latestPercent = clampedPercent;
+      handle?.setFractionCompleted(clampedPercent);
+      this.onProgress?.({
+        detail: `Loading ${prettyEntityName}...`,
+        entityName: prettyEntityName,
+        percent: clampedPercent,
+      });
     };
   }
 
@@ -88,6 +115,8 @@ export class InitialGameStateDownloader {
   ): Promise<InitialGameState> {
     this.terminal.printElement(<DarkForestTips tips={tips} />);
     this.terminal.newline();
+
+    this.reportProgress("Preparing download plan...");
 
     const planetIdsLoadingBar = this.makeProgressListener("Planet IDs");
     const playersLoadingBar = this.makeProgressListener("Players");
@@ -107,32 +136,39 @@ export class InitialGameStateDownloader {
       this.makeProgressListener("Artifacts On Moves");
     const yourArtifactsLoadingBar = this.makeProgressListener("Your Artifacts");
 
+    this.reportProgress("Reading game constants...");
     const contractConstants = contractsAPI.getConstants();
     const worldRadius = contractsAPI.getWorldRadius();
 
+    this.reportProgress("Loading players...");
     const players = contractsAPI.getPlayers(playersLoadingBar);
 
     const arrivals: Map<VoyageId, QueuedArrival> = new Map();
     const planetVoyageIdMap: Map<LocationId, VoyageId[]> = new Map();
 
+    this.reportProgress("Reading local explored chunks...");
     const minedChunks = Array.from(await persistentChunkStore.allChunks());
     const minedPlanetIds = new Set(
       minedChunks.flatMap((c) => c.planetLocations).map((l) => l.hash)
     );
 
+    this.reportProgress("Loading touched planet IDs...");
     const allTouchedPlanetIds =
       await contractsAPI.getTouchedPlanetIds(planetIdsLoadingBar);
 
+    this.reportProgress("Loading revealed coordinates...");
     const allRevealedCoords = await contractsAPI.getRevealedPlanetsCoords(
       revealedPlanetsLoadingBar,
       revealedPlanetsCoordsLoadingBar
     );
+    this.reportProgress("Indexing revealed coordinates...");
     const claimedCoordsMap = new Map<LocationId, ClaimedCoords>();
     const revealedCoordsMap = new Map<LocationId, RevealedCoords>();
     for (const revealedCoords of allRevealedCoords) {
       revealedCoordsMap.set(revealedCoords.hash, revealedCoords);
     }
 
+    this.reportProgress("Selecting planets relevant to this browser...");
     let planetsToLoad = allTouchedPlanetIds.filter(
       (id) =>
         minedPlanetIds.has(id) ||
@@ -140,6 +176,7 @@ export class InitialGameStateDownloader {
         claimedCoordsMap.has(id)
     );
 
+    this.reportProgress("Loading pending moves...");
     const pendingMoves = await contractsAPI.getAllArrivals(
       planetsToLoad,
       pendingMovesLoadingBar
@@ -147,16 +184,19 @@ export class InitialGameStateDownloader {
 
     // add origin points of voyages to known planets, because we need to know origin owner to render
     // the shrinking / incoming circle
+    this.reportProgress("Adding voyage origin planets...");
     for (const arrival of pendingMoves) {
       planetsToLoad.push(arrival.fromPlanet);
     }
     planetsToLoad = [...new Set(planetsToLoad)];
 
+    this.reportProgress("Loading planet states...");
     const touchedAndLocatedPlanets = await contractsAPI.bulkGetPlanets(
       planetsToLoad,
       planetsLoadingBar
     );
 
+    this.reportProgress("Indexing planet voyages...");
     touchedAndLocatedPlanets.forEach((_planet, locId) => {
       if (touchedAndLocatedPlanets.has(locId)) {
         planetVoyageIdMap.set(locId, []);
@@ -172,6 +212,7 @@ export class InitialGameStateDownloader {
       arrivals.set(arrival.eventId, arrival);
     }
 
+    this.reportProgress("Collecting voyage artifact IDs...");
     const artifactIdsOnVoyages: ArtifactId[] = [];
     for (const arrival of pendingMoves) {
       if (arrival.artifactId) {
@@ -179,41 +220,58 @@ export class InitialGameStateDownloader {
       }
     }
 
+    this.reportProgress("Loading artifacts on moves...");
     const artifactsOnVoyages = await contractsAPI.bulkGetArtifacts(
       artifactIdsOnVoyages,
       artifactsInFlightLoadingBar
     );
 
-    const heldArtifacts = contractsAPI.bulkGetArtifactsOnPlanets(
+    this.reportProgress("Loading artifacts on planets...");
+    const heldArtifacts = await contractsAPI.bulkGetArtifactsOnPlanets(
       planetsToLoad,
       artifactsOnPlanetsLoadingBar
     );
-    const myArtifacts = contractsAPI.getPlayerArtifacts(
+    this.reportProgress("Artifacts on planets loaded.");
+
+    this.reportProgress("Loading your artifacts...");
+    const myArtifacts = await contractsAPI.getPlayerArtifacts(
       contractsAPI.getAddress(),
       yourArtifactsLoadingBar
     );
+    this.reportProgress("Your artifacts loaded.");
 
     // const twitters = await tryGetAllTwitters();
-    const paused = contractsAPI.getIsPaused();
+    this.reportProgress("Checking game pause status...");
+    const paused = await contractsAPI.getIsPaused();
 
+    this.reportProgress("Resolving game constants...");
+    const resolvedContractConstants = await contractConstants;
+
+    this.reportProgress("Resolving player list...");
+    const resolvedPlayers = await players;
+
+    this.reportProgress("Resolving world radius...");
+    const resolvedWorldRadius = await worldRadius;
+
+    this.reportProgress("Finalizing downloaded game data...");
     const initialState: InitialGameState = {
-      contractConstants: await contractConstants,
-      players: await players,
-      worldRadius: await worldRadius,
+      contractConstants: resolvedContractConstants,
+      players: resolvedPlayers,
+      worldRadius: resolvedWorldRadius,
       allTouchedPlanetIds,
       allRevealedCoords,
       pendingMoves,
       touchedAndLocatedPlanets,
       artifactsOnVoyages,
-      myArtifacts: await myArtifacts,
-      heldArtifacts: await heldArtifacts,
+      myArtifacts,
+      heldArtifacts,
       loadedPlanets: planetsToLoad,
       revealedCoordsMap,
       claimedCoordsMap,
       planetVoyageIdMap,
       arrivals,
       // twitters,
-      paused: await paused,
+      paused,
     };
 
     return initialState;

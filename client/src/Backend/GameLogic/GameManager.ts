@@ -599,7 +599,9 @@ class GameManager extends EventEmitter {
       detail: string,
       percent?: number,
       subStep?: number,
-      subStepTotal?: number
+      subStepTotal?: number,
+      activeEntity?: string,
+      activeEntityPercent?: number
     ) => void;
   }): Promise<GameManager> {
     if (!terminal.current) {
@@ -614,10 +616,19 @@ class GameManager extends EventEmitter {
       throw new Error("no account: wallet has no active address");
     }
 
-    const gameStateDownloader = new InitialGameStateDownloader(
-      terminal.current
-    );
     const GAMESTATE_SUBSTEP_TOTAL = 4;
+    const gameStateDownloader = new InitialGameStateDownloader(
+      terminal.current,
+      ({ detail, entityName, percent }) =>
+        onLoadingProgress?.(
+          detail,
+          undefined,
+          2,
+          GAMESTATE_SUBSTEP_TOTAL,
+          entityName,
+          percent
+        )
+    );
 
     onLoadingProgress?.(
       "Loading from disk...",
@@ -648,10 +659,16 @@ class GameManager extends EventEmitter {
       contractsAPI,
       persistentChunkStore
     );
+    onLoadingProgress?.(
+      "Reading saved home locations...",
+      undefined,
+      2,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const possibleHomes = await persistentChunkStore.getHomeLocations();
 
     onLoadingProgress?.(
-      "Building index...",
+      "Preparing local game index...",
       undefined,
       3,
       GAMESTATE_SUBSTEP_TOTAL
@@ -660,6 +677,12 @@ class GameManager extends EventEmitter {
     terminal.current?.println("Building Index...");
     await new Promise<void>((resolve) => setTimeout(resolve, 1000));
 
+    onLoadingProgress?.(
+      "Attaching artifacts to planets...",
+      undefined,
+      3,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const knownArtifacts: Map<ArtifactId, Artifact> = new Map();
 
     for (let i = 0; i < initialState.loadedPlanets.length; i++) {
@@ -687,6 +710,12 @@ class GameManager extends EventEmitter {
     }
 
     // figure out what's my home planet
+    onLoadingProgress?.(
+      "Resolving home planet...",
+      undefined,
+      3,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     let homeLocation: WorldLocation | undefined = undefined;
     for (const loc of possibleHomes) {
       if (initialState.allTouchedPlanetIds.includes(loc.hash)) {
@@ -696,6 +725,12 @@ class GameManager extends EventEmitter {
       }
     }
 
+    onLoadingProgress?.(
+      "Preparing hash configuration...",
+      undefined,
+      3,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const hashConfig: HashConfig = {
       planetHashKey: initialState.contractConstants.PLANETHASH_KEY,
       spaceTypeKey: initialState.contractConstants.SPACETYPE_KEY,
@@ -707,7 +742,7 @@ class GameManager extends EventEmitter {
     };
 
     onLoadingProgress?.(
-      "Initializing...",
+      "Initializing hash engine...",
       undefined,
       4,
       GAMESTATE_SUBSTEP_TOTAL
@@ -715,6 +750,12 @@ class GameManager extends EventEmitter {
     await new Promise<void>((resolve) => setTimeout(resolve, 2000));
     await initPoseidon2();
 
+    onLoadingProgress?.(
+      "Preparing procedural map options...",
+      undefined,
+      4,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const useMockHash = initialState.contractConstants.DISABLE_ZK_CHECKS;
 
     const perlinOpts = {
@@ -724,6 +765,12 @@ class GameManager extends EventEmitter {
       floor: true as const,
     };
     const revealedLocations = new Map<LocationId, RevealedLocation>();
+    onLoadingProgress?.(
+      "Computing revealed location biomes...",
+      undefined,
+      4,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     for (const [locationId, coords] of initialState.revealedCoordsMap) {
       const planet = initialState.touchedAndLocatedPlanets.get(locationId);
       if (planet) {
@@ -741,6 +788,12 @@ class GameManager extends EventEmitter {
       }
     }
     const claimedLocations = new Map<LocationId, ClaimedLocation>();
+    onLoadingProgress?.(
+      "Computing claimed location biomes...",
+      undefined,
+      4,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const claimedCoordsMap = initialState.claimedCoordsMap
       ? initialState.claimedCoordsMap
       : new Map<LocationId, ClaimedCoords>();
@@ -762,6 +815,12 @@ class GameManager extends EventEmitter {
       }
     }
 
+    onLoadingProgress?.(
+      "Creating game manager...",
+      undefined,
+      4,
+      GAMESTATE_SUBSTEP_TOTAL
+    );
     const gameManager = new GameManager(
       terminal,
       account,

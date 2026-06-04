@@ -35,15 +35,37 @@ export interface GameConfig {
   planetCumulativeRarities: number[];
 }
 
+/** Progress callback fired before each serial config simulate. */
+export type ConfigLoadProgress = (
+  detail: string,
+  current?: number,
+  total?: number
+) => void;
+
+export interface ConfigCacheOptions {
+  /** Called before each serial simulate() so the UI can show what's loading. */
+  onProgress?: ConfigLoadProgress;
+  /** Prefix for progress messages. Defaults to "Loading config". */
+  progressLabelPrefix?: string;
+}
+
 export class ConfigCache {
   private readonly configContract: ContractBase;
   private readonly senderAddress: AztecAddress;
   private cached: GameConfig | undefined;
   private loading: Promise<GameConfig> | undefined;
+  private readonly onProgress?: ConfigLoadProgress;
+  private readonly progressLabelPrefix: string;
 
-  constructor(configContract: ContractBase, senderAddress: AztecAddress) {
+  constructor(
+    configContract: ContractBase,
+    senderAddress: AztecAddress,
+    options?: ConfigCacheOptions
+  ) {
     this.configContract = configContract;
     this.senderAddress = senderAddress;
+    this.onProgress = options?.onProgress;
+    this.progressLabelPrefix = options?.progressLabelPrefix ?? "Loading config";
   }
 
   /** Invalidate cache (e.g. if admin reconfigures). */
@@ -66,76 +88,88 @@ export class ConfigCache {
     const from = this.senderAddress;
     const c = this.configContract;
 
+    // Number of serial simulate() calls below: 16 fixed reads + 10 cumulative
+    // rarity reads. Kept in sync manually so progress shows accurate totals.
+    const CUMULATIVE_RARITY_COUNT = 10;
+    const TOTAL_STEPS = 16 + CUMULATIVE_RARITY_COUNT;
+    let step = 0;
+
     // Serialize PXE simulate() calls — the embedded PXE does not support
     // concurrent execution and floods the console with warnings otherwise.
-    const admin = unwrapSimulateResult(
-      await c.methods.get_admin_unconstrained().simulate({ from })
+    // `simulateStep` reports progress *before* each call so the UI can show
+    // exactly which config read is currently in flight, while keeping every
+    // simulate strictly sequential (no Promise.all).
+    const simulateStep = async (
+      label: string,
+      run: () => Promise<unknown>
+    ): Promise<unknown> => {
+      step += 1;
+      this.onProgress?.(
+        `${this.progressLabelPrefix}: ${label} (${step}/${TOTAL_STEPS})`,
+        step,
+        TOTAL_STEPS
+      );
+      return unwrapSimulateResult(await run());
+    };
+
+    const admin = await simulateStep("admin", () =>
+      c.methods.get_admin_unconstrained().simulate({ from })
     );
-    const snarkConfig = unwrapSimulateResult(
-      await c.methods.get_snark_config_unconstrained().simulate({ from })
+    const snarkConfig = await simulateStep("snark config", () =>
+      c.methods.get_snark_config_unconstrained().simulate({ from })
     );
-    const worldConfig = unwrapSimulateResult(
-      await c.methods.get_world_config_unconstrained().simulate({ from })
+    const worldConfig = await simulateStep("world config", () =>
+      c.methods.get_world_config_unconstrained().simulate({ from })
     );
-    const gameConfigCore = unwrapSimulateResult(
-      await c.methods.get_game_config_core_unconstrained().simulate({ from })
+    const gameConfigCore = await simulateStep("game config core", () =>
+      c.methods.get_game_config_core_unconstrained().simulate({ from })
     );
-    const upgradeConfig = unwrapSimulateResult(
-      await c.methods.get_upgrade_config_unconstrained().simulate({ from })
+    const upgradeConfig = await simulateStep("upgrade config", () =>
+      c.methods.get_upgrade_config_unconstrained().simulate({ from })
     );
-    const planetLevelThresholds = unwrapSimulateResult(
-      await c.methods
-        .get_planet_level_thresholds_unconstrained()
-        .simulate({ from })
+    const planetLevelThresholds = await simulateStep(
+      "planet level thresholds",
+      () =>
+        c.methods.get_planet_level_thresholds_unconstrained().simulate({ from })
     );
-    const spaceJunkConfig = unwrapSimulateResult(
-      await c.methods.get_space_junk_config_unconstrained().simulate({ from })
+    const spaceJunkConfig = await simulateStep("space junk config", () =>
+      c.methods.get_space_junk_config_unconstrained().simulate({ from })
     );
-    const tier0 = unwrapSimulateResult(
-      await c.methods
-        .get_planet_type_weights_tier_unconstrained(0)
-        .simulate({ from })
+    const tier0 = await simulateStep("planet type weights tier 0", () =>
+      c.methods.get_planet_type_weights_tier_unconstrained(0).simulate({ from })
     );
-    const tier1 = unwrapSimulateResult(
-      await c.methods
-        .get_planet_type_weights_tier_unconstrained(1)
-        .simulate({ from })
+    const tier1 = await simulateStep("planet type weights tier 1", () =>
+      c.methods.get_planet_type_weights_tier_unconstrained(1).simulate({ from })
     );
-    const tier2 = unwrapSimulateResult(
-      await c.methods
-        .get_planet_type_weights_tier_unconstrained(2)
-        .simulate({ from })
+    const tier2 = await simulateStep("planet type weights tier 2", () =>
+      c.methods.get_planet_type_weights_tier_unconstrained(2).simulate({ from })
     );
-    const tier3 = unwrapSimulateResult(
-      await c.methods
-        .get_planet_type_weights_tier_unconstrained(3)
-        .simulate({ from })
+    const tier3 = await simulateStep("planet type weights tier 3", () =>
+      c.methods.get_planet_type_weights_tier_unconstrained(3).simulate({ from })
     );
-    const planetDefaultStatsArr = unwrapSimulateResult(
-      await c.methods.get_default_stats_unconstrained().simulate({ from })
+    const planetDefaultStatsArr = await simulateStep("default stats", () =>
+      c.methods.get_default_stats_unconstrained().simulate({ from })
     );
-    const upgradesArr = unwrapSimulateResult(
-      await c.methods.get_upgrades_unconstrained().simulate({ from })
+    const upgradesArr = await simulateStep("upgrades", () =>
+      c.methods.get_upgrades_unconstrained().simulate({ from })
     );
-    const artifactsConfig = unwrapSimulateResult(
-      await c.methods.get_artifacts_config_unconstrained().simulate({ from })
+    const artifactsConfig = await simulateStep("artifacts config", () =>
+      c.methods.get_artifacts_config_unconstrained().simulate({ from })
     );
-    const spaceshipsConfig = unwrapSimulateResult(
-      await c.methods.get_spaceships_config_unconstrained().simulate({ from })
+    const spaceshipsConfig = await simulateStep("spaceships config", () =>
+      c.methods.get_spaceships_config_unconstrained().simulate({ from })
     );
-    const captureZonesConfig = unwrapSimulateResult(
-      await c.methods
-        .get_capture_zones_config_unconstrained()
-        .simulate({ from })
+    const captureZonesConfig = await simulateStep("capture zones config", () =>
+      c.methods.get_capture_zones_config_unconstrained().simulate({ from })
     );
 
     const cumulativeRaritiesRaw: unknown[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < CUMULATIVE_RARITY_COUNT; i++) {
       cumulativeRaritiesRaw.push(
-        unwrapSimulateResult(
-          await c.methods
-            .get_cumulative_rarity_unconstrained(i)
-            .simulate({ from })
+        await simulateStep(
+          `cumulative rarity ${i + 1}/${CUMULATIVE_RARITY_COUNT}`,
+          () =>
+            c.methods.get_cumulative_rarity_unconstrained(i).simulate({ from })
         )
       );
     }

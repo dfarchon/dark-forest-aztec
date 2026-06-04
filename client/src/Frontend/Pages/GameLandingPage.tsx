@@ -773,6 +773,8 @@ interface LoadingPhase {
   percent?: number;
   gamestateSubStep?: number;
   gamestateSubStepTotal?: number;
+  activeEntity?: string;
+  activeEntityPercent?: number;
 }
 
 type SelectedWalletMode = "local" | "external" | null;
@@ -803,6 +805,72 @@ function getWalletProgressBucket(percent?: number): number | null {
   if (percent >= 75) return 75;
   if (percent >= 50) return 50;
   return 25;
+}
+
+function getNormalizedProgressBucket(percent?: number): number | null {
+  if (percent == null || Number.isNaN(percent)) return null;
+  const normalizedPercent = percent <= 1 ? percent * 100 : percent;
+  if (normalizedPercent < 25) return null;
+  if (normalizedPercent >= 100) return 100;
+  if (normalizedPercent >= 75) return 75;
+  if (normalizedPercent >= 50) return 50;
+  return 25;
+}
+
+function formatElapsedSeconds(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function formatLoadingPercent(
+  percent?: number,
+  options?: { fraction?: boolean }
+): string | null {
+  if (percent == null || Number.isNaN(percent)) return null;
+  const normalizedPercent = options?.fraction ? percent * 100 : percent;
+  return `${Math.max(0, Math.min(100, Math.floor(normalizedPercent)))}%`;
+}
+
+function StartupLoadingStatus({
+  loadingPhase,
+  elapsedSeconds,
+}: {
+  loadingPhase: LoadingPhase;
+  elapsedSeconds: number;
+}) {
+  if (loadingPhase.step === "done") return null;
+
+  const phasePercent = formatLoadingPercent(loadingPhase.percent);
+  const entityPercent = formatLoadingPercent(loadingPhase.activeEntityPercent, {
+    fraction: true,
+  });
+  const gameStateStep =
+    loadingPhase.gamestateSubStep != null &&
+    loadingPhase.gamestateSubStepTotal != null
+      ? `${loadingPhase.gamestateSubStep}/${loadingPhase.gamestateSubStepTotal}`
+      : null;
+
+  return (
+    <StartupStatusBar aria-live="polite">
+      <StartupStatusHeader>
+        <span>{LOADING_STEP_LABELS[loadingPhase.step]}</span>
+        <strong>{formatElapsedSeconds(elapsedSeconds)}</strong>
+      </StartupStatusHeader>
+      <StartupStatusDetail>
+        {gameStateStep && <span>Step {gameStateStep}</span>}
+        {loadingPhase.detail && <span>{loadingPhase.detail}</span>}
+        {phasePercent && <span>{phasePercent}</span>}
+      </StartupStatusDetail>
+      {loadingPhase.activeEntity && (
+        <StartupStatusDetail>
+          <span>Querying {loadingPhase.activeEntity}</span>
+          {entityPercent && <span>{entityPercent}</span>}
+        </StartupStatusDetail>
+      )}
+    </StartupStatusBar>
+  );
 }
 
 type ExternalWalletSimulationSupport = Pick<
@@ -913,6 +981,9 @@ export function GameLandingPage() {
   const syncStartPrintedRef = useRef(false);
   const chainClockSyncPrintedRef = useRef(false);
   const lastLoggedGamestateSubStepRef = useRef<string | null>(null);
+  const lastLoggedGamestateEntityProgressRef = useRef<Record<string, number>>(
+    {}
+  );
   const walletMenuSponsorStatusPrintedRef = useRef(false);
   const externalWalletSimulationSupportRef =
     useRef<ExternalWalletSimulationSupport | null>(null);
@@ -936,12 +1007,31 @@ export function GameLandingPage() {
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>({
     step: "done",
   });
+  const loadingPhaseStartedAtRef = useRef(Date.now());
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const contractAddress = contract
     ? address(contract)
     : address(CORE_CONTRACT_ADDRESS);
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
 
   const sponsorMode = getSponsorMode();
+
+  useEffect(() => {
+    loadingPhaseStartedAtRef.current = Date.now();
+    setLoadingElapsedSeconds(0);
+
+    if (loadingPhase.step === "done") {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setLoadingElapsedSeconds(
+        Math.floor((Date.now() - loadingPhaseStartedAtRef.current) / 1000)
+      );
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [loadingPhase.step]);
 
   useEffect(() => {
     entryModeRef.current = entryMode;
@@ -988,6 +1078,7 @@ export function GameLandingPage() {
     syncStartPrintedRef.current = false;
     chainClockSyncPrintedRef.current = false;
     lastLoggedGamestateSubStepRef.current = null;
+    lastLoggedGamestateEntityProgressRef.current = {};
   }, []);
 
   const isWalletSelectionLocked = useCallback(
@@ -1862,12 +1953,31 @@ export function GameLandingPage() {
       loadingPhase.gamestateSubStepTotal != null
     ) {
       const nextSubStep = `${loadingPhase.gamestateSubStep}/${loadingPhase.gamestateSubStepTotal}`;
-      if (lastLoggedGamestateSubStepRef.current !== nextSubStep) {
+      const nextSubStepLogKey = `${nextSubStep}:${loadingPhase.detail ?? ""}`;
+      if (lastLoggedGamestateSubStepRef.current !== nextSubStepLogKey) {
         const suffix = loadingPhase.detail ? `: ${loadingPhase.detail}` : "...";
         printInitializationMilestone(
           `Loading game data (step ${nextSubStep})${suffix}`
         );
-        lastLoggedGamestateSubStepRef.current = nextSubStep;
+        lastLoggedGamestateSubStepRef.current = nextSubStepLogKey;
+      }
+    }
+
+    if (loadingPhase.step === "gamestate" && loadingPhase.activeEntity) {
+      const nextBucket = getNormalizedProgressBucket(
+        loadingPhase.activeEntityPercent
+      );
+      const lastBucket =
+        lastLoggedGamestateEntityProgressRef.current[loadingPhase.activeEntity];
+
+      if (nextBucket != null && nextBucket !== lastBucket) {
+        printInitializationMilestone(
+          `${loadingPhase.activeEntity} ${nextBucket}% complete.`
+        );
+        lastLoggedGamestateEntityProgressRef.current = {
+          ...lastLoggedGamestateEntityProgressRef.current,
+          [loadingPhase.activeEntity]: nextBucket,
+        };
       }
     }
   }, [loadingPhase, printInitializationMilestone, printInitializationStage]);
@@ -2809,7 +2919,21 @@ export function GameLandingPage() {
         });
         const configCache = new ConfigCache(
           configContract,
-          walletManager.getActiveAddress()!
+          walletManager.getActiveAddress()!,
+          {
+            onProgress: (detail, current, total) =>
+              setLoadingPhase((prev) =>
+                prev.step === "gamestate" || prev.step === "contracts"
+                  ? {
+                      ...prev,
+                      detail,
+                      activeEntity: "Config constants",
+                      activeEntityPercent:
+                        total && total > 0 ? current! / total : undefined,
+                    }
+                  : prev
+              ),
+          }
         );
         const txExecutor = new TxExecutor(
           walletManager,
@@ -2838,7 +2962,9 @@ export function GameLandingPage() {
             detail,
             percent,
             gamestateSubStep,
-            gamestateSubStepTotal
+            gamestateSubStepTotal,
+            activeEntity,
+            activeEntityPercent
           ) =>
             setLoadingPhase((prev) =>
               prev.step === "gamestate"
@@ -2848,6 +2974,8 @@ export function GameLandingPage() {
                     percent,
                     gamestateSubStep,
                     gamestateSubStepTotal,
+                    activeEntity,
+                    activeEntityPercent,
                   }
                 : prev
             ),
@@ -3345,6 +3473,10 @@ export function GameLandingPage() {
             promptCharacter={"$"}
             optionMode={terminalOptionMode}
           />
+          <StartupLoadingStatus
+            loadingPhase={loadingPhase}
+            elapsedSeconds={loadingElapsedSeconds}
+          />
           {initRenderState === InitRenderState.COMPLETE &&
             indexerRef.current && (
               <BlockSyncStatus connection={indexerRef.current} />
@@ -3361,6 +3493,44 @@ const CopyAccountAddressRow = styled.span`
   align-items: center;
   gap: 8px;
   padding-bottom: 6px;
+`;
+
+const StartupStatusBar = styled.div`
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid ${dfstyles.colors.borderDark};
+  padding: 7px 8px;
+  font-family: monospace;
+  font-size: 11px;
+  color: ${dfstyles.colors.subtext};
+  background: rgba(0, 0, 0, 0.2);
+`;
+
+const StartupStatusHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: ${dfstyles.colors.text};
+
+  strong {
+    color: ${dfstyles.colors.dfgreen};
+    font-weight: 400;
+  }
+`;
+
+const StartupStatusDetail = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span:not(:last-child)::after {
+    content: "·";
+    margin-left: 8px;
+    color: ${dfstyles.colors.subbertext};
+  }
 `;
 
 const CopyAccountAddressButtonElement = styled.button`
