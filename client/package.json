@@ -29,6 +29,7 @@
     "@dfpunk/gamelogic": "workspace:*",
     "@dfpunk/hashing": "workspace:*",
     "@dfpunk/hexgen": "workspace:*",
+    "@dfpunk/indexer-core": "workspace:*",
     "@dfpunk/procedural": "workspace:*",
     "@dfpunk/renderer": "workspace:*",
     "@dfpunk/serde": "workspace:*",

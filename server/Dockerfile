@@ -11,7 +11,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY server/package.json server/
 COPY packages/contracts/package.json packages/contracts/
-COPY packages/indexer-server-core/package.json packages/indexer-server-core/
+COPY packages/indexer-core/package.json packages/indexer-core/
 
 # Install only server and its workspace dependencies
 RUN pnpm install --frozen-lockfile --filter server...
@@ -20,7 +20,7 @@ RUN pnpm install --frozen-lockfile --filter server...
 COPY server/ server/
 COPY contracts/ contracts/
 COPY packages/contracts/ packages/contracts/
-COPY packages/indexer-server-core/ packages/indexer-server-core/
+COPY packages/indexer-core/ packages/indexer-core/
 
 # Normalize runtime artifacts inside the image build.
 RUN node server/scripts/prepare-contract-artifacts.mjs

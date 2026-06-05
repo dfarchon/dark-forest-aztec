@@ -3,11 +3,8 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import type {
-  IndexerService,
-  TableName,
-} from "../../packages/indexer-server-core/src/index.ts";
-import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
+import type { IndexerService, TableName } from "@dfpunk/indexer-core";
+import { TABLE_NAMES } from "@dfpunk/indexer-core";
 import { createApp } from "./api.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 import type {
@@ -374,10 +371,7 @@ test("GET /snapshot/chunks prefers SQLite chunk payload when available even if c
 });
 
 test("GET /snapshot/chunks falls back to cache when store chunk unavailable", async () => {
-  const indexer = createFakeIndexer(
-    { player: { p1: { score: "1" } } },
-    123,
-  );
+  const indexer = createFakeIndexer({ player: { p1: { score: "1" } } }, 123);
   const cache = new SnapshotCache(indexer);
   cache.buildFull();
   const store = createStoreStub();

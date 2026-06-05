@@ -4,12 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import type { IndexerSnapshot } from "../../packages/indexer-server-core/src/index.ts";
-import {
-  rawToState,
-  TABLE_NAMES,
-  type TableName,
-} from "../../packages/indexer-server-core/src/index.ts";
+import type { IndexerSnapshot } from "@dfpunk/indexer-core";
+import { rawToState, TABLE_NAMES, type TableName } from "@dfpunk/indexer-core";
 
 // ---------------------------------------------------------------------------
 // v1 tables (existing)
@@ -621,7 +617,10 @@ export class SnapshotStore {
       const expected = manifest.tables[table];
       const receivedCount = chunkIndexes.get(table)?.size ?? 0;
       const receivedRows = Object.keys(tableData[table]).length;
-      if (receivedCount !== expected.chunkCount || receivedRows !== expected.rowCount) {
+      if (
+        receivedCount !== expected.chunkCount ||
+        receivedRows !== expected.rowCount
+      ) {
         console.warn(
           `[Persistence] Incomplete stored chunk set while reconstructing active snapshot: ${table} chunks=${receivedCount}/${expected.chunkCount} rows=${receivedRows}/${expected.rowCount}`,
         );
@@ -867,15 +866,27 @@ function parseEncodedChunkPayload(
         : encoding === "br"
           ? brotliDecompressSync(payload)
           : payload;
-    const value = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    const value = JSON.parse(decoded.toString("utf8")) as Record<
+      string,
+      unknown
+    >;
     if (typeof value.table !== "string") return null;
-    if (!Number.isInteger(value.chunkIndex) || (value.chunkIndex as number) < 0) {
+    if (
+      !Number.isInteger(value.chunkIndex) ||
+      (value.chunkIndex as number) < 0
+    ) {
       return null;
     }
-    if (!Number.isInteger(value.chunkCount) || (value.chunkCount as number) <= 0) {
+    if (
+      !Number.isInteger(value.chunkCount) ||
+      (value.chunkCount as number) <= 0
+    ) {
       return null;
     }
-    if (!Number.isInteger(value.chunkRows) || (value.chunkRows as number) <= 0) {
+    if (
+      !Number.isInteger(value.chunkRows) ||
+      (value.chunkRows as number) <= 0
+    ) {
       return null;
     }
     if (!Number.isInteger(value.rowCount) || (value.rowCount as number) < 0) {
@@ -887,7 +898,11 @@ function parseEncodedChunkPayload(
     ) {
       return null;
     }
-    if (!value.rows || typeof value.rows !== "object" || Array.isArray(value.rows)) {
+    if (
+      !value.rows ||
+      typeof value.rows !== "object" ||
+      Array.isArray(value.rows)
+    ) {
       return null;
     }
     const rows: Record<string, Record<string, unknown>> = {};

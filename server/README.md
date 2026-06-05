@@ -1,4 +1,4 @@
-# DFPunk Indexer Server
+# Dark Forest Aztec Indexer Server
 
 Indexes DFPunk Aztec public storage updates block-by-block, keeps an in-memory typed snapshot, persists to SQLite, and exposes read APIs for clients.
 
@@ -26,14 +26,14 @@ server/
     persistence.ts              # SQLite store + restore + v2 chunk persistence
     snapshotCache.ts            # incremental JSON + Brotli/gzip cache
 packages/
-  indexer-server-core/
+  indexer-core/
     src/                        # IndexerService, AztecNodeSource, table types
       IndexerService.ts
       AztecNodeSource.ts
       convert.ts, debounce.ts, types.ts, TableTypes/
 ```
 
-The server depends on `@dfpunk/contracts` (`workspace:*`) and imports `indexer-server-core` via monorepo source path. Docker builds copy `server/`, `contracts/`, `packages/contracts/`, and `packages/indexer-server-core/` into the image.
+The server depends on `@dfpunk/contracts` and `@dfpunk/indexer-core` (`workspace:*`). Docker builds copy `server/`, `contracts/`, `packages/contracts/`, and `packages/indexer-core/` into the image.
 
 ## Data Model
 
@@ -62,7 +62,7 @@ TLS terminates at the edge or reverse proxy in production.
 
 ## Indexing
 
-Uses **IndexerService** from `packages/indexer-server-core/src`:
+Uses **IndexerService** from `@dfpunk/indexer-core`:
 
 - **Lifecycle**: `applySnapshot` → `start()` → `subscribe(cb)` → `startPolling()` → `destroy()`.
 - **API**: `getProcessedBlockNumber()`, `getStatus()`, `getTable()`.
@@ -85,30 +85,30 @@ Uses **IndexerService** from `packages/indexer-server-core/src`:
 
 Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snapshot` and `/snapshot/chunks/*`.
 
-| Endpoint | Response |
-| --- | --- |
-| `GET /snapshot` | Full snapshot as pre-compressed JSON. Headers: `Content-Encoding`, `X-Snapshot-Block`, `X-Snapshot-Uncompressed-Length`, `Cache-Control: no-cache`. |
-| `GET /snapshot/hash` | `{ hash, lastProcessedBlock }` — SHA-256 hex of canonical snapshot JSON. |
-| `GET /snapshot/manifest?chunkRows=` | v2 chunk metadata: `{ version: 2, lastProcessedBlock, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`. |
-| `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`. |
-| `GET /blocks/latest` | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }` |
-| `GET /health` | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
-| `GET /admin/backup` | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty. |
+| Endpoint                                             | Response                                                                                                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /snapshot`                                      | Full snapshot as pre-compressed JSON. Headers: `Content-Encoding`, `X-Snapshot-Block`, `X-Snapshot-Uncompressed-Length`, `Cache-Control: no-cache`. |
+| `GET /snapshot/hash`                                 | `{ hash, lastProcessedBlock }` — SHA-256 hex of canonical snapshot JSON.                                                                            |
+| `GET /snapshot/manifest?chunkRows=`                  | v2 chunk metadata: `{ version: 2, lastProcessedBlock, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`.                                  |
+| `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`.                     |
+| `GET /blocks/latest`                                 | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }`                                                                                   |
+| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, metrics: { blockLag, snapshotBlock, snapshotBytes } }`                       |
+| `GET /admin/backup`                                  | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty.                                              |
 
 ## Configuration
 
 Env file references: `.env.example` (generic), `env.local.example` (local testnet), `env.railway.example` (Railway).
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `AZTEC_NODE_URL` | `https://rpc.testnet.aztec-labs.com` | Use `http://localhost:8080` for local sandbox |
-| `CORS_ORIGINS` | local Vite + Netlify origins | Comma-separated; `*` = any; empty = disabled |
-| `INDEXER_START_BLOCK` | `START_BLOCK` from contracts | Optional override |
-| `PORT` | `3001` | Local default. On Railway (and similar hosts), **omit `PORT`** and use the value the platform injects. |
-| `SQLITE_PATH` | `./data/indexer.db` | |
-| `SNAPSHOT_SCHEMA_VERSION` | `1` | Mismatch resets persisted snapshot |
-| `PERSIST_MIN_INTERVAL_SEC` | `10` | Throttles SQLite writes during live sync (see below). |
-| `ADMIN_TOKEN` | (empty) | Empty = backup endpoint disabled |
+| Variable                   | Default                              | Notes                                                                                                  |
+| -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `AZTEC_NODE_URL`           | `https://rpc.testnet.aztec-labs.com` | Use `http://localhost:8080` for local sandbox                                                          |
+| `CORS_ORIGINS`             | local Vite + Netlify origins         | Comma-separated; `*` = any; empty = disabled                                                           |
+| `INDEXER_START_BLOCK`      | `START_BLOCK` from contracts         | Optional override                                                                                      |
+| `PORT`                     | `3001`                               | Local default. On Railway (and similar hosts), **omit `PORT`** and use the value the platform injects. |
+| `SQLITE_PATH`              | `./data/indexer.db`                  |                                                                                                        |
+| `SNAPSHOT_SCHEMA_VERSION`  | `1`                                  | Mismatch resets persisted snapshot                                                                     |
+| `PERSIST_MIN_INTERVAL_SEC` | `10`                                 | Throttles SQLite writes during live sync (see below).                                                  |
+| `ADMIN_TOKEN`              | (empty)                              | Empty = backup endpoint disabled                                                                       |
 
 IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`.
 
@@ -118,18 +118,18 @@ IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`
 
 Run via `pnpm --filter server <script>`:
 
-| Script | Purpose |
-| --- | --- |
-| `dev` / `start` | Run server (`node --experimental-transform-types src/index.ts`) |
-| `compare:snapshot` | Compare snapshot JSON to server `/snapshot` and v2 reconstruction |
-| `docker:build` | Build server image (`scripts/build-server-image.sh`) |
-| `docker:publish` | Build and push image (`IMAGE_PUSH=1`) |
-| `docker:publish:testnet` | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`) |
-| `e2e:up` / `e2e:down` / `e2e:runtime` / `e2e:status` / `e2e:logs` / `e2e:reset` | Local stack + E2E helpers via `scripts/test-env.sh` |
-| `prepare:contracts` / `prepare:contracts:build` | Sync contract artifacts for indexing |
-| `mock:snapshot` | Mock big-snapshot stream server for testing |
-| `format` / `format:check` | Prettier formatting |
-| `test:build:image` / `test:prepare:contracts` | Node native test runner tests |
+| Script                                                                          | Purpose                                                           |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `dev` / `start`                                                                 | Run server (`node --experimental-transform-types src/index.ts`)   |
+| `compare:snapshot`                                                              | Compare snapshot JSON to server `/snapshot` and v2 reconstruction |
+| `docker:build`                                                                  | Build server image (`scripts/build-server-image.sh`)              |
+| `docker:publish`                                                                | Build and push image (`IMAGE_PUSH=1`)                             |
+| `docker:publish:testnet`                                                        | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`)  |
+| `e2e:up` / `e2e:down` / `e2e:runtime` / `e2e:status` / `e2e:logs` / `e2e:reset` | Local stack + E2E helpers via `scripts/test-env.sh`               |
+| `prepare:contracts` / `prepare:contracts:build`                                 | Sync contract artifacts for indexing                              |
+| `mock:snapshot`                                                                 | Mock big-snapshot stream server for testing                       |
+| `format` / `format:check`                                                       | Prettier formatting                                               |
+| `test:build:image` / `test:prepare:contracts`                                   | Node native test runner tests                                     |
 
 Unit tests:
 
@@ -166,11 +166,11 @@ curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 Connection config priority: localStorage override → `VITE_*` env → built-in defaults.
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `VITE_AZTEC_NODE_URL` | `http://localhost:8080` | |
-| `VITE_INDEXER_BOOTSTRAP_URL` | (empty) | See `client/src/config/env.ts` for resolution |
-| `VITE_APP_MODE` | (auto) | `production` / `development` |
+| Variable                     | Default                 | Notes                                         |
+| ---------------------------- | ----------------------- | --------------------------------------------- |
+| `VITE_AZTEC_NODE_URL`        | `http://localhost:8080` |                                               |
+| `VITE_INDEXER_BOOTSTRAP_URL` | (empty)                 | See `client/src/config/env.ts` for resolution |
+| `VITE_APP_MODE`              | (auto)                  | `production` / `development`                  |
 
 ```bash
 corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
@@ -179,8 +179,14 @@ corepack pnpm --filter client dev --host 127.0.0.1 --port 5173
 Override via localStorage:
 
 ```js
-localStorage.setItem("dfpunk:connection:nodeUrl", "https://rpc.testnet.aztec-labs.com");
-localStorage.setItem("dfpunk:connection:indexerBootstrapUrl", "http://localhost:3001");
+localStorage.setItem(
+  "dfpunk:connection:nodeUrl",
+  "https://rpc.testnet.aztec-labs.com",
+);
+localStorage.setItem(
+  "dfpunk:connection:indexerBootstrapUrl",
+  "http://localhost:3001",
+);
 // Clear:
 localStorage.removeItem("dfpunk:connection:nodeUrl");
 localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");

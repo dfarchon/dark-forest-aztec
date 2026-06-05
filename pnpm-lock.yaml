@@ -80,7 +80,7 @@ importers:
     dependencies:
       '@alejoamiras/aztec-accelerator':
         specifier: 4.1.0-rc.4.3
-        version: 4.1.0-rc.4.3(typescript@5.9.3)(zod@3.25.76)
+        version: 4.1.0-rc.4.3(typescript@5.9.3)(zod@4.3.6)
       '@aztec/aztec.js':
         specifier: 4.1.0-rc.4
         version: 4.1.0-rc.4(typescript@5.9.3)
@@ -95,7 +95,7 @@ importers:
         version: 4.1.0-rc.4(typescript@5.9.3)
       '@aztec/wallets':
         specifier: 4.1.0-rc.4
-        version: 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
+        version: 4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)
       '@dfpunk/constants':
         specifier: workspace:*
         version: link:../packages/constants
@@ -114,6 +114,9 @@ importers:
       '@dfpunk/hexgen':
         specifier: workspace:*
         version: link:../packages/hexgen
+      '@dfpunk/indexer-core':
+        specifier: workspace:*
+        version: link:../packages/indexer-core
       '@dfpunk/procedural':
         specifier: workspace:*
         version: link:../packages/procedural
@@ -312,7 +315,11 @@ importers:
         specifier: 8.53.0
         version: 8.53.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
 
-  packages/contracts:
+  packages/constants:
+    dependencies:
+      '@dfpunk/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       prettier:
         specifier: 3.7.4
@@ -321,11 +328,7 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
-  packages/constants:
-    dependencies:
-      '@dfpunk/types':
-        specifier: workspace:*
-        version: link:../types
+  packages/contracts:
     devDependencies:
       prettier:
         specifier: 3.7.4
@@ -392,6 +395,28 @@ importers:
       '@dfpunk/types':
         specifier: workspace:*
         version: link:../types
+    devDependencies:
+      prettier:
+        specifier: 3.7.4
+        version: 3.7.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/indexer-core:
+    dependencies:
+      '@aztec/aztec.js':
+        specifier: 4.1.0-rc.4
+        version: 4.1.0-rc.4(typescript@5.9.3)
+      '@aztec/foundation':
+        specifier: 4.1.0-rc.4
+        version: 4.1.0-rc.4
+      '@aztec/stdlib':
+        specifier: 4.1.0-rc.4
+        version: 4.1.0-rc.4(typescript@5.9.3)
+      '@dfpunk/contracts':
+        specifier: workspace:*
+        version: link:../contracts
     devDependencies:
       prettier:
         specifier: 3.7.4
@@ -548,6 +573,9 @@ importers:
       '@dfpunk/contracts':
         specifier: workspace:*
         version: link:../packages/contracts
+      '@dfpunk/indexer-core':
+        specifier: workspace:*
+        version: link:../packages/indexer-core
       '@hono/node-server':
         specifier: ^1.13.8
         version: 1.19.9(hono@4.12.3)
@@ -7712,6 +7740,7 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
@@ -7974,9 +8003,9 @@ snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
-  '@alejoamiras/aztec-accelerator@4.1.0-rc.4.3(typescript@5.9.3)(zod@3.25.76)':
+  '@alejoamiras/aztec-accelerator@4.1.0-rc.4.3(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
-      '@aztec/bb-prover': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
+      '@aztec/bb-prover': 4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)
       '@aztec/foundation': 4.1.0-rc.4
       '@aztec/noir-acvm_js': 4.1.0-rc.4
       '@aztec/noir-noirc_abi': 4.1.0-rc.4
@@ -8524,34 +8553,6 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@aztec/bb-prover@4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)':
-    dependencies:
-      '@aztec/bb.js': 4.1.0-rc.4
-      '@aztec/constants': 4.1.0-rc.4
-      '@aztec/foundation': 4.1.0-rc.4
-      '@aztec/noir-noirc_abi': 4.1.0-rc.4
-      '@aztec/noir-protocol-circuits-types': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/noir-types': 4.1.0-rc.4
-      '@aztec/simulator': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/telemetry-client': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/world-state': 4.1.0-rc.4(typescript@5.9.3)
-      commander: 12.1.0
-      pako: 2.1.0
-      source-map-support: 0.5.21
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/bb-prover@4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       '@aztec/bb.js': 4.1.0-rc.4
@@ -8829,39 +8830,6 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@aztec/pxe@4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)':
-    dependencies:
-      '@aztec/bb-prover': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/bb.js': 4.1.0-rc.4
-      '@aztec/builder': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/constants': 4.1.0-rc.4
-      '@aztec/ethereum': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/foundation': 4.1.0-rc.4
-      '@aztec/key-store': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/kv-store': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/noir-protocol-circuits-types': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/noir-types': 4.1.0-rc.4
-      '@aztec/protocol-contracts': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/simulator': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-      koa: 2.16.3
-      koa-router: 13.1.1
-      lodash.omit: 4.5.0
-      sha3: 2.1.4
-      tslib: 2.8.1
-      viem: '@aztec/viem@2.38.2(typescript@5.9.3)(zod@3.25.76)'
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/pxe@4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       '@aztec/bb-prover': 4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)
@@ -8883,34 +8851,6 @@ snapshots:
       sha3: 2.1.4
       tslib: 2.8.1
       viem: '@aztec/viem@2.38.2(typescript@5.9.3)(zod@4.3.6)'
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@aztec/simulator@4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)':
-    dependencies:
-      '@aztec/constants': 4.1.0-rc.4
-      '@aztec/foundation': 4.1.0-rc.4
-      '@aztec/native': 4.1.0-rc.4
-      '@aztec/noir-acvm_js': 4.1.0-rc.4
-      '@aztec/noir-noirc_abi': 4.1.0-rc.4
-      '@aztec/noir-protocol-circuits-types': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/noir-types': 4.1.0-rc.4
-      '@aztec/protocol-contracts': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/telemetry-client': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/world-state': 4.1.0-rc.4(typescript@5.9.3)
-      lodash.clonedeep: 4.5.0
-      lodash.merge: 4.6.2
-      tslib: 2.8.1
     transitivePeerDependencies:
       - '@types/pg'
       - aws-crt
@@ -9100,26 +9040,6 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@aztec/wallet-sdk@4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)':
-    dependencies:
-      '@aztec/aztec.js': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/constants': 4.1.0-rc.4
-      '@aztec/entrypoints': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/foundation': 4.1.0-rc.4
-      '@aztec/pxe': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
   '@aztec/wallet-sdk@4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       '@aztec/aztec.js': 4.1.0-rc.4(typescript@5.9.3)
@@ -9128,29 +9048,6 @@ snapshots:
       '@aztec/foundation': 4.1.0-rc.4
       '@aztec/pxe': 4.1.0-rc.4(typescript@5.9.3)(zod@4.3.6)
       '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@types/pg'
-      - aws-crt
-      - bufferutil
-      - debug
-      - encoding
-      - pg-native
-      - supports-color
-      - typescript
-      - utf-8-validate
-      - zod
-
-  '@aztec/wallets@4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)':
-    dependencies:
-      '@aztec/accounts': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/aztec.js': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/entrypoints': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/foundation': 4.1.0-rc.4
-      '@aztec/kv-store': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/protocol-contracts': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/pxe': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
-      '@aztec/stdlib': 4.1.0-rc.4(typescript@5.9.3)
-      '@aztec/wallet-sdk': 4.1.0-rc.4(typescript@5.9.3)(zod@3.25.76)
     transitivePeerDependencies:
       - '@types/pg'
       - aws-crt

@@ -10,7 +10,7 @@ import {
   TABLE_NAMES,
   type TableId,
   type TableName,
-} from "./types";
+} from "@dfpunk/indexer-core";
 
 // ---------------------------------------------------------------------------
 // Types

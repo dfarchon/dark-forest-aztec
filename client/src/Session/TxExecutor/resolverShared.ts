@@ -3,8 +3,9 @@
  * These are standalone versions of the private methods originally in StateResolver.
  */
 
+import type { PlanetEventsState } from "@dfpunk/indexer-core/TableTypes/chain";
+
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
-import type { PlanetEventsState } from "../Indexer/TableTypes/chain";
 import {
   arrivalToContract,
   artifactLocationToContract,

@@ -7,20 +7,21 @@
  * /snapshot?toBlock=N). getBlockUpdates and getLatestBlockNumber are not used in that case.
  */
 
-import {
-  parseSnapshotV2ChunkPayload,
-  parseSnapshotV2Manifest,
-  SnapshotV2Assembler,
-  type SnapshotV2ChunkPayload,
-} from "./snapshotV2";
 import type {
   BlockUpdates,
   IBlockEventSource,
   IndexerSnapshot,
   TableName,
   TableUpdate,
-} from "./types";
-import { TABLE_NAMES } from "./types";
+} from "@dfpunk/indexer-core";
+import { TABLE_NAMES } from "@dfpunk/indexer-core";
+
+import {
+  parseSnapshotV2ChunkPayload,
+  parseSnapshotV2Manifest,
+  SnapshotV2Assembler,
+  type SnapshotV2ChunkPayload,
+} from "./snapshotV2";
 
 export interface SnapshotDownloadProgress {
   loadedBytes: number;

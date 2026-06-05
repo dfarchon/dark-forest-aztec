@@ -8,6 +8,7 @@ packages:
   - packages/gamelogic
   - packages/hexgen
   - packages/hashing
+  - packages/indexer-core
   - packages/serde
   - packages/utils
   - packages/types

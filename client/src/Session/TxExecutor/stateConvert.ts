@@ -22,7 +22,8 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "../Indexer/TableTypes/chain";
+} from "@dfpunk/indexer-core/TableTypes/chain";
+
 import { arrivalZero, artifactLocationZero, artifactZero } from "./stateZeros";
 
 // ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { gunzipSync } from "node:zlib";
 
-import type { IndexerService, TableName } from "../../packages/indexer-server-core/src/index.ts";
-import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
+import type { IndexerService, TableName } from "@dfpunk/indexer-core";
+import { TABLE_NAMES } from "@dfpunk/indexer-core";
 import { createApp } from "./api.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 
@@ -116,7 +116,10 @@ function parseContractChunk(value: unknown): ContractChunk | null {
   if (!Number.isInteger(value.chunkIndex) || (value.chunkIndex as number) < 0) {
     return null;
   }
-  if (!Number.isInteger(value.chunkCount) || (value.chunkCount as number) <= 0) {
+  if (
+    !Number.isInteger(value.chunkCount) ||
+    (value.chunkCount as number) <= 0
+  ) {
     return null;
   }
   if (!Number.isInteger(value.chunkRows) || (value.chunkRows as number) <= 0) {
@@ -176,7 +179,9 @@ test("server v2 manifest/chunks satisfy snapshot contract end-to-end", async () 
     store: createStoreStub() as never,
   });
 
-  const manifestRes = await app.request("http://localhost/snapshot/manifest?chunkRows=1");
+  const manifestRes = await app.request(
+    "http://localhost/snapshot/manifest?chunkRows=1",
+  );
   assert.equal(manifestRes.status, 200);
   const manifest = parseContractManifest(await manifestRes.json());
   assert.ok(manifest);
@@ -235,7 +240,10 @@ test("snapshot contract requires matching chunkRows and block across manifest/ch
     tables: Object.fromEntries(
       TABLE_NAMES.map((table) => [
         table,
-        { chunkCount: table === "world" ? 1 : 0, rowCount: table === "world" ? 1 : 0 },
+        {
+          chunkCount: table === "world" ? 1 : 0,
+          rowCount: table === "world" ? 1 : 0,
+        },
       ]),
     ),
   });

@@ -3,8 +3,8 @@ import type {
   IndexerChangePayload,
   IndexerService,
   TableName,
-} from "../../packages/indexer-server-core/src/index.ts";
-import { TABLE_NAMES } from "../../packages/indexer-server-core/src/index.ts";
+} from "@dfpunk/indexer-core";
+import { TABLE_NAMES } from "@dfpunk/indexer-core";
 
 type SnapshotJson = {
   lastProcessedBlock: number;

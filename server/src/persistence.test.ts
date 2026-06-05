@@ -175,16 +175,21 @@ test("SnapshotStore resets stored snapshot when snapshot schema version changes"
 });
 
 test("dual-write: save() writes to both v1 snapshots and v2 snapshot_chunks tables", () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "dfpunk-dualwrite-"),
-  );
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-dualwrite-"));
   const dbPath = path.join(tempDir, "indexer.db");
 
   try {
     const store = new SnapshotStore(dbPath, 0);
     const snapshotData = {
       lastProcessedBlock: 100,
-      world: { "0": { paused: false, radius: "1", misc_nonce: "1", next_change_block: 0 } },
+      world: {
+        "0": {
+          paused: false,
+          radius: "1",
+          misc_nonce: "1",
+          next_change_block: 0,
+        },
+      },
       planet: {},
       player: {},
       planet_revealed_coords: {},
@@ -376,9 +381,7 @@ test("getActiveSnapshotPayload reconstructs the active snapshot version from v2 
 });
 
 test("verifyChunkConsistency returns true when v1 and v2 match", () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "dfpunk-verify-"),
-  );
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-verify-"));
   const dbPath = path.join(tempDir, "indexer.db");
 
   try {
@@ -408,9 +411,7 @@ test("verifyChunkConsistency returns true when v1 and v2 match", () => {
 });
 
 test("cleanup retains only N=2 snapshot versions", () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "dfpunk-cleanup-"),
-  );
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-cleanup-"));
   const dbPath = path.join(tempDir, "indexer.db");
 
   try {

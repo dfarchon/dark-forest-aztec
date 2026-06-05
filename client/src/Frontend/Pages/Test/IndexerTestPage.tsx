@@ -13,6 +13,7 @@
 import "./TestPageStyles.css";
 
 import { START_BLOCK } from "@dfpunk/contracts";
+import type { WorldState } from "@dfpunk/indexer-core/TableTypes/chain";
 import * as React from "react";
 
 import {
@@ -25,7 +26,6 @@ import {
   IndexerConnection,
   type IndexerConnectionConfig,
 } from "../../../Session/Indexer/IndexerConnection";
-import type { WorldState } from "../../../Session/Indexer/TableTypes/chain";
 import { TextPreview } from "../../Components/TextPreview";
 
 // ---------------------------------------------------------------------------

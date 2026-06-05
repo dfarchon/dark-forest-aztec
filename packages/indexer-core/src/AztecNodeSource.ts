@@ -122,12 +122,12 @@ function toIdStr(v: unknown): string {
  */
 export function createAztecNodeBlockSource(
   nodeUrl: string,
-  contractAddresses?: StorageContractAddresses
+  contractAddresses?: StorageContractAddresses,
 ): {
   getLatestBlockNumber: () => Promise<number>;
   getBlockUpdates: (
     fromBlock: number,
-    toBlock: number
+    toBlock: number,
   ) => Promise<BlockUpdates>;
 } {
   const node = createAztecNodeClient(nodeUrl) as AztecNode;
@@ -148,7 +148,7 @@ export function createAztecNodeBlockSource(
 
     async getBlockUpdates(
       fromBlock: number,
-      toBlock: number
+      toBlock: number,
     ): Promise<BlockUpdates> {
       const limit = Math.max(0, toBlock - fromBlock + 1);
       if (limit === 0) {

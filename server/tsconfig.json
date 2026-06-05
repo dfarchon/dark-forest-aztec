@@ -13,7 +13,7 @@
   },
   "include": [
     "src",
-    "../packages/indexer-server-core/src",
+    "../packages/indexer-core/src",
     "../packages/contracts/src"
   ]
 }

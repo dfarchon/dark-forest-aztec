@@ -1363,7 +1363,7 @@ export class StateResolver {
    */
   private loadArrivalsForPlanetEvents(
     planetEvents:
-      | import("../Indexer/TableTypes/chain").PlanetEventsState
+      | import("@dfpunk/indexer-core/TableTypes/chain").PlanetEventsState
       | undefined
   ): {
     arrivals: Record<string, unknown>[];
@@ -1427,7 +1427,7 @@ export class StateResolver {
    */
   private findActivatedArtifactId(
     planetArtifacts:
-      | import("../Indexer/TableTypes/chain").PlanetArtifactsState
+      | import("@dfpunk/indexer-core/TableTypes/chain").PlanetArtifactsState
       | undefined
   ): bigint {
     if (!planetArtifacts) return 0n;

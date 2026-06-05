@@ -50,7 +50,7 @@ export function toSafeNum(v: unknown): number {
   if (typeof v === "number" && !Number.isNaN(v)) {
     if (v > max || v < -max) {
       throw new Error(
-        `Indexer convert: number overflow (${v} outside safe integer range)`
+        `Indexer convert: number overflow (${v} outside safe integer range)`,
       );
     }
     return v;
@@ -58,7 +58,7 @@ export function toSafeNum(v: unknown): number {
   if (typeof v === "bigint") {
     if (v > BigInt(max) || v < BigInt(-max)) {
       throw new Error(
-        `Indexer convert: bigint overflow (${String(v)} outside safe integer range)`
+        `Indexer convert: bigint overflow (${String(v)} outside safe integer range)`,
       );
     }
     return Number(v);
@@ -67,7 +67,7 @@ export function toSafeNum(v: unknown): number {
   if (Number.isNaN(n)) return 0;
   if (n > max || n < -max) {
     throw new Error(
-      `Indexer convert: number overflow (${n} outside safe integer range)`
+      `Indexer convert: number overflow (${n} outside safe integer range)`,
     );
   }
   return n;
@@ -139,7 +139,7 @@ export function rawToPlanetState(r: Raw): PlanetState {
 
 /** Convert raw planet_revealed_coords state. */
 export function rawToPlanetRevealedCoordsState(
-  r: Raw
+  r: Raw,
 ): PlanetRevealedCoordsState {
   return {
     location_id: toStr(r.location_id),
@@ -214,7 +214,7 @@ export function rawToArtifactLocationState(r: Raw): ArtifactLocationState {
 const converters: Record<
   TableName,
   (
-    r: Raw
+    r: Raw,
   ) =>
     | WorldState
     | PlayerState
@@ -230,23 +230,23 @@ const converters: Record<
   player: rawToPlayerState as (r: Raw) => PlayerState,
   planet: rawToPlanetState as (r: Raw) => PlanetState,
   planet_revealed_coords: rawToPlanetRevealedCoordsState as (
-    r: Raw
+    r: Raw,
   ) => PlanetRevealedCoordsState,
   planet_events: rawToPlanetEventsState as (r: Raw) => PlanetEventsState,
   planet_artifacts: rawToPlanetArtifactsState as (
-    r: Raw
+    r: Raw,
   ) => PlanetArtifactsState,
   arrival: rawToArrivalState as (r: Raw) => ArrivalState,
   artifact: rawToArtifactState as (r: Raw) => ArtifactState,
   artifact_location: rawToArtifactLocationState as (
-    r: Raw
+    r: Raw,
   ) => ArtifactLocationState,
 };
 
 /** Convert raw state object to typed state for the given table. */
 export function rawToState(
   table: TableName,
-  raw: Raw
+  raw: Raw,
 ):
   | WorldState
   | PlayerState

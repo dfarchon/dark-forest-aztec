@@ -7,8 +7,8 @@
  * callers never receive partial state during initial catch-up.
  */
 
-import { rawIdToTableId, rawToState } from "./convert.ts";
-import { debounce } from "./debounce.ts";
+import { rawIdToTableId, rawToState } from "./convert";
+import { debounce } from "./debounce";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -19,7 +19,7 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "./TableTypes/chain.ts";
+} from "./TableTypes/chain";
 import type {
   BlockUpdates,
   IBlockEventSource,
@@ -31,8 +31,8 @@ import type {
   TableName,
   TableRowType,
   TableUpdate,
-} from "./types.ts";
-import { TABLE_NAMES } from "./types.ts";
+} from "./types";
+import { TABLE_NAMES } from "./types";
 
 type Raw = Record<string, unknown>;
 

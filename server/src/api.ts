@@ -8,7 +8,7 @@ import {
   TABLE_NAMES,
   type IndexerService,
   type TableName,
-} from "../../packages/indexer-server-core/src/index.ts";
+} from "@dfpunk/indexer-core";
 import type { SnapshotStore } from "./persistence.ts";
 import type { SnapshotCache } from "./snapshotCache.ts";
 

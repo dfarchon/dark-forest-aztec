@@ -12,7 +12,7 @@ import type {
   ArtifactState,
   PlanetEventsState,
   PlanetState,
-} from "../Indexer/TableTypes/chain";
+} from "@dfpunk/indexer-core/TableTypes/chain";
 
 // Contract enum values (u8)
 const ArrivalTypeWormhole = 3;

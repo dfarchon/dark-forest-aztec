@@ -20,32 +20,32 @@
 
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
-
-import type { StorageContractAddresses } from "./AztecNodeSource";
-import { createAztecNodeBlockSource } from "./AztecNodeSource";
-import type { IndexerServiceOptions } from "./IndexerService";
-import { IndexerService } from "./IndexerService";
-import {
-  OffChainBlockSource,
-  type SnapshotDownloadProgress,
-} from "./OffChainSource";
 import type {
   ArrivalState,
   ArtifactLocationState,
   ArtifactState,
+  IndexerChangePayload,
+  IndexerLifecycle,
+  IndexerServiceOptions,
+  IndexerStatus,
   PlanetArtifactsState,
   PlanetEventsState,
   PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
-  WorldState,
-} from "./TableTypes/chain";
-import type {
-  IndexerChangePayload,
-  IndexerLifecycle,
-  IndexerStatus,
+  StorageContractAddresses,
   TableId,
-} from "./types";
+  WorldState,
+} from "@dfpunk/indexer-core";
+import {
+  createAztecNodeBlockSource,
+  IndexerService,
+} from "@dfpunk/indexer-core";
+
+import {
+  OffChainBlockSource,
+  type SnapshotDownloadProgress,
+} from "./OffChainSource";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

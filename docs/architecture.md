@@ -148,7 +148,7 @@ Path: `packages/`
 | `@dfpunk/constants`           | Game constants                                                  |
 | `@dfpunk/ui`                  | Shared UI primitives                                            |
 | `@dfpunk/utils`               | Aztec helpers (`unwrapSimulateResult`, move-proof validation)   |
-| `@dfpunk/indexer-server-core` | Reusable indexer building blocks (`IndexerService`, sources)    |
+| `@dfpunk/indexer-core`        | Reusable indexer building blocks (`IndexerService`, sources)    |
 
 Shared packages should not depend on application-only code from `client/` or `server/`. Keep dependency direction flowing from apps to packages.
 

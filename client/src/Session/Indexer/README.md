@@ -6,8 +6,8 @@ Block-by-block sync of chain table state with debounce. Optional init from an of
 
 The indexer has two layers:
 
-- **IndexerService** (low-level): manages raw table state, block-by-block sync, lifecycle, and subscriber notifications. Deals in chain types (`PlanetState`, `PlayerState`, etc.).
-- **IndexerConnection** (high-level adapter): wraps IndexerService to provide an interface that mirrors `EthConnection` from darkforest-v0.6. Provides domain-level event subscription, read API, and `blockNumber$` stream.
+- **@dfpunk/indexer-core** (shared core): manages raw table state, block-by-block sync, lifecycle, source adapters, conversion helpers, and chain table types.
+- **IndexerConnection** (client adapter): wraps `IndexerService` to provide an interface that mirrors `EthConnection` from darkforest-v0.6. Provides domain-level event subscription, read API, and `blockNumber$` stream.
 
 ```
 Game Layer (ContractsAPI / InitialGameStateDownloader)
@@ -16,10 +16,10 @@ Game Layer (ContractsAPI / InitialGameStateDownloader)
 IndexerConnection          ← mirrors EthConnection interface
     │
     ▼
-IndexerService             ← table-level state, block sync, lifecycle
+@dfpunk/indexer-core       ← table-level state, block sync, lifecycle
     │
     ├── AztecNodeSource    ← reads public logs from Aztec node
-    └── OffChainSource     ← bootstrap snapshot from off-chain indexer API
+    └── client OffChainSource ← bootstrap snapshot from off-chain indexer API
 ```
 
 ### EthConnection parity
@@ -65,7 +65,7 @@ JavaScript's single-threaded execution ensures the in-memory snapshot is consist
 
 ## Types and overflow
 
-- **u128** (chain): kept as **string** in client types (e.g. `population_cap`, `score`, `pop_arriving`). Never use `number` for u128 to avoid overflow. Use `toBigInt(str)` when you need bigint for contract calls.
+- **u128** (chain): kept as **bigint** in shared indexer types (e.g. `population_cap`, `score`, `pop_arriving`). Never use `number` for u128 to avoid overflow.
 - **u8/u32/u64**: converted with **toSafeNum**; throws if value exceeds `Number.MAX_SAFE_INTEGER` so sync fails fast instead of silently corrupting.
 - Table row types are exported as **TableRowType** (e.g. `TableRowType['planet']` = `PlanetState`) so query results match the table structure for function inputs.
 
@@ -198,7 +198,10 @@ const { syncedToBlock } = await indexer.start();
 #### Chain source (Aztec node)
 
 ```ts
-import { IndexerService, createAztecNodeBlockSource } from "./Indexer";
+import {
+  IndexerService,
+  createAztecNodeBlockSource,
+} from "@dfpunk/indexer-core";
 
 const source = createAztecNodeBlockSource(
   process.env.AZTEC_NODE_URL ?? "http://localhost:8080"
@@ -237,7 +240,7 @@ const row = indexer.getTable("planet", id); // TableRowType["planet"] | undefine
 const lastBlock = indexer.getProcessedBlockNumber();
 const status = indexer.getStatus(); // includes lifecycle field
 const lifecycle = indexer.getLifecycle(); // "idle" | "bootstrapping" | "syncing" | "live" | "destroyed"
-// u128 fields are string; use BigInt(planet.population) if contract expects bigint
+// u128 fields are bigint in shared indexer types
 ```
 
 ## Query API

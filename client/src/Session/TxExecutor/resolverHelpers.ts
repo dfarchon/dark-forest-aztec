@@ -57,7 +57,7 @@ export function computeTimestamp(
 export function loadArtifactsForPlanet(
   indexer: IndexerConnection,
   planetArtifactsRaw:
-    | import("../Indexer/TableTypes/chain").PlanetArtifactsState
+    | import("@dfpunk/indexer-core/TableTypes/chain").PlanetArtifactsState
     | undefined
 ): {
   artifacts: Record<string, unknown>[];

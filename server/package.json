@@ -8,7 +8,7 @@
     "check:snapshot:compat": "python3 scripts/check-snapshot-client-compat.py",
     "clean": "del-cli dist node_modules data",
     "compare:snapshot": "node scripts/compare-snapshots.mjs",
-    "dev": "node --experimental-transform-types src/index.ts",
+    "dev": "tsx src/index.ts",
     "docker:build": "bash scripts/build-server-image.sh",
     "docker:publish": "IMAGE_PUSH=1 bash scripts/build-server-image.sh",
     "docker:publish:testnet": "bash scripts/publish-devnet-image.sh",
@@ -29,13 +29,14 @@
     "prepare:contracts": "node scripts/prepare-contract-artifacts.mjs",
     "prepare:contracts:build": "node scripts/prepare-contract-artifacts.mjs --build-if-missing",
     "serve": "bash scripts/serve.sh",
-    "start": "node --experimental-transform-types src/index.ts",
+    "start": "tsx src/index.ts",
     "test:build:image": "node --test scripts/build-server-image.test.mjs",
     "test:init-player:safe": "node --experimental-transform-types scripts/test-core-initialize-player-safe.mjs",
     "test:prepare:contracts": "node --test scripts/prepare-contract-artifacts.test.mjs"
   },
   "dependencies": {
     "@dfpunk/contracts": "workspace:*",
+    "@dfpunk/indexer-core": "workspace:*",
     "@hono/node-server": "^1.13.8",
     "better-sqlite3": "^11.8.1",
     "hono": "^4.7.4"

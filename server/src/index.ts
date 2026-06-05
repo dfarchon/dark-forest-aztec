@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   createAztecNodeBlockSource,
   IndexerService,
-} from "../../packages/indexer-server-core/src/index.ts";
+} from "@dfpunk/indexer-core";
 import { createApp } from "./api.ts";
 import type { ServerRuntimeConfig } from "./config.ts";
 import { parseServerConfig } from "./config.ts";
