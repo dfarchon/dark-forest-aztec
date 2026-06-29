@@ -21,6 +21,7 @@ import { BlockNumber } from '@aztec/foundation/branded-types';
 
 import { unwrapSimulateResult } from '../utils/index.ts';
 import {
+    ensureZkDisabled,
     getTestContext,
     sendTimestampRefreshTx,
     type TestContext,
@@ -261,6 +262,19 @@ async function getTimestampForContract(ctx: TestContext): Promise<bigint> {
     return BigInt(nowSec);
 }
 
+function toBig(v: unknown): bigint {
+    if (typeof v === 'bigint') return v;
+    if (typeof v === 'number') return BigInt(Math.trunc(v));
+    if (
+        v != null &&
+        typeof (v as { toBigInt?: () => bigint }).toBigInt === 'function'
+    )
+        return (v as { toBigInt: () => bigint }).toBigInt();
+    return BigInt(String(v ?? 0));
+}
+
+type GameConfigCoreLike = { init_perlin_min: unknown };
+
 async function main() {
     const userIndex = (() => {
         const arg = process.argv[2];
@@ -293,13 +307,9 @@ async function main() {
     );
 
     const level = 0;
-    const radius = 0n;
 
-    // location_id for level 0: bytes 4–6 (BE) in [thresholds[1], thresholds[0]) = [4_194_292, 16_777_216).
-    // Use a different location_id per user so each test account has its own home planet.
-    const locationId =
-        ((10_000_000n + BigInt(userIndex)) << 216n) | (255n << 64n);
-    const perlin = 13;
+    console.log('\n🔒 Ensuring ZK checks are disabled for local test...');
+    await ensureZkDisabled(ctx);
 
     console.log('\n📥 Loading config from Config contract...');
     const snarkConfig = unwrapSimulateResult(
@@ -372,6 +382,27 @@ async function main() {
     const playerState = playerZero();
     const planetState = planetZero(aztecZero);
 
+    const radius = toBig(world.radius);
+
+    // ZK checks are disabled on-chain (ensured above), so the init proof asserts
+    // (coords -> hash/perlin, rim range) are skipped. Use a fixed deterministic home
+    // location instead of searching for a valid spawn. Its level byte falls in the
+    // level-0 range and (space_type 0 / tier-0 weights [1,0,0,0,0]) derives planet_type 0,
+    // satisfying the home-planet asserts in check_player_init; perlin is passed as
+    // init_perlin_min so the perlin band assert passes. This location also matches the
+    // home/source location used by test-move / test-upgrade / test-withdraw.
+    const locationId =
+        ((10_000_000n + BigInt(userIndex)) << 216n) | (255n << 64n);
+    const perlin = Number(
+        (gameConfigCore as GameConfigCoreLike).init_perlin_min
+    );
+    const x = 0n;
+    const y = 0n;
+    console.log(
+        '\n⚡ Using fixed home location (ZK checks disabled, no spawn search).'
+    );
+    console.log(`   location_id=${locationId}, perlin=${perlin}, x=0, y=0`);
+
     // Send a no-op tx to refresh block timestamp before the main test tx.
     console.log('\n🔄 Refreshing block timestamp...');
     await sendTimestampRefreshTx(ctx);
@@ -379,9 +410,6 @@ async function main() {
     // Timestamp: contract requires timestamp <= block time and block_time - timestamp <= 300.
     // Use chain block time when available so we stay within the 5-minute window.
     const timestamp = await getTimestampForContract(ctx);
-
-    const x = 0n;
-    const y = 0n;
 
     console.log('\n🎮 Calling Core.initialize_player() (private)...');
     console.log(
@@ -445,7 +473,7 @@ async function main() {
 
     console.log('   Sending transaction...');
     try {
-        const receipt = await Core.methods
+        const { receipt } = await Core.methods
             .initialize_player(...initPlayerArgs)
             .send(sendOpts(user));
         const blockNumber =

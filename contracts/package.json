@@ -7,9 +7,9 @@
     "type": "module",
     "main": "index.js",
     "scripts": {
-        "aztec:fmt": "nargo fmt --workspace",
-        "aztec:fmt:check": "nargo fmt --workspace --check",
-        "aztec:fmt:lint-staged": "node -e \"require('child_process').execSync('nargo fmt --workspace', {stdio:'inherit'})\"",
+        "aztec:fmt": "aztec-nargo fmt --workspace",
+        "aztec:fmt:check": "aztec-nargo fmt --workspace --check",
+        "aztec:fmt:lint-staged": "node -e \"require('child_process').execSync('aztec-nargo fmt --workspace', {stdio:'inherit'})\"",
         "build": "pnpm build-contracts",
         "build-contracts": "pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts",
         "bytecode-check": "pnpm exec tsx scripts/dev/bytecode-check.ts",
@@ -27,11 +27,13 @@
         "format:check": "pnpm run aztec:fmt:check & pnpm run scripts:fmt:check",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
+        "local-network": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
         "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
         "read:config": "pnpm exec tsx scripts/read/read-config.ts",
         "scripts:fmt": "pnpm run lint:fix && pnpm run prettier",
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
+        "set-zk": "pnpm exec tsx scripts/dev/set-zk.ts",
         "start": "pnpm build && pnpm deploy-contracts && pnpm configure && pnpm sync-env-and-artifacts",
         "sync-env-and-artifacts": "pnpm exec tsx scripts/deploy/sync-env-and-artifacts.ts",
         "test:env": "pnpm exec tsx scripts/test/test-env.ts",
@@ -41,6 +43,7 @@
         "verify-perms": "pnpm exec tsx scripts/deploy/verify-storage-permissions.ts"
     },
     "dependencies": {
+        "@dfpunk/hashing": "workspace:*",
         "@dfpunk/utils": "workspace:*"
     },
     "devDependencies": {

@@ -28,6 +28,7 @@ import {
     registerContractsWithWallet,
     setupWallet,
     type TestAccountCredentials,
+    unwrapSimulateResult,
 } from '../utils/index.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -476,6 +477,54 @@ export async function sendTimestampRefreshTx(ctx: TestContext): Promise<void> {
     );
     await Admin.methods.transfer_admin(admin).send(ctx.sendOpts(admin));
     console.log('   ✅ Timestamp refresh tx confirmed.');
+}
+
+/**
+ * Ensure the on-chain SnarkConfig has `disable_zk_checks = true`.
+ *
+ * System contracts gate their init / move / reveal / find ZK proof asserts
+ * behind `if !snark_config.disable_zk_checks { ... }`. With this flag set,
+ * test scripts can pass fixed coordinates instead of searching for a valid
+ * spawn (which is slow because of the narrow perlin band).
+ *
+ * Reads the current config; if ZK checks are still enabled, sends
+ * `Config.set_snark_config({ ...current, disable_zk_checks: true })` from the
+ * admin account, then re-reads and returns the updated config (so its hash
+ * matches on-chain storage for downstream `provided_snark_config` use).
+ */
+export async function ensureZkDisabled(
+    ctx: TestContext
+): Promise<Record<string, unknown>> {
+    const Config = ctx.contracts['Config'];
+    if (!Config) {
+        throw new Error(
+            'Config contract not loaded; cannot toggle disable_zk_checks.'
+        );
+    }
+    const admin = ctx.accounts.admin;
+
+    const current = unwrapSimulateResult(
+        await Config.methods.get_snark_config().simulate({ from: admin })
+    ) as Record<string, unknown>;
+
+    if (current.disable_zk_checks) {
+        console.log('   ZK checks already disabled (disable_zk_checks=true).');
+        return current;
+    }
+
+    console.log(
+        '   ZK checks enabled; setting disable_zk_checks=true via admin...'
+    );
+    const newConfig = { ...current, disable_zk_checks: true };
+    await Config.methods.set_snark_config(newConfig).send(ctx.sendOpts(admin));
+
+    const updated = unwrapSimulateResult(
+        await Config.methods.get_snark_config().simulate({ from: admin })
+    ) as Record<string, unknown>;
+    console.log(
+        `   ✅ disable_zk_checks is now ${Boolean(updated.disable_zk_checks)}.`
+    );
+    return updated;
 }
 
 /** Log contract function list for reference when writing tests. */

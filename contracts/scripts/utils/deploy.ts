@@ -130,18 +130,24 @@ export async function deployOneContract(
     );
 
     const sponsoredFPC = sponsoredFpcOpt ?? (await getSponsoredPFCContract());
-    const deployMethod = new DeployMethod(
-        contract.publicKeys,
+    const deployMethod = DeployMethod.create(
         wallet,
-        config.artifact,
-        (instance, w) => Contract.at(instance.address, config.artifact, w),
-        constructorArgs,
-        initializer?.name
+        {
+            artifact: config.artifact,
+            postDeployCtor: (instance, w) =>
+                Contract.at(instance.address, config.artifact, w),
+            args: constructorArgs,
+            constructorNameOrArtifact: initializer?.name,
+        },
+        {
+            salt,
+            deployer,
+            publicKeys: contract.publicKeys,
+        }
     );
 
     await deployMethod.send({
         from: deployer,
-        contractAddressSalt: salt,
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },

@@ -1,9 +1,13 @@
+import { NO_FROM } from '@aztec/aztec.js/account';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import type { AccountManager } from '@aztec/aztec.js/wallet';
+import {
+    type AccountManager,
+    ContractInitializationStatus,
+} from '@aztec/aztec.js/wallet';
 import { SPONSORED_FPC_SALT } from '@aztec/constants';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -34,7 +38,7 @@ async function getNetworkFingerprint(node: AztecNode): Promise<string> {
     if (blockNumber < 1) return 'genesis-pending';
     const block = await node.getBlock(BlockNumber(1));
     if (!block) return 'genesis-pending';
-    return (await block.hash()).toString();
+    return block.hash.toString();
 }
 
 export type SetupWalletOptions = {
@@ -85,7 +89,7 @@ export async function setupWallet(
     fs.writeFileSync(fingerprintPath, fingerprint, 'utf-8');
 
     return await EmbeddedWallet.create(aztecNode, {
-        pxeConfig: {
+        pxe: {
             dataDirectory: storeDir,
             proverEnabled,
             dataStoreMapSizeKb: 1e6,
@@ -113,13 +117,17 @@ async function deployAccountIfNeeded(
     timeoutMs: number
 ): Promise<boolean> {
     const metadata = await wallet.getContractMetadata(accountManager.address);
-    if (metadata.isContractInitialized) return false;
+    if (
+        metadata.initializationStatus ===
+        ContractInitializationStatus.INITIALIZED
+    )
+        return false;
 
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
     try {
         await deployMethod.send({
-            from: AztecAddress.ZERO,
+            from: NO_FROM,
             fee: {
                 paymentMethod: new SponsoredFeePaymentMethod(
                     sponsoredFPC.address
@@ -191,7 +199,11 @@ export async function loadAccountFromEnv(
         if (await hasLocalAccount(wallet, accountAddress)) {
             if (!ensureDeployed) return accountAddress;
             const metadata = await wallet.getContractMetadata(accountAddress);
-            if (metadata.isContractInitialized) return accountAddress;
+            if (
+                metadata.initializationStatus ===
+                ContractInitializationStatus.INITIALIZED
+            )
+                return accountAddress;
         }
     }
 
@@ -260,7 +272,7 @@ export async function createAccount(
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
     const deployOpts = {
-        from: AztecAddress.ZERO,
+        from: NO_FROM,
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },
@@ -354,7 +366,7 @@ export async function createAccountWithCredentials(
     const sponsoredFPC = await getSponsoredPFCContract();
     const deployMethod = await accountManager.getDeployMethod();
     const deployOpts = {
-        from: AztecAddress.ZERO,
+        from: NO_FROM,
         fee: {
             paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
         },
@@ -386,7 +398,11 @@ export async function loadAccountFromCredentials(
     if (await hasLocalAccount(wallet, accountAddress)) {
         if (!ensureDeployed) return accountAddress;
         const metadata = await wallet.getContractMetadata(accountAddress);
-        if (metadata.isContractInitialized) return accountAddress;
+        if (
+            metadata.initializationStatus ===
+            ContractInitializationStatus.INITIALIZED
+        )
+            return accountAddress;
     }
 
     const accountManager = await wallet.createECDSARAccount(

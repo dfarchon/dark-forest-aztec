@@ -35,6 +35,8 @@ const LOCATION_PROOF_COORDS: [number, number][] = [
     [0, -70],
 ];
 
+import { initPoseidon2 } from '@dfpunk/hashing';
+
 import { unwrapSimulateResult } from '../utils/index.ts';
 import {
     buildLocationProofInputs,
@@ -184,6 +186,10 @@ async function runRevealInitLocationProofTests(
 }
 
 async function main() {
+    // v5 @aztec/bb.js requires the Barretenberg singleton to be initialized
+    // once before any synchronous getSingleton() call (used by perlin/poseidon2).
+    await initPoseidon2();
+
     const args = process.argv.slice(2);
     const fromChain = args.includes('--from-chain');
     const rest = args.filter((a) => a !== '--from-chain');

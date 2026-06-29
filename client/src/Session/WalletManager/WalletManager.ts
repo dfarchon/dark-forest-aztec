@@ -7,6 +7,7 @@
  */
 
 import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
@@ -14,9 +15,15 @@ import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { AccountManager, Wallet } from "@aztec/aztec.js/wallet";
+import {
+  type AccountManager,
+  ContractInitializationStatus,
+  type Wallet,
+} from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
+import { Gas } from "@aztec/stdlib/gas";
+import { getGasLimits } from "@aztec/wallet-sdk/base-wallet";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
@@ -99,7 +106,7 @@ async function getNetworkFingerprint(node: AztecNode): Promise<string> {
   if (blockNumber < 1) return GENESIS_PENDING_SENTINEL;
   const block = await node.getBlock(BlockNumber(1));
   if (!block) return GENESIS_PENDING_SENTINEL;
-  return (await block.hash()).toString();
+  return block.hash.toString();
 }
 
 /**
@@ -509,15 +516,13 @@ export class WalletManager {
 
     onProgress?.(4, total, "Creating PXE");
     const wallet = await EmbeddedWallet.create(node, {
-      pxeConfig: {
+      pxe: {
         dataDirectory: pxeDataDir,
         dataStoreMapSizeKb:
           config.pxeConfig?.dataStoreMapSizeKb ??
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
         ...config.pxeConfig,
-      },
-      pxeOptions:
-        config.pxeConfig?.proverEnabled && config.proverUrl
+        ...(config.pxeConfig?.proverEnabled && config.proverUrl
           ? (() => {
               const url = new URL(config.proverUrl!);
               const prover = new AcceleratorProver({
@@ -531,7 +536,8 @@ export class WalletManager {
               });
               return { proverOrOptions: prover };
             })()
-          : undefined,
+          : {}),
+      },
     });
 
     const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
@@ -587,7 +593,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -624,7 +632,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     // Use the selected account address from options/list as active target.
     this.setActive(AztecAddress.fromString(address), address);
@@ -656,7 +666,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    const deployed = metadata.isContractInitialized;
+    const deployed =
+      metadata.initializationStatus ===
+      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
@@ -799,7 +811,9 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    if (metadata.isContractInitialized) {
+    if (
+      metadata.initializationStatus === ContractInitializationStatus.INITIALIZED
+    ) {
       return {
         balanceWei,
         requiredWei: minWei,
@@ -811,7 +825,7 @@ export class WalletManager {
     try {
       const deployMethod = await accountManager.getDeployMethod();
       const sim = await deployMethod.simulate({
-        from: AztecAddress.ZERO,
+        from: NO_FROM,
         fee: {
           paymentMethod: new SponsoredFeePaymentMethod(
             this.sponsoredFpcAddress
@@ -819,12 +833,13 @@ export class WalletManager {
         },
         skipClassPublication: true,
         skipInstancePublication: true,
+        includeMetadata: true,
       });
       const fees = await this.node.getCurrentMinFees();
-      const estimatedGas = sim.estimatedGas;
-      if (!estimatedGas) {
+      const gasUsed = sim.gasUsed;
+      if (!gasUsed) {
         console.warn(
-          "[WalletManager] sponsor deploy simulate returned no estimatedGas"
+          "[WalletManager] sponsor deploy simulate returned no gasUsed"
         );
         return {
           balanceWei,
@@ -833,11 +848,13 @@ export class WalletManager {
           estimateSource: "simulate_failed",
         };
       }
-      const estWei = feeJuiceWeiFromGasPair(
-        estimatedGas.gasLimits,
-        estimatedGas.teardownGasLimits,
-        fees
+      const { txsLimits } = await this.node.getNodeInfo();
+      const { gasLimits, teardownGasLimits } = getGasLimits(
+        gasUsed,
+        Gas.from(txsLimits.gas),
+        0.1
       );
+      const estWei = feeJuiceWeiFromGasPair(gasLimits, teardownGasLimits, fees);
       const requiredWei = estWei > minWei ? estWei : minWei;
       return {
         balanceWei,
@@ -886,7 +903,10 @@ export class WalletManager {
     const metadata = await this.wallet.getContractMetadata(
       accountManager.address
     );
-    if (metadata.isContractInitialized) return false;
+    if (
+      metadata.initializationStatus === ContractInitializationStatus.INITIALIZED
+    )
+      return false;
 
     onStatus?.("Account not deployed on current network. Deploying...");
     console.info(
@@ -903,7 +923,7 @@ export class WalletManager {
     if (this.sponsoredFpcAddress) {
       try {
         await deployMethod.send({
-          from: AztecAddress.ZERO,
+          from: NO_FROM,
           fee: {
             paymentMethod: new SponsoredFeePaymentMethod(
               this.sponsoredFpcAddress
@@ -926,15 +946,15 @@ export class WalletManager {
       return true;
     }
 
-    // Non-sponsor mode: follow doc-recommended ZERO sender.
+    // Non-sponsor mode: follow doc-recommended NO_FROM sender.
     try {
       await deployMethod.send({
-        from: AztecAddress.ZERO,
+        from: NO_FROM,
         ...commonOpts,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[WalletManager] ZERO deploy sender failed: ${msg}`);
+      console.warn(`[WalletManager] NO_FROM deploy sender failed: ${msg}`);
       throw err;
     }
     return true;

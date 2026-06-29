@@ -56,7 +56,7 @@ export class ChainClock {
     try {
       const block = await this.node.getBlock("latest");
       if (block) {
-        const ts = Number(block.timestamp);
+        const ts = Number(block.header.globalVariables.timestamp);
         if (ts > 0) {
           this.sync(ts);
         }

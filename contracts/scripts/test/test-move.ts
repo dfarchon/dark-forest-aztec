@@ -13,9 +13,10 @@
  *   node --experimental-transform-types scripts/test/test-move.ts [userIndex]
  * userIndex: 0 = user1, 1 = user2 (default 0). Player must already be initialized.
  */
-import { getGasLimits } from '@aztec/aztec.js/contracts';
 import { getPublicEvents } from '@aztec/aztec.js/events';
 import { BlockNumber } from '@aztec/foundation/branded-types';
+import { Gas } from '@aztec/stdlib/gas';
+import { getGasLimits } from '@aztec/wallet-sdk/base-wallet';
 
 import { unwrapSimulateResult } from '../utils/index.ts';
 import {
@@ -670,7 +671,12 @@ async function main() {
         console.log('   ✅ Simulate passed.');
 
         const gasUsed = txSimResult.gasUsed;
-        const suggestedLimits = getGasLimits(txSimResult, 0.1);
+        const { txsLimits } = await ctx.node.getNodeInfo();
+        const suggestedLimits = getGasLimits(
+            gasUsed,
+            Gas.from(txsLimits.gas),
+            0.1
+        );
 
         console.log('\n⛽ Gas used:');
         console.log(
@@ -701,7 +707,7 @@ async function main() {
     }
 
     try {
-        const receipt = await Move.methods
+        const { receipt } = await Move.methods
             .move(...moveArgs)
             .send(sendOpts(user));
         const blockNumber =
