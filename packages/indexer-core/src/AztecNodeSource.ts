@@ -4,7 +4,7 @@
  */
 
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { getPublicEvents } from "@aztec/aztec.js/events";
+import { type EventCursor, getPublicEvents } from "@aztec/aztec.js/events";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { BlockNumber } from "@aztec/foundation/branded-types";
 import type { EventMetadataDefinition } from "@aztec/stdlib/abi";
@@ -158,17 +158,22 @@ export function createAztecNodeBlockSource(
       const updates: BlockUpdates["updates"] = [];
 
       for (const { table, eventDef, address } of specsWithArtifacts) {
-        const raw = await getPublicEvents(node, eventDef, {
-          fromBlock: BlockNumber(fromBlock),
-          toBlock: BlockNumber(fromBlock + limit),
-          contractAddress: address,
-        });
-        const events = raw.events.map((e) => e.event) as DecodedUpdate[];
-        for (const ev of events) {
-          if (ev?.state == null) continue;
-          const id = table === "world" ? "0" : toIdStr(ev.id);
-          updates.push({ table, id, state: ev.state });
-        }
+        let afterEvent: EventCursor | undefined;
+        do {
+          const page = await getPublicEvents(node, eventDef, {
+            fromBlock: BlockNumber(fromBlock),
+            toBlock: BlockNumber(fromBlock + limit),
+            contractAddress: address,
+            afterEvent,
+          });
+          const events = page.events.map((e) => e.event) as DecodedUpdate[];
+          for (const ev of events) {
+            if (ev?.state == null) continue;
+            const id = table === "world" ? "0" : toIdStr(ev.id);
+            updates.push({ table, id, state: ev.state });
+          }
+          afterEvent = page.nextCursor;
+        } while (afterEvent);
       }
 
       return { fromBlock, toBlock, updates };
