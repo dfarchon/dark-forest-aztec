@@ -852,7 +852,7 @@ export interface PlanetRenderManagerType {
    * The implementing renderer should contains its own back buffer.
    * Used for Drawing all types of planets
    * @param cachedPlanets - A Map that contains all planets that have been discovered by the user
-   * @param now - the modular of the current unix time by (2 * pi  * 12000) in seconds
+   * @param now - wall-clock time in milliseconds used for artifact orbit animation
    * @param highPerfMode - if the game is in high performance mode
    * @param disableEmojis
    * @param disableHats

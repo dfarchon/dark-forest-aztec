@@ -1425,6 +1425,11 @@ class GameManager extends EventEmitter {
     return this.chainClock.now();
   }
 
+  /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
+  public getNaturalTimeMs(): number {
+    return Date.now();
+  }
+
   /**
    * Returns whether or not the current round has ended.
    */

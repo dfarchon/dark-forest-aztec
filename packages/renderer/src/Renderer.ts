@@ -158,6 +158,8 @@ export interface RendererGameContext extends DiagnosticUpdater {
   getArtifactSending(planetId: LocationId): Artifact | undefined;
   getAbandonRangeChangePercent(): number;
   getChainTimeMs(): number;
+  /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
+  getNaturalTimeMs(): number;
   // getCaptureZones(): Iterable<CaptureZone>;
 }
 
@@ -175,7 +177,8 @@ export class Renderer {
   context: RendererGameContext;
 
   frameCount: number;
-  now: number; // so that we only need to compute Date.now() once per frame
+  now: number; // chain time; computed once per frame for voyages / game-synced visuals
+  naturalNow: number; // wall-clock ms; computed once per frame for cosmetic animations
 
   // render engines
   public glManager: GameGLManager;
@@ -243,6 +246,7 @@ export class Renderer {
     this.frameCount = 0;
     const chainMs = this.context.getChainTimeMs();
     this.now = chainMs > 0 ? chainMs : Date.now();
+    this.naturalNow = this.context.getNaturalTimeMs();
     this.config = config;
     autoBind(this);
 
@@ -331,6 +335,7 @@ export class Renderer {
     this.frameCount++;
     const chainMs = this.context.getChainTimeMs();
     this.now = chainMs > 0 ? chainMs : Date.now();
+    this.naturalNow = this.context.getNaturalTimeMs();
     this.draw();
     this.recordRender(Date.now());
     this.frameRequestId = window.requestAnimationFrame(() => this.loop());
@@ -419,7 +424,7 @@ export class Renderer {
     // queue planets
     this.planetRenderManager.queuePlanets(
       cachedPlanets,
-      this.now,
+      this.naturalNow,
       isHighPerfMode,
       disableEmojis,
       disableHats,
