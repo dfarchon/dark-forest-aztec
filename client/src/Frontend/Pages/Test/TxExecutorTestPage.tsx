@@ -225,7 +225,7 @@ export function TxExecutorTestPage() {
       // 4. ConfigContract
       const wallet = walletMgr.getWallet();
       const configContract = ConfigContract.at(
-        AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
+        AztecAddress.fromStringUnsafe(CONFIG_CONTRACT_ADDRESS),
         wallet
       );
 

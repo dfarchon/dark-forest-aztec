@@ -81,7 +81,7 @@ export async function diagnoseDeployerAccount(
     let envAddress: AztecAddress | null = null;
     if (envAddrStr) {
         try {
-            envAddress = AztecAddress.fromString(envAddrStr);
+            envAddress = AztecAddress.fromStringUnsafe(envAddrStr);
         } catch {
             reasons.push(
                 'ACCOUNT_ADDRESS in .env is not a valid Aztec address'

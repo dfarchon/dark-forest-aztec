@@ -402,11 +402,11 @@ export async function getTestContext(): Promise<TestContext> {
         );
     } else {
         const cred1 = await createAccountWithCredentials(wallet);
-        user1 = AztecAddress.fromString(cred1.address);
+        user1 = AztecAddress.fromStringUnsafe(cred1.address);
         let cred2: TestAccountCredentials;
         try {
             cred2 = await createAccountWithCredentials(wallet);
-            user2 = AztecAddress.fromString(cred2.address);
+            user2 = AztecAddress.fromStringUnsafe(cred2.address);
         } catch {
             user2 = user1;
             cred2 = cred1;

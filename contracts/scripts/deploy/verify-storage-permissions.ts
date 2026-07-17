@@ -356,14 +356,14 @@ function normalizeAddress(value: unknown): string {
         throw new Error('Missing address value');
     }
     if (typeof value === 'string') {
-        return AztecAddress.fromString(value).toString();
+        return AztecAddress.fromStringUnsafe(value).toString();
     }
     if (value instanceof AztecAddress) {
         return value.toString();
     }
     if (typeof value === 'object' && value !== null && 'toString' in value) {
         const s = (value as { toString: () => string }).toString();
-        return AztecAddress.fromString(s).toString();
+        return AztecAddress.fromStringUnsafe(s).toString();
     }
     throw new Error(`Cannot normalize address: ${String(value)}`);
 }
@@ -503,7 +503,7 @@ async function main() {
             }
 
             const expectedFromEnv = normalizeAddress(
-                AztecAddress.fromString(getRequiredEnv(row.envKey))
+                AztecAddress.fromStringUnsafe(getRequiredEnv(row.envKey))
             );
 
             if (onChain !== expectedFromEnv) {

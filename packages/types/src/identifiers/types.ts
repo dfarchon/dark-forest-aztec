@@ -24,7 +24,7 @@ export type LocationId = Abstract<string, "LocationId">;
  * Address type for compatibility with the previous client (EthAddress).
  * Expected to be a 32-byte value represented as a 0x-prefixed lowercase hex
  * string (64 hex chars, 66 chars total). On Aztec this aligns with
- * AztecAddress.toHexString(); create/validate via AztecAddress.fromString /
+ * AztecAddress.toHexString(); create/validate via AztecAddress.fromStringUnsafe /
  * toHexString in application code. This package only defines the branded type.
  */
 export type EthAddress = Abstract<string, "EthAddress">;

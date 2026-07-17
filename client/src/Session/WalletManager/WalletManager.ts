@@ -268,7 +268,7 @@ async function registerGameContractsWithPxe(
       const instance = await getContractInstanceFromInstantiationParams(
         artifact,
         {
-          deployer: AztecAddress.fromString(deployer),
+          deployer: AztecAddress.fromStringUnsafe(deployer),
           salt: Fr.fromString(salt),
           constructorArgs: [admin],
         }
@@ -298,7 +298,7 @@ async function registerSponsoredFpcWithWallet(
 
   const override = config.sponsoredFpcAddressOverride?.trim();
   if (override) {
-    const addr = AztecAddress.fromString(override);
+    const addr = AztecAddress.fromStringUnsafe(override);
     const instance = await node.getContract(addr);
     if (!instance) {
       throw new Error(
@@ -437,7 +437,7 @@ export class WalletManager {
       }
     }
 
-    const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
+    const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     const contractStartStep = config.sponsorMode ? 6 : 5;
     await registerGameContractsWithPxe(wallet, admin, contractStartStep);
 
@@ -540,7 +540,7 @@ export class WalletManager {
       },
     });
 
-    const admin = AztecAddress.fromString(ACCOUNT_ADDRESS);
+    const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
 
     if (config.sponsorMode) {
@@ -637,7 +637,7 @@ export class WalletManager {
       ContractInitializationStatus.INITIALIZED;
 
     // Use the selected account address from options/list as active target.
-    this.setActive(AztecAddress.fromString(address), address);
+    this.setActive(AztecAddress.fromStringUnsafe(address), address);
     return { deployed };
   }
 

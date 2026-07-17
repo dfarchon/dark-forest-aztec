@@ -28,12 +28,12 @@ export async function resolveAdminGiveSpaceship(
 
   const argsStruct = {
     id: Fr.random().toBigInt(),
-    discoverer: AztecAddress.fromString(String(ownerAddress)),
+    discoverer: AztecAddress.fromStringUnsafe(String(ownerAddress)),
     planet_id: planetId,
     rarity: 0,
     biome: 0,
     artifact_type: Number(artifactType),
-    controller: AztecAddress.fromString(String(ownerAddress)),
+    controller: AztecAddress.fromStringUnsafe(String(ownerAddress)),
   };
 
   const planetRaw = deps.indexer.getPlanet(planetIdDec);

@@ -99,7 +99,7 @@ export function ConnectionSettingsModal({
     const sponsorTrimmed = sponsoredFpcInput.trim();
     if (sponsorMode && sponsorTrimmed.length > 0) {
       try {
-        AztecAddress.fromString(sponsorTrimmed);
+        AztecAddress.fromStringUnsafe(sponsorTrimmed);
       } catch {
         setSaveMessage("error");
         return;

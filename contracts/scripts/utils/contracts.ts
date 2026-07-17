@@ -56,7 +56,7 @@ export async function getContractInstances(
             );
         }
         out[spec.name] = ContractClass.at(
-            AztecAddress.fromString(addr),
+            AztecAddress.fromStringUnsafe(addr),
             wallet
         ) as ContractBase;
     }
@@ -114,7 +114,7 @@ export async function registerContractsWithWallet(
             const instance = await getContractInstanceFromInstantiationParams(
                 artifact as import('@aztec/stdlib/abi').ContractArtifact,
                 {
-                    deployer: AztecAddress.fromString(deployerStr),
+                    deployer: AztecAddress.fromStringUnsafe(deployerStr),
                     salt: Fr.fromString(saltStr),
                     constructorArgs: [admin],
                 }

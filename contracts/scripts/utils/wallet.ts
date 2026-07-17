@@ -195,7 +195,7 @@ export async function loadAccountFromEnv(
     }
 
     if (envAddress) {
-        const accountAddress = AztecAddress.fromString(envAddress);
+        const accountAddress = AztecAddress.fromStringUnsafe(envAddress);
         if (await hasLocalAccount(wallet, accountAddress)) {
             if (!ensureDeployed) return accountAddress;
             const metadata = await wallet.getContractMetadata(accountAddress);
@@ -394,7 +394,7 @@ export async function loadAccountFromCredentials(
     options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
 ): Promise<AztecAddress> {
     const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
-    const accountAddress = AztecAddress.fromString(cred.address);
+    const accountAddress = AztecAddress.fromStringUnsafe(cred.address);
     if (await hasLocalAccount(wallet, accountAddress)) {
         if (!ensureDeployed) return accountAddress;
         const metadata = await wallet.getContractMetadata(accountAddress);

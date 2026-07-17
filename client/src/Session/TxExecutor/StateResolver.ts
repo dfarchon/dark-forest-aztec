@@ -221,39 +221,41 @@ export class StateResolver {
     this.enableHashPreflight = options?.enableHashPreflight ?? false;
 
     this.planetStorage = PlanetStorageContract.at(
-      AztecAddress.fromString(PLANET_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(PLANET_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.planetEventsStorage = PlanetEventsStorageContract.at(
-      AztecAddress.fromString(PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(PLANET_EVENTS_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.planetRevealedCoordsStorage = PlanetRevealedCoordsStorageContract.at(
-      AztecAddress.fromString(PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(
+        PLANET_REVEALED_COORDS_STORAGE_CONTRACT_ADDRESS
+      ),
       wallet
     );
     this.planetArtifactsStorage = PlanetArtifactsStorageContract.at(
-      AztecAddress.fromString(PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(PLANET_ARTIFACTS_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.arrivalStorage = ArrivalStorageContract.at(
-      AztecAddress.fromString(ARRIVAL_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARRIVAL_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactStorage = ArtifactStorageContract.at(
-      AztecAddress.fromString(ARTIFACT_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactLocationStorage = ArtifactLocationStorageContract.at(
-      AztecAddress.fromString(ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.playerStorage = PlayerStorageContract.at(
-      AztecAddress.fromString(PLAYER_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(PLAYER_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
     this.worldStorage = WorldStorageContract.at(
-      AztecAddress.fromString(WORLD_STORAGE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(WORLD_STORAGE_CONTRACT_ADDRESS),
       wallet
     );
   }
@@ -1265,7 +1267,7 @@ export class StateResolver {
     let locationId = hexIdToField(rawLocationId);
     let perlin = Number(rawPerlin);
     let level = Number(rawLevel);
-    const newOwner = AztecAddress.fromString(String(rawNewOwner));
+    const newOwner = AztecAddress.fromStringUnsafe(String(rawNewOwner));
 
     const config = await this.configCache.getConfig();
 
@@ -1486,7 +1488,7 @@ export class StateResolver {
     const arts = this.artifactStorage;
     const als = this.artifactLocationStorage;
     const ws = this.worldStorage;
-    const from = AztecAddress.fromString(this.getPlayerAddress());
+    const from = AztecAddress.fromStringUnsafe(this.getPlayerAddress());
 
     const mismatches: string[] = [];
 
@@ -1650,7 +1652,7 @@ export class StateResolver {
     playerState: Record<string, unknown>,
     world: Record<string, unknown>
   ): Promise<void> {
-    const from = AztecAddress.fromString(this.getPlayerAddress());
+    const from = AztecAddress.fromStringUnsafe(this.getPlayerAddress());
     const mismatches: string[] = [];
 
     const check = async (
@@ -1710,7 +1712,7 @@ export class StateResolver {
     playerState: Record<string, unknown>,
     world: Record<string, unknown>
   ): Promise<void> {
-    const from = AztecAddress.fromString(this.getPlayerAddress());
+    const from = AztecAddress.fromStringUnsafe(this.getPlayerAddress());
     const mismatches: string[] = [];
 
     const check = async (

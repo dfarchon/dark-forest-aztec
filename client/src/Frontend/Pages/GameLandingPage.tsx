@@ -194,7 +194,7 @@ function printSponsorDeployPreflight(
 
 async function resolveInitialSponsoredFpcAddress(): Promise<AztecAddress> {
   const override = getEffectiveSponsoredFpcAddressOverride();
-  if (override) return AztecAddress.fromString(override);
+  if (override) return AztecAddress.fromStringUnsafe(override);
 
   const instance = await getContractInstanceFromInstantiationParams(
     SponsoredFPCContractArtifact,
@@ -2942,7 +2942,7 @@ export function GameLandingPage() {
         const node = createAztecNodeClient(getEffectiveNodeUrl());
         const wallet = walletManager.getWallet();
         const configContract = ConfigContract.at(
-          AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
+          AztecAddress.fromStringUnsafe(CONFIG_CONTRACT_ADDRESS),
           wallet
         );
 

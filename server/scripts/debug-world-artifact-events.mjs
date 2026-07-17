@@ -22,7 +22,7 @@ async function count(label, eventDef, address) {
   const raw = await getPublicEvents(node, eventDef, {
     fromBlock: BlockNumber(from),
     toBlock: BlockNumber(to + 1),
-    contractAddress: AztecAddress.fromString(address),
+    contractAddress: AztecAddress.fromStringUnsafe(address),
   });
   console.log(`${label}: count=${raw.events.length}, range=${from}-${to}`);
   if (raw.events.length > 0) {

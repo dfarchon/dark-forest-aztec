@@ -28,7 +28,7 @@ export async function resolveAdminGiveArtifact(
 
   const argsStruct = {
     id: Fr.random().toBigInt(),
-    discoverer: AztecAddress.fromString(String(ownerAddress)),
+    discoverer: AztecAddress.fromStringUnsafe(String(ownerAddress)),
     planet_id: planetId,
     rarity: Number(rarity),
     biome: Number(biome),

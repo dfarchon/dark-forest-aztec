@@ -42,35 +42,35 @@ export class ContractResolver {
 
   constructor(wallet: Wallet) {
     this.core = CoreContract.at(
-      AztecAddress.fromString(CORE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(CORE_CONTRACT_ADDRESS),
       wallet
     );
     this.move = MoveContract.at(
-      AztecAddress.fromString(MOVE_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(MOVE_CONTRACT_ADDRESS),
       wallet
     );
     this.admin = AdminContract.at(
-      AztecAddress.fromString(ADMIN_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ADMIN_CONTRACT_ADDRESS),
       wallet
     );
     this.config = ConfigContract.at(
-      AztecAddress.fromString(CONFIG_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(CONFIG_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactAction = ArtifactActionContract.at(
-      AztecAddress.fromString(ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactFind = ArtifactFindContract.at(
-      AztecAddress.fromString(ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactProspect = ArtifactProspectContract.at(
-      AztecAddress.fromString(ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
     this.artifactVault = ArtifactValutContract.at(
-      AztecAddress.fromString(ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS),
+      AztecAddress.fromStringUnsafe(ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
   }

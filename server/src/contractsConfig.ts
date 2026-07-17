@@ -73,7 +73,7 @@ export function validateContractsConfig(
   >) {
     let address: AztecAddress;
     try {
-      address = AztecAddress.fromString(value);
+      address = AztecAddress.fromStringUnsafe(value);
     } catch {
       throw new Error(`[ContractsConfig] Invalid ${name} contract address`);
     }

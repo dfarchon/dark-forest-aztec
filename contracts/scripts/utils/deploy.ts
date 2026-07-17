@@ -222,7 +222,7 @@ export async function deployContracts(
             timeoutMs,
             sponsoredFpc,
         });
-        addresses[config.name] = AztecAddress.fromString(
+        addresses[config.name] = AztecAddress.fromStringUnsafe(
             result.contractAddress
         );
         results[config.name] = result;

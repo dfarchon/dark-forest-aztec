@@ -138,7 +138,7 @@ export function createAztecNodeBlockSource(
     return addr && addr.length >= 10;
   }).map((spec) => ({
     ...spec,
-    address: AztecAddress.fromString(addresses[spec.contractKey]!),
+    address: AztecAddress.fromStringUnsafe(addresses[spec.contractKey]!),
   }));
 
   return {

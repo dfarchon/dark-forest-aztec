@@ -39,7 +39,7 @@ const contractAddresses = [
   ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS,
   ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS,
-].map((address) => AztecAddress.fromString(address));
+].map((address) => AztecAddress.fromStringUnsafe(address));
 
 const allFunctionPatterns: ContractFunctionPattern[] = contractAddresses.map(
   (contract) => ({ contract, function: "*" })
