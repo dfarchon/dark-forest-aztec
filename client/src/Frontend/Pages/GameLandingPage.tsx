@@ -996,6 +996,9 @@ export function GameLandingPage() {
   const gameUIManagerRef = useRef<GameUIManager | undefined>(undefined);
   const topLevelContainer = useRef<HTMLDivElement | null>(null);
   const walletManagerRef = useRef<WalletManager | undefined>(undefined);
+  const walletManagerInitRef = useRef<Promise<WalletManager> | undefined>(
+    undefined
+  );
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
   const [terminalVisible, setTerminalVisible] = useState(false);
@@ -1125,16 +1128,16 @@ export function GameLandingPage() {
     []
   );
 
-  const destroyTransientWalletManager = useCallback(() => {
+  const destroyTransientWalletManager = useCallback(async () => {
     if (walletLockStateRef.current !== "unselected") return;
-    walletManagerRef.current?.destroy();
+    await walletManagerRef.current?.destroy();
     walletManagerRef.current = undefined;
     externalModeBannerPrintedRef.current = false;
   }, []);
 
   const clearUnlockedWalletState = useCallback(async () => {
     if (walletLockStateRef.current !== "unselected") return;
-    destroyTransientWalletManager();
+    await destroyTransientWalletManager();
     externalWalletSimulationSupportRef.current = null;
     resetInitializationTerminalLogging();
     await releaseWalletSession();
@@ -1244,12 +1247,17 @@ export function GameLandingPage() {
     if (walletManagerRef.current) {
       return walletManagerRef.current;
     }
+    if (walletManagerInitRef.current) {
+      return walletManagerInitRef.current;
+    }
 
     resetInitializationTerminalLogging();
     externalWalletSimulationSupportRef.current = null;
     setLoadingPhase({ step: "wallet" });
+    const initPromise = createWalletManager(buildWalletConfig());
+    walletManagerInitRef.current = initPromise;
     try {
-      const wm = await createWalletManager(buildWalletConfig());
+      const wm = await initPromise;
       walletManagerRef.current = wm;
       setLoadingPhase({ step: "done" });
       refreshLocalAccountCount();
@@ -1257,6 +1265,10 @@ export function GameLandingPage() {
     } catch (err) {
       setLoadingPhase({ step: "done" });
       throw err;
+    } finally {
+      if (walletManagerInitRef.current === initPromise) {
+        walletManagerInitRef.current = undefined;
+      }
     }
   }, [
     buildWalletConfig,
@@ -1328,7 +1340,7 @@ export function GameLandingPage() {
       throw new Error("No active account to restore after connection change.");
     }
     const mode = selectedWalletModeRef.current;
-    prev?.destroy();
+    await prev?.destroy();
     walletManagerRef.current = undefined;
     externalWalletSimulationSupportRef.current = null;
 

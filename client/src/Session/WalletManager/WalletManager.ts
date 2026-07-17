@@ -328,6 +328,7 @@ export class WalletManager {
   private activeAddress: AztecAddress | undefined;
   private balanceInterval: ReturnType<typeof setInterval> | undefined;
   private balance: bigint = 0n;
+  private destroyPromise: Promise<void> | undefined;
 
   public readonly walletChanged$: Monomitter<AztecAddress | undefined>;
   public readonly myBalance$: Monomitter<bigint>;
@@ -372,7 +373,7 @@ export class WalletManager {
       } catch (err) {
         console.warn("[WalletManager] Failed to restore saved account:", err);
         console.warn("[WalletManager] Clearing stale PXE data and retrying...");
-        mgr.destroy();
+        await mgr.destroy();
         await clearStaleIndexedDBs();
         mgr.keyStore.clearActiveAddress();
 
@@ -877,13 +878,26 @@ export class WalletManager {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  destroy(): void {
+  destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+
     if (this.balanceInterval !== undefined) {
       clearInterval(this.balanceInterval);
       this.balanceInterval = undefined;
     }
     this.walletChanged$.clear();
     this.myBalance$.clear();
+
+    this.destroyPromise = (async () => {
+      if (!this.isExternal) {
+        try {
+          await (this.wallet as EmbeddedWallet).stop();
+        } catch (err) {
+          console.warn("[WalletManager] Failed to close embedded wallet:", err);
+        }
+      }
+    })();
+    return this.destroyPromise;
   }
 
   // ---------------------------------------------------------------------------
