@@ -53,7 +53,14 @@ export default defineConfig({
       "@aztec/accounts/schnorr/lazy",
       "@aztec/accounts/schnorr/stub/lazy",
       "@aztec/standard-contracts/multi-call-entrypoint/lazy",
+      "msgpackr/index-no-eval",
+      "pino",
     ],
-    exclude: ["@aztec/bb.js", "@aztec/noir-acvm_js", "@aztec/noir-noirc_abi"],
+    exclude: [
+      "@aztec/bb.js",
+      "@aztec/noir-acvm_js",
+      "@aztec/noir-noirc_abi",
+      "@aztec/kv-store/sqlite-opfs",
+    ],
   },
 });

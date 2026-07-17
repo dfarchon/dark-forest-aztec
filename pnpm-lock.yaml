@@ -174,9 +174,15 @@ importers:
       lodash:
         specifier: 4.17.21
         version: 4.17.21
+      msgpackr:
+        specifier: 1.11.8
+        version: 1.11.8
       p-defer:
         specifier: 4.0.1
         version: 4.0.1
+      pino:
+        specifier: 9.14.0
+        version: 9.14.0
       prismjs:
         specifier: 1.29.0
         version: 1.29.0
