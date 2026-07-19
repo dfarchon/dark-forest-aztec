@@ -120,7 +120,7 @@ Run via `pnpm --filter server <script>`:
 
 | Script                                                                          | Purpose                                                           |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `dev` / `start`                                                                 | Run server (`node --experimental-transform-types src/index.ts`)   |
+| `dev` / `start`                                                                 | Run server (`tsx src/index.ts`); Docker uses `node --experimental-transform-types` |
 | `compare:snapshot`                                                              | Compare snapshot JSON to server `/snapshot` and v2 reconstruction |
 | `docker:build`                                                                  | Build server image (`scripts/build-server-image.sh`)              |
 | `docker:publish`                                                                | Build and push image (`IMAGE_PUSH=1`)                             |
