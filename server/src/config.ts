@@ -1,6 +1,6 @@
 import { START_BLOCK } from "@dfpunk/contracts";
 
-export const DEFAULT_AZTEC_NODE_URL = "https://rpc.testnet.aztec-labs.com";
+export const DEFAULT_AZTEC_NODE_URL = "https://canonical.testnet.rpc.aztec-labs.com";
 
 export const DEFAULT_CORS_ORIGINS = [
   "http://localhost:5173",

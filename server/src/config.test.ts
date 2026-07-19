@@ -8,7 +8,7 @@ import { parseServerConfig } from "./config.ts";
 test("parseServerConfig defaults to testnet and known frontend origins", () => {
   const config = parseServerConfig({});
 
-  assert.equal(config.aztecNodeUrl, "https://rpc.testnet.aztec-labs.com");
+  assert.equal(config.aztecNodeUrl, "https://canonical.testnet.rpc.aztec-labs.com");
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.snapshotSchemaVersion, 1);
   assert.deepEqual(config.corsOrigins, [

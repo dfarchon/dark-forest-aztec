@@ -9,7 +9,7 @@ import { SnapshotCache } from "./snapshotCache.ts";
 function createTestConfig(): ServerRuntimeConfig {
   return {
     adminToken: "",
-    aztecNodeUrl: "https://rpc.testnet.aztec-labs.com",
+    aztecNodeUrl: "https://canonical.testnet.rpc.aztec-labs.com",
     corsOrigins: ["http://localhost:5173"],
     indexerStartBlock: 32202,
     nodeKind: "remote",

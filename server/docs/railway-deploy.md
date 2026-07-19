@@ -18,7 +18,7 @@ Service shape: builder `DOCKERFILE`, Dockerfile path `server/Dockerfile`, build 
 ## Environment Variables
 
 ```bash
-AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com
+AZTEC_NODE_URL=https://canonical.testnet.rpc.aztec-labs.com
 CORS_ORIGINS=https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app
 SQLITE_PATH=/data/indexer.db
 SNAPSHOT_SCHEMA_VERSION=1
@@ -114,7 +114,7 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 
 **Aztec SDK upgrade breaks contract artifacts** — When `@aztec/*` is upgraded (e.g. 4.x → 5.0.1), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build-contracts` then `pnpm --filter server run prepare:contracts` before building the image.
 
-**RPC unreachable / TLS handshake failures** — `rpc.testnet.aztec-labs.com` is the canonical Aztec testnet RPC (confirmed via Aztec v5.0.1 release). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 rpc.testnet.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
+**RPC unreachable / TLS handshake failures** — `canonical.testnet.rpc.aztec-labs.com` is the canonical Aztec testnet RPC (confirmed via Aztec v5.0.1 release; the older `rpc.testnet.aztec-labs.com` endpoint had TLS failures). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 canonical.testnet.rpc.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
 
 **Crash-on-RPC-failure loop** — `src/index.ts` calls `main().catch(() => process.exit(1))`. If `indexer.start()` cannot reach the RPC, the process exits and Railway's `ON_FAILURE` policy restarts it (up to 10 retries). If the RPC outage lasts longer than the retry budget, the service stays down and needs a manual `railway redeploy --yes` once the RPC recovers.
 
