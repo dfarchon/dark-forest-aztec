@@ -19,7 +19,7 @@ Service shape: builder `DOCKERFILE`, Dockerfile path `server/Dockerfile`, build 
 
 ```bash
 AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com
-CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app
+CORS_ORIGINS=https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app
 SQLITE_PATH=/data/indexer.db
 SNAPSHOT_SCHEMA_VERSION=1
 PERSIST_MIN_INTERVAL_SEC=10
@@ -106,9 +106,29 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 
 **Service never becomes healthy** — Server opens HTTP before catch-up completes, so health checks pass during sync. If health still fails, check Railway logs for startup exceptions.
 
-**CORS blocks frontend** — Verify `CORS_ORIGINS` includes the real frontend origin and the browser isn't pointing to `localhost:3001`.
+**CORS blocks frontend** — Verify `CORS_ORIGINS` includes the real frontend origin and the browser isn't pointing to `localhost:3001`. The current production frontend is `dark-forest-aztec-testnet-v5.netlify.app`; stale entries like `df-aztec.netlify.app` should be removed.
 
 **Clean-clone image build fails** — `AztecNodeSource.ts` imports generated contract artifacts (`contracts/src/artifacts/*.ts`) which are `.gitignore`d. Run `pnpm --filter server run prepare:contracts` before building.
+
+**`ERR_MODULE_NOT_FOUND` in Docker (extensionless imports)** — The Docker entrypoint uses `node --experimental-transform-types`, which requires explicit `.ts` extensions on relative imports. `tsx`/Vite tolerate extensionless imports but Node does not. All relative imports in `packages/indexer-core/src/**` must end with `.ts`.
+
+**Aztec SDK upgrade breaks contract artifacts** — When `@aztec/*` is upgraded (e.g. 4.x → 5.0.1), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build-contracts` then `pnpm --filter server run prepare:contracts` before building the image.
+
+**RPC unreachable / TLS handshake failures** — `rpc.testnet.aztec-labs.com` is the canonical Aztec testnet RPC (confirmed via Aztec v5.0.1 release). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 rpc.testnet.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
+
+**Crash-on-RPC-failure loop** — `src/index.ts` calls `main().catch(() => process.exit(1))`. If `indexer.start()` cannot reach the RPC, the process exits and Railway's `ON_FAILURE` policy restarts it (up to 10 retries). If the RPC outage lasts longer than the retry budget, the service stays down and needs a manual `railway redeploy --yes` once the RPC recovers.
+
+**Healthcheck timeout too short** — Railway's default 30s is insufficient for first-time sync (SQLite restore + block catch-up). Raise `healthcheckTimeout` to 300s via the Railway API.
+
+**Memory exhaustion during sync** — Railway free tier (500 MB RAM / 0.5 vCPU) may OOM on large block ranges. Watch Railway metrics; upgrade the service if `cache.buildFull()` or `getBlockUpdates` spikes past the limit.
+
+## Operational Notes
+
+- **No auto-redeploy on image push**: Railway image-based services do not redeploy when a new image is pushed to GHCR. Run `railway redeploy --yes` after publishing.
+- **Service manifest watch patterns**: ensure the manifest's `watchPatterns` references `packages/indexer-core/**` (not the stale `packages/indexer-server-core/**` path from before the rename).
+- **Healthcheck endpoint**: `/health` returns `lifecycle: "syncing"` during catch-up and `lifecycle: "live"` once live. Raise the platform healthcheck timeout to 300s for first deploy.
+- **Restart policy**: `ON_FAILURE` with max 10 retries. For prolonged RPC outages, manually redeploy after recovery.
+- **CORS env vs. code default**: `CORS_ORIGINS` env var wins over `DEFAULT_CORS_ORIGINS` in `server/src/config.ts`. Keep both in sync with the real frontend domain.
 
 ## Notes
 

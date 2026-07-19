@@ -224,7 +224,7 @@ pnpm --filter server run e2e:down     # stop everything
 docker build -t dfpunk-indexer-server -f server/Dockerfile .
 docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
   -e AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com \
-  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app \
+  -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
   dfpunk-indexer-server
 ```
@@ -238,7 +238,7 @@ Recommended settings:
 - **Deploy source**: empty Railway service with builder `DOCKERFILE`, path `server/Dockerfile`, build context repo root; or a prebuilt **GHCR** image (see [docs/railway-deploy.md](./docs/railway-deploy.md)).
 - Mount persistent volume at `/data`; set `SQLITE_PATH=/data/indexer.db`
 - Set `AZTEC_NODE_URL=https://rpc.testnet.aztec-labs.com`
-- Set `CORS_ORIGINS=https://dfpunk-aztec.netlify.app,https://df-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app`
+- Set `CORS_ORIGINS=https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app`
 - Do **not** set `PORT` yourself—Railway injects it (see Configuration table).
 
 See [docs/railway-deploy.md](./docs/railway-deploy.md) for environment variable reference, publish commands, post-deploy checks, and known deploy traps.
@@ -247,9 +247,13 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 
 ## Failure & Recovery
 
+- **Fast-fail on RPC unreachable**: `main().catch(() => process.exit(1))` — if `indexer.start()` cannot reach `AZTEC_NODE_URL`, the process exits immediately. Railway's `ON_FAILURE` restart policy (max 10 retries) brings it back automatically; for prolonged outages, run `railway redeploy --yes` once the RPC recovers.
+- **Local RPC diagnostics**: if `curl https://rpc.testnet.aztec-labs.com` fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` address, a local PAC/WPAD proxy (Clash/Surge fake-ip) is intercepting the domain — not an RPC outage. Pin the real IP via `dig @8.8.8.8` or disable the proxy to verify.
 - Event decode failures cause startup/polling to fail fast with logged error.
 - On restart, last persisted snapshot is restored and sync catches up from there.
 - Corrupted persisted JSON is skipped; fresh sync from `INDEXER_START_BLOCK`.
+- **Healthcheck**: Railway default 30s is too short for first-time sync (SQLite restore + catch-up). Raise to 300s via the Railway API.
+- **Memory**: 500 MB RAM (Railway free tier) may OOM on large block ranges; monitor and upgrade if sync crashes repeatedly.
 
 ## Limitations
 

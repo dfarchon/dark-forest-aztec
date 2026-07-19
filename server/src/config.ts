@@ -5,7 +5,7 @@ export const DEFAULT_AZTEC_NODE_URL = "https://rpc.testnet.aztec-labs.com";
 export const DEFAULT_CORS_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
-  "https://df-aztec.netlify.app",
+  "https://dark-forest-aztec-testnet-v5.netlify.app",
   "https://dfpunk-aztec.netlify.app",
   "https://dfpunk-aztec-testnet.netlify.app",
 ];
