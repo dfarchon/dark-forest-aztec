@@ -1,5 +1,5 @@
-export type { StorageContractAddresses } from "./AztecNodeSource";
-export { createAztecNodeBlockSource } from "./AztecNodeSource";
+export type { StorageContractAddresses } from "./AztecNodeSource.ts";
+export { createAztecNodeBlockSource } from "./AztecNodeSource.ts";
 
 export {
   rawIdToTableId,
@@ -16,13 +16,13 @@ export {
   toBigInt,
   toSafeNum,
   toStr,
-} from "./convert";
+} from "./convert.ts";
 
-export type { DebouncedFn } from "./debounce";
-export { debounce } from "./debounce";
+export type { DebouncedFn } from "./debounce.ts";
+export { debounce } from "./debounce.ts";
 
-export type { IndexerServiceOptions } from "./IndexerService";
-export { IndexerService } from "./IndexerService";
+export type { IndexerServiceOptions } from "./IndexerService.ts";
+export { IndexerService } from "./IndexerService.ts";
 
 export type {
   BlockUpdates,
@@ -36,8 +36,8 @@ export type {
   TableRowType,
   TableStateMap,
   TableUpdate,
-} from "./types";
-export { TABLE_NAMES } from "./types";
+} from "./types.ts";
+export { TABLE_NAMES } from "./types.ts";
 
-export * from "./TableTypes/chain";
-export * from "./TableTypes/enums";
+export * from "./TableTypes/chain.ts";
+export * from "./TableTypes/enums.ts";
