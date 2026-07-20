@@ -1719,6 +1719,10 @@ export function GameLandingPage() {
             let shouldRescan = false;
             for (;;) {
               terminal.current?.println("No extension wallet detected yet.");
+              terminal.current?.println(
+                "Tip: choose a local wallet instead. Press (b) to go back.",
+                TerminalTextStyle.Sub
+              );
               terminal.current?.printOption("r", "Rescan");
               terminal.current?.printOption("b", "Back");
 
@@ -3205,6 +3209,9 @@ export function GameLandingPage() {
 
       terminal.current?.println(
         "Press ENTER to find a home planet. This may take up to 120s."
+      );
+      terminal.current?.println(
+        "Then Aztec proof generation + submit often takes 1-5 minutes. Keep this tab open."
       );
       terminal.current?.println("This will consume a lot of CPU.");
 
