@@ -30,7 +30,7 @@ import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage
 import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 
-import type { BlockUpdates, TableName } from "./types";
+import type { BlockUpdates, TableName } from "./types.ts";
 
 /** Decoded storage event shape: id, optional block_number, state. */
 type DecodedUpdate = {

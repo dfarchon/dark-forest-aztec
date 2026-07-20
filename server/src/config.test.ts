@@ -8,13 +8,13 @@ import { parseServerConfig } from "./config.ts";
 test("parseServerConfig defaults to testnet and known frontend origins", () => {
   const config = parseServerConfig({});
 
-  assert.equal(config.aztecNodeUrl, "https://rpc.testnet.aztec-labs.com");
+  assert.equal(config.aztecNodeUrl, "https://canonical.testnet.rpc.aztec-labs.com");
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.snapshotSchemaVersion, 1);
   assert.deepEqual(config.corsOrigins, [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://df-aztec.netlify.app",
+    "https://dark-forest-aztec-testnet-v5.netlify.app",
     "https://dfpunk-aztec.netlify.app",
     "https://dfpunk-aztec-testnet.netlify.app",
   ]);

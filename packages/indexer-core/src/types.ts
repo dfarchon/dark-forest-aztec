@@ -13,7 +13,7 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "./TableTypes/chain";
+} from "./TableTypes/chain.ts";
 
 /** Table names matching contract storage and client types. */
 export const TABLE_NAMES = [

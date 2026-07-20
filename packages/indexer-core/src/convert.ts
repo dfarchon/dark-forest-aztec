@@ -16,8 +16,8 @@ import type {
   PlanetState,
   PlayerState,
   WorldState,
-} from "./TableTypes/chain";
-import type { TableName } from "./types";
+} from "./TableTypes/chain.ts";
+import type { TableName } from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
