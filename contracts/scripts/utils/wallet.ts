@@ -1,15 +1,11 @@
 import { NO_FROM } from '@aztec/aztec.js/account';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
 import {
     type AccountManager,
     ContractInitializationStatus,
 } from '@aztec/aztec.js/wallet';
-import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
@@ -20,6 +16,12 @@ import {
     getWriteEnvFile,
     reloadContractsEnv,
 } from './env.ts';
+import {
+    buildFeeSendFields,
+    type FeePaymentContext,
+    getFeePaymentMode,
+    getSponsoredPFCContract,
+} from './feePayment.ts';
 
 const DEFAULT_PXE_STORE_DIR = path.join(
     import.meta.dirname,
@@ -97,24 +99,25 @@ export async function setupWallet(
     });
 }
 
-/**
- * Get the canonical SponsoredFPC contract instance (for sponsored fee payments).
- * Use this when sending transactions with SponsoredFeePaymentMethod.
- */
-export async function getSponsoredPFCContract() {
-    const instance = await getContractInstanceFromInstantiationParams(
-        SponsoredFPCContractArtifact,
-        {
-            salt: new Fr(SPONSORED_FPC_SALT),
-        }
-    );
-    return instance;
+/** @deprecated Import from `./feePayment.ts` — re-exported for compatibility. */
+export { getSponsoredPFCContract };
+
+function resolveFeeCtx(feeCtx?: FeePaymentContext): FeePaymentContext {
+    if (feeCtx) return feeCtx;
+    const mode = getFeePaymentMode();
+    if (mode === 'sponsored') {
+        // Lazy: callers of legacy APIs without feeCtx still expect sponsored.
+        // They must have registered SponsoredFPC already; address is resolved on send.
+        return { mode: 'sponsored' };
+    }
+    return { mode: 'account' };
 }
 
 async function deployAccountIfNeeded(
     wallet: EmbeddedWallet,
     accountManager: AccountManager,
-    timeoutMs: number
+    timeoutMs: number,
+    feeCtx?: FeePaymentContext
 ): Promise<boolean> {
     const metadata = await wallet.getContractMetadata(accountManager.address);
     if (
@@ -123,16 +126,20 @@ async function deployAccountIfNeeded(
     )
         return false;
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    const ctx = resolveFeeCtx(feeCtx);
+    let sponsoredReady = ctx;
+    if (ctx.mode === 'sponsored' && !ctx.sponsoredFpc) {
+        sponsoredReady = {
+            mode: 'sponsored',
+            sponsoredFpc: await getSponsoredPFCContract(),
+        };
+    }
+
     const deployMethod = await accountManager.getDeployMethod();
     try {
         await deployMethod.send({
             from: NO_FROM,
-            fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                    sponsoredFPC.address
-                ),
-            },
+            ...buildFeeSendFields(sponsoredReady),
             wait: { timeout: timeoutMs },
         });
         return true;
@@ -173,6 +180,8 @@ export async function loadAccountFromEnv(
         deployTimeoutMs?: number;
         /** Print chain + local wallet diagnosis (default true; use false when caller already printed). */
         logAccountStatus?: boolean;
+        /** Fee payment context for account deploy (default: from FEE_PAYMENT_MODE). */
+        feeCtx?: FeePaymentContext;
     } = {}
 ): Promise<AztecAddress> {
     const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
@@ -214,7 +223,12 @@ export async function loadAccountFromEnv(
     );
 
     if (ensureDeployed) {
-        await deployAccountIfNeeded(wallet, accountManager, deployTimeoutMs);
+        await deployAccountIfNeeded(
+            wallet,
+            accountManager,
+            deployTimeoutMs,
+            options.feeCtx
+        );
     }
 
     return accountManager.address;
@@ -227,6 +241,8 @@ export type GetOrCreateAccountOptions = {
     writeEnv?: boolean;
     /** Deploy timeout in ms (default: 120_000) */
     deployTimeoutMs?: number;
+    /** Fee payment context (default: from FEE_PAYMENT_MODE). */
+    feeCtx?: FeePaymentContext;
 };
 
 /** Append a new `ACCOUNT_*` block (does not edit prior lines; last occurrence wins in dotenv parse). */
@@ -246,18 +262,26 @@ export function appendAccountToEnv(
     fs.appendFileSync(envFilePath, '\n\n' + block);
 }
 
+export type CreateAccountKeysResult = {
+    salt: Fr;
+    secretKey: Fr;
+    signingKey: Buffer;
+    address: AztecAddress;
+    accountManager: AccountManager;
+};
+
 /**
- * Create a new ECDSAR account, deploy it with sponsored fee, and optionally write to .env.
- * Caller must have already registered SponsoredFPC with the wallet.
+ * Generate a new ECDSAR account, optionally persist ACCOUNT_* to env, and register
+ * it in the local wallet — **without** sending a deploy transaction.
+ * Used by account fee mode so the user can fund the address before any tx.
  */
-export async function createAccount(
+export async function createAccountKeysOnly(
     wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
-): Promise<AztecAddress> {
+): Promise<CreateAccountKeysResult> {
     const {
         envFilePath = getContractsEnvFilePath(),
         writeEnv = getWriteEnvFile(),
-        deployTimeoutMs = 120_000,
     } = options;
 
     const salt = Fr.random();
@@ -269,17 +293,6 @@ export async function createAccount(
         signingKey
     );
 
-    const sponsoredFPC = await getSponsoredPFCContract();
-    const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts = {
-        from: NO_FROM,
-        fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
-        },
-        wait: { timeout: deployTimeoutMs },
-    };
-    await deployMethod.send(deployOpts);
-
     if (writeEnv) {
         appendAccountToEnv(
             salt,
@@ -290,13 +303,45 @@ export async function createAccount(
         );
         reloadContractsEnv({ override: true });
     }
-    return accountManager.address;
+
+    return {
+        salt,
+        secretKey,
+        signingKey,
+        address: accountManager.address,
+        accountManager,
+    };
+}
+
+/**
+ * Create a new ECDSAR account, deploy it (using FEE_PAYMENT_MODE / feeCtx), and
+ * optionally write to .env.
+ * For sponsored mode, caller must have already registered SponsoredFPC.
+ * Prefer account-mode first-run via {@link createAccountKeysOnly} + funding stop.
+ */
+export async function createAccount(
+    wallet: EmbeddedWallet,
+    options: GetOrCreateAccountOptions = {}
+): Promise<AztecAddress> {
+    const { deployTimeoutMs = 120_000, feeCtx } = options;
+
+    const keys = await createAccountKeysOnly(wallet, options);
+
+    await deployAccountIfNeeded(
+        wallet,
+        keys.accountManager,
+        deployTimeoutMs,
+        feeCtx
+    );
+
+    return keys.address;
 }
 
 /**
  * Get account address: load from .env if present, otherwise create a new account,
  * deploy it, write to .env, and return the address.
- * Caller must have registered SponsoredFPC with the wallet before calling this.
+ * Caller must have registered SponsoredFPC with the wallet before calling this
+ * when using sponsored fee mode.
  */
 export async function getOrCreateAccount(
     wallet: EmbeddedWallet,
@@ -310,6 +355,7 @@ export async function getOrCreateAccount(
     if (hasAccount) {
         return loadAccountFromEnv(wallet, aztecNode, {
             deployTimeoutMs: options.deployTimeoutMs,
+            feeCtx: options.feeCtx,
         });
     }
     return createAccount(wallet, options);
@@ -348,12 +394,13 @@ function isAccountAlreadyDeployedError(error: unknown): boolean {
 /**
  * Create a new ECDSAR account, deploy it, and return credentials (no .env write).
  * Use with loadAccountFromCredentials on later runs to reuse the same account.
+ * Local test helper — uses sponsored fees by default.
  */
 export async function createAccountWithCredentials(
     wallet: EmbeddedWallet,
-    options: { deployTimeoutMs?: number } = {}
+    options: { deployTimeoutMs?: number; feeCtx?: FeePaymentContext } = {}
 ): Promise<TestAccountCredentials> {
-    const { deployTimeoutMs = 120_000 } = options;
+    const { deployTimeoutMs = 120_000, feeCtx } = options;
     const salt = Fr.random();
     const secretKey = Fr.random();
     const signingKey = Buffer.alloc(32, Fr.random().toBuffer());
@@ -363,18 +410,22 @@ export async function createAccountWithCredentials(
         signingKey
     );
 
-    const sponsoredFPC = await getSponsoredPFCContract();
+    let ctx = feeCtx ?? { mode: 'sponsored' as const };
+    if (ctx.mode === 'sponsored' && !ctx.sponsoredFpc) {
+        ctx = {
+            mode: 'sponsored',
+            sponsoredFpc: await getSponsoredPFCContract(),
+        };
+    }
+
     const deployMethod = await accountManager.getDeployMethod();
-    const deployOpts = {
+    await deployMethod.send({
         from: NO_FROM,
-        fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
-        },
+        ...buildFeeSendFields(ctx),
         skipClassPublication: true,
         skipInstancePublication: true,
         wait: { timeout: deployTimeoutMs },
-    };
-    await deployMethod.send(deployOpts);
+    });
 
     return {
         salt: salt.toString(),
@@ -391,7 +442,11 @@ export async function loadAccountFromCredentials(
     wallet: EmbeddedWallet,
     cred: TestAccountCredentials,
     aztecNode: AztecNode,
-    options: { ensureDeployed?: boolean; deployTimeoutMs?: number } = {}
+    options: {
+        ensureDeployed?: boolean;
+        deployTimeoutMs?: number;
+        feeCtx?: FeePaymentContext;
+    } = {}
 ): Promise<AztecAddress> {
     const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
     const accountAddress = AztecAddress.fromStringUnsafe(cred.address);
@@ -412,7 +467,12 @@ export async function loadAccountFromCredentials(
     );
 
     if (ensureDeployed) {
-        await deployAccountIfNeeded(wallet, accountManager, deployTimeoutMs);
+        await deployAccountIfNeeded(
+            wallet,
+            accountManager,
+            deployTimeoutMs,
+            options.feeCtx
+        );
     }
 
     return accountManager.address;

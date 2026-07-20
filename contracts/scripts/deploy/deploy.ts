@@ -2,11 +2,11 @@
  * Deploy all contracts (Config, storage contracts, system contracts) and write deployment info to .env.
  * Requires generated TS artifacts under `scripts/artifacts/` (from `pnpm build-contracts`).
  * `pnpm deploy-contracts` runs that pipeline first; to deploy without rebuilding, run this file with node after a successful build.
- * Requires: AZTEC_NODE_URL (optional, default http://localhost:8080). Optional: WRITE_ENV_FILE, PROVER_ENABLED.
+ * Requires: AZTEC_NODE_URL (optional, default http://localhost:8080). Optional: WRITE_ENV_FILE, PROVER_ENABLED,
+ * FEE_PAYMENT_MODE=sponsored|account (default sponsored).
  */
 
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,12 +14,13 @@ import { fileURLToPath } from 'url';
 import {
     type ContractDeployConfig,
     deployContracts,
+    exitIfAccountFundingRequired,
     getAztecNodeUrl,
     getContractsEnvFilePath,
     getProverEnabled,
-    getSponsoredPFCContract,
     getWriteEnvFile,
     loadContractsEnv,
+    prepareFeePayment,
     resolveDeployerAccount,
     setupWallet,
 } from '../utils/index.ts';
@@ -247,14 +248,14 @@ async function main() {
     console.log('📝 Setting up wallet...');
     const wallet = await setupWallet(aztecNode, WALLET_SETUP_OPTIONS);
 
-    console.log('📝 Registering SponsoredFPC contract...');
-    const sponsoredFPC = await getSponsoredPFCContract();
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+    const feeCtx = await prepareFeePayment(wallet);
 
     console.log('👤 Getting or creating deployer account...');
     const deployer = await resolveDeployerAccount(wallet, aztecNode, {
         mode: 'getOrCreate',
         deployTimeoutMs: 120_000,
+        feeCtx,
+        commandHint: 'pnpm deploy-contracts',
     });
     console.log(`✅ Deployer: ${deployer.toString()}\n`);
 
@@ -274,7 +275,7 @@ async function main() {
     const results = await deployContracts(wallet, deployer, configs, {
         writeEnv,
         timeoutMs: 120_000,
-        sponsoredFpc: sponsoredFPC,
+        feeCtx,
         scriptStartTime,
         onDeploy: (name, index, total) => {
             console.log(`   [${index + 1}/${total}] Deploying ${name}...`);
@@ -305,6 +306,7 @@ async function main() {
 main()
     .then(() => process.exit(0))
     .catch((err) => {
+        if (exitIfAccountFundingRequired(err)) return;
         console.error(err);
         process.exit(1);
     });

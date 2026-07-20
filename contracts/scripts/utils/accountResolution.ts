@@ -9,7 +9,14 @@ import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
 import { getAztecNetwork, getAztecNodeUrl, getOptionalEnv } from './env.ts';
 import {
+    assertAccountFeeJuiceReady,
+    type FeePaymentContext,
+    getFeePaymentMode,
+    stopForAccountFunding,
+} from './feePayment.ts';
+import {
     createAccount,
+    createAccountKeysOnly,
     type GetOrCreateAccountOptions,
     hasLocalAccount,
     loadAccountFromEnv,
@@ -157,6 +164,7 @@ export function printDeployerAccountSummary(
     lines.push(
         `  Network: ${net ?? '(unset)'}  Aztec node (AZTEC_NODE_URL): ${getAztecNodeUrl()}`
     );
+    lines.push(`  FEE_PAYMENT_MODE: ${getFeePaymentMode()}`);
     if (d.derivedAddress) {
         lines.push(`  Derived address: ${d.derivedAddress.toString()}`);
     }
@@ -209,12 +217,29 @@ export type ResolveDeployerAccountOptions = GetOrCreateAccountOptions & {
      * Only valid with `mode: 'loadOnly'`.
      */
     readonlyVerification?: boolean;
+    /**
+     * Fee payment context from {@link prepareFeePayment}. When omitted, derived from
+     * `FEE_PAYMENT_MODE` (sponsored without an instance address until deploy time).
+     */
+    feeCtx?: FeePaymentContext;
+    /**
+     * Command users should re-run after funding (printed in account-mode stop messages).
+     * Default: `pnpm deploy-contracts`
+     */
+    commandHint?: string;
+    /**
+     * When true (default for write scripts), account mode runs FeeJuice preflight
+     * before any account deploy. Set false for read-only simulate scripts.
+     */
+    requireAccountFeeJuice?: boolean;
 };
 
 /**
  * Resolve deployer: load `ACCOUNT_*` from env and ensure the account exists on this chain when needed.
  * No interactive prompts — always continues with existing keys.
  * - `readonlyVerification: true` (loadOnly): fail fast if account not deployed on chain; no deploy.
+ * - `FEE_PAYMENT_MODE=account` + `getOrCreate` with no keys: generate keys, write env, stop for funding.
+ * - `FEE_PAYMENT_MODE=account` with keys: FeeJuice preflight before deploy/continue.
  */
 export async function resolveDeployerAccount(
     wallet: EmbeddedWallet,
@@ -226,8 +251,15 @@ export async function resolveDeployerAccount(
         deployTimeoutMs = 120_000,
         ensureDeployed = true,
         readonlyVerification = false,
+        feeCtx,
+        commandHint = 'pnpm deploy-contracts',
+        requireAccountFeeJuice = !readonlyVerification,
         ...createOpts
     } = options;
+
+    const resolvedFeeCtx: FeePaymentContext = feeCtx ?? {
+        mode: getFeePaymentMode(),
+    };
 
     if (readonlyVerification && mode !== 'loadOnly') {
         throw new Error(
@@ -236,9 +268,21 @@ export async function resolveDeployerAccount(
     }
 
     if (mode === 'getOrCreate' && !accountKeysPresent()) {
+        if (resolvedFeeCtx.mode === 'account') {
+            const keys = await createAccountKeysOnly(wallet, {
+                ...createOpts,
+            });
+            stopForAccountFunding({
+                reason: 'keys_created',
+                accountAddress: keys.address,
+                commandHint,
+            });
+        }
+
         const addr = await createAccount(wallet, {
             ...createOpts,
             deployTimeoutMs,
+            feeCtx: resolvedFeeCtx,
         });
         if (!isAccountDiagnosticsSilent()) {
             const afterCreate = await diagnoseDeployerAccount(
@@ -274,7 +318,10 @@ export async function resolveDeployerAccount(
 
     if (diagnosis.addressMismatch) {
         throw new Error(
-            'ACCOUNT_ADDRESS does not match derived keys; fix .env before running this script.'
+            'ACCOUNT_ADDRESS does not match derived keys; fix .env before running this script.\n' +
+                `  Derived from keys: ${diagnosis.derivedAddress.toString()}\n` +
+                `  ACCOUNT_ADDRESS:   ${diagnosis.envAddress?.toString() ?? '(invalid)'}\n` +
+                '  Do not fund the mismatched ACCOUNT_ADDRESS — fix keys or address first.'
         );
     }
 
@@ -288,6 +335,7 @@ export async function resolveDeployerAccount(
             deployTimeoutMs,
             ensureDeployed: false,
             logAccountStatus: false,
+            feeCtx: resolvedFeeCtx,
         });
         if (!isAccountDiagnosticsSilent()) {
             const afterLoad = await diagnoseDeployerAccount(wallet, aztecNode);
@@ -298,10 +346,21 @@ export async function resolveDeployerAccount(
         return addr;
     }
 
+    if (requireAccountFeeJuice) {
+        await assertAccountFeeJuiceReady({
+            feeCtx: resolvedFeeCtx,
+            aztecNode,
+            accountAddress: diagnosis.derivedAddress,
+            onChainDeployed: diagnosis.onChainDeployed,
+            commandHint,
+        });
+    }
+
     const addr = await loadAccountFromEnv(wallet, aztecNode, {
         deployTimeoutMs,
         ensureDeployed,
         logAccountStatus: false,
+        feeCtx: resolvedFeeCtx,
     });
     if (!isAccountDiagnosticsSilent()) {
         const afterLoad = await diagnoseDeployerAccount(wallet, aztecNode);

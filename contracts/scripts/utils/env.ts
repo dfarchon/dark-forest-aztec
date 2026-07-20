@@ -182,8 +182,10 @@ function printEnvSummary(baseEnvPath: string, activePath: string): void {
     if (activePath !== baseEnvPath) {
         lines.push(`  Active:  ${rel(activePath)}`);
     }
+    const feeMode = process.env.FEE_PAYMENT_MODE?.trim() || 'sponsored';
     lines.push(`  Network: ${network ?? '(unset)'}`);
     lines.push(`  Node:    ${nodeUrl}`);
+    lines.push(`  Fee mode: ${feeMode}`);
     lines.push(
         `  Account: ${account ? abbreviateAddress(account) : '(not set)'}`
     );
@@ -258,4 +260,13 @@ export function getWriteEnvFile(): boolean {
 /** Profile label (e.g. shell `AZTEC_NETWORK=devnet`); does not load `.env.<network>` by itself. */
 export function getAztecNetwork(): string | undefined {
     return getOptionalEnv('AZTEC_NETWORK');
+}
+
+/**
+ * Fee payment mode for write scripts (`FEE_PAYMENT_MODE`).
+ * Prefer importing {@link getFeePaymentMode} from `./feePayment.ts` (strict validation).
+ * This helper only returns the raw env string for diagnostics.
+ */
+export function getFeePaymentModeRaw(): string {
+    return getOptionalEnv('FEE_PAYMENT_MODE')?.trim() || 'sponsored';
 }

@@ -1,8 +1,8 @@
 /**
- * Contract deployment helpers (mirrors contracts-v1 deploy flow).
- * All deploys use the SponsoredFPC contract for gas/fees: fee is paid via
- * SponsoredFeePaymentMethod(sponsoredFpc.address). Caller must register
- * SponsoredFPC with the wallet before calling deploy.
+ * Contract deployment helpers.
+ * Fee payment follows `FEE_PAYMENT_MODE` / {@link FeePaymentContext}:
+ * - sponsored: SponsoredFeePaymentMethod (caller must register SponsoredFPC)
+ * - account: omit fee.paymentMethod (SDK charges deployer FeeJuice)
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import {
@@ -10,7 +10,6 @@ import {
     DeployMethod,
     getContractInstanceFromInstantiationParams,
 } from '@aztec/aztec.js/contracts';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import { PublicKeys } from '@aztec/aztec.js/keys';
 import type { Wallet } from '@aztec/aztec.js/wallet';
@@ -19,10 +18,15 @@ import { getDefaultInitializer } from '@aztec/stdlib/abi';
 import fs from 'fs';
 
 import { getContractsEnvFilePath, getWriteEnvFile } from './env.ts';
-import { getSponsoredPFCContract } from './wallet.ts';
+import {
+    buildFeeSendFields,
+    type FeePaymentContext,
+    getFeePaymentMode,
+    getSponsoredPFCContract,
+    type SponsoredFpcInstance,
+} from './feePayment.ts';
 
-/** SponsoredFPC instance (has .address). Pass from getSponsoredPFCContract() to reuse. */
-export type SponsoredFpcInstance = { address: AztecAddress };
+export type { SponsoredFpcInstance };
 
 /** Context passed to getConstructorArgs: deployer + addresses of already-deployed contracts (by config name). */
 export type DeployContext = {
@@ -59,7 +63,12 @@ export type DeployContractsOptions = {
     writeEnv?: boolean;
     /** Timeout per deploy in ms (default: 120_000). */
     timeoutMs?: number;
-    /** SponsoredFPC instance for gas/fees. If set, used for every deploy; else getSponsoredPFCContract() per contract. */
+    /**
+     * Fee payment context. Prefer passing the result of `prepareFeePayment(wallet)`.
+     * Legacy: `sponsoredFpc` alone still works for sponsored mode.
+     */
+    feeCtx?: FeePaymentContext;
+    /** @deprecated Prefer `feeCtx`. SponsoredFPC instance for gas/fees. */
     sponsoredFpc?: SponsoredFpcInstance;
     /** Script start time (Date.now()) for elapsed-time stats. */
     scriptStartTime?: number;
@@ -88,10 +97,38 @@ function appendDeploymentToEnv(
     fs.appendFileSync(envFilePath, '\n\n' + block);
 }
 
+async function resolveDeployFeeCtx(options: {
+    feeCtx?: FeePaymentContext;
+    sponsoredFpc?: SponsoredFpcInstance;
+}): Promise<FeePaymentContext> {
+    if (options.feeCtx) {
+        if (
+            options.feeCtx.mode === 'sponsored' &&
+            !options.feeCtx.sponsoredFpc
+        ) {
+            return {
+                mode: 'sponsored',
+                sponsoredFpc:
+                    options.sponsoredFpc ?? (await getSponsoredPFCContract()),
+            };
+        }
+        return options.feeCtx;
+    }
+    if (options.sponsoredFpc) {
+        return { mode: 'sponsored', sponsoredFpc: options.sponsoredFpc };
+    }
+    const mode = getFeePaymentMode();
+    if (mode === 'sponsored') {
+        return {
+            mode: 'sponsored',
+            sponsoredFpc: await getSponsoredPFCContract(),
+        };
+    }
+    return { mode: 'account' };
+}
+
 /**
  * Deploy a single contract and optionally append its deployment info to .env.
- * Uses SponsoredFPC for gas (SponsoredFeePaymentMethod). Caller must have registered
- * SponsoredFPC with the wallet before calling.
  * @param ctx - DeployContext (deployer + addresses of already-deployed contracts) for getConstructorArgs.
  */
 export async function deployOneContract(
@@ -103,7 +140,8 @@ export async function deployOneContract(
         writeEnv?: boolean;
         envFilePath?: string;
         timeoutMs?: number;
-        /** SponsoredFPC instance for gas. If omitted, getSponsoredPFCContract() is called. */
+        feeCtx?: FeePaymentContext;
+        /** @deprecated Prefer `feeCtx`. */
         sponsoredFpc?: SponsoredFpcInstance;
     } = {}
 ): Promise<DeploymentResult> {
@@ -111,7 +149,6 @@ export async function deployOneContract(
         writeEnv = true,
         envFilePath = getContractsEnvFilePath(),
         timeoutMs = 120_000,
-        sponsoredFpc: sponsoredFpcOpt,
     } = options;
 
     const salt = Fr.random();
@@ -129,7 +166,7 @@ export async function deployOneContract(
         }
     );
 
-    const sponsoredFPC = sponsoredFpcOpt ?? (await getSponsoredPFCContract());
+    const feeCtx = await resolveDeployFeeCtx(options);
     const deployMethod = DeployMethod.create(
         wallet,
         {
@@ -148,9 +185,7 @@ export async function deployOneContract(
 
     await deployMethod.send({
         from: deployer,
-        fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
-        },
+        ...buildFeeSendFields(feeCtx),
         wait: { timeout: timeoutMs },
     });
 
@@ -173,23 +208,6 @@ export async function deployOneContract(
  * Deploy multiple contracts in config order. Each contract's getConstructorArgs receives
  * a context with deployer and addresses of all previously deployed contracts (by config.name).
  * Writes each deployment to .env using config.envPrefix.
- *
- * @example
- * const configs: ContractDeployConfig[] = [
- *   {
- *     name: 'Config',
- *     envPrefix: 'CONFIG',
- *     artifact: ConfigContract.artifact,
- *     getConstructorArgs: (ctx) => [ctx.deployer.toField()],
- *   },
- *   {
- *     name: 'Main',
- *     envPrefix: 'MAIN',
- *     artifact: MainContract.artifact,
- *     getConstructorArgs: (ctx) => [ctx.deployer.toField(), ctx.addresses.Config!.toField()],
- *   },
- * ];
- * const results = await deployContracts(wallet, deployer, configs);
  */
 export async function deployContracts(
     wallet: Wallet,
@@ -201,6 +219,7 @@ export async function deployContracts(
         envFilePath = getContractsEnvFilePath(),
         writeEnv = getWriteEnvFile(),
         timeoutMs = 120_000,
+        feeCtx,
         sponsoredFpc,
         scriptStartTime,
         onDeploy,
@@ -220,6 +239,7 @@ export async function deployContracts(
             writeEnv,
             envFilePath,
             timeoutMs,
+            feeCtx,
             sponsoredFpc,
         });
         addresses[config.name] = AztecAddress.fromStringUnsafe(
