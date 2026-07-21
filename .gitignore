@@ -53,6 +53,8 @@ vite.config.ts.timestamp-*
 **/.pxe/
 **/.sandbox/
 **/.store/
+bridge/.store/
+bridge/.store.backup/
 
 # Aztec PXE & wallet data (contracts folder)
 contracts/pxe_data_*/
@@ -85,6 +87,8 @@ packages/*/build/
 .env
 .env.*
 !.env.example
+bridge/claims/
+bridge/accounts/
 
 # Test account credentials (do not commit)
 contracts/scripts/.test-accounts.json

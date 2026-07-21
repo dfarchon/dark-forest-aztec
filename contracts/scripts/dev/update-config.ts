@@ -10,10 +10,10 @@
  * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS (run deploy first).
  * Optional: FEE_PAYMENT_MODE=sponsored|account (default sponsored).
  */
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 
 import {
     buildSendOpts,
+    createTolerantAztecNodeClient,
     exitIfAccountFundingRequired,
     getAztecNodeUrl,
     getContractInstances,
@@ -142,7 +142,7 @@ async function main() {
     console.log(`Aztec Node URL : ${AZTEC_NODE_URL}\n`);
 
     console.log('Connecting to Aztec node...');
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
 
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,

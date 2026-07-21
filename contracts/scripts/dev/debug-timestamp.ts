@@ -4,13 +4,13 @@
  *
  * Usage: node --experimental-transform-types scripts/dev/debug-timestamp.ts
  */
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 
 import {
     getAztecNodeUrl,
     getEthereumHost,
     loadContractsEnv,
 } from '../utils/env.ts';
+import { createTolerantAztecNodeClient } from '../utils/nodeClient.ts';
 
 loadContractsEnv();
 
@@ -66,7 +66,7 @@ async function main() {
 
     // --- L2 (Aztec node) ---
     console.log('\n=== L2 (Aztec node) — getBlock("latest") ===');
-    const node = createAztecNodeClient(AZTEC_NODE_URL);
+    const node = createTolerantAztecNodeClient(AZTEC_NODE_URL);
 
     try {
         const blockNum = await node.getBlockNumber();

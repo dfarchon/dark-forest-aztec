@@ -8,7 +8,6 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractBase } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import fs from 'fs';
 import path from 'path';
@@ -16,6 +15,7 @@ import { fileURLToPath } from 'url';
 
 import {
     createAccountWithCredentials,
+    createTolerantAztecNodeClient,
     getAztecNodeUrl,
     getContractInstances,
     getOptionalEnv,
@@ -373,7 +373,7 @@ export type TestContext = {
 export async function getTestContext(): Promise<TestContext> {
     const addresses = addressesFromEnv();
 
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
         proverEnabled: PROVER_ENABLED,

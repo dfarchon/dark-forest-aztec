@@ -1,7 +1,7 @@
+import { getSchnorrInitializerlessAccountContractAddress } from '@aztec/accounts/schnorr';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { BlockNumber, Fq, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import { type AccountManager } from '@aztec/aztec.js/wallet';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
@@ -35,6 +35,23 @@ function fqFromHex(signingKeyHex: string): Fq {
         ? signingKeyHex.slice(2)
         : signingKeyHex;
     return Fq.fromBuffer(Buffer.from(hex, 'hex'));
+}
+
+/**
+ * Pure offline deterministic address derivation for a Schnorr initializerless account.
+ * No PXE, no Aztec RPC, no transactions — safe against transient public-node errors.
+ * Argument order matches `wallet.createSchnorrInitializerlessAccount(secret, salt, signingKey)`.
+ */
+export async function deriveSchnorrInitializerlessAddress(
+    secretKey: Fr,
+    salt: Fr,
+    signingKey: Fq
+): Promise<AztecAddress> {
+    return getSchnorrInitializerlessAccountContractAddress(
+        signingKey,
+        salt,
+        secretKey
+    );
 }
 
 /**
@@ -208,16 +225,15 @@ export type CreateAccountKeysResult = {
     secretKey: Fr;
     signingKey: Fq;
     address: AztecAddress;
-    accountManager: AccountManager;
 };
 
 /**
- * Generate a new Schnorr initializerless account, optionally persist ACCOUNT_* to env,
- * and register it in the local wallet — **without** sending any transaction.
- * Used by account fee mode so the user can fund the address before any tx.
+ * Generate new Schnorr initializerless account keys and optionally persist ACCOUNT_* to env.
+ * **Pure offline**: the address is derived deterministically — no PXE, no Aztec RPC,
+ * no transactions, no local wallet registration. Used by account fee mode so the user
+ * can fund the address before anything touches the network.
  */
 export async function createAccountKeysOnly(
-    wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
 ): Promise<CreateAccountKeysResult> {
     const {
@@ -228,20 +244,14 @@ export async function createAccountKeysOnly(
     const salt = Fr.random();
     const secretKey = Fr.random();
     const signingKey = Fq.random();
-    const accountManager = await wallet.createSchnorrInitializerlessAccount(
+    const address = await deriveSchnorrInitializerlessAddress(
         secretKey,
         salt,
         signingKey
     );
 
     if (writeEnv) {
-        appendAccountToEnv(
-            salt,
-            secretKey,
-            signingKey,
-            accountManager.address,
-            envFilePath
-        );
+        appendAccountToEnv(salt, secretKey, signingKey, address, envFilePath);
         reloadContractsEnv({ override: true });
     }
 
@@ -249,21 +259,26 @@ export async function createAccountKeysOnly(
         salt,
         secretKey,
         signingKey,
-        address: accountManager.address,
-        accountManager,
+        address,
     };
 }
 
 /**
- * Create a new Schnorr initializerless account and optionally write to .env.
+ * Create a new Schnorr initializerless account, optionally write to .env, and register
+ * it in the local wallet (needed before sending transactions from it).
  * No account deployment transaction is sent.
  */
 export async function createAccount(
     wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
-    const keys = await createAccountKeysOnly(wallet, options);
-    return keys.address;
+    const keys = await createAccountKeysOnly(options);
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
+        keys.secretKey,
+        keys.salt,
+        keys.signingKey
+    );
+    return accountManager.address;
 }
 
 /**

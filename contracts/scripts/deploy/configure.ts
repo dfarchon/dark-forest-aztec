@@ -15,10 +15,10 @@
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractBase } from '@aztec/aztec.js/contracts';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 
 import {
     buildSendOpts,
+    createTolerantAztecNodeClient,
     exitIfAccountFundingRequired,
     getAztecNodeUrl,
     getContractInstances,
@@ -307,7 +307,7 @@ async function main() {
     }
 
     console.log('🔗 Connecting to Aztec node...');
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
 
     console.log('📝 Setting up wallet...');
     const wallet = await setupWallet(aztecNode, {

@@ -13,10 +13,10 @@
  * This only reports public Fee Juice (gas); private note balances cannot be queried by address alone.
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
 
 import {
+    createTolerantAztecNodeClient,
     formatFeeJuiceWei,
     getAztecNetwork,
     getAztecNodeUrl,
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     if (!options.json) {
         console.log('Connecting to Aztec node...');
     }
-    const aztecNode = createAztecNodeClient(aztecNodeUrl);
+    const aztecNode = createTolerantAztecNodeClient(aztecNodeUrl);
     const balanceWei = await getFeeJuiceBalance(accountAddress, aztecNode);
 
     const result = {

@@ -1,0 +1,31 @@
+{
+  "name": "@dfpunk/fee-juice-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "balance": "tsx src/balance.ts",
+    "claim": "tsx src/index.ts claim",
+    "deposit": "tsx src/index.ts deposit",
+    "generate:accounts": "tsx src/generate-accounts.ts",
+    "lint": "pnpm run typecheck",
+    "quote": "tsx src/index.ts quote",
+    "status": "tsx src/index.ts status",
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aztec/accounts": "5.0.1",
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/ethereum": "5.0.1",
+    "@aztec/l1-artifacts": "5.0.1",
+    "@aztec/wallets": "5.0.1",
+    "dotenv": "17.2.3",
+    "viem": "2.38.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.7",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.3"
+  }
+}

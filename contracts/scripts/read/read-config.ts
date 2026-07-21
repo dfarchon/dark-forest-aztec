@@ -11,10 +11,10 @@
  *
  * Requires: deploy + configure done, .env has ACCOUNT_* and CONFIG_CONTRACT_ADDRESS.
  */
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 
 import {
+    createTolerantAztecNodeClient,
     getAztecNodeUrl,
     getContractInstances,
     getRequiredEnv,
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     if (!options.json) {
         console.log('Connecting to Aztec node...');
     }
-    const aztecNode = createAztecNodeClient(aztecNodeUrl);
+    const aztecNode = createTolerantAztecNodeClient(aztecNodeUrl);
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
         proverEnabled: false,

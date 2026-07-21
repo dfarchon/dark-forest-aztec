@@ -1,6 +1,7 @@
 export {
     type DeployerAccountDiagnosis,
     diagnoseDeployerAccount,
+    ensureAccountKeysOffline,
     resolveDeployerAccount,
     type ResolveDeployerAccountOptions,
 } from './accountResolution.ts';
@@ -57,12 +58,14 @@ export {
     prepareFeePayment,
     stopForAccountFunding,
 } from './feePayment.ts';
+export { createTolerantAztecNodeClient } from './nodeClient.ts';
 export { unwrapSimulateResult } from './simulate.ts';
 export {
     appendAccountToEnv,
     createAccount,
     createAccountKeysOnly,
     createAccountWithCredentials,
+    deriveSchnorrInitializerlessAddress,
     getOrCreateAccount,
     type GetOrCreateAccountOptions,
     hasLocalAccount,

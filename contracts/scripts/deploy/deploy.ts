@@ -6,14 +6,15 @@
  * FEE_PAYMENT_MODE=sponsored|account (default sponsored).
  */
 
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 import {
     type ContractDeployConfig,
+    createTolerantAztecNodeClient,
     deployContracts,
+    ensureAccountKeysOffline,
     exitIfAccountFundingRequired,
     getAztecNodeUrl,
     getContractsEnvFilePath,
@@ -231,6 +232,11 @@ async function main() {
 
     assertCodegenArtifactsPresent();
 
+    // Account fee mode, first run: generate ACCOUNT_* keys purely offline
+    // (deterministic Schnorr initializerless address — no PXE, no Aztec RPC,
+    // no transactions) and stop for funding BEFORE touching the network.
+    await ensureAccountKeysOffline({ commandHint: 'pnpm deploy-contracts' });
+
     console.log(`🌐 Aztec Node URL: ${AZTEC_NODE_URL}`);
     console.log(
         `⚡ Prover: ${PROVER_ENABLED ? 'ON (slow — each contract ~2–5 min)' : 'OFF (fast)'}\n`
@@ -243,7 +249,7 @@ async function main() {
     }
 
     console.log('🔗 Connecting to Aztec node...');
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
 
     console.log('📝 Setting up wallet...');
     const wallet = await setupWallet(aztecNode, WALLET_SETUP_OPTIONS);

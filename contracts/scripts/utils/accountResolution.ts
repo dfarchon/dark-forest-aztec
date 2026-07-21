@@ -16,6 +16,7 @@ import {
 import {
     createAccount,
     createAccountKeysOnly,
+    deriveSchnorrInitializerlessAddress,
     type GetOrCreateAccountOptions,
     hasLocalAccount,
     loadAccountFromEnv,
@@ -81,12 +82,13 @@ export async function diagnoseDeployerAccount(
         };
     }
 
-    const accountManager = await wallet.createSchnorrInitializerlessAccount(
+    // Pure offline deterministic derivation — never touches PXE sync or Aztec RPC,
+    // so transient public-node errors cannot break the diagnosis.
+    const derivedAddress = await deriveSchnorrInitializerlessAddress(
         Fr.fromString(secretKey),
         Fr.fromString(salt),
         fqFromHex(signingKeyHex)
     );
-    const derivedAddress = accountManager.address;
 
     let envAddress: AztecAddress | null = null;
     if (envAddrStr) {
@@ -124,6 +126,30 @@ export async function diagnoseDeployerAccount(
         accountReady,
         inLocalWallet,
     };
+}
+
+/**
+ * Offline preflight for account fee mode: when `FEE_PAYMENT_MODE=account` and no
+ * `ACCOUNT_*` keys exist yet, generate keys purely offline (deterministic Schnorr
+ * initializerless address derivation — no PXE, no Aztec RPC, no transactions),
+ * write them to env, and stop for funding.
+ *
+ * Call this BEFORE creating the node client / wallet so transient public-RPC
+ * errors (e.g. code 19 during PXE contract-class sync) cannot break first-run
+ * key generation. No-op in sponsored mode or when keys already exist.
+ */
+export async function ensureAccountKeysOffline(
+    options: GetOrCreateAccountOptions & { commandHint?: string } = {}
+): Promise<void> {
+    const { commandHint = 'pnpm deploy-contracts', ...createOpts } = options;
+    if (getFeePaymentMode() !== 'account') return;
+    if (accountKeysPresent()) return;
+    const keys = await createAccountKeysOnly(createOpts);
+    stopForAccountFunding({
+        reason: 'keys_created',
+        accountAddress: keys.address,
+        commandHint,
+    });
 }
 
 /** Skip printed diagnostics when `ACCOUNT_SILENT_DIAGNOSTICS=true|1`. */
@@ -252,9 +278,8 @@ export async function resolveDeployerAccount(
 
     if (mode === 'getOrCreate' && !accountKeysPresent()) {
         if (resolvedFeeCtx.mode === 'account') {
-            const keys = await createAccountKeysOnly(wallet, {
-                ...createOpts,
-            });
+            // Offline key generation (no PXE / RPC) — then stop for funding.
+            const keys = await createAccountKeysOnly({ ...createOpts });
             stopForAccountFunding({
                 reason: 'keys_created',
                 accountAddress: keys.address,
