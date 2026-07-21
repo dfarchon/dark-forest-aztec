@@ -57,8 +57,9 @@ export const externalLinks = {
     },
   },
 
-  aztecTestnet: {
-    feeJuiceBridge: "https://bridge.gregojuice.anothercoffeefor.me/",
+  aztecMainnet: {
+    /** Official Aztec mainnet Ethereum ↔ Aztec bridge (Shield). */
+    feeJuiceBridge: "https://df-aztec-bridge-api.vercel.app",
   },
 } as const;
 

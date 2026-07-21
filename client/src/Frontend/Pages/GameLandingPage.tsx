@@ -60,7 +60,10 @@ import {
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
-import type { SponsorFeeJuicePreflight } from "../../Session/WalletManager/types";
+import type {
+  AccountRecord,
+  SponsorFeeJuicePreflight,
+} from "../../Session/WalletManager/types";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
@@ -131,39 +134,44 @@ function printGameLandingDebugConfig({
   console.groupEnd();
 }
 
-function CopyAccountAddressButton({
-  accountAddress,
-}: {
-  accountAddress: string;
-}) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
-    "idle"
-  );
+function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
+  const [downloadState, setDownloadState] = useState<
+    "idle" | "downloaded" | "failed"
+  >("idle");
 
-  const copyAddress = async () => {
+  const downloadAccount = () => {
     try {
-      await window.navigator.clipboard.writeText(accountAddress);
-      setCopyState("copied");
+      const json = JSON.stringify(account, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeAddr =
+        account.address.length >= 10 ? account.address.slice(0, 10) : "account";
+      a.download = `dfpunk-account-${safeAddr}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDownloadState("downloaded");
     } catch (err) {
-      console.error("Failed to copy account address:", err);
-      setCopyState("failed");
+      console.error("Failed to download account info:", err);
+      setDownloadState("failed");
     }
   };
 
   return (
-    <CopyAccountAddressRow>
-      <CopyAccountAddressButtonElement type="button" onClick={copyAddress}>
-        Copy account address
-      </CopyAccountAddressButtonElement>
-      {copyState === "copied" && (
-        <CopyAccountAddressStatus>Copied.</CopyAccountAddressStatus>
+    <DownloadAccountInfoRow>
+      <DownloadAccountInfoButtonElement type="button" onClick={downloadAccount}>
+        Download account info
+      </DownloadAccountInfoButtonElement>
+      {downloadState === "downloaded" && (
+        <DownloadAccountInfoStatus>Downloaded.</DownloadAccountInfoStatus>
       )}
-      {copyState === "failed" && (
-        <CopyAccountAddressStatus>
-          Failed to copy. Select the address above manually.
-        </CopyAccountAddressStatus>
+      {downloadState === "failed" && (
+        <DownloadAccountInfoStatus>
+          Failed to download account info.
+        </DownloadAccountInfoStatus>
       )}
-    </CopyAccountAddressRow>
+    </DownloadAccountInfoRow>
   );
 }
 
@@ -547,27 +555,50 @@ async function runAccountFeeJuicePreflightGate(params: {
       `Minimum required: ${formatFeeJuiceWei(minWei)}. Current: ${formatFeeJuiceWei(initial.balance)}.`,
       TerminalTextStyle.Subber
     );
+    terminal.current?.println("");
     terminal.current?.println(
-      "Bridge FeeJuice on Aztec (e.g. gregojuice), then confirm your balance here.",
-      TerminalTextStyle.Subber
+      "Fund this account on Aztec with FeeJuice:",
+      TerminalTextStyle.Text
     );
     terminal.current?.println("");
 
-    const activeAddress = wm.getActiveAddress();
-    if (activeAddress) {
+    const activeAddress = wm.getActiveAddress()?.toString();
+    const activeAccount = activeAddress
+      ? wm.getAccounts().find((a) => a.address === activeAddress)
+      : undefined;
+
+    terminal.current?.println(
+      "1. Download your current account info (you will import this into the bridge).",
+      TerminalTextStyle.White
+    );
+    if (activeAccount) {
       terminal.current?.printElement(
-        <CopyAccountAddressButton accountAddress={activeAddress.toString()} />
+        <DownloadAccountInfoButton account={activeAccount} />
       );
       terminal.current?.newline();
+    } else {
+      terminal.current?.println(
+        "No active account available to download.",
+        TerminalTextStyle.Red
+      );
     }
+    terminal.current?.newline();
 
+    terminal.current?.println(
+      "2. Open the bridge, import the downloaded account, and bridge ~100 FeeJuice.",
+      TerminalTextStyle.White
+    );
+    terminal.current?.println(
+      "Tip: Import about 100 FJ — enough headroom for play (minimum is only a few FJ).",
+      TerminalTextStyle.Subber
+    );
     let opened = false;
     terminal.current?.printLink(
-      "↗ Open gregojuice faucet",
+      "↗ Open bridge",
       () => {
         if (!opened) opened = true;
         window.open(
-          externalLinks.aztecTestnet.feeJuiceBridge,
+          externalLinks.aztecMainnet.feeJuiceBridge,
           "_blank",
           "noopener,noreferrer"
         );
@@ -575,10 +606,15 @@ async function runAccountFeeJuicePreflightGate(params: {
       TerminalTextStyle.Blue
     );
     terminal.current?.newline();
+    terminal.current?.newline();
+    terminal.current?.println(
+      "3. Return here and confirm your balance.",
+      TerminalTextStyle.White
+    );
     terminal.current?.println(
       useCompactOptions
         ? "Use ⟳ refresh on the balance line, or wait a few seconds for auto-refresh."
-        : "Click the link above to open the faucet, use ⟳ refresh on the balance line, or wait for auto-refresh.",
+        : "After bridging, use ⟳ refresh on the balance line, or wait for auto-refresh.",
       TerminalTextStyle.Sub
     );
 
@@ -3416,7 +3452,7 @@ export function GameLandingPage() {
   );
 }
 
-const CopyAccountAddressRow = styled.span`
+const DownloadAccountInfoRow = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -3461,7 +3497,7 @@ const StartupStatusDetail = styled.div`
   }
 `;
 
-const CopyAccountAddressButtonElement = styled.button`
+const DownloadAccountInfoButtonElement = styled.button`
   color: ${dfstyles.colors.dfgreen};
   background: rgba(0, 220, 130, 0.08);
   border: 1px solid ${dfstyles.colors.dfgreen};
@@ -3482,7 +3518,7 @@ const CopyAccountAddressButtonElement = styled.button`
   }
 `;
 
-const CopyAccountAddressStatus = styled.span`
+const DownloadAccountInfoStatus = styled.span`
   color: ${dfstyles.colors.subtext};
 `;
 

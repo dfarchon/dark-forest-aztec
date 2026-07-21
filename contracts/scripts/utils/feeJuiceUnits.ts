@@ -11,9 +11,8 @@ const FJ_DECIMALS = 18n;
  */
 export const DEFAULT_ACCOUNT_MIN_BALANCE_FJ = '5';
 
-/** Aztec testnet FeeJuice bridge (gregojuice). */
-export const FEE_JUICE_BRIDGE_URL =
-    'https://bridge.gregojuice.anothercoffeefor.me/';
+/** Aztec mainnet FeeJuice bridge (Shield). */
+export const FEE_JUICE_BRIDGE_URL = 'https://shield.human.tech/';
 
 /**
  * Parse a decimal string like "0.01" into FeeJuice wei (smallest units).
