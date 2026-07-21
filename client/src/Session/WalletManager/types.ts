@@ -34,12 +34,14 @@ export interface WalletManagerConfig {
 
 /**
  * Persisted account record stored in localStorage via KeyStore.
- * Credential triple (secretKey, salt, signingKey) maps to an ECDSAR account contract.
+ * Credential triple (secretKey, salt, signingKey) maps to a Schnorr
+ * initializerless account contract (Fr secret/salt + Fq signing key hex).
  */
 export interface AccountRecord {
   address: string;
   secretKey: string;
   salt: string;
+  /** Grumpkin scalar (Fq) as hex without 0x prefix. */
   signingKey: string;
   label?: string;
   createdAt: number;
@@ -53,16 +55,13 @@ export interface WalletStatus {
   balance: bigint;
 }
 
-/** How required FeeJuice was derived for sponsor-mode account deploy preflight. */
-export type SponsorDeployPreflightSource =
-  | "simulate"
-  | "threshold"
-  | "simulate_failed";
+/** How required FeeJuice was derived for sponsor-mode FeeJuice preflight. */
+export type SponsorFeeJuicePreflightSource = "threshold";
 
-/** Sponsor-mode account deployment FeeJuice preflight result. */
-export interface SponsorDeployPreflight {
+/** Sponsor-mode SponsoredFPC FeeJuice preflight result. */
+export interface SponsorFeeJuicePreflight {
   balanceWei: bigint;
   requiredWei: bigint;
   sufficient: boolean;
-  estimateSource: SponsorDeployPreflightSource;
+  estimateSource: SponsorFeeJuicePreflightSource;
 }

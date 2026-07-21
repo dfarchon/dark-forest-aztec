@@ -1,11 +1,7 @@
-import { NO_FROM } from '@aztec/aztec.js/account';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { BlockNumber, Fr } from '@aztec/aztec.js/fields';
+import { BlockNumber, Fq, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import {
-    type AccountManager,
-    ContractInitializationStatus,
-} from '@aztec/aztec.js/wallet';
+import { type AccountManager } from '@aztec/aztec.js/wallet';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
@@ -17,9 +13,7 @@ import {
     reloadContractsEnv,
 } from './env.ts';
 import {
-    buildFeeSendFields,
     type FeePaymentContext,
-    getFeePaymentMode,
     getSponsoredPFCContract,
 } from './feePayment.ts';
 
@@ -30,6 +24,18 @@ const DEFAULT_PXE_STORE_DIR = path.join(
     '.store'
 );
 const FINGERPRINT_FILENAME = '.network-fingerprint';
+
+/** Persist Fq signing keys as hex without a 0x prefix (matches ACCOUNT_SIGNING_KEY). */
+function fqToHex(signingKey: Fq): string {
+    return signingKey.toBuffer().toString('hex');
+}
+
+function fqFromHex(signingKeyHex: string): Fq {
+    const hex = signingKeyHex.startsWith('0x')
+        ? signingKeyHex.slice(2)
+        : signingKeyHex;
+    return Fq.fromBuffer(Buffer.from(hex, 'hex'));
+}
 
 /**
  * Compute a fingerprint for the current network instance by hashing block 1's header.
@@ -102,55 +108,6 @@ export async function setupWallet(
 /** @deprecated Import from `./feePayment.ts` — re-exported for compatibility. */
 export { getSponsoredPFCContract };
 
-function resolveFeeCtx(feeCtx?: FeePaymentContext): FeePaymentContext {
-    if (feeCtx) return feeCtx;
-    const mode = getFeePaymentMode();
-    if (mode === 'sponsored') {
-        // Lazy: callers of legacy APIs without feeCtx still expect sponsored.
-        // They must have registered SponsoredFPC already; address is resolved on send.
-        return { mode: 'sponsored' };
-    }
-    return { mode: 'account' };
-}
-
-async function deployAccountIfNeeded(
-    wallet: EmbeddedWallet,
-    accountManager: AccountManager,
-    timeoutMs: number,
-    feeCtx?: FeePaymentContext
-): Promise<boolean> {
-    const metadata = await wallet.getContractMetadata(accountManager.address);
-    if (
-        metadata.initializationStatus ===
-        ContractInitializationStatus.INITIALIZED
-    )
-        return false;
-
-    const ctx = resolveFeeCtx(feeCtx);
-    let sponsoredReady = ctx;
-    if (ctx.mode === 'sponsored' && !ctx.sponsoredFpc) {
-        sponsoredReady = {
-            mode: 'sponsored',
-            sponsoredFpc: await getSponsoredPFCContract(),
-        };
-    }
-
-    const deployMethod = await accountManager.getDeployMethod();
-    try {
-        await deployMethod.send({
-            from: NO_FROM,
-            ...buildFeeSendFields(sponsoredReady),
-            wait: { timeout: timeoutMs },
-        });
-        return true;
-    } catch (error) {
-        if (isAccountAlreadyDeployedError(error)) {
-            return false;
-        }
-        throw error;
-    }
-}
-
 export async function hasLocalAccount(
     wallet: EmbeddedWallet,
     address: AztecAddress
@@ -162,29 +119,28 @@ export async function hasLocalAccount(
 /**
  * Load an account that was previously registered (e.g. after deploy wrote .env).
  * Reads ACCOUNT_SALT, ACCOUNT_SECRET_KEY, ACCOUNT_SIGNING_KEY from the contracts env,
- * recreates the same ECDSAR account in the wallet, and returns its address.
+ * recreates the same Schnorr initializerless account in the wallet, and returns its address.
  *
  * Use this when:
  * - You called setupWallet with clearStore: true (fresh PXE), or
- * - You are on a new machine / new run and need to "attach" the same on-chain account.
+ * - You are on a new machine / new run and need to "attach" the same account.
  *
- * If you did NOT clear the store (setupWallet(..., { clearStore: false })), the wallet
- * already has the account; you can get the address from ACCOUNT_ADDRESS in env
- * or wallet.getAccounts() and use it as `from` without calling this.
+ * Initializerless accounts need no deployment transaction.
  */
 export async function loadAccountFromEnv(
     wallet: EmbeddedWallet,
     aztecNode: AztecNode,
     options: {
+        /** @deprecated No-op for Schnorr initializerless accounts. */
         ensureDeployed?: boolean;
+        /** @deprecated Unused for Schnorr initializerless accounts. */
         deployTimeoutMs?: number;
         /** Print chain + local wallet diagnosis (default true; use false when caller already printed). */
         logAccountStatus?: boolean;
-        /** Fee payment context for account deploy (default: from FEE_PAYMENT_MODE). */
+        /** @deprecated Unused for Schnorr initializerless accounts. */
         feeCtx?: FeePaymentContext;
     } = {}
 ): Promise<AztecAddress> {
-    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
     const shouldLog = options.logAccountStatus !== false;
     if (shouldLog) {
         const ar = await import('./accountResolution.ts');
@@ -206,30 +162,15 @@ export async function loadAccountFromEnv(
     if (envAddress) {
         const accountAddress = AztecAddress.fromStringUnsafe(envAddress);
         if (await hasLocalAccount(wallet, accountAddress)) {
-            if (!ensureDeployed) return accountAddress;
-            const metadata = await wallet.getContractMetadata(accountAddress);
-            if (
-                metadata.initializationStatus ===
-                ContractInitializationStatus.INITIALIZED
-            )
-                return accountAddress;
+            return accountAddress;
         }
     }
 
-    const accountManager = await wallet.createECDSARAccount(
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
         Fr.fromString(secretKey),
         Fr.fromString(salt),
-        Buffer.from(signingKeyHex, 'hex')
+        fqFromHex(signingKeyHex)
     );
-
-    if (ensureDeployed) {
-        await deployAccountIfNeeded(
-            wallet,
-            accountManager,
-            deployTimeoutMs,
-            options.feeCtx
-        );
-    }
 
     return accountManager.address;
 }
@@ -239,9 +180,9 @@ export type GetOrCreateAccountOptions = {
     envFilePath?: string;
     /** If false, do not append to .env after creating (default: true) */
     writeEnv?: boolean;
-    /** Deploy timeout in ms (default: 120_000) */
+    /** @deprecated Unused for Schnorr initializerless accounts. */
     deployTimeoutMs?: number;
-    /** Fee payment context (default: from FEE_PAYMENT_MODE). */
+    /** @deprecated Unused for Schnorr initializerless accounts. */
     feeCtx?: FeePaymentContext;
 };
 
@@ -249,14 +190,14 @@ export type GetOrCreateAccountOptions = {
 export function appendAccountToEnv(
     salt: Fr,
     secretKey: Fr,
-    signingKey: Buffer,
+    signingKey: Fq,
     accountAddress: AztecAddress,
     envFilePath: string
 ) {
     const block = [
         `ACCOUNT_SALT=${salt.toString()}`,
         `ACCOUNT_SECRET_KEY=${secretKey.toString()}`,
-        `ACCOUNT_SIGNING_KEY=${signingKey.toString('hex')}`,
+        `ACCOUNT_SIGNING_KEY=${fqToHex(signingKey)}`,
         `ACCOUNT_ADDRESS=${accountAddress.toString()}`,
     ].join('\n');
     fs.appendFileSync(envFilePath, '\n\n' + block);
@@ -265,14 +206,14 @@ export function appendAccountToEnv(
 export type CreateAccountKeysResult = {
     salt: Fr;
     secretKey: Fr;
-    signingKey: Buffer;
+    signingKey: Fq;
     address: AztecAddress;
     accountManager: AccountManager;
 };
 
 /**
- * Generate a new ECDSAR account, optionally persist ACCOUNT_* to env, and register
- * it in the local wallet — **without** sending a deploy transaction.
+ * Generate a new Schnorr initializerless account, optionally persist ACCOUNT_* to env,
+ * and register it in the local wallet — **without** sending any transaction.
  * Used by account fee mode so the user can fund the address before any tx.
  */
 export async function createAccountKeysOnly(
@@ -286,8 +227,8 @@ export async function createAccountKeysOnly(
 
     const salt = Fr.random();
     const secretKey = Fr.random();
-    const signingKey = Buffer.alloc(32, Fr.random().toBuffer());
-    const accountManager = await wallet.createECDSARAccount(
+    const signingKey = Fq.random();
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
         secretKey,
         salt,
         signingKey
@@ -314,34 +255,20 @@ export async function createAccountKeysOnly(
 }
 
 /**
- * Create a new ECDSAR account, deploy it (using FEE_PAYMENT_MODE / feeCtx), and
- * optionally write to .env.
- * For sponsored mode, caller must have already registered SponsoredFPC.
- * Prefer account-mode first-run via {@link createAccountKeysOnly} + funding stop.
+ * Create a new Schnorr initializerless account and optionally write to .env.
+ * No account deployment transaction is sent.
  */
 export async function createAccount(
     wallet: EmbeddedWallet,
     options: GetOrCreateAccountOptions = {}
 ): Promise<AztecAddress> {
-    const { deployTimeoutMs = 120_000, feeCtx } = options;
-
     const keys = await createAccountKeysOnly(wallet, options);
-
-    await deployAccountIfNeeded(
-        wallet,
-        keys.accountManager,
-        deployTimeoutMs,
-        feeCtx
-    );
-
     return keys.address;
 }
 
 /**
  * Get account address: load from .env if present, otherwise create a new account,
- * deploy it, write to .env, and return the address.
- * Caller must have registered SponsoredFPC with the wallet before calling this
- * when using sponsored fee mode.
+ * write to .env, and return the address.
  */
 export async function getOrCreateAccount(
     wallet: EmbeddedWallet,
@@ -354,7 +281,7 @@ export async function getOrCreateAccount(
         getOptionalEnv('ACCOUNT_SIGNING_KEY');
     if (hasAccount) {
         return loadAccountFromEnv(wallet, aztecNode, {
-            deployTimeoutMs: options.deployTimeoutMs,
+            logAccountStatus: true,
             feeCtx: options.feeCtx,
         });
     }
@@ -369,111 +296,61 @@ export type TestAccountCredentials = {
     address: string;
 };
 
-function isAccountAlreadyDeployedError(error: unknown): boolean {
-    const toMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-    const main = toMsg(error).toLowerCase();
-    let causeStr = '';
-    if (error instanceof Error && error.cause != null) {
-        const c = error.cause;
-        if (typeof c === 'object' && c !== null && 'message' in c) {
-            causeStr = String(
-                (c as { message: unknown }).message
-            ).toLowerCase();
-        } else {
-            causeStr = toMsg(c).toLowerCase();
-        }
-    }
-    const combined = `${main} ${causeStr}`;
-    return (
-        combined.includes('existing nullifier') ||
-        combined.includes('already deployed') ||
-        combined.includes('already exists')
-    );
-}
-
 /**
- * Create a new ECDSAR account, deploy it, and return credentials (no .env write).
+ * Create a new Schnorr initializerless account and return credentials (no .env write).
  * Use with loadAccountFromCredentials on later runs to reuse the same account.
- * Local test helper — uses sponsored fees by default.
+ * No deployment transaction is required.
  */
 export async function createAccountWithCredentials(
     wallet: EmbeddedWallet,
     options: { deployTimeoutMs?: number; feeCtx?: FeePaymentContext } = {}
 ): Promise<TestAccountCredentials> {
-    const { deployTimeoutMs = 120_000, feeCtx } = options;
+    void options;
     const salt = Fr.random();
     const secretKey = Fr.random();
-    const signingKey = Buffer.alloc(32, Fr.random().toBuffer());
-    const accountManager = await wallet.createECDSARAccount(
+    const signingKey = Fq.random();
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
         secretKey,
         salt,
         signingKey
     );
 
-    let ctx = feeCtx ?? { mode: 'sponsored' as const };
-    if (ctx.mode === 'sponsored' && !ctx.sponsoredFpc) {
-        ctx = {
-            mode: 'sponsored',
-            sponsoredFpc: await getSponsoredPFCContract(),
-        };
-    }
-
-    const deployMethod = await accountManager.getDeployMethod();
-    await deployMethod.send({
-        from: NO_FROM,
-        ...buildFeeSendFields(ctx),
-        skipClassPublication: true,
-        skipInstancePublication: true,
-        wait: { timeout: deployTimeoutMs },
-    });
-
     return {
         salt: salt.toString(),
         secretKey: secretKey.toString(),
-        signingKey: signingKey.toString('hex'),
+        signingKey: fqToHex(signingKey),
         address: accountManager.address.toString(),
     };
 }
 
 /**
- * Recreate an ECDSAR account in the wallet from saved credentials (e.g. from .test-accounts.json).
+ * Recreate a Schnorr initializerless account in the wallet from saved credentials
+ * (e.g. from .test-accounts.json).
  */
 export async function loadAccountFromCredentials(
     wallet: EmbeddedWallet,
     cred: TestAccountCredentials,
-    aztecNode: AztecNode,
+    _aztecNode: AztecNode,
     options: {
+        /** @deprecated No-op for Schnorr initializerless accounts. */
         ensureDeployed?: boolean;
+        /** @deprecated Unused for Schnorr initializerless accounts. */
         deployTimeoutMs?: number;
+        /** @deprecated Unused for Schnorr initializerless accounts. */
         feeCtx?: FeePaymentContext;
     } = {}
 ): Promise<AztecAddress> {
-    const { ensureDeployed = true, deployTimeoutMs = 120_000 } = options;
+    void options;
     const accountAddress = AztecAddress.fromStringUnsafe(cred.address);
     if (await hasLocalAccount(wallet, accountAddress)) {
-        if (!ensureDeployed) return accountAddress;
-        const metadata = await wallet.getContractMetadata(accountAddress);
-        if (
-            metadata.initializationStatus ===
-            ContractInitializationStatus.INITIALIZED
-        )
-            return accountAddress;
+        return accountAddress;
     }
 
-    const accountManager = await wallet.createECDSARAccount(
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
         Fr.fromString(cred.secretKey),
         Fr.fromString(cred.salt),
-        Buffer.from(cred.signingKey, 'hex')
+        fqFromHex(cred.signingKey)
     );
-
-    if (ensureDeployed) {
-        await deployAccountIfNeeded(
-            wallet,
-            accountManager,
-            deployTimeoutMs,
-            options.feeCtx
-        );
-    }
 
     return accountManager.address;
 }

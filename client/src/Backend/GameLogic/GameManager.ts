@@ -1997,7 +1997,7 @@ class GameManager extends EventEmitter {
   }
 
   /**
-   * Gets the secret key of the active Aztec ECDSAR account.
+   * Gets the secret key of the active Aztec Schnorr initializerless account.
    */
   getPrivateKey(): string | undefined {
     return this.contractsAPI.getWalletManager().getActiveAccountRecord()
@@ -2006,7 +2006,7 @@ class GameManager extends EventEmitter {
 
   /**
    * Returns the full credential triple (secretKey, salt, signingKey) needed
-   * to recover/import the active Aztec ECDSAR account.
+   * to recover/import the active Aztec Schnorr initializerless account.
    */
   getAccountCredentials():
     | { secretKey: string; salt: string; signingKey: string }

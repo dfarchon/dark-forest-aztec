@@ -1,6 +1,9 @@
 /**
  * KeyStore: synchronous localStorage persistence for AccountRecords.
  *
+ * Accounts are Schnorr initializerless credential triples
+ * (secretKey, salt, signingKey as Fq hex).
+ *
  * Data layout in localStorage:
  *   {prefix}:accounts             → JSON array of AccountRecord
  *   {prefix}:active               → address hex string of the active account

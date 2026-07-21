@@ -163,7 +163,6 @@ console.log('\n=== funding stop messaging ===');
             reason: 'insufficient_balance',
             accountAddress: addr,
             commandHint: 'pnpm configure',
-            onChainDeployed: false,
             balanceWei: 0n,
             minWei: parseFjDecimalToWei('5')!,
         });

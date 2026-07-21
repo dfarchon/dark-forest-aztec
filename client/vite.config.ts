@@ -92,8 +92,6 @@ export default defineConfig({
       "@aztec/aztec.js/contracts",
       "@aztec/aztec.js/wallet",
       "@aztec/foundation/crypto/poseidon",
-      "@aztec/accounts/ecdsa/lazy",
-      "@aztec/accounts/ecdsa/stub/lazy",
       "@aztec/accounts/schnorr/lazy",
       "@aztec/accounts/schnorr/stub/lazy",
       "@aztec/standard-contracts/multi-call-entrypoint/lazy",

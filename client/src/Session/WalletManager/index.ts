@@ -1,8 +1,8 @@
 export { KeyStore } from "./KeyStore";
 export type {
   AccountRecord,
-  SponsorDeployPreflight,
-  SponsorDeployPreflightSource,
+  SponsorFeeJuicePreflight,
+  SponsorFeeJuicePreflightSource,
   WalletManagerConfig,
   WalletStatus,
 } from "./types";

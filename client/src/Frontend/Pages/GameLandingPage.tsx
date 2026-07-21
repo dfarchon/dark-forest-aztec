@@ -60,7 +60,7 @@ import {
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
-import type { SponsorDeployPreflight } from "../../Session/WalletManager/types";
+import type { SponsorFeeJuicePreflight } from "../../Session/WalletManager/types";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
@@ -167,10 +167,10 @@ function CopyAccountAddressButton({
   );
 }
 
-function printSponsorDeployPreflight(
+function printSponsorFeeJuicePreflight(
   terminal: React.MutableRefObject<TerminalHandle | undefined>,
   sponsoredAddr: { toString: () => string },
-  pf: SponsorDeployPreflight
+  pf: SponsorFeeJuicePreflight
 ): void {
   const estimateSourceLabel =
     pf.estimateSource === "threshold"
@@ -241,15 +241,6 @@ async function printInitialSponsorStatus(
   terminal.current?.println("");
 }
 
-function isInsufficientSponsoredFeeError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return (
-    msg.includes("Insufficient fee payer balance") ||
-    msg.includes("insufficient fee payer balance") ||
-    msg.includes("SponsoredFPC fee payer balance too low")
-  );
-}
-
 function printSponsorRecoveryMenu(
   terminal: React.MutableRefObject<TerminalHandle | undefined>,
   setConnectionSettingsOpen: (open: boolean) => void
@@ -270,8 +261,6 @@ function printSponsorRecoveryMenu(
   terminal.current?.printOption("r", "Refresh page", { hideKey: true });
 }
 
-type SponsorPreflightPurpose = "deploy" | "transactions";
-
 /**
  * Sponsor-mode infrastructure check with recovery: rebuild WalletManager after
  * Connection settings changes, or full page reload.
@@ -279,7 +268,6 @@ type SponsorPreflightPurpose = "deploy" | "transactions";
 async function runSponsorInfrastructurePreflightGate(params: {
   terminal: React.MutableRefObject<TerminalHandle | undefined>;
   getWalletManager: () => WalletManager | undefined;
-  purpose: SponsorPreflightPurpose;
   setConnectionSettingsOpen: (open: boolean) => void;
   setTerminalVisible: (visible: boolean) => void;
   /** Landing entry mode (`terminal` is treated like standard for visibility). */
@@ -290,7 +278,6 @@ async function runSponsorInfrastructurePreflightGate(params: {
   const {
     terminal,
     getWalletManager,
-    purpose,
     setConnectionSettingsOpen,
     setTerminalVisible,
     entryMode,
@@ -355,7 +342,7 @@ async function runSponsorInfrastructurePreflightGate(params: {
       continue;
     }
 
-    const pf = await wm.getSponsorDeployPreflight();
+    const pf = await wm.getSponsorFeeJuicePreflight();
     if (!pf) {
       terminal.current?.println(
         "Could not read SponsoredFPC FeeJuice balance. Check the Aztec node URL and SponsoredFPC address in Connection settings.",
@@ -380,14 +367,12 @@ async function runSponsorInfrastructurePreflightGate(params: {
       continue;
     }
 
-    printSponsorDeployPreflight(terminal, sponsoredAddr, pf);
+    printSponsorFeeJuicePreflight(terminal, sponsoredAddr, pf);
 
     if (pf.sufficient) return;
 
     terminal.current?.println(
-      purpose === "transactions"
-        ? "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings."
-        : "SponsoredFPC balance is too low for account deployment. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
+      "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
       TerminalTextStyle.Red
     );
     printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
@@ -404,55 +389,6 @@ async function runSponsorInfrastructurePreflightGate(params: {
           e instanceof Error ? e.message : String(e),
           TerminalTextStyle.Red
         );
-      }
-    }
-  }
-}
-
-async function deployActiveAccountWithSponsorRecovery(params: {
-  terminal: React.MutableRefObject<TerminalHandle | undefined>;
-  getWalletManager: () => WalletManager | undefined;
-  setConnectionSettingsOpen: (open: boolean) => void;
-  rebuildWalletAfterConnectionSave: () => Promise<void>;
-  onRefreshPage: () => Promise<void>;
-}): Promise<void> {
-  const {
-    terminal,
-    getWalletManager,
-    setConnectionSettingsOpen,
-    rebuildWalletAfterConnectionSave,
-    onRefreshPage,
-  } = params;
-
-  while (true) {
-    const wm = getWalletManager();
-    if (!wm) throw new Error("no wallet manager");
-    try {
-      await wm.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
-      return;
-    } catch (err) {
-      if (!isInsufficientSponsoredFeeError(err)) throw err;
-      terminal.current?.println(
-        err instanceof Error ? err.message : String(err),
-        TerminalTextStyle.Red
-      );
-      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-      const input = (await terminal.current?.getInput()) || "";
-      if (input === "r") {
-        await onRefreshPage();
-        return;
-      }
-      if (input === "c") {
-        try {
-          await rebuildWalletAfterConnectionSave();
-        } catch (e) {
-          terminal.current?.println(
-            e instanceof Error ? e.message : String(e),
-            TerminalTextStyle.Red
-          );
-        }
       }
     }
   }
@@ -1441,7 +1377,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "deploy",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: "quick",
@@ -2373,22 +2308,14 @@ export function GameLandingPage() {
         const account = accounts[selection - 1];
         try {
           terminal.current?.println("Restoring account...");
-          const result = await walletManager?.switchAccount(
-            account.address,
-            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+          await walletManager?.switchAccount(account.address, (msg) =>
+            terminal.current?.println(msg, TerminalTextStyle.Sub)
           );
           lockWalletSelection("local");
-          if (result?.deployed) {
-            terminal.current?.println(
-              "Account already deployed on this network.",
-              TerminalTextStyle.Green
-            );
-          } else {
-            terminal.current?.println(
-              "Account not deployed on this network yet.",
-              TerminalTextStyle.Sub
-            );
-          }
+          terminal.current?.println(
+            "Schnorr account ready (no deployment required).",
+            TerminalTextStyle.Green
+          );
           setStep(TerminalPromptStep.ACCOUNT_SET);
           return;
         } catch (e) {
@@ -2561,9 +2488,11 @@ export function GameLandingPage() {
       let currentStep = "";
       try {
         terminal.current?.println(``);
-        terminal.current?.println("Generating new Aztec account keys...");
         terminal.current?.println(
-          "Key generation is quick. Deployment will happen after you get FeeJuice.",
+          "Generating new Aztec Schnorr account keys..."
+        );
+        terminal.current?.println(
+          "Initializerless accounts need no deploy tx — keys are usable as soon as they are created.",
           TerminalTextStyle.Sub
         );
         terminal.current?.print("  ");
@@ -2665,17 +2594,10 @@ export function GameLandingPage() {
           undefined,
           (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
         );
-        if (record.deployed) {
-          terminal.current?.println(
-            "Account already deployed on this network.",
-            TerminalTextStyle.Green
-          );
-        } else {
-          terminal.current?.println(
-            "Account not deployed on this network yet.",
-            TerminalTextStyle.Sub
-          );
-        }
+        terminal.current?.println(
+          "Schnorr account ready (no deployment required).",
+          TerminalTextStyle.Green
+        );
         terminal.current?.println(
           `Imported account with address ${record.address}.`
         );
@@ -2746,7 +2668,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "transactions",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: entryModeRef.current,
@@ -2775,33 +2696,12 @@ export function GameLandingPage() {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
-          purpose: "deploy",
           setConnectionSettingsOpen,
           setTerminalVisible,
           entryMode: entryModeRef.current,
           rebuildWalletAfterConnectionSave,
           onRefreshPage: playRefreshPageTransition,
         });
-        terminal.current?.println(
-          "Sponsor mode: deploying account if needed (sponsored fees)..."
-        );
-        try {
-          await deployActiveAccountWithSponsorRecovery({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        } catch (err) {
-          console.error(err);
-          terminal.current?.println(
-            err instanceof Error ? err.message : String(err),
-            TerminalTextStyle.Red
-          );
-          setStep(TerminalPromptStep.TERMINATED);
-          return;
-        }
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
         }
@@ -2818,10 +2718,6 @@ export function GameLandingPage() {
         rebuildWalletAfterConnectionSave,
         onRefreshPage: playRefreshPageTransition,
       });
-      terminal.current?.println("Deploying account if needed...");
-      await walletManager.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }
@@ -2840,7 +2736,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "transactions",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: entryModeRef.current,
@@ -2869,33 +2764,12 @@ export function GameLandingPage() {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
-          purpose: "deploy",
           setConnectionSettingsOpen,
           setTerminalVisible,
           entryMode: entryModeRef.current,
           rebuildWalletAfterConnectionSave,
           onRefreshPage: playRefreshPageTransition,
         });
-        terminal.current?.println(
-          "Sponsor mode: deploying account if needed (sponsored fees)..."
-        );
-        try {
-          await deployActiveAccountWithSponsorRecovery({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        } catch (err) {
-          console.error(err);
-          terminal.current?.println(
-            err instanceof Error ? err.message : String(err),
-            TerminalTextStyle.Red
-          );
-          setStep(TerminalPromptStep.TERMINATED);
-          return;
-        }
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
         }
@@ -2912,10 +2786,6 @@ export function GameLandingPage() {
         rebuildWalletAfterConnectionSave,
         onRefreshPage: playRefreshPageTransition,
       });
-      terminal.current?.println("Deploying account if needed...");
-      await walletManager.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }

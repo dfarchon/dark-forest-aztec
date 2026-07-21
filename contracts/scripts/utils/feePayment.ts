@@ -173,7 +173,6 @@ export function stopForAccountFunding(params: {
     reason: 'keys_created' | 'insufficient_balance' | 'balance_query_failed';
     accountAddress: AztecAddress;
     commandHint: string;
-    onChainDeployed?: boolean;
     balanceWei?: bigint;
     minWei?: bigint;
     queryError?: string;
@@ -182,7 +181,6 @@ export function stopForAccountFunding(params: {
         reason,
         accountAddress,
         commandHint,
-        onChainDeployed,
         balanceWei,
         minWei = getAccountMinBalanceFjWei(),
         queryError,
@@ -199,9 +197,10 @@ export function stopForAccountFunding(params: {
             banner('ACCOUNT FEE MODE — NEW DEPLOYER ADDRESS CREATED'),
             '',
             '  FEE_PAYMENT_MODE=account requires FeeJuice on the deployer BEFORE any',
-            '  on-chain transaction (account deploy, contract deploy, or configure).',
+            '  on-chain transaction (contract deploy or configure).',
             '',
-            '  A new ECDSAR account was generated and saved. NO transactions were sent.',
+            '  A new Schnorr initializerless account was generated and saved.',
+            '  NO transactions were sent (no account deploy tx is required).',
             '',
             `  Fund this exact address (derived from ACCOUNT_* keys):`,
             `    ${addr}`,
@@ -210,7 +209,6 @@ export function stopForAccountFunding(params: {
             `  Network label:       ${network}`,
             `  Aztec node:          ${nodeUrl}`,
             `  Minimum FeeJuice:    ${formatFeeJuiceWei(minWei)}`,
-            `  Account deployed:    no (not yet — fund first, then re-run)`,
             '',
             '  Next steps:',
             `    1. Bridge / fund FeeJuice to the address above (≥ ${formatFeeJuiceWei(minWei)}).`,
@@ -231,9 +229,6 @@ export function stopForAccountFunding(params: {
             `  Network label:    ${network}`,
             `  Aztec node:       ${nodeUrl}`,
             `  Env file:         ${envFile}`,
-            onChainDeployed === undefined
-                ? ''
-                : `  Account deployed: ${onChainDeployed ? 'yes' : 'no'}`,
             `  Error:            ${queryError ?? 'unknown'}`,
             '',
             '  Fix the node URL / connectivity, then re-run:',
@@ -258,7 +253,6 @@ export function stopForAccountFunding(params: {
             `  Network label:    ${network}`,
             `  Aztec node:       ${nodeUrl}`,
             `  Env file:         ${envFile}`,
-            `  Account deployed: ${onChainDeployed ? 'yes' : 'no'}`,
             '',
             '  Next steps:',
             `    1. Bridge / fund FeeJuice to the address above.`,
@@ -284,11 +278,9 @@ export async function assertAccountFeeJuiceReady(params: {
     feeCtx: FeePaymentContext;
     aztecNode: AztecNode;
     accountAddress: AztecAddress;
-    onChainDeployed: boolean;
     commandHint: string;
 }): Promise<void> {
-    const { feeCtx, aztecNode, accountAddress, onChainDeployed, commandHint } =
-        params;
+    const { feeCtx, aztecNode, accountAddress, commandHint } = params;
     if (feeCtx.mode !== 'account') return;
 
     const minWei = getAccountMinBalanceFjWei();
@@ -300,7 +292,7 @@ export async function assertAccountFeeJuiceReady(params: {
     console.log(`  Network label:    ${network}`);
     console.log(`  Aztec node:       ${nodeUrl}`);
     console.log(`  Account address:  ${accountAddress.toString()}`);
-    console.log(`  Account deployed: ${onChainDeployed ? 'yes' : 'no'}`);
+    console.log(`  Account type:     Schnorr initializerless (no deploy tx)`);
     console.log(`  Minimum FeeJuice: ${formatFeeJuiceWei(minWei)}`);
 
     const balanceWei = await getFeeJuiceBalance(
@@ -313,7 +305,6 @@ export async function assertAccountFeeJuiceReady(params: {
             reason: 'balance_query_failed',
             accountAddress,
             commandHint,
-            onChainDeployed,
             minWei,
             queryError,
         });
@@ -326,7 +317,6 @@ export async function assertAccountFeeJuiceReady(params: {
             reason: 'insufficient_balance',
             accountAddress,
             commandHint,
-            onChainDeployed,
             balanceWei,
             minWei,
         });

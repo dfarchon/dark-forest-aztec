@@ -2,9 +2,8 @@
  * Deployer account diagnosis and resolution (loads `ACCOUNT_*` from env; no interactive prompts).
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fq, Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import { ContractInitializationStatus } from '@aztec/aztec.js/wallet';
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 
 import { getAztecNetwork, getAztecNodeUrl, getOptionalEnv } from './env.ts';
@@ -29,12 +28,10 @@ export type DeployerAccountDiagnosis = {
     envAddress: AztecAddress | null;
     addressMismatch: boolean;
     /**
-     * `true` iff the account contract's init nullifier exists on-chain
-     * (via `wallet.getContractMetadata`). This is the reliable way to check
-     * whether an account contract has been deployed — unlike `node.getContract()`
-     * which only checks the instance registry (account contracts don't publish there).
+     * Always true for Schnorr initializerless accounts once keys are valid —
+     * no on-chain account deployment / init nullifier is required.
      */
-    onChainDeployed: boolean;
+    accountReady: boolean;
     inLocalWallet: boolean;
 };
 
@@ -46,14 +43,20 @@ function accountKeysPresent(): boolean {
     );
 }
 
+function fqFromHex(signingKeyHex: string): Fq {
+    const hex = signingKeyHex.startsWith('0x')
+        ? signingKeyHex.slice(2)
+        : signingKeyHex;
+    return Fq.fromBuffer(Buffer.from(hex, 'hex'));
+}
+
 /**
  * Inspect `.env` account material vs the **connected Aztec node** (`AZTEC_NODE_URL`) and local PXE wallet.
- * Uses `wallet.getContractMetadata(address).initializationStatus` to check on-chain deployment
- * (init nullifier), which works reliably for account contracts.
+ * Schnorr initializerless accounts need no on-chain deploy; readiness is keys + local registration.
  */
 export async function diagnoseDeployerAccount(
     wallet: EmbeddedWallet,
-    // Kept in signature for API compatibility; diagnosis uses wallet.getContractMetadata instead.
+    // Kept in signature for API compatibility.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     aztecNode: AztecNode
 ): Promise<DeployerAccountDiagnosis> {
@@ -73,15 +76,15 @@ export async function diagnoseDeployerAccount(
             derivedAddress: null,
             envAddress: null,
             addressMismatch: false,
-            onChainDeployed: false,
+            accountReady: false,
             inLocalWallet: false,
         };
     }
 
-    const accountManager = await wallet.createECDSARAccount(
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
         Fr.fromString(secretKey),
         Fr.fromString(salt),
-        Buffer.from(signingKeyHex, 'hex')
+        fqFromHex(signingKeyHex)
     );
     const derivedAddress = accountManager.address;
 
@@ -104,28 +107,13 @@ export async function diagnoseDeployerAccount(
         );
     }
 
-    let onChainDeployed = false;
-    try {
-        const metadata = await wallet.getContractMetadata(derivedAddress);
-        onChainDeployed =
-            metadata.initializationStatus ===
-            ContractInitializationStatus.INITIALIZED;
-    } catch {
-        // getContractMetadata may throw if PXE hasn't fully started yet; treat as unknown
-    }
-
-    if (!onChainDeployed) {
-        reasons.push(
-            'Account contract not yet initialized on this Aztec node (init nullifier not found)'
-        );
-    }
-
     const inLocalWallet = await hasLocalAccount(wallet, derivedAddress);
     if (!inLocalWallet) {
         reasons.push('Account is not registered in the local PXE wallet yet');
     }
 
-    const ok = !addressMismatch && onChainDeployed;
+    const accountReady = !addressMismatch;
+    const ok = accountReady;
 
     return {
         ok,
@@ -133,7 +121,7 @@ export async function diagnoseDeployerAccount(
         derivedAddress,
         envAddress,
         addressMismatch,
-        onChainDeployed,
+        accountReady,
         inLocalWallet,
     };
 }
@@ -152,7 +140,7 @@ export type PrintDeployerAccountSummaryOptions = {
 };
 
 /**
- * Human-readable summary: network, derived vs env address, on-chain deployment + local PXE status.
+ * Human-readable summary: network, derived vs env address, and local PXE status.
  */
 export function printDeployerAccountSummary(
     d: DeployerAccountDiagnosis,
@@ -177,7 +165,7 @@ export function printDeployerAccountSummary(
         lines.push('  ACCOUNT_ADDRESS in .env: (not set)');
     }
     lines.push(
-        `  Deployed on-chain (init nullifier): ${d.onChainDeployed ? 'yes' : 'no'}`
+        `  Account type: Schnorr initializerless (no deploy tx required)`
     );
     lines.push(`  In local PXE wallet: ${d.inLocalWallet ? 'yes' : 'no'}`);
     if (!d.ok && d.reasons.length) {
@@ -192,15 +180,11 @@ export function printDeployerAccountSummary(
     } else if (d.addressMismatch) {
         status =
             'Blocked: ACCOUNT_ADDRESS does not match derived keys (fix .env or keys).';
-    } else if (!d.onChainDeployed) {
-        status =
-            'Account not yet deployed on this Aztec node (will deploy when needed).';
     } else if (!d.inLocalWallet) {
         status =
-            'On-chain OK; account not in local PXE wallet (will register when loading).';
+            'Keys OK; account not in local PXE wallet (will register when loading).';
     } else {
-        status =
-            'Ready: keys match, deployed on-chain, present in local wallet.';
+        status = 'Ready: keys match and present in local wallet.';
     }
     lines.push(`  Status: ${status}`);
     console.log(lines.join('\n'));
@@ -208,12 +192,13 @@ export function printDeployerAccountSummary(
 
 export type ResolveDeployerAccountOptions = GetOrCreateAccountOptions & {
     mode: 'getOrCreate' | 'loadOnly';
+    /** @deprecated Unused for Schnorr initializerless accounts. */
     deployTimeoutMs?: number;
-    /** When resolving with existing keys (default true). */
+    /** @deprecated Unused for Schnorr initializerless accounts. */
     ensureDeployed?: boolean;
     /**
-     * Read-only callers (e.g. `verify-perms`): require ACCOUNT_* already deployed on this chain,
-     * never send account deploy txs; uses `loadAccountFromEnv(..., ensureDeployed: false)`.
+     * Read-only callers (e.g. `verify-perms`): require ACCOUNT_* already present,
+     * never create keys; uses `loadAccountFromEnv`.
      * Only valid with `mode: 'loadOnly'`.
      */
     readonlyVerification?: boolean;
@@ -229,17 +214,17 @@ export type ResolveDeployerAccountOptions = GetOrCreateAccountOptions & {
     commandHint?: string;
     /**
      * When true (default for write scripts), account mode runs FeeJuice preflight
-     * before any account deploy. Set false for read-only simulate scripts.
+     * before sending contract txs. Set false for read-only simulate scripts.
      */
     requireAccountFeeJuice?: boolean;
 };
 
 /**
- * Resolve deployer: load `ACCOUNT_*` from env and ensure the account exists on this chain when needed.
+ * Resolve deployer: load `ACCOUNT_*` from env and register the Schnorr account locally.
  * No interactive prompts — always continues with existing keys.
- * - `readonlyVerification: true` (loadOnly): fail fast if account not deployed on chain; no deploy.
+ * - `readonlyVerification: true` (loadOnly): fail fast if keys missing/mismatched; no key creation.
  * - `FEE_PAYMENT_MODE=account` + `getOrCreate` with no keys: generate keys, write env, stop for funding.
- * - `FEE_PAYMENT_MODE=account` with keys: FeeJuice preflight before deploy/continue.
+ * - `FEE_PAYMENT_MODE=account` with keys: FeeJuice preflight before continue.
  */
 export async function resolveDeployerAccount(
     wallet: EmbeddedWallet,
@@ -248,8 +233,6 @@ export async function resolveDeployerAccount(
 ): Promise<AztecAddress> {
     const {
         mode,
-        deployTimeoutMs = 120_000,
-        ensureDeployed = true,
         readonlyVerification = false,
         feeCtx,
         commandHint = 'pnpm deploy-contracts',
@@ -281,7 +264,6 @@ export async function resolveDeployerAccount(
 
         const addr = await createAccount(wallet, {
             ...createOpts,
-            deployTimeoutMs,
             feeCtx: resolvedFeeCtx,
         });
         if (!isAccountDiagnosticsSilent()) {
@@ -326,14 +308,7 @@ export async function resolveDeployerAccount(
     }
 
     if (readonlyVerification) {
-        if (!diagnosis.onChainDeployed) {
-            throw new Error(
-                'Account contract not deployed on this Aztec node (init nullifier not found). Deploy the account first (e.g. pnpm deploy-contracts) or check AZTEC_NODE_URL.'
-            );
-        }
         const addr = await loadAccountFromEnv(wallet, aztecNode, {
-            deployTimeoutMs,
-            ensureDeployed: false,
             logAccountStatus: false,
             feeCtx: resolvedFeeCtx,
         });
@@ -351,14 +326,11 @@ export async function resolveDeployerAccount(
             feeCtx: resolvedFeeCtx,
             aztecNode,
             accountAddress: diagnosis.derivedAddress,
-            onChainDeployed: diagnosis.onChainDeployed,
             commandHint,
         });
     }
 
     const addr = await loadAccountFromEnv(wallet, aztecNode, {
-        deployTimeoutMs,
-        ensureDeployed,
         logAccountStatus: false,
         feeCtx: resolvedFeeCtx,
     });
