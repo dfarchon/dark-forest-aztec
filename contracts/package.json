@@ -30,6 +30,7 @@
         "local-network": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
         "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
+        "read:balance": "pnpm exec tsx scripts/read/read-fee-juice-balance.ts",
         "read:config": "pnpm exec tsx scripts/read/read-config.ts",
         "scripts:fmt": "pnpm run lint:fix && pnpm run prettier",
         "scripts:fmt:check": "pnpm prettier:check && pnpm lint",
