@@ -1,3 +1,4 @@
+import { APP_VERSION, GAME_NAME, ORGANIZER_NAME } from "@dfpunk/constants";
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { address } from "@dfpunk/serde";
 import React, { useEffect, useRef, useState } from "react";
@@ -52,6 +53,12 @@ const PrimaryAction = styled.div`
 const SecondaryAction = styled.div`
   display: inline-block;
 
+  --df-button-color: ${dfstyles.colors.text};
+  --df-button-background: rgba(255, 255, 255, 0.04);
+  --df-button-border: 1px solid ${dfstyles.colors.border};
+  --df-button-hover-background: ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+
   df-button {
     min-width: 160px;
   }
@@ -96,8 +103,7 @@ export default function LandingPage() {
     }, ENTER_TRANSITION_DURATION_MS);
   };
 
-  const acceptDisclaimer = (e: Event) => {
-    e.stopPropagation();
+  const acceptDisclaimer = () => {
     if (phase !== "disclaimer") return;
     setPhase("blackhole2");
     phaseTimeoutRef.current = window.setTimeout(() => {
@@ -124,28 +130,32 @@ export default function LandingPage() {
       <PrettyOverlayGradient />
       {/* <Hiring /> */}
 
-      <Page onClick={enterUniverse} $entering={phase === "blackhole1"}>
-        <OnlyMobile>
-          <Spacer height={8} />
-        </OnlyMobile>
-        <HideOnMobile>
-          <Spacer height={150} />
-        </HideOnMobile>
-
+      <Page $entering={phase === "blackhole1"}>
         <MainContentContainer>
           <Header>
             <HeroFrame>
               <SignalLine>
                 The universe is dark. Your moves are private.
               </SignalLine>
-              <HeroTitle>Dark Forest Aztec</HeroTitle>
+              <HeroTitle>{GAME_NAME}</HeroTitle>
+              <HeroVersion>v{APP_VERSION}</HeroVersion>
               <HeroSubtitle>zkSNARK space warfare</HeroSubtitle>
               <HeroBlurb>
-                Privacy-first Dark Forest v0.6.5, ported to Aztec.
+                A hidden-information strategy game in a universe that lives
+                entirely onchain.
               </HeroBlurb>
-              <Tribute>
-                Built in tribute to the original Dark Forest team.
-              </Tribute>
+              <Provenance>
+                <p>
+                  Classic Dark Forest was built by its original team, 2019–early
+                  2022.
+                </p>
+                <p>
+                  Later editions have been maintained by community developers.
+                </p>
+                <p>
+                  {GAME_NAME} is a community branch by {ORGANIZER_NAME} team.
+                </p>
+              </Provenance>
             </HeroFrame>
 
             <Spacer height={32} />
@@ -156,17 +166,8 @@ export default function LandingPage() {
                   Enter Universe
                 </Btn>
               </PrimaryAction>
-              <SecondaryAction
-                ref={networkSettingsRef}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Btn
-                  size="large"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleConnectionSettings();
-                  }}
-                >
+              <SecondaryAction ref={networkSettingsRef}>
+                <Btn size="large" onClick={toggleConnectionSettings}>
                   Settings
                 </Btn>
               </SecondaryAction>
@@ -174,10 +175,7 @@ export default function LandingPage() {
                 Events
               </Btn> */}
             </ButtonWrapper>
-            <SettingsModalBoundary
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+            <SettingsModalBoundary>
               <ConnectionSettingsModal
                 open={connectionSettingsOpen}
                 onClose={() => setConnectionSettingsOpen(false)}
@@ -409,13 +407,7 @@ export default function LandingPage() {
                 </Btn>
               </DisclaimerAccept>
               <DisclaimerDecline>
-                <Btn
-                  size="large"
-                  onClick={(e: Event) => {
-                    e.stopPropagation();
-                    setPhase("idle");
-                  }}
-                >
+                <Btn size="large" onClick={() => setPhase("idle")}>
                   Decline
                 </Btn>
               </DisclaimerDecline>
@@ -659,10 +651,11 @@ const DisclaimerAccept = styled.div`
 `;
 
 const DisclaimerDecline = styled.div`
-  --df-button-color: ${dfstyles.colors.subtext};
-  --df-button-border: 1px solid ${dfstyles.colors.borderDark};
-  --df-button-hover-background: ${dfstyles.colors.backgroundlighter};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.borderDark};
+  --df-button-color: ${dfstyles.colors.text};
+  --df-button-background: rgba(255, 255, 255, 0.04);
+  --df-button-border: 1px solid ${dfstyles.colors.border};
+  --df-button-hover-background: ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
 
   df-button {
     min-width: 140px;
@@ -710,6 +703,13 @@ const HeroTitle = styled.h1`
   white-space: nowrap;
 `;
 
+const HeroVersion = styled.div`
+  margin-top: 10px;
+  color: ${dfstyles.colors.subbertext};
+  font-size: 0.85em;
+  letter-spacing: 0.14em;
+`;
+
 const HeroSubtitle = styled.div`
   margin-top: 14px;
   color: ${dfstyles.colors.dfgreen};
@@ -718,20 +718,34 @@ const HeroSubtitle = styled.div`
 `;
 
 const HeroBlurb = styled.p`
-  max-width: 640px;
-  margin: 30px auto 0;
+  margin: 12px auto 0;
   color: ${dfstyles.colors.text};
   font-size: 0.95em;
   line-height: 1.55;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+
+  @media only screen and (max-device-width: 1000px) {
+    white-space: normal;
+    max-width: min(420px, calc(100vw - 64px));
+  }
 `;
 
-const Tribute = styled.p`
-  max-width: 640px;
-  margin: 10px auto 0;
-  color: ${dfstyles.colors.subtext};
-  font-size: 0.92em;
+const Provenance = styled.div`
+  max-width: 560px;
+  margin: 18px auto 0;
+  color: ${dfstyles.colors.subbertext};
+  font-size: 0.72em;
   line-height: 1.55;
+  letter-spacing: 0.01em;
+
+  p {
+    margin: 0;
+  }
+
+  p + p {
+    margin-top: 4px;
+  }
 `;
 
 const EmailWrapper = styled.div`
@@ -770,6 +784,9 @@ const Page = styled.div<{ $entering?: boolean }>`
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+  box-sizing: border-box;
   z-index: ${LandingPageZIndex.BasePage};
 
   transition:
@@ -853,12 +870,6 @@ function Hiring() {
 
 const HideOnMobile = styled.div`
   @media only screen and (max-device-width: 1000px) {
-    display: none;
-  }
-`;
-
-const OnlyMobile = styled.div`
-  @media only screen and (min-device-width: 1000px) {
     display: none;
   }
 `;

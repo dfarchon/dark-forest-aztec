@@ -2,28 +2,20 @@
  * WalletManager: EthConnection-equivalent for Aztec.
  *
  * Connects to an Aztec Node via createAztecNodeClient, creates a browser-embedded
- * EmbeddedWallet (with internal PXE), and manages ECDSAR accounts with
- * localStorage persistence via KeyStore.
+ * EmbeddedWallet (with internal PXE), and manages Schnorr initializerless accounts
+ * with localStorage persistence via KeyStore.
  */
 
 import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
-import { NO_FROM } from "@aztec/aztec.js/account";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { BlockNumber, Fr } from "@aztec/aztec.js/fields";
+import { BlockNumber, Fq, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import {
-  type AccountManager,
-  ContractInitializationStatus,
-  type Wallet,
-} from "@aztec/aztec.js/wallet";
+import { type Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
-import { Gas } from "@aztec/stdlib/gas";
-import { getGasLimits } from "@aztec/wallet-sdk/base-wallet";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
@@ -80,18 +72,29 @@ import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
-import { feeJuiceWeiFromGasPair } from "../../utils/sponsorFeeJuice";
 import { KeyStore } from "./KeyStore";
 import type {
   AccountRecord,
-  SponsorDeployPreflight,
+  SponsorFeeJuicePreflight,
   WalletManagerConfig,
 } from "./types";
+import { acquireWalletSessionLock } from "./walletSessionLock";
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
-const DEPLOY_TIMEOUT_MS = 120_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
+
+/** Persist Fq signing keys as hex without a 0x prefix (matches ACCOUNT_SIGNING_KEY). */
+function fqToHex(signingKey: Fq): string {
+  return signingKey.toBuffer().toString("hex");
+}
+
+function fqFromHex(signingKeyHex: string): Fq {
+  const hex = signingKeyHex.startsWith("0x")
+    ? signingKeyHex.slice(2)
+    : signingKeyHex;
+  return Fq.fromBuffer(Buffer.from(hex, "hex"));
+}
 const GENESIS_PENDING_SENTINEL = "genesis-pending";
 
 const WALLET_INIT_TOTAL_STEPS_BASE = 21;
@@ -400,7 +403,7 @@ export class WalletManager {
   /**
    * Force-clear all PXE IndexedDB databases and reset the active account pointer,
    * then create a fresh WalletManager. Account records are preserved so they can
-   * be re-deployed on the new network. Useful as a manual "reset wallet cache" action in UI.
+   * be re-registered on the new network. Useful as a manual "reset wallet cache" action in UI.
    */
   static async resetAndCreate(
     config: WalletManagerConfig
@@ -516,6 +519,8 @@ export class WalletManager {
     }
 
     onProgress?.(4, total, "Creating PXE");
+    // OPFS SAH handles are exclusive per origin; fail fast if another tab holds them.
+    await acquireWalletSessionLock();
     const wallet = await EmbeddedWallet.create(node, {
       pxe: {
         dataDirectory: pxeDataDir,
@@ -577,32 +582,24 @@ export class WalletManager {
   async createAccount(
     label?: string,
     onStatus?: (msg: string) => void
-  ): Promise<AccountRecord & { deployed: boolean }> {
+  ): Promise<AccountRecord> {
     const wallet = this.getEmbeddedWallet("createAccount");
     const salt = Fr.random();
     const secretKey = Fr.random();
-    const signingKeyBuf = Fr.random().toBuffer().slice(0, 32);
+    const signingKey = Fq.random();
 
-    onStatus?.("Creating account keys...");
-    const accountManager = await wallet.createECDSARAccount(
+    onStatus?.("Creating Schnorr account keys...");
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
       secretKey,
       salt,
-      Buffer.from(signingKeyBuf)
+      signingKey
     );
-
-    onStatus?.("Checking deployment status...");
-    const metadata = await this.wallet.getContractMetadata(
-      accountManager.address
-    );
-    const deployed =
-      metadata.initializationStatus ===
-      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
       secretKey: secretKey.toString(),
       salt: salt.toString(),
-      signingKey: Buffer.from(signingKeyBuf).toString("hex"),
+      signingKey: fqToHex(signingKey),
       label,
       createdAt: Date.now(),
     };
@@ -610,42 +607,34 @@ export class WalletManager {
     this.keyStore.saveAccount(record);
     this.setActive(accountManager.address, record.address);
 
-    return { ...record, deployed };
+    return record;
   }
 
   async restoreAccount(
     address: string,
     onStatus?: (msg: string) => void
-  ): Promise<{ deployed: boolean }> {
+  ): Promise<void> {
     const wallet = this.getEmbeddedWallet("restoreAccount");
     const record = this.keyStore.getAccount(address);
     if (!record) {
       throw new Error(`KeyStore: no account found for ${address}`);
     }
 
-    const accountManager = await wallet.createECDSARAccount(
+    onStatus?.("Registering Schnorr account...");
+    await wallet.createSchnorrInitializerlessAccount(
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
-      Buffer.from(record.signingKey, "hex")
+      fqFromHex(record.signingKey)
     );
-
-    onStatus?.("Checking deployment status...");
-    const metadata = await this.wallet.getContractMetadata(
-      accountManager.address
-    );
-    const deployed =
-      metadata.initializationStatus ===
-      ContractInitializationStatus.INITIALIZED;
 
     // Use the selected account address from options/list as active target.
     this.setActive(AztecAddress.fromStringUnsafe(address), address);
-    return { deployed };
   }
 
   async switchAccount(
     address: string,
     onStatus?: (msg: string) => void
-  ): Promise<{ deployed: boolean }> {
+  ): Promise<void> {
     return this.restoreAccount(address, onStatus);
   }
 
@@ -655,27 +644,20 @@ export class WalletManager {
     signingKey: string,
     label?: string,
     onStatus?: (msg: string) => void
-  ): Promise<AccountRecord & { deployed: boolean }> {
+  ): Promise<AccountRecord> {
     const wallet = this.getEmbeddedWallet("importAccount");
-    const accountManager = await wallet.createECDSARAccount(
+    onStatus?.("Importing Schnorr account...");
+    const accountManager = await wallet.createSchnorrInitializerlessAccount(
       Fr.fromString(secretKey),
       Fr.fromString(salt),
-      Buffer.from(signingKey, "hex")
+      fqFromHex(signingKey)
     );
-
-    onStatus?.("Checking deployment status...");
-    const metadata = await this.wallet.getContractMetadata(
-      accountManager.address
-    );
-    const deployed =
-      metadata.initializationStatus ===
-      ContractInitializationStatus.INITIALIZED;
 
     const record: AccountRecord = {
       address: accountManager.address.toString(),
       secretKey,
       salt,
-      signingKey,
+      signingKey: fqToHex(fqFromHex(signingKey)),
       label,
       createdAt: Date.now(),
     };
@@ -683,7 +665,7 @@ export class WalletManager {
     this.keyStore.saveAccount(record);
     this.setActive(accountManager.address, record.address);
 
-    return { ...record, deployed };
+    return record;
   }
 
   removeAccount(address: string): void {
@@ -703,8 +685,8 @@ export class WalletManager {
   }
 
   /**
-   * When sponsorMode is enabled, returns the SponsoredFPC address so we can
-   * pay fees via SponsoredFeePaymentMethod during account deployment.
+   * When sponsorMode is enabled, returns the SponsoredFPC address so gameplay
+   * txs can pay fees via SponsoredFeePaymentMethod.
    */
   getSponsoredFpcAddress(): AztecAddress | undefined {
     return this.sponsoredFpcAddress;
@@ -774,10 +756,11 @@ export class WalletManager {
   }
 
   /**
-   * Preflight SponsoredFPC FeeJuice vs estimated account-deploy cost (simulate when embedded).
+   * Preflight SponsoredFPC FeeJuice vs configured minimum threshold.
+   * Schnorr initializerless accounts need no deploy tx; this only gates sponsored gameplay fees.
    */
-  async getSponsorDeployPreflight(): Promise<
-    SponsorDeployPreflight | undefined
+  async getSponsorFeeJuicePreflight(): Promise<
+    SponsorFeeJuicePreflight | undefined
   > {
     if (!this.sponsoredFpcAddress) return undefined;
 
@@ -787,91 +770,12 @@ export class WalletManager {
       this.node
     );
 
-    if (this.isExternal) {
-      return {
-        balanceWei,
-        requiredWei: minWei,
-        sufficient: balanceWei >= minWei,
-        estimateSource: "threshold",
-      };
-    }
-
-    const active = this.activeAddress;
-    if (!active) return undefined;
-    const addrStr = active.toString();
-    const record = this.keyStore.getAccount(addrStr);
-    if (!record) return undefined;
-
-    const wallet = this.getEmbeddedWallet("getSponsorDeployPreflight");
-    const accountManager = await wallet.createECDSARAccount(
-      Fr.fromString(record.secretKey),
-      Fr.fromString(record.salt),
-      Buffer.from(record.signingKey, "hex")
-    );
-
-    const metadata = await this.wallet.getContractMetadata(
-      accountManager.address
-    );
-    if (
-      metadata.initializationStatus === ContractInitializationStatus.INITIALIZED
-    ) {
-      return {
-        balanceWei,
-        requiredWei: minWei,
-        sufficient: balanceWei >= minWei,
-        estimateSource: "threshold",
-      };
-    }
-
-    try {
-      const deployMethod = await accountManager.getDeployMethod();
-      const sim = await deployMethod.simulate({
-        from: NO_FROM,
-        fee: {
-          paymentMethod: new SponsoredFeePaymentMethod(
-            this.sponsoredFpcAddress
-          ),
-        },
-        skipClassPublication: true,
-        skipInstancePublication: true,
-        includeMetadata: true,
-      });
-      const fees = await this.node.getCurrentMinFees();
-      const gasUsed = sim.gasUsed;
-      if (!gasUsed) {
-        console.warn(
-          "[WalletManager] sponsor deploy simulate returned no gasUsed"
-        );
-        return {
-          balanceWei,
-          requiredWei: minWei,
-          sufficient: balanceWei >= minWei,
-          estimateSource: "simulate_failed",
-        };
-      }
-      const { txsLimits } = await this.node.getNodeInfo();
-      const { gasLimits, teardownGasLimits } = getGasLimits(
-        gasUsed,
-        Gas.from(txsLimits.gas),
-        0.1
-      );
-      const estWei = feeJuiceWeiFromGasPair(gasLimits, teardownGasLimits, fees);
-      const requiredWei = estWei > minWei ? estWei : minWei;
-      return {
-        balanceWei,
-        requiredWei,
-        sufficient: balanceWei >= requiredWei,
-        estimateSource: "simulate",
-      };
-    } catch (err) {
-      console.warn("[WalletManager] sponsor deploy simulate failed:", err);
-      return {
-        balanceWei,
-        requiredWei: minWei,
-        sufficient: balanceWei >= minWei,
-        estimateSource: "simulate_failed",
-      };
-    }
+    return {
+      balanceWei,
+      requiredWei: minWei,
+      sufficient: balanceWei >= minWei,
+      estimateSource: "threshold",
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -903,104 +807,6 @@ export class WalletManager {
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
-
-  /**
-   * Deploy the account contract on-chain if it is not already deployed.
-   * Queries the node for the contract instance; if absent, sends a deploy tx.
-   * @returns `true` if a deployment was performed, `false` if already deployed.
-   */
-  private async deployAccountIfNeeded(
-    accountManager: AccountManager,
-    onStatus?: (msg: string) => void
-  ): Promise<boolean> {
-    onStatus?.("Checking deployment status...");
-    const metadata = await this.wallet.getContractMetadata(
-      accountManager.address
-    );
-    if (
-      metadata.initializationStatus === ContractInitializationStatus.INITIALIZED
-    )
-      return false;
-
-    onStatus?.("Account not deployed on current network. Deploying...");
-    console.info(
-      `[WalletManager] Account ${accountManager.address} not deployed on-chain, deploying...`
-    );
-    const deployMethod = await accountManager.getDeployMethod();
-    onStatus?.("Waiting for deploy transaction...");
-    const commonOpts = {
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { timeout: DEPLOY_TIMEOUT_MS },
-    } as const;
-
-    if (this.sponsoredFpcAddress) {
-      try {
-        await deployMethod.send({
-          from: NO_FROM,
-          fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(
-              this.sponsoredFpcAddress
-            ),
-          },
-          ...commonOpts,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (
-          msg.includes("Insufficient fee payer balance") ||
-          msg.includes("insufficient fee payer balance")
-        ) {
-          throw new Error(
-            `Account deployment failed: SponsoredFPC fee payer balance too low (${msg}). Fund the SponsoredFPC contract or update SponsoredFPC in Connection settings, save, then choose Continue after updating SponsoredFPC in the terminal to retry. Use Refresh page if the app still does not pick up your changes.`
-          );
-        }
-        throw err;
-      }
-      return true;
-    }
-
-    // Non-sponsor mode: follow doc-recommended NO_FROM sender.
-    try {
-      await deployMethod.send({
-        from: NO_FROM,
-        ...commonOpts,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[WalletManager] NO_FROM deploy sender failed: ${msg}`);
-      throw err;
-    }
-    return true;
-  }
-
-  /**
-   * Ensures the currently active account contract is deployed.
-   * Intended flow: after user gets FeeJuice, call this before submitting gameplay txs.
-   */
-  public async deployActiveAccountIfNeeded(
-    onStatus?: (msg: string) => void
-  ): Promise<{ deployedNow: boolean }> {
-    const active = this.activeAddress;
-    if (!active) throw new Error("No active account");
-
-    const addrStr = active.toString();
-    const record = this.keyStore.getAccount(addrStr);
-    if (!record) throw new Error(`KeyStore: no account found for ${addrStr}`);
-
-    const wallet = this.getEmbeddedWallet("deployActiveAccountIfNeeded");
-    const accountManager = await wallet.createECDSARAccount(
-      Fr.fromString(record.secretKey),
-      Fr.fromString(record.salt),
-      Buffer.from(record.signingKey, "hex")
-    );
-
-    const deployedNow = await this.deployAccountIfNeeded(
-      accountManager,
-      onStatus
-    );
-    return { deployedNow };
-  }
 
   private setActive(aztecAddr: AztecAddress, addressStr: string): void {
     this.activeAddress = aztecAddr;

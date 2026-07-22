@@ -57,10 +57,16 @@ import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
   createWalletManager,
+  isWalletSessionConflictError,
+  WALLET_SESSION_CONFLICT_HINT,
+  WALLET_SESSION_CONFLICT_MESSAGE,
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
-import type { SponsorDeployPreflight } from "../../Session/WalletManager/types";
+import type {
+  AccountRecord,
+  SponsorFeeJuicePreflight,
+} from "../../Session/WalletManager/types";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
@@ -102,6 +108,27 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function printWalletSessionConflict(
+  terminal: Pick<TerminalHandle, "println"> | undefined | null
+): void {
+  terminal?.println(WALLET_SESSION_CONFLICT_MESSAGE, TerminalTextStyle.Red);
+  terminal?.println(WALLET_SESSION_CONFLICT_HINT, TerminalTextStyle.Red);
+}
+
+function printLocalWalletInitFailure(
+  terminal: Pick<TerminalHandle, "println"> | undefined | null,
+  err: unknown
+): void {
+  if (isWalletSessionConflictError(err)) {
+    printWalletSessionConflict(terminal);
+    return;
+  }
+  terminal?.println(
+    "Unable to initialize the local wallet. Please try again.",
+    TerminalTextStyle.Red
+  );
+}
+
 function printGameLandingDebugConfig({
   contractAddress,
   isLobby,
@@ -131,46 +158,51 @@ function printGameLandingDebugConfig({
   console.groupEnd();
 }
 
-function CopyAccountAddressButton({
-  accountAddress,
-}: {
-  accountAddress: string;
-}) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
-    "idle"
-  );
+function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
+  const [downloadState, setDownloadState] = useState<
+    "idle" | "downloaded" | "failed"
+  >("idle");
 
-  const copyAddress = async () => {
+  const downloadAccount = () => {
     try {
-      await window.navigator.clipboard.writeText(accountAddress);
-      setCopyState("copied");
+      const json = JSON.stringify(account, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeAddr =
+        account.address.length >= 10 ? account.address.slice(0, 10) : "account";
+      a.download = `dfpunk-account-${safeAddr}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDownloadState("downloaded");
     } catch (err) {
-      console.error("Failed to copy account address:", err);
-      setCopyState("failed");
+      console.error("Failed to download account info:", err);
+      setDownloadState("failed");
     }
   };
 
   return (
-    <CopyAccountAddressRow>
-      <CopyAccountAddressButtonElement type="button" onClick={copyAddress}>
-        Copy account address
-      </CopyAccountAddressButtonElement>
-      {copyState === "copied" && (
-        <CopyAccountAddressStatus>Copied.</CopyAccountAddressStatus>
+    <DownloadAccountInfoRow>
+      <DownloadAccountInfoButtonElement type="button" onClick={downloadAccount}>
+        Download account info
+      </DownloadAccountInfoButtonElement>
+      {downloadState === "downloaded" && (
+        <DownloadAccountInfoStatus>Downloaded.</DownloadAccountInfoStatus>
       )}
-      {copyState === "failed" && (
-        <CopyAccountAddressStatus>
-          Failed to copy. Select the address above manually.
-        </CopyAccountAddressStatus>
+      {downloadState === "failed" && (
+        <DownloadAccountInfoStatus>
+          Failed to download account info.
+        </DownloadAccountInfoStatus>
       )}
-    </CopyAccountAddressRow>
+    </DownloadAccountInfoRow>
   );
 }
 
-function printSponsorDeployPreflight(
+function printSponsorFeeJuicePreflight(
   terminal: React.MutableRefObject<TerminalHandle | undefined>,
   sponsoredAddr: { toString: () => string },
-  pf: SponsorDeployPreflight
+  pf: SponsorFeeJuicePreflight
 ): void {
   const estimateSourceLabel =
     pf.estimateSource === "threshold"
@@ -241,15 +273,6 @@ async function printInitialSponsorStatus(
   terminal.current?.println("");
 }
 
-function isInsufficientSponsoredFeeError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return (
-    msg.includes("Insufficient fee payer balance") ||
-    msg.includes("insufficient fee payer balance") ||
-    msg.includes("SponsoredFPC fee payer balance too low")
-  );
-}
-
 function printSponsorRecoveryMenu(
   terminal: React.MutableRefObject<TerminalHandle | undefined>,
   setConnectionSettingsOpen: (open: boolean) => void
@@ -270,8 +293,6 @@ function printSponsorRecoveryMenu(
   terminal.current?.printOption("r", "Refresh page", { hideKey: true });
 }
 
-type SponsorPreflightPurpose = "deploy" | "transactions";
-
 /**
  * Sponsor-mode infrastructure check with recovery: rebuild WalletManager after
  * Connection settings changes, or full page reload.
@@ -279,7 +300,6 @@ type SponsorPreflightPurpose = "deploy" | "transactions";
 async function runSponsorInfrastructurePreflightGate(params: {
   terminal: React.MutableRefObject<TerminalHandle | undefined>;
   getWalletManager: () => WalletManager | undefined;
-  purpose: SponsorPreflightPurpose;
   setConnectionSettingsOpen: (open: boolean) => void;
   setTerminalVisible: (visible: boolean) => void;
   /** Landing entry mode (`terminal` is treated like standard for visibility). */
@@ -290,7 +310,6 @@ async function runSponsorInfrastructurePreflightGate(params: {
   const {
     terminal,
     getWalletManager,
-    purpose,
     setConnectionSettingsOpen,
     setTerminalVisible,
     entryMode,
@@ -355,7 +374,7 @@ async function runSponsorInfrastructurePreflightGate(params: {
       continue;
     }
 
-    const pf = await wm.getSponsorDeployPreflight();
+    const pf = await wm.getSponsorFeeJuicePreflight();
     if (!pf) {
       terminal.current?.println(
         "Could not read SponsoredFPC FeeJuice balance. Check the Aztec node URL and SponsoredFPC address in Connection settings.",
@@ -380,14 +399,12 @@ async function runSponsorInfrastructurePreflightGate(params: {
       continue;
     }
 
-    printSponsorDeployPreflight(terminal, sponsoredAddr, pf);
+    printSponsorFeeJuicePreflight(terminal, sponsoredAddr, pf);
 
     if (pf.sufficient) return;
 
     terminal.current?.println(
-      purpose === "transactions"
-        ? "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings."
-        : "SponsoredFPC balance is too low for account deployment. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
+      "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
       TerminalTextStyle.Red
     );
     printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
@@ -404,55 +421,6 @@ async function runSponsorInfrastructurePreflightGate(params: {
           e instanceof Error ? e.message : String(e),
           TerminalTextStyle.Red
         );
-      }
-    }
-  }
-}
-
-async function deployActiveAccountWithSponsorRecovery(params: {
-  terminal: React.MutableRefObject<TerminalHandle | undefined>;
-  getWalletManager: () => WalletManager | undefined;
-  setConnectionSettingsOpen: (open: boolean) => void;
-  rebuildWalletAfterConnectionSave: () => Promise<void>;
-  onRefreshPage: () => Promise<void>;
-}): Promise<void> {
-  const {
-    terminal,
-    getWalletManager,
-    setConnectionSettingsOpen,
-    rebuildWalletAfterConnectionSave,
-    onRefreshPage,
-  } = params;
-
-  while (true) {
-    const wm = getWalletManager();
-    if (!wm) throw new Error("no wallet manager");
-    try {
-      await wm.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
-      return;
-    } catch (err) {
-      if (!isInsufficientSponsoredFeeError(err)) throw err;
-      terminal.current?.println(
-        err instanceof Error ? err.message : String(err),
-        TerminalTextStyle.Red
-      );
-      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-      const input = (await terminal.current?.getInput()) || "";
-      if (input === "r") {
-        await onRefreshPage();
-        return;
-      }
-      if (input === "c") {
-        try {
-          await rebuildWalletAfterConnectionSave();
-        } catch (e) {
-          terminal.current?.println(
-            e instanceof Error ? e.message : String(e),
-            TerminalTextStyle.Red
-          );
-        }
       }
     }
   }
@@ -611,27 +579,50 @@ async function runAccountFeeJuicePreflightGate(params: {
       `Minimum required: ${formatFeeJuiceWei(minWei)}. Current: ${formatFeeJuiceWei(initial.balance)}.`,
       TerminalTextStyle.Subber
     );
+    terminal.current?.println("");
     terminal.current?.println(
-      "Bridge FeeJuice on Aztec (e.g. gregojuice), then confirm your balance here.",
-      TerminalTextStyle.Subber
+      "Fund this account on Aztec with FeeJuice:",
+      TerminalTextStyle.Text
     );
     terminal.current?.println("");
 
-    const activeAddress = wm.getActiveAddress();
-    if (activeAddress) {
+    const activeAddress = wm.getActiveAddress()?.toString();
+    const activeAccount = activeAddress
+      ? wm.getAccounts().find((a) => a.address === activeAddress)
+      : undefined;
+
+    terminal.current?.println(
+      "1. Download your current account info (you will import this into the bridge).",
+      TerminalTextStyle.White
+    );
+    if (activeAccount) {
       terminal.current?.printElement(
-        <CopyAccountAddressButton accountAddress={activeAddress.toString()} />
+        <DownloadAccountInfoButton account={activeAccount} />
       );
       terminal.current?.newline();
+    } else {
+      terminal.current?.println(
+        "No active account available to download.",
+        TerminalTextStyle.Red
+      );
     }
+    terminal.current?.newline();
 
+    terminal.current?.println(
+      "2. Open the bridge, import the downloaded account, and bridge ~100 FeeJuice.",
+      TerminalTextStyle.White
+    );
+    terminal.current?.println(
+      "Tip: Import about 100 FJ — enough headroom for play (minimum is only a few FJ).",
+      TerminalTextStyle.Subber
+    );
     let opened = false;
     terminal.current?.printLink(
-      "↗ Open gregojuice faucet",
+      "↗ Open bridge",
       () => {
         if (!opened) opened = true;
         window.open(
-          externalLinks.aztecTestnet.feeJuiceBridge,
+          externalLinks.aztecMainnet.feeJuiceBridge,
           "_blank",
           "noopener,noreferrer"
         );
@@ -639,10 +630,15 @@ async function runAccountFeeJuicePreflightGate(params: {
       TerminalTextStyle.Blue
     );
     terminal.current?.newline();
+    terminal.current?.newline();
+    terminal.current?.println(
+      "3. Return here and confirm your balance.",
+      TerminalTextStyle.White
+    );
     terminal.current?.println(
       useCompactOptions
         ? "Use ⟳ refresh on the balance line, or wait a few seconds for auto-refresh."
-        : "Click the link above to open the faucet, use ⟳ refresh on the balance line, or wait for auto-refresh.",
+        : "After bridging, use ⟳ refresh on the balance line, or wait for auto-refresh.",
       TerminalTextStyle.Sub
     );
 
@@ -1441,7 +1437,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "deploy",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: "quick",
@@ -1460,14 +1455,18 @@ export function GameLandingPage() {
         if (generation !== quickBootstrapEffectGenRef.current) return;
         quickBootstrapDoneRef.current = true;
         setTerminalVisible(true);
-        terminalHandle.current?.println(
-          err instanceof Error ? err.message : String(err),
-          TerminalTextStyle.Red
-        );
-        terminalHandle.current?.println(
-          "Refresh the page to try again.",
-          TerminalTextStyle.Red
-        );
+        if (isWalletSessionConflictError(err)) {
+          printWalletSessionConflict(terminalHandle.current);
+        } else {
+          terminalHandle.current?.println(
+            err instanceof Error ? err.message : String(err),
+            TerminalTextStyle.Red
+          );
+          terminalHandle.current?.println(
+            "Refresh the page to try again.",
+            TerminalTextStyle.Red
+          );
+        }
         setStep(TerminalPromptStep.TERMINATED);
       }
     })();
@@ -1719,6 +1718,10 @@ export function GameLandingPage() {
             let shouldRescan = false;
             for (;;) {
               terminal.current?.println("No extension wallet detected yet.");
+              terminal.current?.println(
+                "Tip: choose a local wallet instead. Press (b) to go back.",
+                TerminalTextStyle.Sub
+              );
               terminal.current?.printOption("r", "Rescan");
               terminal.current?.printOption("b", "Back");
 
@@ -2275,33 +2278,24 @@ export function GameLandingPage() {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.LOCAL_ACCOUNT_LIST);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickNew) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.GENERATE_ACCOUNT);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickImport) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.IMPORT_ACCOUNT);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickBack && !isWalletSelectionLocked()) {
@@ -2369,22 +2363,14 @@ export function GameLandingPage() {
         const account = accounts[selection - 1];
         try {
           terminal.current?.println("Restoring account...");
-          const result = await walletManager?.switchAccount(
-            account.address,
-            (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
+          await walletManager?.switchAccount(account.address, (msg) =>
+            terminal.current?.println(msg, TerminalTextStyle.Sub)
           );
           lockWalletSelection("local");
-          if (result?.deployed) {
-            terminal.current?.println(
-              "Account already deployed on this network.",
-              TerminalTextStyle.Green
-            );
-          } else {
-            terminal.current?.println(
-              "Account not deployed on this network yet.",
-              TerminalTextStyle.Sub
-            );
-          }
+          terminal.current?.println(
+            "Schnorr account ready (no deployment required).",
+            TerminalTextStyle.Green
+          );
           setStep(TerminalPromptStep.ACCOUNT_SET);
           return;
         } catch (e) {
@@ -2557,9 +2543,11 @@ export function GameLandingPage() {
       let currentStep = "";
       try {
         terminal.current?.println(``);
-        terminal.current?.println("Generating new Aztec account keys...");
         terminal.current?.println(
-          "Key generation is quick. Deployment will happen after you get FeeJuice.",
+          "Generating new Aztec Schnorr account keys..."
+        );
+        terminal.current?.println(
+          "Initializerless accounts need no deploy tx — keys are usable as soon as they are created.",
           TerminalTextStyle.Sub
         );
         terminal.current?.print("  ");
@@ -2661,17 +2649,10 @@ export function GameLandingPage() {
           undefined,
           (msg) => terminal.current?.println(msg, TerminalTextStyle.Sub)
         );
-        if (record.deployed) {
-          terminal.current?.println(
-            "Account already deployed on this network.",
-            TerminalTextStyle.Green
-          );
-        } else {
-          terminal.current?.println(
-            "Account not deployed on this network yet.",
-            TerminalTextStyle.Sub
-          );
-        }
+        terminal.current?.println(
+          "Schnorr account ready (no deployment required).",
+          TerminalTextStyle.Green
+        );
         terminal.current?.println(
           `Imported account with address ${record.address}.`
         );
@@ -2742,7 +2723,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "transactions",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: entryModeRef.current,
@@ -2771,33 +2751,12 @@ export function GameLandingPage() {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
-          purpose: "deploy",
           setConnectionSettingsOpen,
           setTerminalVisible,
           entryMode: entryModeRef.current,
           rebuildWalletAfterConnectionSave,
           onRefreshPage: playRefreshPageTransition,
         });
-        terminal.current?.println(
-          "Sponsor mode: deploying account if needed (sponsored fees)..."
-        );
-        try {
-          await deployActiveAccountWithSponsorRecovery({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        } catch (err) {
-          console.error(err);
-          terminal.current?.println(
-            err instanceof Error ? err.message : String(err),
-            TerminalTextStyle.Red
-          );
-          setStep(TerminalPromptStep.TERMINATED);
-          return;
-        }
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
         }
@@ -2814,10 +2773,6 @@ export function GameLandingPage() {
         rebuildWalletAfterConnectionSave,
         onRefreshPage: playRefreshPageTransition,
       });
-      terminal.current?.println("Deploying account if needed...");
-      await walletManager.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }
@@ -2836,7 +2791,6 @@ export function GameLandingPage() {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
-            purpose: "transactions",
             setConnectionSettingsOpen,
             setTerminalVisible,
             entryMode: entryModeRef.current,
@@ -2865,33 +2819,12 @@ export function GameLandingPage() {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
-          purpose: "deploy",
           setConnectionSettingsOpen,
           setTerminalVisible,
           entryMode: entryModeRef.current,
           rebuildWalletAfterConnectionSave,
           onRefreshPage: playRefreshPageTransition,
         });
-        terminal.current?.println(
-          "Sponsor mode: deploying account if needed (sponsored fees)..."
-        );
-        try {
-          await deployActiveAccountWithSponsorRecovery({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        } catch (err) {
-          console.error(err);
-          terminal.current?.println(
-            err instanceof Error ? err.message : String(err),
-            TerminalTextStyle.Red
-          );
-          setStep(TerminalPromptStep.TERMINATED);
-          return;
-        }
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
         }
@@ -2908,10 +2841,6 @@ export function GameLandingPage() {
         rebuildWalletAfterConnectionSave,
         onRefreshPage: playRefreshPageTransition,
       });
-      terminal.current?.println("Deploying account if needed...");
-      await walletManager.deployActiveAccountIfNeeded((msg) =>
-        terminal.current?.println(msg, TerminalTextStyle.Sub)
-      );
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }
@@ -3205,6 +3134,9 @@ export function GameLandingPage() {
 
       terminal.current?.println(
         "Press ENTER to find a home planet. This may take up to 120s."
+      );
+      terminal.current?.println(
+        "Then Aztec proof generation + submit often takes 1-5 minutes. Keep this tab open."
       );
       terminal.current?.println("This will consume a lot of CPU.");
 
@@ -3539,7 +3471,7 @@ export function GameLandingPage() {
   );
 }
 
-const CopyAccountAddressRow = styled.span`
+const DownloadAccountInfoRow = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -3584,7 +3516,7 @@ const StartupStatusDetail = styled.div`
   }
 `;
 
-const CopyAccountAddressButtonElement = styled.button`
+const DownloadAccountInfoButtonElement = styled.button`
   color: ${dfstyles.colors.dfgreen};
   background: rgba(0, 220, 130, 0.08);
   border: 1px solid ${dfstyles.colors.dfgreen};
@@ -3605,7 +3537,7 @@ const CopyAccountAddressButtonElement = styled.button`
   }
 `;
 
-const CopyAccountAddressStatus = styled.span`
+const DownloadAccountInfoStatus = styled.span`
   color: ${dfstyles.colors.subtext};
 `;
 

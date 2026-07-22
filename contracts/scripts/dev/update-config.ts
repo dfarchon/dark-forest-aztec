@@ -8,17 +8,18 @@
  *   pnpm update-config default           # restore production defaults
  *
  * Requires: .env with ACCOUNT_*, CONFIG_CONTRACT_ADDRESS (run deploy first).
+ * Optional: FEE_PAYMENT_MODE=sponsored|account (default sponsored).
  */
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 
 import {
+    buildSendOpts,
+    createTolerantAztecNodeClient,
+    exitIfAccountFundingRequired,
     getAztecNodeUrl,
     getContractInstances,
     getRequiredEnv,
-    getSponsoredPFCContract,
     loadContractsEnv,
+    prepareFeePayment,
     resolveDeployerAccount,
     setupWallet,
     unwrapSimulateResult,
@@ -141,19 +142,24 @@ async function main() {
     console.log(`Aztec Node URL : ${AZTEC_NODE_URL}\n`);
 
     console.log('Connecting to Aztec node...');
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
 
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
         proverEnabled: false,
     });
-    const sponsoredFPC = await getSponsoredPFCContract();
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+
+    const isShow = command === 'show';
+    const feeCtx = isShow ? undefined : await prepareFeePayment(wallet);
 
     const deployer = await resolveDeployerAccount(wallet, aztecNode, {
         mode: 'loadOnly',
         deployTimeoutMs: 120_000,
-        ensureDeployed: false,
+        ensureDeployed: !isShow,
+        readonlyVerification: isShow,
+        feeCtx,
+        requireAccountFeeJuice: !isShow,
+        commandHint: `pnpm update-config ${command}`,
     });
     console.log(`Account loaded : ${deployer.toString()}\n`);
 
@@ -165,12 +171,10 @@ async function main() {
     const config = contracts['Config']!;
 
     const simOpts = { from: deployer };
-    const sendOpts = {
-        from: deployer,
-        fee: {
-            paymentMethod: new SponsoredFeePaymentMethod(sponsoredFPC.address),
-        },
-    };
+    const sendOpts =
+        feeCtx !== undefined
+            ? buildSendOpts(deployer, feeCtx)
+            : { from: deployer };
 
     // Read current configs (unconstrained = no tx, faster than public simulate)
     const worldConfig = unwrapSimulateResult(
@@ -228,6 +232,7 @@ async function main() {
 }
 
 main().catch((err) => {
+    if (exitIfAccountFundingRequired(err)) return;
     console.error('Error:', err);
     process.exit(1);
 });

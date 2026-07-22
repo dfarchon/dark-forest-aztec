@@ -8,10 +8,10 @@
  * Prerequisites: deploy + configure done, .env has ACCOUNT_* and ADMIN_CONTRACT_ADDRESS
  */
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 
 import {
+    createTolerantAztecNodeClient,
     getAztecNodeUrl,
     getContractInstances,
     getOptionalEnv,
@@ -48,7 +48,7 @@ async function main() {
     );
     console.log(`   Node: ${AZTEC_NODE_URL}\n`);
 
-    const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+    const aztecNode = createTolerantAztecNodeClient(AZTEC_NODE_URL);
     const wallet = await setupWallet(aztecNode, {
         clearStore: false,
         proverEnabled: PROVER_ENABLED,
