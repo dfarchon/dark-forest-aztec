@@ -78,6 +78,7 @@ import type {
   SponsorFeeJuicePreflight,
   WalletManagerConfig,
 } from "./types";
+import { acquireWalletSessionLock } from "./walletSessionLock";
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
@@ -518,6 +519,8 @@ export class WalletManager {
     }
 
     onProgress?.(4, total, "Creating PXE");
+    // OPFS SAH handles are exclusive per origin; fail fast if another tab holds them.
+    await acquireWalletSessionLock();
     const wallet = await EmbeddedWallet.create(node, {
       pxe: {
         dataDirectory: pxeDataDir,
