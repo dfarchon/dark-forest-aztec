@@ -56,9 +56,9 @@ export const externalLinks = {
         "https://ivanchub.notion.site/Dark-Forest-is-Hiring-ad1f0cbe816640fb9b4c663dacaaca04",
     },
   },
-
-  aztecTestnet: {
-    feeJuiceBridge: "https://bridge.gregojuice.anothercoffeefor.me/",
+  aztecMainnet: {
+    /** Official Aztec mainnet Ethereum ↔ Aztec bridge (Shield). */
+    feeJuiceBridge: "https://df-aztec-bridge-api.vercel.app",
   },
 } as const;
 

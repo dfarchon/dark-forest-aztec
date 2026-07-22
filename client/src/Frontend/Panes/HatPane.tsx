@@ -85,7 +85,7 @@ export function HatPane({
         </div>
 
         <EmSpacer height={1} />
-        <Link to={externalLinks.aztecTestnet.feeJuiceBridge}>
+        <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
           Get FeeJuice / {L2_TOKEN_SYMBOL}
         </Link>
         <EmSpacer height={0.5} />

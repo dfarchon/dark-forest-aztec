@@ -335,9 +335,10 @@ export class TxExecutor {
                 }`
               );
             }
+
             if (bal < minAccountFj) {
               throw new Error(
-                `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice (e.g. gregojuice) before sending transactions.`
+                `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
               );
             }
           }
