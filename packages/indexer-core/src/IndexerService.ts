@@ -190,8 +190,8 @@ export class IndexerService {
       this.isSyncing = false;
       this.notifyListeners({
         tables: [],
-        fromBlock: toBlock,
-        toBlock,
+        fromBlock: this.snapshot.lastProcessedBlock,
+        toBlock: this.snapshot.lastProcessedBlock,
       });
     }
   }
@@ -618,10 +618,10 @@ export class IndexerService {
         );
       }, timeoutMs);
 
-      const unsub = this.subscribe((payload) => {
-        if (payload.toBlock >= blockNumber) {
+      const unsub = this.subscribe(() => {
+        if (this.snapshot.lastProcessedBlock >= blockNumber) {
           console.log(
-            `[DEBUG waitForBlock] synced to block ${payload.toBlock}, resolving`,
+            `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
           );
           clearTimeout(timer);
           unsub();
