@@ -22,7 +22,7 @@ import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { waitForTx } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { TxHash, TxReceipt } from "@aztec/stdlib/tx";
+import { type TxHash, type TxReceipt, TxStatus } from "@aztec/stdlib/tx";
 import type {
   PersistedTransaction,
   Transaction,
@@ -255,6 +255,7 @@ export class TxExecutor {
     waitForTx(this.node, ser.hash, {
       timeout: 120,
       dontThrowOnRevert: true,
+      waitForStatus: TxStatus.PROPOSED,
     })
       .then((receipt) => {
         if (receipt.hasExecutionSucceeded()) {
@@ -420,6 +421,7 @@ export class TxExecutor {
         const receipt = await waitForTx(this.node, submitted, {
           timeout: 120,
           dontThrowOnRevert: true,
+          waitForStatus: TxStatus.PROPOSED,
         });
 
         // 8. Check result — v0.6 lines 386-397

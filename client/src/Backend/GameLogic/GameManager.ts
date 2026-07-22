@@ -931,28 +931,30 @@ class GameManager extends EventEmitter {
         if (!tx.hash) return; // this should never happen
         gameManager.persistentChunkStore.onEthTxComplete(tx.hash.toString());
 
+        const syncIndexerToReceipt = async (): Promise<void> => {
+          const receipt = await tx.confirmedPromise;
+          if (receipt.blockNumber != null) {
+            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
+          }
+        };
+
         if (isUnconfirmedRevealTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedInitTx(tx)) {
-          const receipt = await tx.confirmedPromise;
           gameManager.entityStore.clearUnconfirmedTxIntent(tx);
           gameManager.onTxConfirmed(tx);
           terminal.current?.println(
             "Syncing home planet from indexer...",
             TerminalTextStyle.Sub
           );
-          if (receipt.blockNumber != null) {
-            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
-          }
+          await syncIndexerToReceipt();
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
           // mining manager should be initialized already via joinGame, but just in case...
           gameManager.initMiningManager(tx.intent.location.coords, 4);
           return;
         } else if (isUnconfirmedMoveTx(tx)) {
-          const receipt = await tx.confirmedPromise;
-          if (receipt.blockNumber != null) {
-            await gameManager.contractsAPI.waitForBlock(receipt.blockNumber);
-          }
+          await syncIndexerToReceipt();
           const promises = [
             gameManager.bulkHardRefreshPlanets([tx.intent.from, tx.intent.to]),
           ];
@@ -961,41 +963,52 @@ class GameManager extends EventEmitter {
           }
           await Promise.all(promises);
         } else if (isUnconfirmedUpgradeTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedBuyHatTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedFindArtifactTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.hardRefreshPlanet(tx.intent.planetId);
         } else if (isUnconfirmedDepositArtifactTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             gameManager.hardRefreshPlanet(tx.intent.locationId),
             gameManager.hardRefreshArtifact(tx.intent.artifactId),
           ]);
         } else if (isUnconfirmedWithdrawArtifactTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             await gameManager.hardRefreshPlanet(tx.intent.locationId),
             await gameManager.hardRefreshArtifact(tx.intent.artifactId),
           ]);
         } else if (isUnconfirmedProspectPlanetTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.softRefreshPlanet(tx.intent.planetId);
         } else if (isUnconfirmedActivateArtifactTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             gameManager.hardRefreshPlanet(tx.intent.locationId),
             gameManager.hardRefreshArtifact(tx.intent.artifactId),
           ]);
         } else if (isUnconfirmedDeactivateArtifactTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             gameManager.hardRefreshPlanet(tx.intent.locationId),
             gameManager.hardRefreshArtifact(tx.intent.artifactId),
           ]);
         } else if (isUnconfirmedWithdrawSilverTx(tx)) {
+          await syncIndexerToReceipt();
           await gameManager.softRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedCapturePlanetTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
           ]);
         } else if (isUnconfirmedInvadePlanetTx(tx)) {
+          await syncIndexerToReceipt();
           await Promise.all([
             gameManager.hardRefreshPlayer(gameManager.getAccount()),
             gameManager.hardRefreshPlanet(tx.intent.locationId),
@@ -1007,8 +1020,10 @@ class GameManager extends EventEmitter {
           gameManager.paused = false;
           gameManager.paused$.publish(false);
         } else if (isUnconfirmedCreatePlanetTx(tx)) {
+          await syncIndexerToReceipt();
           gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedSafeSetOwnerTx(tx)) {
+          await syncIndexerToReceipt();
           gameManager.hardRefreshPlanet(tx.intent.locationId);
         }
 

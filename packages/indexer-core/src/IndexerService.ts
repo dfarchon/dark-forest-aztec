@@ -94,6 +94,7 @@ export class IndexerService {
   private snapshot: IndexerSnapshot = emptySnapshot();
   private latestKnownBlock: number = 0;
   private isSyncing: boolean = false;
+  private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private lifecycle: IndexerLifecycle = "idle";
 
@@ -123,7 +124,7 @@ export class IndexerService {
 
     /** Called when we learn of a new latest block (poll or push). */
     this.onLatestBlock = (latest: number) => {
-      this.latestKnownBlock = latest;
+      this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
       debouncedProcess();
     };
   }
@@ -140,6 +141,22 @@ export class IndexerService {
    * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
    */
   private async processNewBlocks(): Promise<void> {
+    if (this.syncPromise) {
+      return this.syncPromise;
+    }
+
+    const syncPromise = this.processPendingBlocks();
+    this.syncPromise = syncPromise;
+    try {
+      await syncPromise;
+    } finally {
+      if (this.syncPromise === syncPromise) {
+        this.syncPromise = undefined;
+      }
+    }
+  }
+
+  private async processPendingBlocks(): Promise<void> {
     let fromBlock = this.snapshot.lastProcessedBlock + 1;
     const toBlock = this.latestKnownBlock;
     if (fromBlock > toBlock) return;
@@ -176,6 +193,19 @@ export class IndexerService {
         fromBlock: toBlock,
         toBlock,
       });
+    }
+  }
+
+  /**
+   * Immediately fetches the node's latest L2 tip and processes any missing blocks.
+   * Concurrent callers share the in-flight processing work.
+   */
+  private async syncToLatest(): Promise<void> {
+    const latest = await this.source.getLatestBlockNumber();
+    this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
+    await this.processNewBlocks();
+    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+      await this.processNewBlocks();
     }
   }
 
@@ -558,14 +588,26 @@ export class IndexerService {
    * Returns a promise that resolves when the indexer has processed
    * at least up to the given block number.
    */
-  waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
+  async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
     console.log(
       `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
     );
     if (this.snapshot.lastProcessedBlock >= blockNumber) {
       console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
-      return Promise.resolve();
+      return;
     }
+
+    try {
+      await this.syncToLatest();
+    } catch (err) {
+      console.warn("[IndexerService] immediate sync failed:", err);
+    }
+
+    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+      console.log(`[DEBUG waitForBlock] immediate sync reached ${blockNumber}`);
+      return;
+    }
+
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         unsub();
