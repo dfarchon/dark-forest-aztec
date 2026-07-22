@@ -57,6 +57,9 @@ import { ConfigCache } from "../../Session/TxExecutor/ConfigCache";
 import { TxExecutor } from "../../Session/TxExecutor/TxExecutor";
 import {
   createWalletManager,
+  isWalletSessionConflictError,
+  WALLET_SESSION_CONFLICT_HINT,
+  WALLET_SESSION_CONFLICT_MESSAGE,
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
@@ -103,6 +106,27 @@ function formatFeeJuice(amount: bigint): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function printWalletSessionConflict(
+  terminal: Pick<TerminalHandle, "println"> | undefined | null
+): void {
+  terminal?.println(WALLET_SESSION_CONFLICT_MESSAGE, TerminalTextStyle.Red);
+  terminal?.println(WALLET_SESSION_CONFLICT_HINT, TerminalTextStyle.Red);
+}
+
+function printLocalWalletInitFailure(
+  terminal: Pick<TerminalHandle, "println"> | undefined | null,
+  err: unknown
+): void {
+  if (isWalletSessionConflictError(err)) {
+    printWalletSessionConflict(terminal);
+    return;
+  }
+  terminal?.println(
+    "Unable to initialize the local wallet. Please try again.",
+    TerminalTextStyle.Red
+  );
 }
 
 function printGameLandingDebugConfig({
@@ -1431,14 +1455,18 @@ export function GameLandingPage() {
         if (generation !== quickBootstrapEffectGenRef.current) return;
         quickBootstrapDoneRef.current = true;
         setTerminalVisible(true);
-        terminalHandle.current?.println(
-          err instanceof Error ? err.message : String(err),
-          TerminalTextStyle.Red
-        );
-        terminalHandle.current?.println(
-          "Refresh the page to try again.",
-          TerminalTextStyle.Red
-        );
+        if (isWalletSessionConflictError(err)) {
+          printWalletSessionConflict(terminalHandle.current);
+        } else {
+          terminalHandle.current?.println(
+            err instanceof Error ? err.message : String(err),
+            TerminalTextStyle.Red
+          );
+          terminalHandle.current?.println(
+            "Refresh the page to try again.",
+            TerminalTextStyle.Red
+          );
+        }
         setStep(TerminalPromptStep.TERMINATED);
       }
     })();
@@ -2250,33 +2278,24 @@ export function GameLandingPage() {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.LOCAL_ACCOUNT_LIST);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickNew) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.GENERATE_ACCOUNT);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickImport) {
           try {
             await ensureEmbeddedWalletManager();
             setStep(TerminalPromptStep.IMPORT_ACCOUNT);
-          } catch {
-            terminal.current?.println(
-              "Unable to initialize the local wallet. Please try again.",
-              TerminalTextStyle.Red
-            );
+          } catch (err) {
+            printLocalWalletInitFailure(terminal.current, err);
             await advanceStateFromWalletMenu(terminal);
           }
         } else if (pickBack && !isWalletSelectionLocked()) {
