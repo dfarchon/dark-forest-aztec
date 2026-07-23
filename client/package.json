@@ -22,6 +22,7 @@
     "@aztec/constants": "5.0.1",
     "@aztec/foundation": "5.0.1",
     "@aztec/noir-contracts.js": "5.0.1",
+    "@aztec/stdlib": "5.0.1",
     "@aztec/wallets": "5.0.1",
     "@dfpunk/constants": "workspace:*",
     "@dfpunk/contracts": "workspace:*",

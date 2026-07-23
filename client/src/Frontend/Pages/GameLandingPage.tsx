@@ -1,7 +1,6 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { Fr } from "@aztec/aztec.js/fields";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import type { Aliased } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
@@ -27,6 +26,7 @@ import TutorialManager, {
   TutorialState,
 } from "../../Backend/GameLogic/TutorialManager";
 import { ChainClock } from "../../Backend/Utils/ChainClock";
+import { createUnbatchedAztecNodeClient } from "../../config/aztecNodeClient";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
@@ -241,7 +241,7 @@ async function printInitialSponsorStatus(
   terminal.current?.println("Sponsor mode enabled.", TerminalTextStyle.Green);
   try {
     const sponsoredAddr = await resolveInitialSponsoredFpcAddress();
-    const node = createAztecNodeClient(getEffectiveNodeUrl());
+    const node = createUnbatchedAztecNodeClient(getEffectiveNodeUrl());
     const balanceWei = await getFeeJuiceBalance(sponsoredAddr, node);
     const minWei = getSponsoredFpcMinBalanceFjWei();
 
@@ -493,7 +493,7 @@ async function runAccountFeeJuicePreflightGate(params: {
     const addr = wm.getActiveAddress();
     if (!addr) return { ok: false, error: new Error("No active account") };
     try {
-      const node = createAztecNodeClient(getEffectiveNodeUrl());
+      const node = createUnbatchedAztecNodeClient(getEffectiveNodeUrl());
       const balance = await getFeeJuiceBalance(addr, node);
       await wm.getBalance();
       return { ok: true, balance };
@@ -2880,7 +2880,7 @@ export function GameLandingPage() {
         });
         terminal.current?.println("Building ContractsAPI...");
 
-        const node = createAztecNodeClient(getEffectiveNodeUrl());
+        const node = createUnbatchedAztecNodeClient(getEffectiveNodeUrl());
         const wallet = walletManager.getWallet();
         const configContract = ConfigContract.at(
           AztecAddress.fromStringUnsafe(CONFIG_CONTRACT_ADDRESS),

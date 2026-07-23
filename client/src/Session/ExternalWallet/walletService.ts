@@ -1,6 +1,5 @@
 import type { ChainInfo } from "@aztec/aztec.js/account";
 import { Fr } from "@aztec/aztec.js/fields";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import type { Wallet } from "@aztec/aztec.js/wallet";
 import {
   type DiscoverySession,
@@ -9,13 +8,15 @@ import {
   type WalletProvider,
 } from "@aztec/wallet-sdk/manager";
 
+import { createUnbatchedAztecNodeClient } from "../../config/aztecNodeClient";
+
 const APP_ID = "dfpunk";
 // App-level default so wallet discovery completes quickly without requiring
 // every caller to override the SDK's longer fallback timeout.
 const DEFAULT_WALLET_DISCOVERY_TIMEOUT_MS = 5_000;
 
 async function getChainInfo(nodeUrl: string): Promise<ChainInfo> {
-  const node = createAztecNodeClient(nodeUrl);
+  const node = createUnbatchedAztecNodeClient(nodeUrl);
   const info = await node.getNodeInfo();
   return {
     chainId: Fr.fromString(info.l1ChainId.toString()),

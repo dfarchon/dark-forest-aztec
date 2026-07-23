@@ -14,13 +14,13 @@ import "./TestPageStyles.css";
 
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { AztecNode } from "@aztec/aztec.js/node";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { CONFIG_CONTRACT_ADDRESS, START_BLOCK } from "@dfpunk/contracts";
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
 import * as React from "react";
 
 import { ChainClock } from "../../../Backend/Utils/ChainClock";
+import { createUnbatchedAztecNodeClient } from "../../../config/aztecNodeClient";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
@@ -219,7 +219,7 @@ export function TxExecutorTestPage() {
 
       // 3. AztecNode client (separate from WalletManager's private node)
       setInitStep("Connecting to Aztec node…");
-      const node = createAztecNodeClient(getEffectiveNodeUrl());
+      const node = createUnbatchedAztecNodeClient(getEffectiveNodeUrl());
       nodeRef.current = node;
 
       // 4. ConfigContract

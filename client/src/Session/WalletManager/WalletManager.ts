@@ -1,7 +1,7 @@
 /**
  * WalletManager: EthConnection-equivalent for Aztec.
  *
- * Connects to an Aztec Node via createAztecNodeClient, creates a browser-embedded
+ * Connects to an Aztec Node via createUnbatchedAztecNodeClient, creates a browser-embedded
  * EmbeddedWallet (with internal PXE), and manages Schnorr initializerless accounts
  * with localStorage persistence via KeyStore.
  */
@@ -11,7 +11,7 @@ import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { BlockNumber, Fq, Fr } from "@aztec/aztec.js/fields";
 import type { AztecNode } from "@aztec/aztec.js/node";
-import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
+import { waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
@@ -71,6 +71,7 @@ import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldS
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
+import { createUnbatchedAztecNodeClient } from "../../config/aztecNodeClient";
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
 import { KeyStore } from "./KeyStore";
 import type {
@@ -357,7 +358,7 @@ export class WalletManager {
   // ---------------------------------------------------------------------------
 
   static async create(config: WalletManagerConfig): Promise<WalletManager> {
-    const node = createAztecNodeClient(config.nodeUrl);
+    const node = createUnbatchedAztecNodeClient(config.nodeUrl);
     const onProgress = config.onWalletProgress;
     const total =
       WALLET_INIT_TOTAL_STEPS_BASE +
@@ -422,7 +423,7 @@ export class WalletManager {
     config: WalletManagerConfig,
     preferredAddress?: AztecAddress
   ): Promise<WalletManager> {
-    const node = createAztecNodeClient(config.nodeUrl);
+    const node = createUnbatchedAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;

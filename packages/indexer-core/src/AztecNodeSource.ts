@@ -5,10 +5,17 @@
 
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { type EventCursor, getPublicEvents } from "@aztec/aztec.js/events";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { BlockNumber } from "@aztec/foundation/branded-types";
+import {
+  createSafeJsonRpcClient,
+  makeFetch,
+} from "@aztec/foundation/json-rpc/client";
 import type { EventMetadataDefinition } from "@aztec/stdlib/abi";
-import type { AztecNode } from "@aztec/stdlib/interfaces/client";
+import {
+  AztecNodeApiSchema,
+  type AztecNode,
+} from "@aztec/stdlib/interfaces/client";
+import { getVersioningResponseHandler } from "@aztec/stdlib/versioning";
 import {
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
@@ -130,7 +137,15 @@ export function createAztecNodeBlockSource(
     toBlock: number,
   ) => Promise<BlockUpdates>;
 } {
-  const node = createAztecNodeClient(nodeUrl) as AztecNode;
+  // dRPC free plan rejects JSON-RPC batches > 3; Aztec's helper defaults to 100
+  // and does not expose maxBatchSize, so construct the client with batching off.
+  const node = createSafeJsonRpcClient<AztecNode>(nodeUrl, AztecNodeApiSchema, {
+    namespaceMethods: "aztec",
+    fetch: makeFetch([1, 2, 3], false),
+    batchWindowMS: 0,
+    maxBatchSize: 1,
+    onResponse: getVersioningResponseHandler({}),
+  });
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
 
   const specsWithArtifacts = STORAGE_SPECS.filter((spec) => {
