@@ -47,7 +47,7 @@ In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBl
 
 1. Validate contracts config and parse runtime config.
 2. Initialize `SnapshotStore` (SQLite, WAL mode).
-3. Create `IndexerService` with `createAztecNodeBlockSource(aztecNodeUrl)`.
+3. Create `IndexerService` with `createAztecNodeBlockSource(aztecNodeUrl, undefined, aztecNodeUrlBackup)`. When `AZTEC_NODE_URL_BACKUP` is set, a transparent failover proxy wraps the primary and backup RPC clients: on primary failure, calls are automatically retried on backup, with periodic primary recovery probes (60 s cooldown).
 4. Create `SnapshotCache` bound to the indexer.
 5. Run `runServerRuntime()`:
    - Restore snapshot from SQLite; verify v1 JSON against v2 chunk reconstruction.
@@ -102,6 +102,7 @@ Env file references: `.env.example` (generic), `env.local.example` (local testne
 | Variable                   | Default                              | Notes                                                                                                  |
 | -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `AZTEC_NODE_URL`           | `https://canonical.testnet.rpc.aztec-labs.com` | Use `http://localhost:8080` for local sandbox                                                          |
+| `AZTEC_NODE_URL_BACKUP`    | (empty)                              | Optional backup RPC URL for automatic failover. When set, RPC call failures on primary trigger an immediate switch to backup with retry. Empty = no failover (zero overhead). |
 | `CORS_ORIGINS`             | local Vite + Netlify origins         | Comma-separated; `*` = any; empty = disabled                                                           |
 | `INDEXER_START_BLOCK`      | `START_BLOCK` from contracts         | Optional override                                                                                      |
 | `PORT`                     | `3001`                               | Local default. On Railway (and similar hosts), **omit `PORT`** and use the value the platform injects. |
@@ -247,7 +248,8 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 
 ## Failure & Recovery
 
-- **Fast-fail on RPC unreachable**: `main().catch(() => process.exit(1))` — if `indexer.start()` cannot reach `AZTEC_NODE_URL`, the process exits immediately. Railway's `ON_FAILURE` restart policy (max 10 retries) brings it back automatically; for prolonged outages, run `railway redeploy --yes` once the RPC recovers.
+- **Automatic RPC failover**: when `AZTEC_NODE_URL_BACKUP` is set, a transparent proxy intercepts all RPC calls. If the primary fails (network error, timeout), the call is retried on the backup and subsequent calls go to the backup until a 60 s cooldown elapses, after which the next call probes the primary again. Failover events are logged with `[FailoverNode]` prefix. When `AZTEC_NODE_URL_BACKUP` is unset, behavior is unchanged.
+- **Fast-fail on RPC unreachable**: `main().catch(() => process.exit(1))` — if `indexer.start()` cannot reach `AZTEC_NODE_URL` (and no backup is configured, or both are unreachable), the process exits immediately. Railway's `ON_FAILURE` restart policy (max 10 retries) brings it back automatically; for prolonged outages, run `railway redeploy --yes` once the RPC recovers.
 - **Local RPC diagnostics**: if `curl https://canonical.testnet.rpc.aztec-labs.com` fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` address, a local PAC/WPAD proxy (Clash/Surge fake-ip) is intercepting the domain — not an RPC outage. Pin the real IP via `dig @8.8.8.8` or disable the proxy to verify.
 - Event decode failures cause startup/polling to fail fast with logged error.
 - On restart, last persisted snapshot is restored and sync catches up from there.
