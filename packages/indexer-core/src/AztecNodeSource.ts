@@ -116,13 +116,86 @@ function toIdStr(v: unknown): string {
 }
 
 /**
+ * Wraps two AztecNode clients (primary + backup) behind a transparent Proxy.
+ *
+ * Every method call goes to the currently-active node. If the primary fails
+ * (network error, timeout, etc.), the proxy switches to the backup and retries
+ * the call. After a cooldown period it probes the primary again and switches
+ * back on success.
+ *
+ * If no backup URL is provided, the primary is returned as-is (no overhead).
+ */
+function createFailoverNode(primaryUrl: string, backupUrl?: string): AztecNode {
+  const primary = createAztecNodeClient(primaryUrl) as AztecNode;
+
+  if (!backupUrl) return primary;
+
+  const backup = createAztecNodeClient(backupUrl) as AztecNode;
+  const COOLDOWN_MS = 60_000; // try primary again after 60 s on backup
+
+  let active: AztecNode = primary;
+  let activeLabel = "primary";
+  let lastFailoverAt = 0;
+
+  const tryPrimaryRecovery = (): void => {
+    if (active === primary) return;
+    if (Date.now() - lastFailoverAt < COOLDOWN_MS) return;
+    active = primary;
+    activeLabel = "primary";
+  };
+
+  const failover = (reason: string): void => {
+    if (active === backup) return;
+    active = backup;
+    activeLabel = "backup";
+    lastFailoverAt = Date.now();
+    console.warn(
+      `[FailoverNode] Switched to backup (${reason}). Will retry primary in ${COOLDOWN_MS / 1000}s.`,
+    );
+  };
+
+  return new Proxy({} as AztecNode, {
+    get(_target, prop: string | symbol) {
+      tryPrimaryRecovery();
+
+      const value = Reflect.get(active, prop, active);
+
+      if (typeof value !== "function") return value;
+
+      // Wrap async methods so a rejection on primary triggers failover + retry.
+      return async (...args: unknown[]) => {
+        try {
+          return await (value as (...a: unknown[]) => unknown).apply(
+            active,
+            args,
+          );
+        } catch (err) {
+          if (active === primary) {
+            const msg = err instanceof Error ? err.message : String(err);
+            failover(msg);
+            // Retry once on backup.
+            const backupValue = Reflect.get(backup, prop, backup) as (
+              ...a: unknown[]
+            ) => unknown;
+            return await backupValue.apply(backup, args);
+          }
+          throw err;
+        }
+      };
+    },
+  });
+}
+
+/**
  * Returns an IBlockEventSource that reads public storage events from the Aztec node.
  * @param nodeUrl - Aztec node URL (e.g. http://localhost:8080)
  * @param contractAddresses - Optional map of storage contract name to hex address; omitted entries use defaults from @dfpunk/contracts
+ * @param backupNodeUrl - Optional backup Aztec node URL for automatic failover
  */
 export function createAztecNodeBlockSource(
   nodeUrl: string,
   contractAddresses?: StorageContractAddresses,
+  backupNodeUrl?: string,
 ): {
   getLatestBlockNumber: () => Promise<number>;
   getBlockUpdates: (
@@ -130,7 +203,7 @@ export function createAztecNodeBlockSource(
     toBlock: number,
   ) => Promise<BlockUpdates>;
 } {
-  const node = createAztecNodeClient(nodeUrl) as AztecNode;
+  const node = createFailoverNode(nodeUrl, backupNodeUrl);
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
 
   const specsWithArtifacts = STORAGE_SPECS.filter((spec) => {

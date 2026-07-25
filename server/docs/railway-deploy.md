@@ -19,6 +19,8 @@ Service shape: builder `DOCKERFILE`, Dockerfile path `server/Dockerfile`, build 
 
 ```bash
 AZTEC_NODE_URL=https://canonical.testnet.rpc.aztec-labs.com
+# Optional: backup RPC for automatic failover (see Operational Notes)
+# AZTEC_NODE_URL_BACKUP=https://your-backup-rpc.example
 CORS_ORIGINS=https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app
 SQLITE_PATH=/data/indexer.db
 SNAPSHOT_SCHEMA_VERSION=1
@@ -116,7 +118,7 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 
 **RPC unreachable / TLS handshake failures** — `canonical.testnet.rpc.aztec-labs.com` is the canonical Aztec testnet RPC (confirmed via Aztec v5.0.1 release; the older `rpc.testnet.aztec-labs.com` endpoint had TLS failures). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 canonical.testnet.rpc.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
 
-**Crash-on-RPC-failure loop** — `src/index.ts` calls `main().catch(() => process.exit(1))`. If `indexer.start()` cannot reach the RPC, the process exits and Railway's `ON_FAILURE` policy restarts it (up to 10 retries). If the RPC outage lasts longer than the retry budget, the service stays down and needs a manual `railway redeploy --yes` once the RPC recovers.
+**Crash-on-RPC-failure loop** — `src/index.ts` calls `main().catch(() => process.exit(1))`. If `indexer.start()` cannot reach the RPC, the process exits and Railway's `ON_FAILURE` policy restarts it (up to 10 retries). If the RPC outage lasts longer than the retry budget, the service stays down and needs a manual `railway redeploy --yes` once the RPC recovers. Setting `AZTEC_NODE_URL_BACKUP` mitigates this: the failover proxy retries on the backup before the error propagates.
 
 **Healthcheck timeout too short** — Railway's default 30s is insufficient for first-time sync (SQLite restore + block catch-up). Raise `healthcheckTimeout` to 300s via the Railway API.
 
@@ -129,6 +131,7 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 - **Healthcheck endpoint**: `/health` returns `lifecycle: "syncing"` during catch-up and `lifecycle: "live"` once live. Raise the platform healthcheck timeout to 300s for first deploy.
 - **Restart policy**: `ON_FAILURE` with max 10 retries. For prolonged RPC outages, manually redeploy after recovery.
 - **CORS env vs. code default**: `CORS_ORIGINS` env var wins over `DEFAULT_CORS_ORIGINS` in `server/src/config.ts`. Keep both in sync with the real frontend domain.
+- **Automatic RPC failover**: when `AZTEC_NODE_URL_BACKUP` is set, a transparent proxy wraps the primary and backup AztecNode clients. On primary failure (network error, timeout), the call is retried on backup and subsequent calls route to backup until a 60 s cooldown elapses, after which the next call probes primary again. Failover events are logged with `[FailoverNode]` prefix. When unset, behavior is unchanged (zero overhead).
 
 ## Notes
 
