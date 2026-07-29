@@ -132,7 +132,9 @@ export async function hasSubscribed(query: {
   player: AztecAddress;
 }): Promise<boolean> {
   const { siloNullifier } = await import("@aztec/stdlib/hash");
-  const nullifier = siloNullifier(
+  // siloNullifier is async; an unawaited promise reaches the RPC layer as an
+  // opaque object and fails schema validation rather than anything obvious.
+  const nullifier = await siloNullifier(
     query.fpcAddress,
     await computePlayerNullifier(query.generation, query.player),
   );

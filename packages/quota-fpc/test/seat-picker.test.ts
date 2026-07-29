@@ -23,6 +23,17 @@ function nodeWithTakenSeats(
       if (tree !== 0) {
         throw new Error(`expected the nullifier tree (0), got ${tree}`);
       }
+      // Leaves must be resolved values. An unawaited promise reaches the real
+      // RPC layer as an opaque object and fails schema validation with a
+      // message that points nowhere near the cause.
+      for (const leaf of leaves) {
+        if (
+          leaf instanceof Promise ||
+          typeof (leaf as { then?: unknown })?.then === "function"
+        ) {
+          throw new Error("leaf value is a promise — it was not awaited");
+        }
+      }
       // Leaves arrive in seat order, chunked; map each back by position.
       return leaves.map((_, i) => (takenIndexes.includes(i) ? 1 : undefined));
     },
@@ -86,5 +97,56 @@ describe("seat picker", () => {
     };
     expect(await findFreeSeat(query, () => 0)).toBe(0);
     expect(await findFreeSeat(query, () => 0.95)).toBe(9);
+  });
+});
+
+describe("hasSubscribed", () => {
+  test("passes resolved leaf values to the node, never promises", async () => {
+    const { hasSubscribed } = await import("../src/seat-picker.js");
+    const seen: unknown[] = [];
+    const node: SeatProbeNode = {
+      async findLeavesIndexes(_block, tree, leaves) {
+        expect(tree).toBe(0);
+        seen.push(...leaves);
+        return leaves.map(() => undefined);
+      },
+    };
+
+    const player = AztecAddress.fromStringUnsafe(
+      "0x201d3ae7ed4e9a8c15b29bc5b7c07d660c150b29d86f6317d4cc101885f722b8",
+    );
+    const subscribed = await hasSubscribed({
+      node,
+      fpcAddress: FPC,
+      generation: 20_663,
+      player,
+    });
+
+    expect(subscribed).toBe(false);
+    expect(seen).toHaveLength(1);
+    // The regression this pins: an unawaited siloNullifier promise here made
+    // every allowance read fail, which silently disabled sponsorship.
+    expect(typeof (seen[0] as { then?: unknown })?.then).not.toBe("function");
+    expect(String(seen[0])).toMatch(/^0x[0-9a-f]+$/i);
+  });
+
+  test("reports a claimed allowance when the nullifier is present", async () => {
+    const { hasSubscribed } = await import("../src/seat-picker.js");
+    const node: SeatProbeNode = {
+      async findLeavesIndexes(_block, _tree, leaves) {
+        return leaves.map(() => 7);
+      },
+    };
+    const player = AztecAddress.fromStringUnsafe(
+      "0x201d3ae7ed4e9a8c15b29bc5b7c07d660c150b29d86f6317d4cc101885f722b8",
+    );
+    expect(
+      await hasSubscribed({
+        node,
+        fpcAddress: FPC,
+        generation: 20_663,
+        player,
+      }),
+    ).toBe(true);
   });
 });
