@@ -132,7 +132,7 @@ Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full l
 
 **Validation gate** — Commands: scripted E2E on sandbox (deploy → calibrate → constants file emitted → integration suite still green with declared settings) && `pnpm --filter contracts run lint`. Pass: exit 0. Layers: integration (sandbox) + lint.
 
-### Phase 6 — Client integration (thin)
+### Phase 6 — Client integration (thin) ✓ (plumbing; sandwich assembly lands with Phase 7 UI)
 
 `env.ts` (`VITE_QUOTA_FPC_ADDRESS` activates quota mode inside the existing `VITE_SPONSOR_MODE` path — one switch), WalletManager registration (embedded-only per Ask A6), TxExecutor thin adapter delegating to the engine (fee-source chain, no blind retry for quota txs). *Shape-dependent*: the standard shape slots into the existing payment-method plumbing; the sandwich shape additionally lands the custom `EntrypointInterface` + wallet-level tx assembly path scoped in spike 1B(v) — the shape gate's client-delta estimate becomes this phase's spec.
 

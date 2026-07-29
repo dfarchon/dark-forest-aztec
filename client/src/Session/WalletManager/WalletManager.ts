@@ -322,10 +322,43 @@ async function registerSponsoredFpcWithWallet(
   return sponsoredFPC.address;
 }
 
+/**
+ * Registers the QuotaFpc paymaster so the wallet can simulate and prove against
+ * it. Unlike the SponsoredFPC, this contract must already be deployed — its
+ * address is deployment-specific and comes from config.
+ */
+async function registerQuotaFpcWithWallet(
+  node: AztecNode,
+  wallet: Wallet,
+  config: WalletManagerConfig,
+  onRegisterProgress?: (message: string) => void
+): Promise<AztecAddress | undefined> {
+  const configured = config.quotaFpcAddress?.trim();
+  if (!configured) return undefined;
+
+  const address = AztecAddress.fromStringUnsafe(configured);
+  const instance = await node.getContract(address);
+  if (!instance) {
+    // Deliberately not fatal: the game must remain playable (players pay their
+    // own way) if the paymaster is missing or points at the wrong network.
+    console.warn(
+      `[WalletManager] QuotaFpc not found at ${configured}; continuing without sponsored transactions.`
+    );
+    return undefined;
+  }
+
+  const { QuotaFpcContractArtifact } =
+    await import("@dfpunk/contracts/artifacts/QuotaFpc");
+  onRegisterProgress?.("Registering sponsored-transaction paymaster");
+  await wallet.registerContract(instance, QuotaFpcContractArtifact);
+  return instance.address;
+}
+
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: Wallet;
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
+  private readonly quotaFpcAddress: AztecAddress | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
@@ -341,11 +374,13 @@ export class WalletManager {
     wallet: Wallet,
     sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore,
-    isExternal: boolean
+    isExternal: boolean,
+    quotaFpcAddress?: AztecAddress
   ) {
     this.node = node;
     this.wallet = wallet;
     this.sponsoredFpcAddress = sponsoredFpcAddress;
+    this.quotaFpcAddress = quotaFpcAddress;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
     this.walletChanged$ = monomitter(true);
@@ -426,6 +461,7 @@ export class WalletManager {
     await waitForNode(node);
 
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+    let quotaFpcAddress: AztecAddress | undefined = undefined;
     if (config.sponsorMode) {
       try {
         sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
@@ -441,6 +477,13 @@ export class WalletManager {
       }
     }
 
+    try {
+      quotaFpcAddress = await registerQuotaFpcWithWallet(node, wallet, config);
+    } catch (err) {
+      // Never fatal: without the paymaster players simply pay their own fees.
+      console.warn("[WalletManager] Failed to register QuotaFpc:", err);
+    }
+
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     const contractStartStep = config.sponsorMode ? 6 : 5;
     await registerGameContractsWithPxe(wallet, admin, contractStartStep);
@@ -453,7 +496,8 @@ export class WalletManager {
       wallet,
       sponsoredFpcAddress,
       keyStore,
-      true
+      true,
+      quotaFpcAddress
     );
 
     mgr.activeAddress = await WalletManager.resolveExternalAddress(
@@ -548,6 +592,7 @@ export class WalletManager {
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+    let quotaFpcAddress: AztecAddress | undefined = undefined;
 
     if (config.sponsorMode) {
       sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
@@ -556,6 +601,18 @@ export class WalletManager {
         config,
         (msg) => onProgress?.(5, total, msg)
       );
+    }
+
+    try {
+      quotaFpcAddress = await registerQuotaFpcWithWallet(
+        node,
+        wallet,
+        config,
+        (msg) => onProgress?.(5, total, msg)
+      );
+    } catch (err) {
+      // Never fatal: without the paymaster players simply pay their own fees.
+      console.warn("[WalletManager] Failed to register QuotaFpc:", err);
     }
 
     const contractStartStep = config.sponsorMode ? 6 : 5;
@@ -571,7 +628,8 @@ export class WalletManager {
       wallet,
       sponsoredFpcAddress,
       keyStore,
-      false
+      false,
+      quotaFpcAddress
     );
   }
 
@@ -690,6 +748,11 @@ export class WalletManager {
    */
   getSponsoredFpcAddress(): AztecAddress | undefined {
     return this.sponsoredFpcAddress;
+  }
+
+  /** The quota paymaster, when one is configured and was found on the node. */
+  getQuotaFpcAddress(): AztecAddress | undefined {
+    return this.quotaFpcAddress;
   }
 
   getActiveAddress(): AztecAddress | undefined {

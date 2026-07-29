@@ -36,6 +36,7 @@ import {
 import {
   getAccountMinBalanceFjWei,
   getProverEnabled,
+  getQuotaFpcAddressFromEnv,
   getSponsoredFpcMinBalanceFjWei,
   getSponsorMode,
   isProductionLike,
@@ -1219,6 +1220,7 @@ export function GameLandingPage() {
       proverUrl: getEffectiveProverUrl(),
       sponsorMode,
       sponsoredFpcAddressOverride: getEffectiveSponsoredFpcAddressOverride(),
+      quotaFpcAddress: getQuotaFpcAddressFromEnv(),
       pxeConfig: {
         proverEnabled: getProverEnabled(),
       },

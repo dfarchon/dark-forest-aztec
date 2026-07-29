@@ -21,6 +21,12 @@ export interface WalletManagerConfig {
    * When unset, uses canonical instance from `SPONSORED_FPC_SALT`.
    */
   sponsoredFpcAddressOverride?: string;
+  /**
+   * Address of the QuotaFpc paymaster. When set, players get a daily allowance
+   * of sponsored transactions restricted to the game's own contracts; when
+   * unset, fees behave as they do today.
+   */
+  quotaFpcAddress?: string;
   /** HTTP base URL for native accelerator (host:port), e.g. from getEffectiveProverUrl(). */
   proverUrl?: string;
   /** PXE config overrides. In browser, dataStoreMapSizeKb defaults to 128 GB which fails; use ~128 MB. */

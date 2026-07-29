@@ -312,6 +312,20 @@ export class TxExecutor {
         time_called = Date.now();
 
         // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
+        //
+        // Quota mode note: when a QuotaFpc paymaster is configured, sponsored
+        // transactions do not go through this path at all — they are assembled
+        // with the paymaster as the transaction origin so the game still sees
+        // the player as msg_sender (see @dfpunk/quota-fpc). That assembly lands
+        // with the UI work; until then a configured paymaster is registered with
+        // the wallet but transactions continue to use the paths below, so the
+        // game behaves exactly as it does today.
+        const quotaFpcAddress = this.walletManager.getQuotaFpcAddress();
+        if (quotaFpcAddress) {
+          console.debug(
+            `[TxExecutor] quota paymaster available at ${quotaFpcAddress.toString()}`
+          );
+        }
         const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
         if (sponsoredFpcAddress) {
           const sponsorFjBal =
