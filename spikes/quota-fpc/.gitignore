@@ -1,0 +1,4 @@
+node_modules/
+noir/target/
+noir/codegenCache.json
+aztec-wallet-data/
