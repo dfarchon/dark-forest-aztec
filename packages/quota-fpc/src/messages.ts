@@ -10,7 +10,7 @@
  *    question "with whose money, and what do I owe?". Sponsoring is what is
  *    actually happening and reads as a gift rather than a transaction.
  */
-import { resetsIn } from "./duration.js";
+import { inAbout } from "./duration.js";
 import type { QuotaUnavailableReason } from "./errors.js";
 
 export interface QuotaAction {
@@ -44,54 +44,64 @@ export function describeQuotaUnavailable(
   context: QuotaCopyContext = {},
 ): QuotaMessage {
   const { millisUntilReset, bridgeUrl } = context;
-  const refresh =
+  // "they reset daily" carries the useful fact even when we cannot say when.
+  const whenBack =
     millisUntilReset === undefined
-      ? "Your sponsored transactions refresh daily"
-      : `Your sponsored transactions ${resetsIn(millisUntilReset)}`;
+      ? "they reset daily"
+      : `they reset daily (${inAbout(millisUntilReset)})`;
 
   switch (reason) {
     case "sync-pending":
-      return { headline: "Checking your sponsored transactions…" };
+      return {
+        headline:
+          "Just checking how many sponsored transactions you have left…",
+      };
 
     case "exhausted":
       return {
-        headline: "You're out of sponsored transactions for now.",
-        detail: `${refresh}. You can also add gas to your account to keep playing right away.`,
+        headline: `You're out of sponsored transactions for now, but ${whenBack}.`,
+        detail:
+          "If you'd rather keep playing straight away, you can add a little gas to your account.",
         action: addGasAction(bridgeUrl),
       };
 
     case "no-seats":
       return {
-        headline: "Today's sponsored transactions have all been claimed.",
-        detail: `${refresh}. Adding gas to your account lets you play now.`,
+        headline: `Today's sponsored transactions have all been claimed, and ${whenBack}.`,
+        detail:
+          "If you'd rather not wait, adding a little gas to your account lets you keep playing now.",
         action: addGasAction(bridgeUrl),
       };
 
     case "fee-spike":
       return {
-        headline: "Network fees are unusually high, so sponsoring is paused.",
+        headline:
+          "Network fees have spiked, so sponsoring is paused for the moment.",
         detail:
-          "It should resume on its own once fees settle. Adding gas to your account lets you keep playing meanwhile.",
+          "It should pick up again on its own once fees settle, and adding a little gas to your account lets you keep playing meanwhile.",
         action: addGasAction(bridgeUrl),
       };
 
     case "paymaster-empty":
       return {
-        headline: "Sponsored transactions aren't available right now.",
-        detail: "Adding gas to your account lets you keep playing.",
+        headline:
+          "Sponsored transactions aren't available right now, so transactions will come out of your own gas.",
+        detail: "Adding a little to your account will keep you playing.",
         action: addGasAction(bridgeUrl),
       };
 
     case "rollover":
       return {
-        headline: "Your sponsored transactions just refreshed.",
-        detail: "Reloading your allowance — this takes a moment.",
+        headline:
+          "Your sponsored transactions have just reset, so we're reloading your allowance.",
+        detail: "This only takes a moment.",
       };
 
     case "not-sponsored":
       return {
-        headline: "This action isn't sponsored.",
-        detail: "It runs from your own gas instead.",
+        headline:
+          "This action isn't covered by sponsorship, so it runs on your own gas.",
+        detail: "You can top up your account if you're running low.",
         action: addGasAction(bridgeUrl),
       };
   }
@@ -103,23 +113,24 @@ export function describeSponsored(
   context: QuotaCopyContext = {},
 ): QuotaMessage {
   const { millisUntilReset } = context;
-  const refresh =
+  const whenBack =
     millisUntilReset === undefined
-      ? ""
-      : ` They ${resetsIn(millisUntilReset)}.`;
+      ? "they reset daily"
+      : `they reset daily (${inAbout(millisUntilReset)})`;
 
   if (remaining <= 0) {
     return {
-      headline: "Dark Forest is sponsoring your transactions.",
-      detail: "You don't need to add gas to play.",
+      headline:
+        "Dark Forest is sponsoring your transactions today, so you can play without adding any gas.",
+      detail: `Once you've used them, ${whenBack}.`,
     };
   }
 
   return {
     headline: `Dark Forest is sponsoring your next ${remaining} transaction${
       remaining === 1 ? "" : "s"
-    }.`,
-    detail: `You don't need any gas of your own.${refresh}`,
+    }, so you can just play — no gas of your own needed.`,
+    detail: `If you use them all, ${whenBack}.`,
   };
 }
 

@@ -28,7 +28,7 @@ export {
   type QuotaUnavailableReason,
 } from "./errors.js";
 
-export { humanizeDuration, resetsIn } from "./duration.js";
+export { humanizeDuration, inAbout, resetsIn } from "./duration.js";
 
 export {
   describeQuotaUnavailable,

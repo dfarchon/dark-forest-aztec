@@ -42,3 +42,14 @@ export function humanizeDuration(ms: number): string {
 export function resetsIn(ms: number): string {
   return `resets in ${humanizeDuration(ms)}`;
 }
+
+/**
+ * "about 3 hours from now" — for prose, where "resets in 3 hours" reads like a
+ * status field rather than something a person said.
+ */
+export function inAbout(ms: number): string {
+  const humanized = humanizeDuration(ms);
+  if (humanized === "any moment now") return "any moment now";
+  if (humanized === "under a minute") return "in under a minute";
+  return `about ${humanized} from now`;
+}

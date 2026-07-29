@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from "vitest";
 import { reasonFromRevert } from "../src/errors.js";
-import { humanizeDuration, resetsIn } from "../src/duration.js";
+import { humanizeDuration, inAbout, resetsIn } from "../src/duration.js";
 import {
   describeQuotaUnavailable,
   describeSponsored,
@@ -35,8 +35,14 @@ describe("humanised durations", () => {
     expect(humanizeDuration(-5)).toBe("any moment now");
   });
 
-  test("resetsIn reads as a sentence fragment", () => {
+  test("resetsIn suits a terse badge", () => {
     expect(resetsIn(THREE_HOURS)).toBe("resets in 3 hours");
+  });
+
+  test("inAbout suits prose, and never claims false precision", () => {
+    expect(inAbout(THREE_HOURS)).toBe("about 3 hours from now");
+    expect(inAbout(3_000)).toBe("in under a minute");
+    expect(inAbout(0)).toBe("any moment now");
   });
 });
 
@@ -54,11 +60,21 @@ describe("sponsored copy", () => {
       describeSponsored(12, { millisUntilReset: THREE_HOURS }),
     );
     expect(text).toContain("12");
-    expect(text).toMatch(/resets in 3 hours/);
+    expect(text).toMatch(/about 3 hours from now/);
   });
 
   test("singular reads correctly", () => {
-    expect(describeSponsored(1).headline).toMatch(/next 1 transaction\./);
+    expect(describeSponsored(1).headline).toMatch(/next 1 transaction,/);
+  });
+
+  test("reads as connected sentences, not clipped fragments", () => {
+    const text = flattenQuotaMessage(
+      describeSponsored(12, { millisUntilReset: THREE_HOURS }),
+    );
+    // A clause connector is the difference between prose and a status field.
+    expect(text).toMatch(/, so | but | and /);
+    // It should say what the player gets, not just state a number.
+    expect(text).toMatch(/play/i);
   });
 });
 
@@ -70,7 +86,9 @@ describe("unavailable copy", () => {
     });
     // The old copy — "You've used today's free transactions" — was a wall.
     expect(message.headline).not.toMatch(/you've used/i);
-    expect(flattenQuotaMessage(message)).toMatch(/resets in 3 hours/);
+    expect(flattenQuotaMessage(message)).toMatch(/about 3 hours from now/);
+    // Says it comes back daily, so "for now" is not the whole story.
+    expect(flattenQuotaMessage(message)).toMatch(/reset daily/);
     expect(message.action?.href).toBe(BRIDGE);
     expect(message.action?.label).toMatch(/add gas/i);
   });
