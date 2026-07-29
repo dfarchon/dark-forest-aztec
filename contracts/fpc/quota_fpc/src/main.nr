@@ -310,10 +310,22 @@ contract QuotaFpc {
         );
         assert_payload_allowed(app_payload, allowed_targets);
         assert_generation_fresh(context.get_anchor_block_header().timestamp(), generation);
-        // Stops a stale anchor being used to reach back into an older generation.
-        context.set_expiration_timestamp(
-            ((generation as u64) + 1) * SECONDS_PER_DAY + EXPIRATION_SLACK_SECONDS,
-        );
+
+        // NOTE: an earlier version also tightened the transaction's expiration to
+        // the end of the generation, as belt-and-braces against a stale anchor
+        // reaching back. It was removed after it rejected valid transactions in
+        // practice: late in a UTC day the generation's end is only hours away,
+        // and a network whose block timestamps advance unevenly (catching up to
+        // L1 slots, as local networks do) can pass that before the transaction is
+        // validated — surfacing as "Invalid expiration timestamp" with nothing to
+        // suggest the paymaster caused it.
+        //
+        // The freshness assert above is the real control: it already fixes which
+        // generation may be spent. The protocol independently refuses any
+        // transaction anchored more than 24h back. Dropping the tightening widens
+        // the simultaneously-spendable window from roughly one generation to
+        // roughly two, which is bounded by the same daily arithmetic and,
+        // ultimately, by the paymaster's balance.
     }
 
     /// Shared tail: accept the fee, close the setup phase, and hand the payload
