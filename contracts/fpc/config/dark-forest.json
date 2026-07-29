@@ -1,0 +1,42 @@
+{
+  "name": "dark-forest-mainnet",
+  "description": "Sponsors Dark Forest gameplay on Aztec mainnet: a per-player daily allowance of free transactions, restricted to the game's player-facing contracts. Admin and Config contracts are deliberately excluded.",
+
+  "policy": {
+    "_comment_maxFeeWei": "Ceiling per sponsored transaction. PLACEHOLDER until Phase 5 calibration measures real costs; deploy blocks on this being derived from measurement.",
+    "maxFeeWei": "22000000000000",
+    "maxUsesPerDay": 30,
+    "maxUsersPerDay": 100
+  },
+
+  "_comment_maxLossWei": "$20 at AZTEC ~= $0.0146 => ~1370 fee juice. Funding never exceeds this; the paymaster has no withdraw.",
+  "maxLossWei": "1370000000000000000000",
+
+  "_comment_allowedTargets": "Player-facing gameplay contracts only. Addresses may be literals or 'env:VAR_NAME'. Deliberately absent: ADMIN and CONFIG (admin operations must not be sponsored) and all storage contracts (players never call them directly).",
+  "allowedTargets": [
+    {
+      "name": "Core",
+      "address": "0x1682cd593daddec05d1cb5440bd67af7d1fb7bfb27711ee94ad08c6fc277ece1"
+    },
+    {
+      "name": "Move",
+      "address": "0x04718c618d1fc945518b541a8a03f8a3ae304b474dbf52ce6c0f42803e3dca82"
+    },
+    {
+      "name": "ArtifactProspect",
+      "address": "0x1227e1bdfa062cc1d7dda74cd63e652bd992bb1bb9610f0215577783bd4c736d"
+    },
+    {
+      "name": "ArtifactFind",
+      "address": "0x07a7c22fea16b23cd261c8e51d18af02f3b458c2278eaee9b41f30b0297878fb"
+    },
+    {
+      "name": "ArtifactAction",
+      "address": "0x20adad8637158e257d74b1c811b45036cf1622caad4e21e4a90b9541ab2bab2f"
+    },
+    {
+      "name": "ArtifactVault",
+      "address": "0x2d6014c26d5c6a4a94430f963c188ce8246cbd39a85274a9d8ebc18f8bcedf66"
+    }
+  ]
+}

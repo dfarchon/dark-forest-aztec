@@ -98,7 +98,7 @@ All decision logic lives in the package (unit-testable — fable M6), TxExecutor
 
 Every phase logs lessons to `implementations-plan/quota-fpc/lessons/phase-N.md`. Fast layers (`pnpm --filter contracts run lint`, `pnpm --filter client run lint`, affected-package tsc) run after each meaningful step.
 
-### Phase 1 — Spikes: remaining unknowns + the Option 1 shape decision (amended at user request, 2026-07-29)
+### Phase 1 — Spikes: remaining unknowns + the Option 1 shape decision ✓ (amended at user request, 2026-07-29)
 
 **1A — standard-shape unknowns** (as approved by the audits): (a) app-call revert: quota side effects persist (seat + player nullifier + note all non-revertible), FPC pays, state consistent; (b) back-to-back sponsored txs: land a concrete *evidence mechanism* for note-state transitions (public Wallet API has no synced-height — embedded-wallet internals are fair game), measure sandbox latency, prove a premature second tx fails the way we expect; (c) duplicate subscribe by one player reverts (player nullifier); (d) `max_uses==1` and exhaustion edges (no off-by-one; disappearance-on-final-use observed as an expected transition); (e) ~~external wallet boundary~~ — de-scoped per Ask A6; (f) 24h anchor bound + `set_expiration_timestamp` + rollover/SLACK behavior at a simulated day boundary; (g) depth-≥2 fee-ops probe (evidence for the Option 2 handoff recommendation). Uses a minimal spike contract + `fpc_test_target` on a local sandbox (run-isolation compliant: port from `~/.agents/ports.md`, real-disk datadir, pgid teardown).
 
@@ -108,7 +108,7 @@ Every phase logs lessons to `implementations-plan/quota-fpc/lessons/phase-N.md`.
 
 **Validation gate** — Commands: spike vitest files against local sandbox. Pass: 1A questions (a)-(g) answered with evidence in `lessons/phase-1.md` (sync-latency numbers included); 1B evidence (i)-(v) recorded with a go/no-go recommendation; shape decision made by the user. Layers: integration (sandbox).
 
-### Phase 2 — `QuotaFpc` Noir contract
+### Phase 2 — `QuotaFpc` Noir contract ✓
 
 Full contract per Architecture; `contracts/fpc/` Nargo members wired into `contracts/Nargo.toml` and the existing `build-contracts` flow. *Shape-dependent surface per the Phase 1 decision*: standard shape exposes `subscribe`/`sponsor` as sibling-call entrypoints; sandwich shape exposes an origin `entrypoint(payload, user)` with the binding assert and account-entrypoint dispatch. The quota core (policy, nullifiers, note accounting, freshness, fee assert) is shared library code either way.
 
@@ -244,7 +244,8 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 | 14 | Fee clamp math | Exact dot-product identical to contract, parity-tested | Per-dimension division (admits ~2× total) | codex final pass | settled |
 | 15 | Constructor invariants | assert max_uses/max_users/max_fee > 0 | None (reference guards lived in sign_up, which we deleted) | codex final pass | settled |
 | 16 | Seat-collision retry | One fresh-seat retry iff provably not included; no retry for included txs | Blanket no-retry (hurts availability) / blind re-fire (double-burns) | codex final pass + fable H1 | settled |
-| 17 | Integration shape | Deferred to post-spike evidence: Phase 1B spikes Option 1 (sandwich, call-binding, no DF redeploy); user decides sandwich vs standard at the shape gate | Committing to either shape blind | user (2026-07-29) + aztec-packages research | open until Phase 1 gate |
+| 17 | Integration shape | **SANDWICH** — user decided 2026-07-29 on spike 1B evidence (call-binding proven, no DF redeploy, app sees player as msg_sender) | Standard sibling-call shape (app-agnostic subsidy) | user + spike 1B | settled |
+| 18 | Reusability | Contract is app-agnostic; all app-specific values (allowlist, policy, loss cap) live in `contracts/fpc/config/*.json` validated by `schema.ts` — forking = one config file | DF-specific contract constants | user (2026-07-29) | settled |
 | Open | Asks A1-A10 | resolved 2026-07-29 (see Ask resolutions) | — | — | done |
 
 ## Audit verdicts
