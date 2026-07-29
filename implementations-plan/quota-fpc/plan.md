@@ -126,7 +126,7 @@ Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full l
 
 **Validation gate** — Commands: `QUOTA_FPC_SANDBOX_URL=... pnpm --filter @dfpunk/quota-fpc run test`. Pass: full suite green incl. the real-game leg. Layers: integration (sandbox, live local network).
 
-### Phase 5 — Deploy + calibration scripts
+### Phase 5 — Deploy + calibration scripts ✓
 
 `deploy-fpc.ts` (existing utils pipeline; policy as constructor args from a reviewed constants file), `calibrate-gas.ts` (two-pass simulate `includeMetadata`, worst-case fixtures, subscribe/sponsor split, emits the constants consumed by the engine + a regression test), funding runbook (`bridge/` CLI; tranche guidance).
 

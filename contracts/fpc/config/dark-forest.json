@@ -1,17 +1,14 @@
 {
   "name": "dark-forest-mainnet",
   "description": "Sponsors Dark Forest gameplay on Aztec mainnet: a per-player daily allowance of free transactions, restricted to the game's player-facing contracts. Admin and Config contracts are deliberately excluded.",
-
   "policy": {
-    "_comment_maxFeeWei": "Ceiling per sponsored transaction. PLACEHOLDER until Phase 5 calibration measures real costs; deploy blocks on this being derived from measurement.",
-    "maxFeeWei": "22000000000000",
+    "_comment_maxFeeWei": "Measured on 2026-07-29: costliest sponsored path (first-of-day) cost 7595511600000 wei; this is that x3 headroom. Re-calibrate against mainnet before funding, since fee levels differ.",
+    "maxFeeWei": "22786534800000",
     "maxUsesPerDay": 30,
     "maxUsersPerDay": 100
   },
-
   "_comment_maxLossWei": "$20 at AZTEC ~= $0.0146 => ~1370 fee juice. Funding never exceeds this; the paymaster has no withdraw.",
   "maxLossWei": "1370000000000000000000",
-
   "_comment_allowedTargets": "Player-facing gameplay contracts only. Addresses may be literals or 'env:VAR_NAME'. Deliberately absent: ADMIN and CONFIG (admin operations must not be sponsored) and all storage contracts (players never call them directly).",
   "allowedTargets": [
     {

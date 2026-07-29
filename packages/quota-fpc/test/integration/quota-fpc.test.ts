@@ -17,6 +17,7 @@ import {
   computeSeatNullifier,
   computePlayerNullifier,
 } from "../../src/nullifiers.js";
+import { appendFileSync, writeFileSync } from "node:fs";
 import {
   HAS_SANDBOX,
   chainTimestamp,
@@ -58,7 +59,25 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
       ctx.wallet,
       fpc as any,
     );
-    return sendFromPaymaster(ctx, payload, from);
+    const result = await sendFromPaymaster(ctx, payload, from);
+    recordMeasurement(
+      opts.seat !== undefined ? "first-of-day" : "subsequent",
+      result.receipt,
+    );
+    return result;
+  }
+
+  /**
+   * Real fees paid, written out for the calibration script. Without evidence
+   * the paymaster's ceiling would be a guess, and it cannot be changed after
+   * deployment.
+   */
+  const measurements: { label: string; feeWei: string }[] = [];
+  function recordMeasurement(label: string, receipt: any) {
+    const fee = receipt?.transactionFee;
+    if (process.env.QUOTA_FPC_MEASURE && typeof fee === "bigint") {
+      measurements.push({ label, feeWei: fee.toString() });
+    }
   }
 
   async function allowanceOf(who: AztecAddress, gen = generation) {
@@ -300,5 +319,13 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     // Whatever the protocol does with the reverting call, the user must never be
     // left holding a seat with no allowance to use it.
     expect(after.subscribed || after.remaining === 0).toBe(true);
+  });
+  // Runs last on purpose: it reports what the earlier tests actually paid.
+  test("measurements are captured for calibration when asked", async () => {
+    if (!process.env.QUOTA_FPC_MEASURE) return;
+    // Written even if empty so a silent miss is visible rather than assumed.
+    const out = process.env.QUOTA_FPC_MEASURE;
+    writeFileSync(out, `${JSON.stringify(measurements, null, 2)}\n`);
+    evidence("measurements", { file: out, count: measurements.length });
   });
 });
