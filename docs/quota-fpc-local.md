@@ -154,6 +154,55 @@ check `tailscale serve status` first, since the config is machine-wide.
 
 Tear down with `sudo tailscale serve --https=8444 off`.
 
+## 5c. Keep the chain's clock moving
+
+Aztec's local network builds a block only when a transaction arrives. Left idle
+— which is exactly what happens while a person reads the screen and clicks —
+the latest block's timestamp stops advancing. Dark Forest's contracts compare
+the client's supplied timestamp against block time and reject anything more than
+**300 seconds** stale:
+
+```
+Assertion failed: Timestamp too old
+  'assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old")'
+```
+
+This has nothing to do with sponsorship — unmodified Dark Forest fails the same
+way after a few minutes of thinking time on an idle local chain.
+
+`SEQ_MIN_TX_PER_BLOCK=0` does **not** fix it; the local-network preset overrides
+it. Run the heartbeat instead, which sends one cheap transaction a minute:
+
+```bash
+AZTEC_NODE_URL=http://localhost:8590   pnpm --filter @dfpunk/quota-fpc run heartbeat
+```
+
+Leave it running for the whole session. Note the chain's clock may sit well ahead
+of wall-clock time; that is harmless, because the client and the contracts both
+derive from chain time and therefore agree with each other.
+
+> This is a **test-harness workaround, not a product fix**. Any network that does
+> not produce blocks continuously will break gameplay after ~5 minutes of idling,
+> and that is worth raising with the game's authors independently.
+
+## 5d. Artifacts must match what is deployed
+
+`sync-env-and-artifacts` prompts `Overwrite? (y/N)` before replacing
+`packages/contracts/src/artifacts`. If that prompt goes unanswered the client
+keeps an **older** build than the one on chain, and every call fails with:
+
+```
+No artifact registered for contract class 0x… (contract 0x…):
+  register it by calling wallet.registerContract(...)
+```
+
+The class id is derived from bytecode, so any recompile invalidates a previously
+copied artifact. After redeploying, confirm they match:
+
+```bash
+cp -f contracts/target/QuotaFpc.ts contracts/target/quota_fpc-QuotaFpc.json   packages/contracts/src/artifacts/
+```
+
 ## 6. What to actually look at
 
 Create a **fresh account and do not fund it**. That is the whole point: today
