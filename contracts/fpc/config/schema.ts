@@ -55,7 +55,12 @@ export interface QuotaFpcConfig {
 
 export class QuotaFpcConfigError extends Error {}
 
-function requirePositiveBigint(value: string, field: string): bigint {
+/** The contract's u128 fields cannot hold more than this. */
+const U128_MAX = 2n ** 128n - 1n;
+/** The contract's u32 fields cannot hold more than this. */
+const U32_MAX = 2 ** 32 - 1;
+
+function requirePositiveBigint(value: string, field: string, max: bigint): bigint {
   let parsed: bigint;
   try {
     parsed = BigInt(value);
@@ -65,12 +70,20 @@ function requirePositiveBigint(value: string, field: string): bigint {
   if (parsed <= 0n) {
     throw new QuotaFpcConfigError(`${field} must be greater than zero, got ${value}`);
   }
+  // The contract's field would silently wrap or the deploy would fail late; a
+  // value this large is always a mistake, so reject it here with the reason.
+  if (parsed > max) {
+    throw new QuotaFpcConfigError(`${field} exceeds the contract's maximum (${max}), got ${value}`);
+  }
   return parsed;
 }
 
 function requirePositiveInt(value: number, field: string): number {
   if (!Number.isInteger(value) || value <= 0) {
     throw new QuotaFpcConfigError(`${field} must be a positive integer, got ${value}`);
+  }
+  if (value > U32_MAX) {
+    throw new QuotaFpcConfigError(`${field} exceeds the contract's u32 maximum (${U32_MAX}), got ${value}`);
   }
   return value;
 }
@@ -96,10 +109,10 @@ export function parseQuotaFpcConfig(
     throw new QuotaFpcConfigError("policy is required");
   }
 
-  const maxFee = requirePositiveBigint(config.policy.maxFeeWei, "policy.maxFeeWei");
+  const maxFee = requirePositiveBigint(config.policy.maxFeeWei, "policy.maxFeeWei", U128_MAX);
   const maxUses = requirePositiveInt(config.policy.maxUsesPerDay, "policy.maxUsesPerDay");
   const maxUsers = requirePositiveInt(config.policy.maxUsersPerDay, "policy.maxUsersPerDay");
-  const maxLoss = requirePositiveBigint(config.maxLossWei, "maxLossWei");
+  const maxLoss = requirePositiveBigint(config.maxLossWei, "maxLossWei", U128_MAX * BigInt(U32_MAX) * BigInt(U32_MAX));
 
   if (!Array.isArray(config.allowedTargets) || config.allowedTargets.length === 0) {
     throw new QuotaFpcConfigError("allowedTargets must list at least one contract");
@@ -129,6 +142,13 @@ export function parseQuotaFpcConfig(
         `allowedTargets[${index}] (${target.name}) is not a 32-byte address: ${address}`,
       );
     }
+    // The zero address is the contract's "empty slot" marker; a named target
+    // that resolves to it would be silently dropped from the allowlist.
+    if (/^0x0+$/.test(address)) {
+      throw new QuotaFpcConfigError(
+        `allowedTargets[${index}] (${target.name}) is the zero address, which the contract treats as an empty slot`,
+      );
+    }
     return { name: target.name, address };
   });
 
@@ -143,13 +163,23 @@ export function parseQuotaFpcConfig(
     seen.set(target.address.toLowerCase(), target.name);
   }
 
-  // Worst case a single generation can cost, versus what the operator accepts
-  // losing. Surfaced as a hard error because there is no withdraw.
-  const worstCasePerDay = maxFee * BigInt(maxUses) * BigInt(maxUsers);
+  // Worst case a single UTC day can cost, versus what the operator accepts
+  // losing. NOTE the 3x: around a rollover, a stale-but-valid anchor can spend
+  // the previous generation, current anchors the current one, and the last 600s
+  // grace window the next — up to three generations chargeable within one day.
+  // (See the freshness logic in the contract.) Surfaced as a hard error because
+  // there is no withdraw, so this bound is the operator's real exposure.
+  //
+  // This is validation only. It does NOT cap on-chain spending — the contract
+  // has no such limit — so the paymaster's *balance* remains the ultimate cap.
+  // Fund in tranches accordingly.
+  const perGeneration = maxFee * BigInt(maxUses) * BigInt(maxUsers);
+  const worstCasePerDay = perGeneration * 3n;
   if (worstCasePerDay > maxLoss) {
     throw new QuotaFpcConfigError(
-      `Policy allows up to ${worstCasePerDay} wei/day (maxFee x maxUses x maxUsers) but maxLossWei is ${maxLoss}. ` +
-        `Lower the policy or raise the loss budget deliberately — funds sent to the paymaster cannot be recovered.`,
+      `Policy allows up to ${worstCasePerDay} wei/day (3 x maxFee x maxUses x maxUsers, for the ~3 generations ` +
+        `spendable around a rollover) but maxLossWei is ${maxLoss}. Lower the policy or raise the loss budget ` +
+        `deliberately — funds sent to the paymaster cannot be recovered, and the balance is the only real cap.`,
     );
   }
 

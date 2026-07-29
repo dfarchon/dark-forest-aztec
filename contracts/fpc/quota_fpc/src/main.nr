@@ -75,9 +75,6 @@ contract QuotaFpc {
     /// day, so a transaction proven just before midnight can still land after it.
     /// Kept short to shrink the window in which tomorrow's seats can be claimed.
     global ROLLOVER_GRACE_SECONDS: u64 = 600;
-    /// Upper bound placed on the transaction's own lifetime, so a stale anchor
-    /// cannot be used to reach back into an older generation.
-    global EXPIRATION_SLACK_SECONDS: u64 = 3600;
 
     /// `AccountFeePaymentMethodOptions.EXTERNAL`: tells the account contract that
     /// another contract pays, so it must not touch the fee payer or setup phase.
@@ -152,10 +149,17 @@ contract QuotaFpc {
     /// leave the contract liable for more than `max_fee`.
     #[contract_library_method]
     fn assert_fee_within_max(gas_settings: GasSettings, max_fee: u128) {
-        let total_gas = gas_settings.gas_limits + gas_settings.teardown_gas_limits;
-        let max_possible_fee: u128 = (total_gas.da_gas as u128)
+        // Matches the protocol's own `GasSettings.getFeeLimit()`, which bills
+        // `gas_limits x max_fees_per_gas` and does NOT add teardown — teardown is
+        // already reserved within `gas_limits` at v5.0.1. The aztec-kit fork this
+        // was adapted from adds teardown here, which makes the assert stricter
+        // than actual billing and rejects transactions the protocol would happily
+        // sponsor within `max_fee`. Verified against aztec-packages v5.0.1
+        // yarn-project/stdlib/src/gas/gas_settings.ts:getFeeLimit.
+        let gas = gas_settings.gas_limits;
+        let max_possible_fee: u128 = (gas.da_gas as u128)
             * gas_settings.max_fees_per_gas.fee_per_da_gas
-            + (total_gas.l2_gas as u128) * gas_settings.max_fees_per_gas.fee_per_l2_gas;
+            + (gas.l2_gas as u128) * gas_settings.max_fees_per_gas.fee_per_l2_gas;
         assert(max_possible_fee <= max_fee, "Gas settings exceed the sponsorship allowance");
     }
 

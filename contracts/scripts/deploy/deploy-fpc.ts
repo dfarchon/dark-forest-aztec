@@ -77,10 +77,14 @@ async function main() {
         throw err;
     }
 
-    const worstCasePerDay =
+    const perGeneration =
         BigInt(config.policy.maxFeeWei) *
         BigInt(config.policy.maxUsesPerDay) *
         BigInt(config.policy.maxUsersPerDay);
+    // 3x: up to three generations are chargeable within one UTC day around a
+    // rollover (see the freshness logic in the contract). This is what the
+    // config's loss-cap check gates on.
+    const worstCasePerDay = perGeneration * 3n;
 
     console.log(`\nDeployment:  ${config.name}`);
     if (config.description) console.log(`             ${config.description}`);
@@ -91,7 +95,7 @@ async function main() {
     console.log(`  transactions per user/day ${config.policy.maxUsesPerDay}`);
     console.log(`  users per day             ${config.policy.maxUsersPerDay}`);
     console.log(
-        `  worst case per day        ${formatFeeJuice(worstCasePerDay)}`
+        `  worst case per day (3 gen) ${formatFeeJuice(worstCasePerDay)}`
     );
     console.log(
         `  accepted maximum loss     ${formatFeeJuice(BigInt(config.maxLossWei))}`

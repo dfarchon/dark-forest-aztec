@@ -475,7 +475,7 @@ export class WalletManager {
     await waitForNode(node);
 
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
-    let quotaFpcAddress: AztecAddress | undefined = undefined;
+    const quotaFpcAddress: AztecAddress | undefined = undefined;
     if (config.sponsorMode) {
       try {
         sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
@@ -491,11 +491,16 @@ export class WalletManager {
       }
     }
 
-    try {
-      quotaFpcAddress = await registerQuotaFpcWithWallet(node, wallet, config);
-    } catch (err) {
-      // Never fatal: without the paymaster players simply pay their own fees.
-      console.warn("[WalletManager] Failed to register QuotaFpc:", err);
+    // Quota mode is embedded-wallet only (Ask A6). The sponsored send path needs
+    // the embedded wallet's PXE to assemble a paymaster-origin transaction, which
+    // external wallet-sdk providers do not expose. Registering it here would
+    // leave the paymaster address set and make every sponsored attempt fail, so
+    // external-wallet sessions deliberately get no quota mode.
+    if (config.quotaFpcAddress) {
+      console.warn(
+        "[WalletManager] Sponsored transactions are only available with the built-in wallet; " +
+          "this external-wallet session will use its own gas."
+      );
     }
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
@@ -845,6 +850,29 @@ export class WalletManager {
     } catch (err) {
       console.debug("[WalletManager] could not read allowance:", err);
       return { generation, subscribed: false, remaining: 0, syncing: true };
+    }
+  }
+
+  /**
+   * Whether the paymaster can sponsor a new player right now — i.e. today's
+   * generation still has a free seat. Used by onboarding so it does not promise
+   * sponsorship it cannot deliver. Any read failure returns false (fall back to
+   * self-funding) rather than a false promise.
+   */
+  async hasSponsorshipCapacity(): Promise<boolean> {
+    try {
+      const quotaFpc = await this.getQuotaFpcContract();
+      if (!quotaFpc) return false;
+      const { generationAt } = await import("@dfpunk/quota-fpc");
+      const block = await this.node.getBlockData("latest");
+      const generation = generationAt(
+        BigInt(block!.header.globalVariables.timestamp)
+      );
+      const seat = await this.findQuotaSeat(quotaFpc, generation);
+      return seat !== null;
+    } catch (err) {
+      console.debug("[WalletManager] sponsorship capacity check failed:", err);
+      return false;
     }
   }
 

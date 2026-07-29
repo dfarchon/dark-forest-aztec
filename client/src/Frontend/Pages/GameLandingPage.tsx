@@ -487,8 +487,15 @@ async function runQuotaPreflightGate(params: {
 
   terminal.current?.println("Checking sponsored transactions...");
   try {
+    // A single wei is not enough to sponsor anything, and a full day has no seat
+    // for a new player. Confirm the paymaster can actually cover this player
+    // before promising they need no gas — a false promise here strands them at
+    // the first move instead of at the (skipped) funding gate.
     const balance = await getFeeJuiceBalance(quotaFpc, wm.getNode());
-    if (balance <= 0n) {
+    const canSponsor =
+      balance >= getSponsoredFpcMinBalanceFjWei() &&
+      (await wm.hasSponsorshipCapacity());
+    if (!canSponsor) {
       terminal.current?.println(
         "Sponsored transactions aren't available right now — you'll need gas in your account.",
         TerminalTextStyle.Sub
