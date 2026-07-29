@@ -7,6 +7,12 @@ import styled from "styled-components";
 import { Hook } from "../../_types/global/GlobalTypes";
 // import { CaptureZonesGeneratedEvent } from "../../Backend/GameLogic/CaptureZoneGenerator";
 import { weiToEth } from "../../Backend/Utils/Utils";
+import {
+  formatQuotaBadge,
+  formatQuotaTooltip,
+  QUOTA_STATUS_OFF,
+  type QuotaStatus,
+} from "../../Session/QuotaStatus";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
@@ -229,6 +235,7 @@ export function TopBar({
             ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
           </Sub>
         </TooltipTrigger>
+        <QuotaBadge />
         {process.env.DF_WEBSERVER_URL && (
           <>
             <TooltipTrigger
@@ -269,5 +276,43 @@ export function TopBar({
       <NetworkHealth />
       <Paused />
     </TopBarContainer>
+  );
+}
+
+/**
+ * Shows how many transactions Dark Forest is paying for today. Renders nothing
+ * when sponsorship is not enabled, so builds without a paymaster look exactly
+ * as they always have.
+ */
+function QuotaBadge() {
+  const uiManager = useUIManager();
+  const [status, setStatus] = useState<QuotaStatus>(QUOTA_STATUS_OFF);
+
+  useEffect(() => {
+    // The UI manager owns the reader; until it exposes one this stays "off",
+    // which is the correct display for a build with no paymaster configured.
+    const read = (
+      uiManager as unknown as { getQuotaStatus?: () => QuotaStatus }
+    ).getQuotaStatus;
+    if (!read) return;
+
+    const tick = () => setStatus(read.call(uiManager));
+    tick();
+    const handle = setInterval(tick, 5000);
+    return () => clearInterval(handle);
+  }, [uiManager]);
+
+  const label = formatQuotaBadge(status);
+  if (!label) return null;
+
+  return (
+    <TooltipTrigger
+      name={TooltipName.Empty}
+      extraContent={<Text>{formatQuotaTooltip(status)}</Text>}
+    >
+      <Sub>
+        {status.kind === "spent" ? <Red>{label}</Red> : <Gold>{label}</Gold>}
+      </Sub>
+    </TooltipTrigger>
   );
 }

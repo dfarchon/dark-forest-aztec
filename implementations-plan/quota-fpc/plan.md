@@ -138,7 +138,7 @@ Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full l
 
 **Validation gate** — Commands: `pnpm --filter client run lint` && `pnpm --filter client run build`. Pass: exit 0; plus the full-stack sandbox smoke (client dev build against the Phase 4 sandbox game deployment) — **mandatory before Phase 8 funds beyond canary dust** (final-pass condition); if genuinely impractical, Phase 8 is limited to the canary until an equivalent live validation passes. Layers: lint + build + manual integration.
 
-### Phase 7 — UX
+### Phase 7 — UX ◐ (badge + copy shipped; live wiring of assembly outstanding)
 
 TopBar badge ("⛽ N free txs · resets 00:00 UTC", tooltip), SettingsPane quota rows (remaining, seats left today, FPC balance — extending the existing sponsor section), GameLandingPage preflight: quota → own-balance → bridge fallback (reusing `runAccountFeeJuicePreflightGate` verbatim), distinct copy for `QuotaSyncPending` vs `QuotaExhausted` vs `QuotaFeeSpike`. Copy is plain language ("You have 12 free moves left today").
 

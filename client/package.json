@@ -31,6 +31,7 @@
     "@dfpunk/hexgen": "workspace:*",
     "@dfpunk/indexer-core": "workspace:*",
     "@dfpunk/procedural": "workspace:*",
+    "@dfpunk/quota-fpc": "workspace:*",
     "@dfpunk/renderer": "workspace:*",
     "@dfpunk/serde": "workspace:*",
     "@dfpunk/types": "workspace:*",
