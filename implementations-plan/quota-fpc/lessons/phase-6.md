@@ -31,3 +31,23 @@ So this phase lands the plumbing — configuration, registration on both wallet 
 - The client's eslint enforces sorted named imports inside existing import blocks; adding a standalone import line for the same module fails lint.
 
 LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-6.md
+
+
+## Update — client verified against the local deployment (2026-07-29)
+
+With the game deployed locally and the paymaster funded, the client was pointed
+at it (`client/.env.local`: node `:8590`, `VITE_QUOTA_FPC_ADDRESS` set to the
+deployed paymaster) and:
+
+| Check | Result |
+|---|---|
+| `vite build --mode development` | ✅ built |
+| Dev server boots and serves | ✅ HTTP 200 |
+
+That confirms the configuration path end to end — the paymaster address resolves,
+the artifact bundles, and nothing in the wiring breaks a real build against real
+local addresses. It does **not** confirm sponsorship works in play; that needs a
+person creating an unfunded account and making a move, because the arguments to
+any real game call can only be assembled by the client's StateResolver.
+
+LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-6.md
