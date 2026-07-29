@@ -23,6 +23,7 @@ import {
     QuotaFpcConfigError,
 } from '../../fpc/config/schema.js';
 import { getOptionalEnv, loadContractsEnv } from '../utils/env.js';
+import { buildFeeSendFields, prepareFeePayment } from '../utils/feePayment.js';
 import { createTolerantAztecNodeClient } from '../utils/nodeClient.js';
 import { setupWallet } from '../utils/wallet.js';
 import { getOrCreateAccount } from '../utils/wallet.js';
@@ -112,6 +113,9 @@ async function main() {
     const node = createTolerantAztecNodeClient(nodeUrl);
     const wallet = await setupWallet(node);
     const deployer = await getOrCreateAccount(wallet, node);
+    // Same fee path the game's own deploy uses, so a fresh deployer with no
+    // fee juice can still publish (FEE_PAYMENT_MODE, default 'sponsored').
+    const feeCtx = await prepareFeePayment(wallet);
 
     const { QuotaFpcContract } = await import('../artifacts/QuotaFpc.js');
     const allowed = padAllowedTargets(
@@ -126,7 +130,7 @@ async function main() {
         config.policy.maxUsersPerDay,
         allowed as never
     );
-    await deployment.send({ from: deployer });
+    await deployment.send({ from: deployer, ...buildFeeSendFields(feeCtx) });
     const fpc = await deployment.register();
 
     console.log(`\nDeployed.`);

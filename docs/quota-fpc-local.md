@@ -18,6 +18,27 @@ last untested claim in this feature.
 | Paymaster | deployed and funded with bridged fake fee juice |
 | Client | `pnpm --filter client dev` |
 
+## 0. Raise the network's per-transaction data-gas allowance
+
+A default local network advertises only ~55,882 DA gas per transaction, and
+publishing Dark Forest's largest contract needs 72,544 — so deployment fails
+before it starts. This is **not** a protocol ceiling (that is 271,200) and not a
+sequencer gas setting; it derives from how many blocks fit in a checkpoint:
+
+```
+daGas = min(271200, daBudget, ceil(daBudget / blocksPerCheckpoint × 1.5))
+```
+
+Longer blocks mean fewer per checkpoint, so each transaction may claim more. For
+reference, mainnet advertises 117,668. Start the network with:
+
+```bash
+SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network …
+```
+
+which yields the full 271,200 locally. Verify with `node_getNodeInfo` and check
+`txsLimits.gas.daGas` before deploying anything.
+
 ## 1. Start the stack
 
 ```bash

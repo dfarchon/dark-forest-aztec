@@ -45,7 +45,7 @@ The plan's Phase 4 also requires sponsoring the **real Dark Forest contracts** o
 
 LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-4.md
 
-## Update (2026-07-29) — the real-contracts leg is BLOCKED, and not by this feature
+## Update (2026-07-29) — FIRST DIAGNOSIS WAS WRONG; see the correction below
 
 Attempting the outstanding leg surfaced a problem in Dark Forest's own
 deployment, unrelated to sponsorship:
@@ -66,8 +66,7 @@ raises it. Confirmed by restarting the sandbox with `SEQ_MAX_DA_BLOCK_GAS` and
 `SEQ_MAX_L2_BLOCK_GAS` raised an order of magnitude: the per-transaction limit
 did not move, because it never came from the sequencer.
 
-**So the checked-in contracts cannot be deployed to a fresh Aztec 5.0.1 network
-as they stand.** The live mainnet deployment predates this constraint or was
+**This conclusion was WRONG — see the correction below.** The live mainnet deployment predates this constraint or was
 made under different conditions; either way, a from-scratch local deployment is
 not currently possible without shrinking the contracts or publishing classes by
 another route.
@@ -86,3 +85,70 @@ sponsorship path is not implicated. The open question is whether a sponsored
 `move` fits the per-transaction limits at runtime — which is a separate and
 much smaller question than deploying the contracts, and can be answered against
 the live mainnet contracts rather than a local deployment.
+
+
+## Correction (2026-07-29) — not blocked; the limit is configurable
+
+The diagnosis above is wrong, and the mistake is worth recording because it was
+confidently stated.
+
+`MAX_TX_DA_GAS` is `8475 × 32 = 271,200`, not 55,882. The 55,882 that rejected
+the deployment was the **node-advertised** limit (`txsLimits.gas.daGas`), and
+`getGasLimits` takes the *minimum* of the advertised value and the protocol
+maximum — so the advertised one was binding. I read the protocol constant's
+definition, saw it was a constant, and stopped there without checking which of
+the two limits was actually doing the rejecting.
+
+Where the advertised number comes from (`computeNetworkTxGasLimits`, `@aztec/stdlib`):
+
+```
+daGas = min(MAX_TX_DA_GAS, daBudget, ceil(daBudget / blocksPerCheckpoint × 1.5))
+```
+
+`blocksPerCheckpoint` comes from the proposer timetable, driven by
+**`SEQ_BLOCK_DURATION_MS`**. Longer blocks mean fewer per checkpoint, so each
+transaction may claim a larger share. The sequencer's *gas* settings
+(`SEQ_MAX_DA_BLOCK_GAS`) do nothing here — the node source says so explicitly:
+the advertised limit derives from "network-wide constants only … never this
+node's local caps or configured multipliers". I tried those first and drew the
+wrong conclusion from their having no effect.
+
+The decisive check was asking the network the DF team actually uses. Mainnet
+advertises **117,668** DA gas per transaction — above the 72,544 the deployment
+needs. That is how they managed it; nothing exotic.
+
+Restarting the local network with `SEQ_BLOCK_DURATION_MS=12000` raised the local
+advertised limit to the full **271,200**, and then:
+
+| Step | Result |
+|---|---|
+| Deploy all 17 game contracts | ✅ (Config passed at the same 72,544 that failed before) |
+| `configure` | ✅ 36 operations |
+| Deploy `QuotaFpc` against the real contracts via `local.json` | ✅ |
+| Fund it with bridged fake fee juice | ✅ 1000 FJ |
+| Allowlist verified on-chain against the real deployed addresses | ✅ Core, Move, and the four artifact contracts |
+
+A real bug surfaced on the way: `deploy-fpc` did not use the sponsored fee path
+the game's own deploy uses, so a fresh deployer holding no fee juice could not
+publish. Fixed by reusing `prepareFeePayment`/`buildFeeSendFields`.
+
+## What genuinely remains, and why it is manual
+
+`Core.initialize_player` takes **25 parameters** — every config struct, the
+planet state, the arrival arrays, the world. That is the state-hash commitment
+design: transactions carry the state they operate on, and the contract re-hashes
+it against the stored commitment.
+
+So a real sponsored game call **cannot be hand-assembled in a test**. Building
+those arguments is precisely what the client's `StateResolver` does from indexer
+data. Any test that faked them would be testing the fake.
+
+The remaining validation is therefore running the client against this local
+deployment and playing — `docs/quota-fpc-local.md`. The open question is narrow:
+whether `move`'s heavy circuit plus the paymaster's overhead fits the
+per-transaction limits. With the local ceiling now at the protocol maximum, and
+mainnet at 117,668, that is likelier than the earlier failure suggested — but it
+is unproven, and it is the last thing standing between here and a funded
+showcase.
+
+LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-4.md
