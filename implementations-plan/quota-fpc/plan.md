@@ -144,7 +144,7 @@ TopBar badge ("⛽ N free txs · resets 00:00 UTC", tooltip), SettingsPane quota
 
 **Validation gate** — Commands: `pnpm --filter client run lint` && `pnpm --filter client run build`. Pass: exit 0 + screenshots of the four states reviewed. Layers: lint + build + manual UI review.
 
-### Phase 8 — Mainnet showcase ⏸ BLOCKED: needs explicit user go-ahead AND the Phase 4 gate, which is blocked upstream (see lessons/phase-4.md)
+### Phase 8 — Mainnet showcase ⏸ awaiting explicit user go-ahead. The Phase 4 gate is now MET (sponsored gameplay confirmed locally). Recommended before funding: measure gas with the Phase 5 calibration script, and confirm on testnet, which shares mainnet's 117,668 per-tx DA limit vs 271,200 locally.
 
 Deployer keys generated offline (`accountResolution` pattern; local `.env` only — the key is only a deployer, holds pocket change, and has NO ongoing power over the FPC). Deploy `QuotaFpc` with the reviewed policy; calibrate against mainnet; fund the first tranche via `bridge/` CLI (Ask A1); canary account first; then the demo: sponsored gameplay from an unfunded account, counter decrementing, exhaustion → fallback demo (tiny-policy second FPC instance for the exhaustion demo if needed); handoff note for the DF team (costs, tranche strategy, redeploy-to-retune, `/harden security` before scaling funds).
 
