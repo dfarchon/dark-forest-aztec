@@ -808,10 +808,31 @@ export class WalletManager {
         .get_quota_info(player, generation)
         .simulate({ from: player })) as { result?: [boolean, bigint] };
       const [subscribed, remaining] = (raw?.result ?? raw) as [boolean, bigint];
+      if (subscribed) {
+        return {
+          generation,
+          subscribed: true,
+          remaining: Number(remaining),
+          syncing: false,
+        };
+      }
+
+      // No note. That means either "never used today" or "used it all up" — the
+      // note is deleted on the last free transaction, so its absence alone
+      // cannot tell them apart. The player nullifier persists and can.
+      const { hasSubscribed } = await import("@dfpunk/quota-fpc");
+      const alreadyClaimed = await hasSubscribed({
+        node: this.node as never,
+        fpcAddress: this.quotaFpcAddress!,
+        generation,
+        player,
+      });
       return {
         generation,
-        subscribed: Boolean(subscribed),
-        remaining: Number(remaining),
+        // Claimed today with no note left means the allowance is spent; the
+        // caller reads that as exhausted rather than trying to subscribe again.
+        subscribed: alreadyClaimed,
+        remaining: 0,
         syncing: false,
       };
     } catch (err) {

@@ -124,3 +124,51 @@ export function formatQuotaTooltip(status: QuotaStatus): string {
       return `You've used today's free transactions. More arrive at ${status.resetsAt}; until then transactions come out of your own balance.`;
   }
 }
+
+/**
+ * A tiny store so the top bar can show the allowance without threading a
+ * reference through four layers of game plumbing. The transaction path writes
+ * to it whenever it reads allowance state; the badge reads from it.
+ *
+ * Advisory only, like everything else here — the contract decides.
+ */
+let currentStatus: QuotaStatus = QUOTA_STATUS_OFF;
+const listeners = new Set<(status: QuotaStatus) => void>();
+
+export function publishQuotaStatus(status: QuotaStatus): void {
+  currentStatus = status;
+  for (const listener of listeners) listener(status);
+}
+
+export function getQuotaStatus(): QuotaStatus {
+  return currentStatus;
+}
+
+export function subscribeToQuotaStatus(
+  listener: (status: QuotaStatus) => void
+): () => void {
+  listeners.add(listener);
+  listener(currentStatus);
+  return () => listeners.delete(listener);
+}
+
+/** Turns an allowance reading into what the player sees. */
+export function quotaStatusFromAllowance(
+  allowance: { subscribed: boolean; remaining: number; syncing: boolean },
+  chainTimestampSeconds: bigint
+): QuotaStatus {
+  const shared = {
+    resetsAt: resetLabel(),
+    millisUntilReset: millisUntilReset(chainTimestampSeconds),
+  };
+  if (allowance.syncing) {
+    return { kind: "unknown", remaining: 0, ...shared };
+  }
+  if (allowance.remaining > 0) {
+    return { kind: "available", remaining: allowance.remaining, ...shared };
+  }
+  // Claimed today with nothing left is genuinely spent; never claimed is ready.
+  return allowance.subscribed
+    ? { kind: "spent", remaining: 0, ...shared }
+    : { kind: "unused", remaining: 0, ...shared };
+}

@@ -11,7 +11,7 @@
  * sampling loop spin forever with no thrown error, freezing the page.
  */
 import type { AztecAddress } from "@aztec/stdlib/aztec-address";
-import { computeSeatNullifier } from "./nullifiers.js";
+import { computePlayerNullifier, computeSeatNullifier } from "./nullifiers.js";
 
 /**
  * Nullifier-tree id, per @aztec/stdlib's `MerkleTreeId.NULLIFIER_TREE`.
@@ -113,4 +113,31 @@ export async function findFreeSeat(
   const free = all.filter((seat) => !taken.has(seat));
   if (free.length === 0) return null;
   return free[Math.floor(random() * free.length)];
+}
+
+/**
+ * Whether a user has already claimed their allowance for a generation.
+ *
+ * This is the missing half of reading allowance state. The note alone cannot
+ * tell you: once the last free transaction is used the note is gone, which is
+ * indistinguishable from never having subscribed. The player nullifier persists,
+ * so note-absent plus nullifier-present means *spent*, while note-absent plus
+ * nullifier-absent means *untouched*. Confusing the two makes the client try to
+ * subscribe again and fail.
+ */
+export async function hasSubscribed(query: {
+  node: SeatProbeNode;
+  fpcAddress: AztecAddress;
+  generation: number;
+  player: AztecAddress;
+}): Promise<boolean> {
+  const { siloNullifier } = await import("@aztec/stdlib/hash");
+  const nullifier = siloNullifier(
+    query.fpcAddress,
+    await computePlayerNullifier(query.generation, query.player),
+  );
+  const found = await query.node.findLeavesIndexes("latest", NULLIFIER_TREE, [
+    nullifier,
+  ]);
+  return found[0] !== undefined && found[0] !== null;
 }

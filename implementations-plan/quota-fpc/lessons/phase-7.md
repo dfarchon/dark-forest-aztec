@@ -30,3 +30,24 @@ The sandwich assembly (`buildSandwichPayload` → paymaster-origin send) is writ
 The badge therefore currently reads from a `getQuotaStatus()` hook the UI manager does not yet expose, so it renders as "off". That is deliberate and safe — the display degrades to invisible rather than to wrong — but it means **the counter is not live yet**, and Phase 8's showcase depends on closing that gap.
 
 LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-7.md
+
+## Update — audit findings closed (2026-07-29)
+
+The codex post-implementation audit caught that the two pieces this phase
+deferred were not merely deferred but *dead*:
+
+- **The allowance state machine never probed the player nullifier.** Production
+  read only `get_quota_info`, so a spent-and-deleted note read as "never used
+  today" and the client would try to subscribe again — the exact confusion the
+  design was supposed to prevent. `hasSubscribed()` now resolves it: note absent
+  plus nullifier present means spent; both absent means untouched.
+- **The badge polled a method that did not exist**, so it always rendered off.
+  It now subscribes to a small store the transaction path publishes to, showing
+  what the last transaction actually observed rather than polling.
+
+Both are wired and the gates re-pass (client lint + build, contracts build, 43
+tests). What remains untested is the same thing as before: none of this has run
+against the real Dark Forest contracts with a person clicking, which is what
+`docs/quota-fpc-local.md` sets up.
+
+LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-7.md

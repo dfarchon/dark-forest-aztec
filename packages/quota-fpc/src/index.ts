@@ -33,6 +33,7 @@ export {
   assertValidMaxUsers,
   countAvailableSeats,
   findFreeSeat,
+  hasSubscribed,
   takenSeats,
   type SeatProbeNode,
   type SeatQuery,

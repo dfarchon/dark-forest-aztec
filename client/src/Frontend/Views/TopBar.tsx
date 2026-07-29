@@ -12,6 +12,7 @@ import {
   formatQuotaTooltip,
   QUOTA_STATUS_OFF,
   type QuotaStatus,
+  subscribeToQuotaStatus,
 } from "../../Session/QuotaStatus";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
@@ -285,22 +286,11 @@ export function TopBar({
  * as they always have.
  */
 function QuotaBadge() {
-  const uiManager = useUIManager();
   const [status, setStatus] = useState<QuotaStatus>(QUOTA_STATUS_OFF);
 
-  useEffect(() => {
-    // The UI manager owns the reader; until it exposes one this stays "off",
-    // which is the correct display for a build with no paymaster configured.
-    const read = (
-      uiManager as unknown as { getQuotaStatus?: () => QuotaStatus }
-    ).getQuotaStatus;
-    if (!read) return;
-
-    const tick = () => setStatus(read.call(uiManager));
-    tick();
-    const handle = setInterval(tick, 5000);
-    return () => clearInterval(handle);
-  }, [uiManager]);
+  // The transaction path publishes allowance state as it reads it, so the badge
+  // reflects what the last transaction actually saw rather than polling.
+  useEffect(() => subscribeToQuotaStatus(setStatus), []);
 
   const label = formatQuotaBadge(status);
   if (!label) return null;

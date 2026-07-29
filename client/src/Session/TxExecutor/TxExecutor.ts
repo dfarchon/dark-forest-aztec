@@ -599,6 +599,11 @@ export class TxExecutor {
       generation
     );
 
+    // Surface it so the top bar shows what this transaction actually saw.
+    const { publishQuotaStatus, quotaStatusFromAllowance } =
+      await import("../QuotaStatus");
+    publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds));
+
     const source = await resolveFeeSource({
       state,
       chainTimestampSeconds: chainSeconds,
