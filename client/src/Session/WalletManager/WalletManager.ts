@@ -767,6 +767,11 @@ export class WalletManager {
     return this.quotaFpcAddress;
   }
 
+  /** The node client, for callers that need to read chain state directly. */
+  getNode(): AztecNode {
+    return this.node;
+  }
+
   /** The paymaster contract handle, or undefined when none is configured. */
   async getQuotaFpcContract(): Promise<unknown | undefined> {
     if (!this.quotaFpcAddress) return undefined;

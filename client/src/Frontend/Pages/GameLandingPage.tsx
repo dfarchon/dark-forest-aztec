@@ -462,6 +462,50 @@ function printAccountFeeJuiceRecoveryMenu(
 }
 
 /** Non-sponsored mode: ensure active account has enough FeeJuice before continuing. */
+/**
+ * Onboarding gate for quota mode.
+ *
+ * The whole point of the paymaster is that a player needs no fee juice of their
+ * own, so this must never ask them to fund anything. It checks that the
+ * paymaster itself can pay, and lets the player through when it can.
+ *
+ * If the paymaster cannot pay, we fall back to the existing account-funding
+ * gate rather than blocking: a player who has their own fee juice should still
+ * be able to play when sponsorship is unavailable.
+ */
+async function runQuotaPreflightGate(params: {
+  terminal: React.MutableRefObject<TerminalHandle | undefined>;
+  getWalletManager: () => WalletManager | undefined;
+}): Promise<{ sponsored: boolean }> {
+  const { terminal, getWalletManager } = params;
+  const wm = getWalletManager();
+  const quotaFpc = wm?.getQuotaFpcAddress();
+
+  if (!wm || !quotaFpc) {
+    return { sponsored: false };
+  }
+
+  terminal.current?.println("Checking free transactions...");
+  try {
+    const balance = await getFeeJuiceBalance(quotaFpc, wm.getNode());
+    if (balance <= 0n) {
+      terminal.current?.println(
+        "Free transactions are unavailable right now.",
+        TerminalTextStyle.Sub
+      );
+      return { sponsored: false };
+    }
+    terminal.current?.println(
+      "Dark Forest is covering your transaction fees today — no funding needed.",
+      TerminalTextStyle.Green
+    );
+    return { sponsored: true };
+  } catch (err) {
+    console.warn("[GameLandingPage] quota preflight failed:", err);
+    return { sponsored: false };
+  }
+}
+
 async function runAccountFeeJuicePreflightGate(params: {
   terminal: React.MutableRefObject<TerminalHandle | undefined>;
   getWalletManager: () => WalletManager | undefined;
@@ -2732,15 +2776,21 @@ export function GameLandingPage() {
             onRefreshPage: playRefreshPageTransition,
           });
         } else {
-          await runAccountFeeJuicePreflightGate({
+          const { sponsored } = await runQuotaPreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            setTerminalVisible,
-            entryMode: entryModeRef.current,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
           });
+          if (!sponsored) {
+            await runAccountFeeJuicePreflightGate({
+              terminal,
+              getWalletManager: () => walletManagerRef.current,
+              setConnectionSettingsOpen,
+              setTerminalVisible,
+              entryMode: entryModeRef.current,
+              rebuildWalletAfterConnectionSave,
+              onRefreshPage: playRefreshPageTransition,
+            });
+          }
         }
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
@@ -2766,15 +2816,25 @@ export function GameLandingPage() {
         return;
       }
 
-      await runAccountFeeJuicePreflightGate({
-        terminal,
-        getWalletManager: () => walletManagerRef.current,
-        setConnectionSettingsOpen,
-        setTerminalVisible,
-        entryMode: entryModeRef.current,
-        rebuildWalletAfterConnectionSave,
-        onRefreshPage: playRefreshPageTransition,
-      });
+      {
+        // Sponsored players must never be asked to fund themselves; only fall
+        // through to the funding gate when sponsorship cannot cover them.
+        const { sponsored } = await runQuotaPreflightGate({
+          terminal,
+          getWalletManager: () => walletManagerRef.current,
+        });
+        if (!sponsored) {
+          await runAccountFeeJuicePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        }
+      }
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }
@@ -2834,15 +2894,25 @@ export function GameLandingPage() {
         return;
       }
 
-      await runAccountFeeJuicePreflightGate({
-        terminal,
-        getWalletManager: () => walletManagerRef.current,
-        setConnectionSettingsOpen,
-        setTerminalVisible,
-        entryMode: entryModeRef.current,
-        rebuildWalletAfterConnectionSave,
-        onRefreshPage: playRefreshPageTransition,
-      });
+      {
+        // Sponsored players must never be asked to fund themselves; only fall
+        // through to the funding gate when sponsorship cannot cover them.
+        const { sponsored } = await runQuotaPreflightGate({
+          terminal,
+          getWalletManager: () => walletManagerRef.current,
+        });
+        if (!sponsored) {
+          await runAccountFeeJuicePreflightGate({
+            terminal,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: entryModeRef.current,
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        }
+      }
       if (entryModeRef.current === "quick") {
         setTerminalVisible(false);
       }
