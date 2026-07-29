@@ -15,6 +15,8 @@ contract FpcTestTarget {
     struct Storage<Context> {
         seen: Map<AztecAddress, PublicMutable<u32, Context>, Context>,
         last_caller: PublicMutable<AztecAddress, Context>,
+        /// One-shot flag used to force an inclusion-time (public phase) revert.
+        claimed: PublicMutable<bool, Context>,
     }
 
     /// Private call that forwards its observed caller to public state.
@@ -37,6 +39,29 @@ contract FpcTestTarget {
     #[external("private")]
     fn revert_if_zero(x: Field) {
         assert(x != 0, "FpcTestTarget: deliberate revert");
+    }
+
+    /// Claims a one-shot flag. Simulates successfully for everyone while the
+    /// flag is unset, but only the first transaction to land can succeed — the
+    /// rest revert in the public phase, at INCLUSION time rather than during
+    /// simulation. That is the failure mode real games produce under contention
+    /// (ownership races, rate limits), and the one a sponsored transaction must
+    /// survive correctly: included, fee paid, allowance consumed.
+    #[external("private")]
+    fn claim_once() {
+        self.enqueue_self._claim_once();
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn _claim_once() {
+        assert(!self.storage.claimed.read(), "FpcTestTarget: already claimed");
+        self.storage.claimed.write(true);
+    }
+
+    #[external("utility")]
+    unconstrained fn is_claimed() -> bool {
+        self.storage.claimed.read()
     }
 
     #[external("private")]

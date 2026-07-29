@@ -120,7 +120,7 @@ Quota engine, `QuotaFeePaymentMethod`, seat picker (adapted; keep the `assertVal
 
 **Validation gate** — Commands: `pnpm --filter @dfpunk/quota-fpc run test` (unit) && `pnpm --filter @dfpunk/quota-fpc run lint` && package tsc. Pass: exit 0. Layers: unit + typecheck + lint.
 
-### Phase 4 — Sandbox integration suite (the mainnet gate)
+### Phase 4 — Sandbox integration suite (the mainnet gate) ◐ FPC mechanics proven; real-DF-contracts leg outstanding (blocks Phase 8)
 
 Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full lifecycle — deploy, subscribe+app-call, sponsor chain with evidence-based sync, exhaustion revert + classification, seat cap, per-player cap (Sybil second account), fee cap incl. dot-product clamp parity, stale/future generation reverts, **rollover across a day boundary (incl. lagging-anchor recovery)**, app-revert quota persistence, duplicate-subscribe revert, **seat-collision fresh-seat retry (not-included case only)**. **Plus the real-game leg (codex condition): deploy the actual DF contracts to the sandbox via the existing `contracts/scripts/deploy` pipeline and sponsor a real `initialize_player` + `move` through the quota FPC.** Mainnet (Phase 8) is blocked until this passes.
 

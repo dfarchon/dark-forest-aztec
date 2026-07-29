@@ -13,13 +13,16 @@
     "clean": "del-cli dist node_modules",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run test/integration"
   },
   "dependencies": {
     "@aztec/aztec.js": "5.0.1",
     "@aztec/entrypoints": "5.0.1",
+    "@aztec/ethereum": "5.0.1",
     "@aztec/foundation": "5.0.1",
-    "@aztec/stdlib": "5.0.1"
+    "@aztec/stdlib": "5.0.1",
+    "@aztec/wallets": "5.0.1"
   },
   "devDependencies": {
     "prettier": "3.7.4",
