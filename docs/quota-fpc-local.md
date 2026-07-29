@@ -117,6 +117,43 @@ it does today; with it, sponsored transactions become available.
 pnpm --filter client dev
 ```
 
+## 5b. Testing from another machine: HTTPS is mandatory
+
+Browsers grant secure-context privileges only over **HTTPS or localhost**. Over
+plain `http://<ip>` the browser silently discards the COOP/COEP headers and
+withholds `crypto.subtle`, so the wallet cannot initialise at all. The symptoms
+look unrelated but share one cause:
+
+```
+The Cross-Origin-Opener-Policy header has been ignored, because the URL's
+  origin was untrustworthy
+Cannot read properties of undefined (reading 'generateKey')
+Error: Missing required OPFS APIs.
+```
+
+Serve everything under **one** HTTPS origin so there is also no mixed content
+and no CORS. With Tailscale:
+
+```bash
+sudo tailscale serve --bg --https=8444 --set-path=/         http://127.0.0.1:5273
+sudo tailscale serve --bg --https=8444 --set-path=/rpc      http://127.0.0.1:8590
+sudo tailscale serve --bg --https=8444 --set-path=/indexer  http://127.0.0.1:3001
+```
+
+Then point the client at the proxy rather than at raw ports:
+
+```
+VITE_AZTEC_NODE_URL=https://<host>.ts.net:8444/rpc
+VITE_INDEXER_BOOTSTRAP_URL=https://<host>.ts.net:8444/indexer
+```
+
+Two gotchas: Vite rejects unknown Host headers, so run it with a config that
+lists the tailnet hostname in `server.allowedHosts` (`vite.config.local.mts`
+does this); and pick a port not already used by another `tailscale serve` entry —
+check `tailscale serve status` first, since the config is machine-wide.
+
+Tear down with `sudo tailscale serve --https=8444 off`.
+
 ## 6. What to actually look at
 
 Create a **fresh account and do not fund it**. That is the whole point: today
