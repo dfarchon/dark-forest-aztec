@@ -111,12 +111,12 @@ async function main() {
     console.log(`\nConnecting to ${nodeUrl} …`);
     const node = createTolerantAztecNodeClient(nodeUrl);
     const wallet = await setupWallet(node);
-    const deployer = await getOrCreateAccount(wallet);
+    const deployer = await getOrCreateAccount(wallet, node);
 
     const { QuotaFpcContract } = await import('../artifacts/QuotaFpc.js');
     const allowed = padAllowedTargets(
         config.resolvedTargets.map((t) => t.address)
-    ).map((a) => AztecAddress.fromString(a));
+    ).map((a) => AztecAddress.fromStringUnsafe(a));
 
     console.log(`Deploying QuotaFpc from ${deployer.toString()} …`);
     const deployment = QuotaFpcContract.deploy(

@@ -298,27 +298,46 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
 
     // The flag is now set, so this simulates against pre-state but reverts publicly.
     const fpcBefore = await feeJuiceOf(ctx.node, fpc.address);
-    let landed = true;
+    // A transaction that is INCLUDED and then reverts still throws here — the
+    // wait rejects on a reverted receipt. Telling that apart from a failure
+    // before submission is the whole point, so classify on the error itself
+    // rather than on the fact that one was raised.
+    let includedAndReverted = false;
     try {
       await sponsor(await callsOf(target.methods.claim_once()), third);
     } catch (err) {
-      landed = false;
+      const message = String(err);
+      includedAndReverted = /reverted/i.test(message);
       evidence("inclusion-revert/second", {
-        rejected: String(err).slice(0, 160),
+        includedAndReverted,
+        rejected: message.slice(0, 160),
       });
     }
     const after = await allowanceOf(third);
     const fpcAfter = await feeJuiceOf(ctx.node, fpc.address);
     evidence("inclusion-revert/outcome", {
-      landed,
+      includedAndReverted,
       allowanceBefore: afterFirst,
       allowanceAfter: after,
       fpcPaid: (fpcBefore - fpcAfter).toString(),
     });
 
-    // Whatever the protocol does with the reverting call, the user must never be
-    // left holding a seat with no allowance to use it.
-    expect(after.subscribed || after.remaining === 0).toBe(true);
+    // The audit caught the previous assertion here being tautologically true
+    // (absence returns (false, 0), so `subscribed || remaining === 0` always
+    // held). Assert the two things that actually matter instead: the revert
+    // consumed exactly one use, and the paymaster really paid for it.
+    if (includedAndReverted) {
+      // Landed and failed in the public phase: it consumed exactly one use and
+      // the paymaster really paid, while the player keeps their seat and the
+      // rest of the allowance.
+      expect(after.remaining).toBe(afterFirst.remaining - 1);
+      expect(after.subscribed).toBe(true);
+      expect(fpcBefore - fpcAfter).toBeGreaterThan(0n);
+    } else {
+      // Rejected before submission: nothing spent at all.
+      expect(after.remaining).toBe(afterFirst.remaining);
+      expect(fpcBefore - fpcAfter).toBe(0n);
+    }
   });
   // Runs last on purpose: it reports what the earlier tests actually paid.
   test("measurements are captured for calibration when asked", async () => {

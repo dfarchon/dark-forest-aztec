@@ -13,8 +13,12 @@
 import type { AztecAddress } from "@aztec/stdlib/aztec-address";
 import { computeSeatNullifier } from "./nullifiers.js";
 
-/** Nullifier-tree id, per @aztec/stdlib's MerkleTreeId. */
-const NULLIFIER_TREE = 1;
+/**
+ * Nullifier-tree id, per @aztec/stdlib's `MerkleTreeId.NULLIFIER_TREE`.
+ * Verified against the enum: it is 0, not 1. Querying the wrong tree makes every
+ * claimed seat look free, so capacity is never detected and users collide.
+ */
+const NULLIFIER_TREE = 0;
 
 /** Node methods this module needs — narrow on purpose, for testability. */
 export interface SeatProbeNode {

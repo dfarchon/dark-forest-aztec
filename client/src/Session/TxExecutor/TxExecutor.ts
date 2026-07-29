@@ -349,8 +349,15 @@ export class TxExecutor {
             );
           }
         }
-        const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
-        if (sponsoredFpcAddress) {
+        const sponsoredFpcAddress = sponsoredSubmission
+          ? undefined
+          : this.walletManager.getSponsoredFpcAddress();
+        // A sponsored transaction is already broadcast and paid for by the
+        // paymaster; running the balance checks below would reject it for a
+        // balance it never needed, after it has already gone out.
+        if (sponsoredSubmission) {
+          // fall through to the shared submit/confirm handling
+        } else if (sponsoredFpcAddress) {
           const sponsorFjBal =
             await this.walletManager.getSponsoredFpcFeeJuiceBalance();
           const minWei = getSponsoredFpcMinBalanceFjWei();
@@ -487,7 +494,11 @@ export class TxExecutor {
               status: receipt.status,
             })
           );
-          if (attempt < MAX_RETRIES) {
+          // A sponsored transaction that was INCLUDED and then reverted has
+          // already charged the paymaster and consumed one of the player's free
+          // transactions. Retrying would burn a second one, and would leave the
+          // submitted/confirmed promises naming different transactions.
+          if (attempt < MAX_RETRIES && !sponsoredSubmission) {
             const latestBlock = receipt.blockNumber ?? 0;
             if (latestBlock > 0) {
               this.stateResolver.setLastConfirmedBlock(latestBlock);

@@ -274,8 +274,10 @@ contract QuotaFpc {
         app_payload: QuotaPayload,
         allowed_targets: [AztecAddress; MAX_ALLOWED_TARGETS],
     ) {
+        let mut call_count: u32 = 0;
         for call in app_payload.function_calls {
             if !call.target_address.is_zero() {
+                call_count += 1;
                 let mut permitted = false;
                 for allowed in allowed_targets {
                     if !allowed.is_zero() & (call.target_address == allowed) {
@@ -283,8 +285,14 @@ contract QuotaFpc {
                     }
                 }
                 assert(permitted, "Sponsored call targets a non-allowlisted contract");
+                // `hide_msg_sender` would have the account forward the call with
+                // a null sender, which breaks the guarantee this design exists
+                // to provide: that the sponsored app still sees the real user.
+                assert(!call.hide_msg_sender, "Sponsored calls must not hide the sender");
             }
         }
+        // An empty payload does nothing but burn the sponsor's fee juice.
+        assert(call_count > 0, "A sponsored transaction must do something");
     }
 
     /// Shared preamble: assert we are the transaction root, bind the payload,

@@ -17,7 +17,12 @@ function nodeWithTakenSeats(
   maxUsers: number,
 ): SeatProbeNode {
   return {
-    async findLeavesIndexes(_block, _tree, leaves) {
+    async findLeavesIndexes(_block, tree, leaves) {
+      // Asserting the tree id here is the point: the mock previously ignored it,
+      // which hid the client querying the wrong tree entirely.
+      if (tree !== 0) {
+        throw new Error(`expected the nullifier tree (0), got ${tree}`);
+      }
       // Leaves arrive in seat order, chunked; map each back by position.
       return leaves.map((_, i) => (takenIndexes.includes(i) ? 1 : undefined));
     },
