@@ -16,6 +16,7 @@ import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
+import type { TxHash } from "@aztec/stdlib/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
@@ -354,11 +355,22 @@ async function registerQuotaFpcWithWallet(
   return instance.address;
 }
 
+/**
+ * Per-transaction gas ceilings for sponsored transactions. The data-gas cap is
+ * far tighter than the L2 cap on Aztec networks and is easy to exceed by
+ * accident; these values were measured against a live network in Phase 1.
+ */
+const QUOTA_DA_GAS_LIMIT = 50_000;
+const QUOTA_L2_GAS_LIMIT = 6_000_000;
+const QUOTA_TEARDOWN_DA_GAS_LIMIT = 5_000;
+const QUOTA_TEARDOWN_L2_GAS_LIMIT = 500_000;
+
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: Wallet;
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly quotaFpcAddress: AztecAddress | undefined;
+  private quotaFpcContract: unknown | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
@@ -753,6 +765,139 @@ export class WalletManager {
   /** The quota paymaster, when one is configured and was found on the node. */
   getQuotaFpcAddress(): AztecAddress | undefined {
     return this.quotaFpcAddress;
+  }
+
+  /** The paymaster contract handle, or undefined when none is configured. */
+  async getQuotaFpcContract(): Promise<unknown | undefined> {
+    if (!this.quotaFpcAddress) return undefined;
+    if (this.quotaFpcContract) return this.quotaFpcContract;
+    const { QuotaFpcContract } =
+      await import("@dfpunk/contracts/artifacts/QuotaFpc");
+    this.quotaFpcContract = QuotaFpcContract.at(
+      this.quotaFpcAddress,
+      this.wallet
+    );
+    return this.quotaFpcContract;
+  }
+
+  /**
+   * A player's allowance for a generation.
+   *
+   * A read failure yields `syncing: true`, never "nothing left" — those states
+   * are indistinguishable from the outside, and reporting the wrong one sends
+   * an active player to a funding page they do not need.
+   */
+  async readQuotaAllowance(
+    quotaFpc: unknown,
+    player: AztecAddress,
+    generation: number
+  ): Promise<{
+    generation: number;
+    subscribed: boolean;
+    remaining: number;
+    syncing: boolean;
+  }> {
+    try {
+      const contract = quotaFpc as {
+        methods: Record<
+          string,
+          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
+        >;
+      };
+      const raw = (await contract.methods
+        .get_quota_info(player, generation)
+        .simulate({ from: player })) as { result?: [boolean, bigint] };
+      const [subscribed, remaining] = (raw?.result ?? raw) as [boolean, bigint];
+      return {
+        generation,
+        subscribed: Boolean(subscribed),
+        remaining: Number(remaining),
+        syncing: false,
+      };
+    } catch (err) {
+      console.debug("[WalletManager] could not read allowance:", err);
+      return { generation, subscribed: false, remaining: 0, syncing: true };
+    }
+  }
+
+  /** A free seat for this generation, or null when today is fully claimed. */
+  async findQuotaSeat(
+    quotaFpc: unknown,
+    generation: number
+  ): Promise<number | null> {
+    if (!this.quotaFpcAddress) return null;
+    try {
+      const contract = quotaFpc as {
+        methods: Record<
+          string,
+          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
+        >;
+      };
+      const raw = (await contract.methods.get_policy().simulate({
+        from: this.activeAddress!,
+      })) as { result?: { max_users: bigint } };
+      const policy = (raw?.result ?? raw) as { max_users: bigint };
+      const { findFreeSeat } = await import("@dfpunk/quota-fpc");
+      return await findFreeSeat({
+        node: this.node as never,
+        fpcAddress: this.quotaFpcAddress,
+        generation,
+        maxUsers: Number(policy.max_users),
+      });
+    } catch (err) {
+      console.debug("[WalletManager] could not pick a seat:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Sends a transaction whose ORIGIN is the quota paymaster rather than the
+   * player's account. This is what makes sponsorship possible without changing
+   * the game's contracts: the paymaster checks the payload against its
+   * allowlist and pays, then hands off to the player's own account entrypoint,
+   * so the game still sees the player as `msg_sender`.
+   *
+   * `scope` must be the PLAYER: the allowance note is delivered to them, and
+   * proving needs their keys to see it.
+   */
+  async sendFromQuotaPaymaster(
+    executionPayload: unknown,
+    scope: AztecAddress
+  ): Promise<TxHash> {
+    const wallet = this.wallet as unknown as {
+      pxe: {
+        proveTx(
+          request: unknown,
+          opts: { scopes: AztecAddress[] }
+        ): Promise<{ toTx(): Promise<{ getTxHash(): TxHash }> }>;
+      };
+      getChainInfo(): Promise<unknown>;
+    };
+
+    const { DefaultEntrypoint } = await import("@aztec/entrypoints/default");
+    const { GasSettings, Gas } = await import("@aztec/stdlib/gas");
+
+    // Explicit limits are mandatory here: the wallet's default is the network
+    // maximum, which no sane per-transaction ceiling would ever cover.
+    const gasSettings = GasSettings.fallback({
+      gasLimits: new Gas(QUOTA_DA_GAS_LIMIT, QUOTA_L2_GAS_LIMIT),
+      teardownGasLimits: new Gas(
+        QUOTA_TEARDOWN_DA_GAS_LIMIT,
+        QUOTA_TEARDOWN_L2_GAS_LIMIT
+      ),
+      maxFeesPerGas: await this.node.getCurrentMinFees(),
+    });
+
+    const txRequest = await new DefaultEntrypoint().createTxExecutionRequest(
+      executionPayload as never,
+      gasSettings,
+      (await wallet.getChainInfo()) as never
+    );
+
+    const proven = await wallet.pxe.proveTx(txRequest, { scopes: [scope] });
+    const tx = await proven.toTx();
+    await this.node.sendTx(tx as never);
+    return tx.getTxHash();
   }
 
   getActiveAddress(): AztecAddress | undefined {

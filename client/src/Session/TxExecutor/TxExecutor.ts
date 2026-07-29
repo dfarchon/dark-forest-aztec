@@ -12,6 +12,7 @@
  *   - ContractResolver maps methodName to Aztec contract + method
  */
 
+import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import {
   type ContractMethod,
   NO_WAIT,
@@ -108,6 +109,7 @@ export class TxExecutor {
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
 
+  private readonly chainClock: ChainClock;
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -135,6 +137,7 @@ export class TxExecutor {
     );
 
     const wallet = walletManager.getWallet();
+    this.chainClock = chainClock;
     this.contractResolver = new ContractResolver(wallet);
 
     this.stateResolver = new StateResolver(
@@ -320,11 +323,31 @@ export class TxExecutor {
         // with the UI work; until then a configured paymaster is registered with
         // the wallet but transactions continue to use the paths below, so the
         // game behaves exactly as it does today.
+        //
+        // Sponsored path: when a paymaster is configured and the player still
+        // has allowance, the transaction is assembled with the PAYMASTER as its
+        // origin (see @dfpunk/quota-fpc). Any failure here falls through to the
+        // normal paths below rather than blocking the move — a player who can
+        // pay their own way must never be stopped because sponsorship lapsed.
+        let sponsoredSubmission: TxHash | undefined;
         const quotaFpcAddress = this.walletManager.getQuotaFpcAddress();
-        if (quotaFpcAddress) {
-          console.debug(
-            `[TxExecutor] quota paymaster available at ${quotaFpcAddress.toString()}`
-          );
+        const activeAddress = this.walletManager.getActiveAddress();
+        if (quotaFpcAddress && activeAddress) {
+          try {
+            const sponsoredHash = await this.trySponsoredSend(
+              contract,
+              method,
+              contractArgs,
+              quotaFpcAddress,
+              activeAddress
+            );
+            sponsoredSubmission = sponsoredHash;
+          } catch (err) {
+            console.debug(
+              "[TxExecutor] sponsorship unavailable, paying normally:",
+              err
+            );
+          }
         }
         const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
         if (sponsoredFpcAddress) {
@@ -385,42 +408,50 @@ export class TxExecutor {
         }
         const invocation = methodFn(...contractArgs);
 
-        try {
-          console.debug(
-            `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
-          );
-          console.debug(
-            `[TxExecutor] contractArgs (${contractArgs.length}):`,
-            contractArgs
-          );
-          const simResult = unwrapSimulateResult(
-            await invocation.simulate(simulateOpts)
-          );
-          console.debug(
-            `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
-            simResult
-          );
-        } catch (simErr) {
-          console.error(
-            `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
-            simErr
-          );
-          if (simErr instanceof Error) {
-            console.error(`[TxExecutor] error message:`, simErr.message);
-            console.error(`[TxExecutor] error stack:`, simErr.stack);
-            if ("cause" in simErr) {
-              console.error(`[TxExecutor] error cause:`, simErr.cause);
+        // A sponsored transaction has already been assembled, proven and sent
+        // by the paymaster path above; simulating or sending it again here
+        // would duplicate the work and the transaction.
+        if (!sponsoredSubmission) {
+          try {
+            console.debug(
+              `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
+            );
+            console.debug(
+              `[TxExecutor] contractArgs (${contractArgs.length}):`,
+              contractArgs
+            );
+            const simResult = unwrapSimulateResult(
+              await invocation.simulate(simulateOpts)
+            );
+            console.debug(
+              `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
+              simResult
+            );
+          } catch (simErr) {
+            console.error(
+              `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+              simErr
+            );
+            if (simErr instanceof Error) {
+              console.error(`[TxExecutor] error message:`, simErr.message);
+              console.error(`[TxExecutor] error stack:`, simErr.stack);
+              if ("cause" in simErr) {
+                console.error(`[TxExecutor] error cause:`, simErr.cause);
+              }
             }
+            throw simErr;
           }
-          throw simErr;
         }
 
-        const sendResult = (await timeout(
-          invocation.send(sendOptsNoWait),
-          TX_SUBMIT_TIMEOUT,
-          `tx request ${tx.id} failed to submit: timed out`
-        )) as unknown as { txHash: TxHash };
-        const submitted: TxHash = sendResult.txHash;
+        const submitted: TxHash =
+          sponsoredSubmission ??
+          (
+            (await timeout(
+              invocation.send(sendOptsNoWait),
+              TX_SUBMIT_TIMEOUT,
+              `tx request ${tx.id} failed to submit: timed out`
+            )) as unknown as { txHash: TxHash }
+          ).txHash;
 
         // 6. Submit state — v0.6 lines 376-383
         tx.state = "Submit";
@@ -525,6 +556,73 @@ export class TxExecutor {
   // -------------------------------------------------------------------------
   // Utility — v0.6 lines 328-330, 456-458
   // -------------------------------------------------------------------------
+
+  /**
+   * Attempts to send `method` sponsored by the paymaster, returning the tx hash
+   * on success or `undefined` when sponsorship is not available right now.
+   *
+   * Returning `undefined` rather than throwing is the point: an exhausted
+   * allowance, a busy network, or a missing paymaster are all ordinary states
+   * that should quietly fall back to the player paying, not errors that stop a
+   * move.
+   */
+  private async trySponsoredSend(
+    contract: { methods: Record<string, ContractMethod> },
+    method: string,
+    contractArgs: unknown[],
+    quotaFpcAddress: AztecAddress,
+    player: AztecAddress
+  ): Promise<TxHash | undefined> {
+    const [{ buildSandwichPayload, generationAt, resolveFeeSource }, quotaFpc] =
+      await Promise.all([
+        import("@dfpunk/quota-fpc"),
+        this.walletManager.getQuotaFpcContract(),
+      ]);
+    if (!quotaFpc) return undefined;
+
+    const chainSeconds = BigInt(this.chainClock.nowSec());
+    const generation = generationAt(chainSeconds);
+    const state = await this.walletManager.readQuotaAllowance(
+      quotaFpc,
+      player,
+      generation
+    );
+
+    const source = await resolveFeeSource({
+      state,
+      chainTimestampSeconds: chainSeconds,
+      findFreeSeat: () =>
+        this.walletManager.findQuotaSeat(quotaFpc, generation),
+      ownBalance: 0n,
+      // Self-pay is handled by the caller's existing paths, so this decision is
+      // only ever "sponsored or not".
+      minSelfPayBalance: 1n,
+      paymasterBalance: await getFeeJuiceBalance(quotaFpcAddress, this.node),
+      minPaymasterBalance: 1n,
+    });
+
+    if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
+      return undefined;
+    }
+
+    const methodFn = contract.methods[method];
+    const requested = await methodFn(...(contractArgs as never[])).request();
+    const calls = (requested as { calls?: unknown[] }).calls ?? requested;
+
+    const payload = await buildSandwichPayload(
+      {
+        calls: calls as never,
+        player,
+        fpcAddress: quotaFpcAddress,
+        generation,
+        seat: source.kind === "sponsored-first" ? source.seat : undefined,
+      },
+      this.walletManager.getWallet() as never,
+      quotaFpc as never
+    );
+
+    return await this.walletManager.sendFromQuotaPaymaster(payload, player);
+  }
 
   private nextId(): TransactionId {
     return ++this.idSequence;
