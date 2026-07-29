@@ -11,7 +11,17 @@
  * transactions sends them to a funding page they do not need.
  */
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
-import { generationAt, millisUntilReset, resetLabel } from "@dfpunk/quota-fpc";
+import {
+  describeQuotaUnavailable,
+  describeSponsored,
+  flattenQuotaMessage,
+  generationAt,
+  millisUntilReset,
+  resetLabel,
+  resetsIn,
+} from "@dfpunk/quota-fpc";
+
+import { externalLinks } from "../config/externalLinks";
 
 export type QuotaStatusKind =
   /** No paymaster configured for this build. */
@@ -91,38 +101,55 @@ export async function readQuotaStatus(
   }
 }
 
-/** Short label for the top bar. */
+/** Short label for the top bar. Space is tight, so this is the headline only. */
 export function formatQuotaBadge(status: QuotaStatus): string | undefined {
   switch (status.kind) {
     case "off":
       return undefined;
     case "unknown":
-      return "checking free txs…";
+      return "checking sponsorship…";
     case "available":
-      return `${status.remaining} free tx${status.remaining === 1 ? "" : "s"}`;
+      return `${status.remaining} sponsored`;
     case "unused":
-      return "free txs ready";
+      return "sponsored";
     case "spent":
-      return "no free txs left";
+      // Leads with when it comes back rather than with the bad news.
+      return `sponsoring ${resetsIn(status.millisUntilReset)}`;
   }
 }
 
-/** Hover detail for the badge. */
+/** Hover detail for the badge, including what to do about it. */
 export function formatQuotaTooltip(status: QuotaStatus): string {
+  const context = {
+    millisUntilReset: status.millisUntilReset,
+    bridgeUrl: externalLinks.aztecMainnet.feeJuiceBridge,
+  };
+
   switch (status.kind) {
     case "off":
-      return "Sponsored transactions are not enabled.";
+      return "Sponsored transactions aren't enabled.";
     case "unknown":
-      return "Checking how many free transactions you have left.";
+      return flattenQuotaMessage(
+        describeQuotaUnavailable("sync-pending", context)
+      );
     case "available":
-      return `Dark Forest is paying for ${status.remaining} more transaction${
-        status.remaining === 1 ? "" : "s"
-      } today. Your allowance refills at ${status.resetsAt}.`;
+      return flattenQuotaMessage(describeSponsored(status.remaining, context));
     case "unused":
-      return `Your free transactions for today are ready. They refill at ${status.resetsAt}.`;
+      return flattenQuotaMessage(describeSponsored(0, context));
     case "spent":
-      return `You've used today's free transactions. More arrive at ${status.resetsAt}; until then transactions come out of your own balance.`;
+      return flattenQuotaMessage(
+        describeQuotaUnavailable("exhausted", context)
+      );
   }
+}
+
+/** Where to send a player who wants to stop waiting. Undefined when pointless. */
+export function quotaActionLink(status: QuotaStatus): string | undefined {
+  if (status.kind !== "spent") return undefined;
+  return describeQuotaUnavailable("exhausted", {
+    millisUntilReset: status.millisUntilReset,
+    bridgeUrl: externalLinks.aztecMainnet.feeJuiceBridge,
+  }).action?.href;
 }
 
 /**

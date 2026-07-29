@@ -322,10 +322,12 @@ contract QuotaFpc {
         //
         // The freshness assert above is the real control: it already fixes which
         // generation may be spent. The protocol independently refuses any
-        // transaction anchored more than 24h back. Dropping the tightening widens
-        // the simultaneously-spendable window from roughly one generation to
-        // roughly two, which is bounded by the same daily arithmetic and,
-        // ultimately, by the paymaster's balance.
+        // transaction anchored more than 24h back.
+        //
+        // Exposure without the tightening: an anchor may be up to 24h old, so
+        // around a rollover the previous, current and next generations can all be
+        // spendable at once — about three, not two. Each is separately bounded by
+        // max_users x max_uses x max_fee, and all of it by the balance.
     }
 
     /// Shared tail: accept the fee, close the setup phase, and hand the payload

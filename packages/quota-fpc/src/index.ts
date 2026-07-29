@@ -24,10 +24,20 @@ export {
 
 export {
   QuotaUnavailableError,
-  describeQuotaUnavailable,
   reasonFromRevert,
   type QuotaUnavailableReason,
 } from "./errors.js";
+
+export { humanizeDuration, resetsIn } from "./duration.js";
+
+export {
+  describeQuotaUnavailable,
+  describeSponsored,
+  flattenQuotaMessage,
+  type QuotaAction,
+  type QuotaCopyContext,
+  type QuotaMessage,
+} from "./messages.js";
 
 export {
   assertValidMaxUsers,

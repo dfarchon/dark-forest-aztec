@@ -36,28 +36,6 @@ export class QuotaUnavailableError extends Error {
   }
 }
 
-/** User-facing copy. Plain language, no jargon, and never a dead end. */
-export function describeQuotaUnavailable(
-  reason: QuotaUnavailableReason,
-): string {
-  switch (reason) {
-    case "sync-pending":
-      return "Checking your free transactions…";
-    case "exhausted":
-      return "You've used all your free transactions for today. They come back at 00:00 UTC.";
-    case "no-seats":
-      return "Today's free transactions have all been claimed. More open up at 00:00 UTC.";
-    case "fee-spike":
-      return "Network fees are unusually high right now, so free transactions are paused.";
-    case "paymaster-empty":
-      return "Free transactions are unavailable right now.";
-    case "rollover":
-      return "Your free transactions just reset — reloading your allowance.";
-    case "not-sponsored":
-      return "This action isn't covered by free transactions.";
-  }
-}
-
 /** Maps a contract revert message to a reason, or undefined if unrecognised. */
 export function reasonFromRevert(
   message: string,

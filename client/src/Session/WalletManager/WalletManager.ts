@@ -364,6 +364,8 @@ const QUOTA_DA_GAS_LIMIT = 50_000;
 const QUOTA_L2_GAS_LIMIT = 6_000_000;
 const QUOTA_TEARDOWN_DA_GAS_LIMIT = 5_000;
 const QUOTA_TEARDOWN_L2_GAS_LIMIT = 500_000;
+/** Absorbs fee movement between proving and inclusion. */
+const QUOTA_FEE_HEADROOM_MULTIPLIER = 2;
 
 export class WalletManager {
   private readonly node: AztecNode;
@@ -911,7 +913,12 @@ export class WalletManager {
         QUOTA_TEARDOWN_DA_GAS_LIMIT,
         QUOTA_TEARDOWN_L2_GAS_LIMIT
       ),
-      maxFeesPerGas: await this.node.getCurrentMinFees(),
+      // Padded: proving takes seconds, and a fee tick in that window would
+      // otherwise make an already-proven transaction unaffordable. The
+      // paymaster's own max_fee assertion still bounds what this can cost it.
+      maxFeesPerGas: (await this.node.getCurrentMinFees()).mul(
+        QUOTA_FEE_HEADROOM_MULTIPLIER
+      ),
     });
 
     const txRequest = await new DefaultEntrypoint().createTxExecutionRequest(
