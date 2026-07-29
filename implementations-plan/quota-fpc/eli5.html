@@ -1,0 +1,230 @@
+<title>Dark Forest — Free daily moves · Plan ELI5</title>
+<style>
+  :root {
+    --paper: #F7F8F5;
+    --ink: #1C2420;
+    --muted: #5A6B62;
+    --line: #DDE3DD;
+    --card: #FFFFFF;
+    --accent: #0E8A5F;
+    --accent-ink: #0A6B4A;
+    --warn-bg: #FBF3E2;
+    --warn-edge: #B7791F;
+    --code-bg: #EDF1ED;
+    --badge-bg: #10231B;
+    --badge-ink: #4ADE9C;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0C110E;
+      --ink: #E2EAE4;
+      --muted: #8CA096;
+      --line: #212B25;
+      --card: #121A15;
+      --accent: #34C98E;
+      --accent-ink: #4ADE9C;
+      --warn-bg: #241B0C;
+      --warn-edge: #D89A3E;
+      --code-bg: #16201A;
+      --badge-bg: #0A1811;
+      --badge-ink: #4ADE9C;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #F7F8F5; --ink: #1C2420; --muted: #5A6B62; --line: #DDE3DD;
+    --card: #FFFFFF; --accent: #0E8A5F; --accent-ink: #0A6B4A;
+    --warn-bg: #FBF3E2; --warn-edge: #B7791F; --code-bg: #EDF1ED;
+    --badge-bg: #10231B; --badge-ink: #4ADE9C;
+  }
+  :root[data-theme="dark"] {
+    --paper: #0C110E; --ink: #E2EAE4; --muted: #8CA096; --line: #212B25;
+    --card: #121A15; --accent: #34C98E; --accent-ink: #4ADE9C;
+    --warn-bg: #241B0C; --warn-edge: #D89A3E; --code-bg: #16201A;
+    --badge-bg: #0A1811; --badge-ink: #4ADE9C;
+  }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.65; margin: 0; padding: 3rem 1.25rem 5rem;
+  }
+  main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 2.75rem; }
+  h1, h2, h3, .eyebrow, code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0.4rem 0 0; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font-size: 1.05rem; margin: 0 0 0.75rem; color: var(--accent-ink); letter-spacing: 0.02em; }
+  h3 { font-size: 0.95rem; margin: 0 0 0.35rem; }
+  p { margin: 0 0 0.9rem; }
+  p:last-child { margin-bottom: 0; }
+  section > p, section li { max-width: 65ch; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.72rem; color: var(--muted); }
+  .summary { font-size: 1.06rem; }
+  .badge-demo {
+    display: inline-flex; align-items: center; gap: 0.55em;
+    background: var(--badge-bg); color: var(--badge-ink);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0.45em 1em; font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.85rem; font-variant-numeric: tabular-nums;
+  }
+  .badge-demo .dot { width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--badge-ink); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1.1rem 1.35rem; margin: 0 0 0.9rem;
+  }
+  .phase { border-left: 3px solid var(--accent); }
+  .phase .gate { color: var(--muted); font-size: 0.88rem; margin-top: 0.4rem; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--line); border-left: 3px solid var(--warn-edge); border-radius: 8px; padding: 1rem 1.35rem; }
+  .decisions { counter-reset: ask; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 0.8rem; margin: 0; }
+  .decisions li { counter-increment: ask; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1.15rem; }
+  .decisions li::before {
+    content: "A" counter(ask); font-family: ui-monospace, Menlo, monospace;
+    color: var(--accent-ink); font-size: 0.78rem; letter-spacing: 0.08em;
+    display: block; margin-bottom: 0.2rem;
+  }
+  .decisions .rec { color: var(--muted); font-size: 0.88rem; display: block; margin-top: 0.25rem; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem 1.1rem; overflow-x: auto; white-space: pre-wrap;
+    font-size: 0.82rem; line-height: 1.55; margin: 0.5rem 0 0;
+  }
+  code { font-size: 0.88em; }
+  .seed-label { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.2em 0.7em; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent-ink); margin-bottom: 0.3rem; }
+  .warning-line { color: var(--warn-edge); font-weight: 600; }
+  ul { padding-left: 1.2rem; margin: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .verdicts td, .verdicts th { text-align: left; padding: 0.35rem 1rem 0.35rem 0; font-size: 0.9rem; }
+  .verdicts { border-collapse: collapse; }
+  strong { font-weight: 650; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .budget { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  .budget th, .budget td { text-align: left; padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .budget tr:last-child td { border-bottom: none; }
+  .budget th { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  .budget td.num { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .budget .grief td { color: var(--warn-edge); }
+</style>
+
+<main>
+  <header>
+    <span class="eyebrow">Implementation plan · ELI5 · quota-fpc</span>
+    <h1>Free daily moves for Dark Forest players</h1>
+  </header>
+
+  <section>
+    <p class="summary">Today, before anyone can play Dark Forest on Aztec, they have to bridge tokens into "fee juice" — real money, real friction, and most curious players bounce off that wall. This plan builds a <strong>shared gas tank the app owns</strong>: we deploy a small contract, put fee juice in it, and it quietly pays the network fee for each player's transactions — up to a daily per-player allowance. The player just plays. In the corner of the screen they see:</p>
+    <p><span class="badge-demo"><span class="dot"></span>27 free txs left · resets 00:00 UTC</span></p>
+    <p>When the allowance runs out, the game falls back gracefully: pay from your own balance if you have one, otherwise here's the existing bridge flow. If the Dark Forest team likes the showcase, they fund the tank properly and their onboarding wall disappears.</p>
+  </section>
+
+  <section>
+    <h2>The four things worth understanding</h2>
+    <div class="card">
+      <h3>1 · Money in is one-way</h3>
+      <p>Fee juice sent to the tank can never be pulled back out — the network simply doesn't allow it. So we fund in small tranches: the first one is money we're comfortable losing entirely, and we only add more once the demo proves itself.</p>
+    </div>
+    <div class="card">
+      <h3>2 · The allowance is per <em>person</em>, per day, enforced by the contract</h3>
+      <p>Each player address gets one "day pass" per day (cryptographically enforced — claiming twice is impossible), each pass holds N free transactions, there's a cap on how many players can claim passes each day, and a ceiling on what any single transaction may cost the tank. Worst-case daily spend is therefore simple arithmetic: players × transactions × ceiling — and the tank's balance is the hard stop above that.</p>
+    </div>
+    <div class="card">
+      <h3>3 · Resets happen by themselves</h3>
+      <p>"Resets at midnight UTC" comes from blockchain time itself. There is no server, no scheduled job, and — after a security review round — <strong>no admin key at all</strong>. Nothing to run daily, nothing to steal. The trade-off: the allowance numbers are baked in at deployment; changing them means deploying a fresh tank (another reason to fund in small tranches).</p>
+    </div>
+    <div class="card">
+      <h3>4 · One honest limitation</h3>
+      <p>The tank can verify <em>who</em> is spending their allowance, but not <em>what game</em> the transaction plays. Someone could burn their daily allowance on non–Dark-Forest transactions. They gain nothing (fees go to the network, not to them), and the per-person daily cap bounds the waste — but it's a property you should knowingly accept (decision A4 below).</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why this plan is shaped the way it is</h2>
+    <p>Grego's team at Aztec Labs built a sponsorship contract we lean on heavily — its quota bookkeeping is excellent and battle-tested. But it identifies the player in a way that clashes with how Dark Forest's own contracts check "does this player own this planet?": used as-is, every move would be rejected. So we keep their quota machinery and change the plumbing so the game still sees the real player. That one change is why this is a small custom contract rather than a literal copy — and it's exactly what the audit rounds below stress-tested.</p>
+    <p class="muted">Full technical detail lives in the repo at implementations-plan/quota-fpc/plan.md (not part of this page on purpose).</p>
+  </section>
+
+  <section>
+    <h2>Why tier "mid"</h2>
+    <p>Risk rubric: <strong>security sensitivity high</strong> (the contract holds unrecoverable funds), <strong>irreversibility leaning high</strong> (mainnet, no refunds) — normally that argues for the heavier "deep" tier. But the blast radius is small (our own demo build, not the team's production site), the funding is deliberately tiny for the PoC, and a dedicated security hardening pass is already scheduled before any serious money goes in. Two independent audit rounds (below) covered the main risk. Confirmed as <code>mid</code> with you earlier; you can still override to <code>deep</code> before approving.</p>
+  </section>
+
+  <section>
+    <h2>What the audits changed</h2>
+    <p>Two independent reviewers (a top-tier Claude auditor and Codex from a different model family) attacked the first draft. They found real flaws — the most important: the daily allowance could have been claimed many times by one account (fixed: a per-person cryptographic claim), tomorrow's capacity could be pre-burned today (fixed: a 10-minute grace window instead of a day-long one), a subtle off-by-one gave everyone one extra free transaction (fixed), a failed game move could destroy a player's whole day pass (fixed), laggy syncing could tell active players they were "out of moves" (fixed with an explicit wait-and-retry design), and the original daily-rotation server key was a theft target (fixed by deleting the concept — see thing #3). Every finding is either fixed in the plan or turned into an explicit decision for you below. A final fresh-eyes review of the revised plan then came back <strong>conditional approve</strong>; its conditions (exact fee math, evidence-based sync states, midnight-edge rules, budget-after-measurement) are folded into the plan and into decisions A1, A9 and A10 below. The plan is ready for your verdict.</p>
+  </section>
+
+  <section>
+    <h2>The eight phases</h2>
+    <div class="card phase"><h3>Phase 1 · Prove the risky bits — and try the game-only restriction</h3><p>Two rounds of throwaway experiments on a local test network. Round A answers the standard questions: what happens when a sponsored move fails, how fast the wallet notices its updated allowance. Round B (added at your request) prototypes the <strong>"sandwich"</strong>: the tank itself becomes the transaction's front door, checks that the signed payload only targets Dark Forest contracts, then hands off to the player's own account so the game still sees the real player. If it works, sponsorship becomes un-griefable by outsiders — without touching the game's contracts. Research into the core protocol repo and Nethermind's FPC project already de-risked several pieces (the needed SDK class exists and is proven live); the genuinely novel parts are what the spike tests.</p><p class="gate">Proves itself by: every question answered with evidence on a live local sandbox — then <strong>you pick the shape</strong> (sandwich vs. the audited standard design) before any real code is built.</p></div>
+    <div class="card phase"><h3>Phase 2 · The tank contract itself</h3><p>The small Noir contract: day passes, per-day player cap, per-transaction fee ceiling, automatic midnight resets, no admin.</p><p class="gate">Proves itself by: compiles clean through the repo's real build + lint pipeline.</p></div>
+    <div class="card phase"><h3>Phase 3 · The brains package</h3><p>A small TypeScript package with all the decision logic: which payment source to use, when to wait vs. give up, what each error actually means. Kept out of the game client so it can be properly unit-tested.</p><p class="gate">Proves itself by: unit tests + lint + typecheck, all green.</p></div>
+    <div class="card phase"><h3>Phase 4 · Full dress rehearsal on the sandbox — the gate for real money</h3><p>Integration tests covering the whole lifecycle, including sponsoring the <em>actual Dark Forest contracts</em> deployed locally. Mainnet is blocked until this passes.</p><p class="gate">Proves itself by: the full suite green against a live local network, real game moves included.</p></div>
+    <div class="card phase"><h3>Phase 5 · Deploy &amp; measurement scripts</h3><p>One script to deploy the tank, one to measure real transaction costs so the fee ceiling is set from data instead of guesses, and a short funding runbook.</p><p class="gate">Proves itself by: scripted end-to-end run on the sandbox; measured numbers feed the tests.</p></div>
+    <div class="card phase"><h3>Phase 6 · Wiring into the game client</h3><p>The client already has a dormant "sponsor mode" — we extend it: point it at our tank, teach it the fallback chain (free allowance → own balance → bridge).</p><p class="gate">Proves itself by: client lint + full build green, plus a best-effort local smoke test.</p></div>
+    <div class="card phase"><h3>Phase 7 · What the player sees</h3><p>The counter badge, a detail panel in settings, and honest copy for the three awkward moments: "still syncing", "out of free moves", "network fees spiking". Exhausted players land in the existing bridge flow, not a dead end.</p><p class="gate">Proves itself by: lint + build green, screenshots of all states reviewed.</p></div>
+    <div class="card phase"><h3>Phase 8 · Mainnet showcase</h3><p>Deploy, measure against real network costs, fund the first small tranche, dry-run with a canary account, then the real demo: sponsored gameplay from a wallet holding nothing. Ends with a handoff note for the DF team.</p><p class="gate">Proves itself by: a real mainnet transaction paid by the tank, the counter behaving, the fallback demonstrated. <strong>Only starts with your explicit go-ahead.</strong></p></div>
+  </section>
+
+  <section>
+    <h2>Budgets in dollars</h2>
+    <p>Anchor numbers: AZTEC ≈ <strong>$0.0146</strong> and fee juice converts 1:1, so <strong>1 FJ ≈ 1.5¢</strong> and the agreed <strong>$20 loss cap ≈ 1,370 FJ</strong> — which is a lot of gas. Per-transaction costs below are pre-measurement estimates from repo hints (players are told to hold ≥5 FJ ≈ 7¢, bridge ~100 FJ ≈ $1.50 for extended play); Phase 5 replaces them with measured numbers and this table gets updated before any money moves.</p>
+    <div class="tablewrap">
+      <table class="budget">
+        <tr><th>Scenario</th><th>Players</th><th>Txs each</th><th>Cost basis</th><th>Cost / day</th><th>$20 tank lasts</th></tr>
+        <tr><td>Quiet demo day</td><td class="num">10</td><td class="num">10</td><td class="num">~$0.007 actual</td><td class="num">~$0.70</td><td class="num">~4 weeks</td></tr>
+        <tr><td>Healthy demo</td><td class="num">20</td><td class="num">15</td><td class="num">~$0.007 actual</td><td class="num">~$2.10</td><td class="num">~9 days</td></tr>
+        <tr><td>Busy day</td><td class="num">50</td><td class="num">25</td><td class="num">~$0.007 actual</td><td class="num">~$8.75</td><td class="num">~2 days</td></tr>
+        <tr class="grief"><td>Max grief (policy ceiling)</td><td class="num">100</td><td class="num">30</td><td class="num">$0.022 ceiling (3×)</td><td class="num">~$66 theoretical</td><td class="num">&lt; 1 day — loss stops at $20</td></tr>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:0.75rem;">How to read it: the allowance numbers (100 players/day × 30 txs, per-tx ceiling 3× measured cost) decide how <em>fairly</em> the tank is shared; the tank's balance alone decides the <em>total</em> at risk. Even a maximal griefing attack cannot cost more than what's in the tank — and refills are a choice we make with usage data in hand.</p>
+  </section>
+
+  <section>
+    <div class="warn">
+      <h2>Decisions needed from you (the open questions)</h2>
+      <p>Approving the plan also means settling these — each has a recommended default you can simply accept:</p>
+    </div>
+    <ol class="decisions">
+      <li><strong>Maximum total loss you accept for the showcase.</strong> The actual first deposit is sized only after we've measured real transaction costs, and stays under this cap.<span class="rec">✔ Decided: $20 USD (~1,370 FJ) — see the budget table above.</span></li>
+      <li><strong>The allowance numbers</strong> (baked in per deployment).<span class="rec">Proposal: 30 free txs/player/day · 100 players/day · fee ceiling ≈ 3× the measured cost of the priciest move. Final numbers locked at calibration with the updated budget table.</span></li>
+      <li><strong>How we demo it.</strong><span class="rec">Recommended: local build + screen-share/video. A public preview URL works too — the tank is discoverable on-chain either way; this only decides how soon strangers find the demo client.</span></li>
+      <li><strong>Accept that sponsorship can't be restricted to Dark Forest transactions</strong> — <em>unless the sandwich spike succeeds</em> (thing #4 above).<span class="rec">✔ Decided: we're actively spiking the restriction path that needs no game-contract changes (Phase 1, round B). If it proves out and you pick it, this limitation disappears; if not, the PoC falls back to the audited standard design under the $20 cap, with both scale-up restriction paths documented for the team.</span></li>
+      <li><strong>Accept the privacy surface:</strong> sponsored transactions are publicly attributable to Dark Forest, and daily sponsorship usage is computable for known player addresses.<span class="rec">Recommended: accept — player addresses are already public game state.</span></li>
+      <li><strong>Browser-extension wallets:</strong> support them in quota mode, or embedded-wallet-only for the showcase?<span class="rec">Recommended: decide after the Phase 1 experiment; embedded-only if it's inconclusive.</span></li>
+      <li><strong>Pace:</strong> sponsored play is effectively one transaction per player per block, with a short sync pause between consecutive ones.<span class="rec">Recommended: accept for the showcase; optimistic-UI polish is a follow-up.</span></li>
+      <li><strong>Fee-spike headroom:</strong> if network fees spike past the ceiling, sponsorship pauses (fallback chain takes over) until fees drop — or a redeploy.<span class="rec">Recommended: 3× headroom.</span></li>
+      <li><strong>Accept the midnight edges:</strong> in the last 10 minutes of a day, tomorrow's player slots can already be claimed, and a determined griefer could burn up to ~2× one day's budget in the window around midnight. Both stay bounded by the tank's balance.<span class="rec">Recommended: accept — this is the price of fully automatic resets, and the loss cap (A1) contains it.</span></li>
+      <li><strong>Accept no emergency stop:</strong> the same design that removed the stealable admin key also removed any pause button. If a flaw were being exploited, the funded balance drains until empty; the only lever is not topping up.<span class="rec">Recommended: accept for the PoC — it's exactly why the first deposit is money we can lose, and why the security hardening pass happens before real funding.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Approval checklist</h2>
+    <div class="card">
+      <ul>
+        <li>Confirm scope: quota paymaster only, mainnet showcase from our build, PoC quality bar.</li>
+        <li>Confirm tier <code>mid</code> (or override to <code>deep</code>).</li>
+        <li>Confirm the validation ladder: sandbox spike → compile/lint → unit → sandbox integration incl. real game contracts → mainnet canary.</li>
+        <li>Settle decisions A1–A8 (defaults above are fine to accept wholesale).</li>
+        <li>Note: <code>/harden security</code> is scheduled before the DF team scales funding — already agreed, restated here.</li>
+        <li>Verdict: approve · conditionally approve (with conditions) · reject (with blockers).</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Implementation seeds</h2>
+    <p class="muted">Draft until you approve — finalized against the approved scope afterwards. These start the autonomous implementation session, which must run inside the plan's worktree.</p>
+    <p class="warning-line">Use exactly ONE per session — they don't compose; setting one replaces the other.</p>
+    <div>
+      <span class="seed-label">Recommended · /goal</span>
+      <pre><code>/goal All 8 phases marked ✓ in implementations-plan/quota-fpc/plan.md (the per-phase headers in the file, not just the chat), each ✓ backed by its phase's validation gate (as defined in plan.md) reported passing in the transcript; for each phase the agent has printed LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-N.md in the transcript; /code-review max --fix complete with findings applied and committed; codex post-impl audit complete with high/critical findings addressed; `pnpm --filter client run lint`, `pnpm --filter client run build`, `pnpm --filter contracts run build-contracts`, and `pnpm --filter @dfpunk/quota-fpc run test` all report exit 0 in the transcript. Phase 8 (mainnet deploy + funding) requires explicit user confirmation before executing — do not deploy or fund without it.</code></pre>
+    </div>
+    <div style="margin-top:1.5rem;">
+      <span class="seed-label" style="border-color: var(--line); color: var(--muted);">Fallback · /loop 15m</span>
+      <pre><code>/loop 15m Drive implementations-plan/quota-fpc forward. Never idle waiting for my input. Each firing: (1) read plan.md + lessons/ (authoritative), git status + log -5; (2) no task in hand → next pending step from plan.md; after each meaningful edit run the fast layers (pnpm --filter contracts run lint / --filter client run lint / affected tsc) then commit; (3) stuck or facing a decision → /codex xhigh, decide, log the consult in lessons/phase-N.md — but hard limits stay hard: NEVER execute Phase 8 mainnet deploy/funding without explicit user confirmation, never push to main, never expand scope; (4) same step failed 5 times → stop retrying, reassess with codex; (5) phase gate green (commands + pass criteria as written) → paste result, mark ✓ in plan.md, print LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-N.md, advance; (6) all phases ✓ → /code-review max --fix → commit separately → codex post-impl audit → address high/critical → wrap-up report. Keep the ASCII checklist visible each firing.</code></pre>
+    </div>
+  </section>
+
+  <footer>
+    <p class="muted">quota-fpc · /blueprint mid · dark-forest-aztec · 2026-07-29</p>
+  </footer>
+</main>
