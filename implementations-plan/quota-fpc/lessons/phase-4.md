@@ -152,3 +152,46 @@ is unproven, and it is the last thing standing between here and a funded
 showcase.
 
 LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-4.md
+
+## GATE MET (2026-07-29) — sponsored gameplay works against the real contracts
+
+Confirmed by manual play: with the game deployed locally and the paymaster
+funded, a player transacts through Dark Forest's real contracts and the paymaster
+pays. This was the plan's stated condition for mainnet funding.
+
+Getting there took five fixes, and the striking thing is that **none of them were
+reachable from the 53 automated tests**:
+
+| Failure | Cause |
+|---|---|
+| Onboarding demanded fee juice | the gate branched on the legacy sponsor flag and never learned about quota mode |
+| `Missing required OPFS APIs`, `crypto.subtle` undefined | testing over plain HTTP; browsers grant secure-context privileges only over HTTPS or localhost |
+| `Timestamp too old` | a local network builds blocks only when transactions arrive, so chain time froze while a human read the screen |
+| `No artifact registered for contract class` | `sync-env-and-artifacts` prompts before overwriting; unanswered, the client held an older build than the chain |
+| `Invalid expiration timestamp` | the paymaster tightened tx expiration to the generation's end, which a chain with uneven block times can pass before validation |
+
+The automated suites use a purpose-built target contract, never traverse
+onboarding, never idle for minutes, and never load a stale artifact. **The manual
+leg belongs permanently in the gate**, not as a formality — it is the only thing
+that exercised the seams between contract, client, browser and network.
+
+Codex reviewed the send path independently and cleared the parts that could not
+be self-verified: the authwit shape for an account entrypoint invoked mid-stack,
+the 31+u8+bool argument encoding against `AccountActions::entrypoint`, the
+`extraHashedArgs` plumbing, and `DefaultEntrypoint` as the assembler. It
+confirmed the expiration setter as the cause of the final failure.
+
+### Carried forward, still open
+
+- **Gas limits are declared, not measured** (50k DA / 6M L2). Fine for the calls
+  exercised so far, but a heavier one could exceed them, and if that happens at
+  execution rather than admission the transaction reverts, the paymaster still
+  pays, and the player still loses a sponsored transaction. Phase 5's calibration
+  script exists for exactly this and now has real calls to measure.
+- **Testnet confirmation**: testnet advertises the same 117,668 DA-gas per-tx
+  limit as mainnet, versus 271,200 locally, and has `realProofs: true`. Passing
+  locally does not prove it fits there.
+- External-wallet quota mode reaches into a non-public `wallet.pxe` and cannot
+  work as written; embedded-only per Ask A6.
+
+LESSONS_FILE=implementations-plan/quota-fpc/lessons/phase-4.md

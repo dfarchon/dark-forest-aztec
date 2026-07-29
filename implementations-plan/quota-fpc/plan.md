@@ -120,7 +120,7 @@ Quota engine, `QuotaFeePaymentMethod`, seat picker (adapted; keep the `assertVal
 
 **Validation gate** — Commands: `pnpm --filter @dfpunk/quota-fpc run test` (unit) && `pnpm --filter @dfpunk/quota-fpc run lint` && package tsc. Pass: exit 0. Layers: unit + typecheck + lint.
 
-### Phase 4 — Sandbox integration suite (the mainnet gate) ◐ real game deployed + paymaster funded + allowlist verified on-chain; a sponsored gameplay tx still needs the client (state-hash args cannot be hand-built)
+### Phase 4 — Sandbox integration suite (the mainnet gate) ✓ sponsored gameplay confirmed against the real Dark Forest contracts by manual play (2026-07-29) (state-hash args cannot be hand-built)
 
 Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full lifecycle — deploy, subscribe+app-call, sponsor chain with evidence-based sync, exhaustion revert + classification, seat cap, per-player cap (Sybil second account), fee cap incl. dot-product clamp parity, stale/future generation reverts, **rollover across a day boundary (incl. lagging-anchor recovery)**, app-revert quota persistence, duplicate-subscribe revert, **seat-collision fresh-seat retry (not-included case only)**. **Plus the real-game leg (codex condition): deploy the actual DF contracts to the sandbox via the existing `contracts/scripts/deploy` pipeline and sponsor a real `initialize_player` + `move` through the quota FPC.** Mainnet (Phase 8) is blocked until this passes.
 
@@ -138,7 +138,7 @@ Env-gated (`describe.skipIf(!process.env.QUOTA_FPC_SANDBOX_URL)`) vitest: full l
 
 **Validation gate** — Commands: `pnpm --filter client run lint` && `pnpm --filter client run build`. Pass: exit 0; plus the full-stack sandbox smoke (client dev build against the Phase 4 sandbox game deployment) — **mandatory before Phase 8 funds beyond canary dust** (final-pass condition); if genuinely impractical, Phase 8 is limited to the canary until an equivalent live validation passes. Layers: lint + build + manual integration.
 
-### Phase 7 — UX ✓ (badge live, assembly wired; audit findings addressed)
+### Phase 7 — UX ✓ (badge live, assembly wired, copy revised after manual review)
 
 TopBar badge ("⛽ N free txs · resets 00:00 UTC", tooltip), SettingsPane quota rows (remaining, seats left today, FPC balance — extending the existing sponsor section), GameLandingPage preflight: quota → own-balance → bridge fallback (reusing `runAccountFeeJuicePreflightGate` verbatim), distinct copy for `QuotaSyncPending` vs `QuotaExhausted` vs `QuotaFeeSpike`. Copy is plain language ("You have 12 free moves left today").
 
