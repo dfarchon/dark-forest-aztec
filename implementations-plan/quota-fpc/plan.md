@@ -114,7 +114,7 @@ Full contract per Architecture; `contracts/fpc/` Nargo members wired into `contr
 
 **Validation gate** — Commands: `pnpm --filter contracts run build-contracts` && `pnpm --filter contracts run aztec:fmt:check` && `pnpm --filter contracts run lint`. Pass: exit 0, artifacts generated. Layers: compile + lint.
 
-### Phase 3 — `@dfpunk/quota-fpc` TS package
+### Phase 3 — `@dfpunk/quota-fpc` TS package ✓
 
 Quota engine, `QuotaFeePaymentMethod`, seat picker (adapted; keep the `assertValidMaxUsers` guard), day-index, error taxonomy. Unit tests: TS↔Noir parity for BOTH nullifiers, day-index UTC edges, fee-source resolution chain, sync-await state machine, clamping logic, payload shape.
 

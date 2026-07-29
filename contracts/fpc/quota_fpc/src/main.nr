@@ -67,8 +67,8 @@ contract QuotaFpc {
     /// and deliberately excludes its Admin and Config contracts.)
     global MAX_ALLOWED_TARGETS: u32 = 12;
 
-    global SEAT_NULLIFIER_SEPARATOR: u32 = 1397047636; // "SEAT"
-    global PLAYER_NULLIFIER_SEPARATOR: u32 = 1347240786; // "PLYR"
+    global SEAT_NULLIFIER_SEPARATOR: u32 = 1397047636; // "SEAT" (0x53454154)
+    global PLAYER_NULLIFIER_SEPARATOR: u32 = 1347180882; // "PLYR" (0x504c5952)
 
     global SECONDS_PER_DAY: u64 = 86400;
     /// Tomorrow's generation is accepted only inside this window at the end of a
