@@ -970,7 +970,10 @@ class GameManager extends EventEmitter {
           await gameManager.hardRefreshPlanet(tx.intent.locationId);
         } else if (isUnconfirmedFindArtifactTx(tx)) {
           await syncIndexerToReceipt();
-          await gameManager.hardRefreshPlanet(tx.intent.planetId);
+          await Promise.all([
+            gameManager.hardRefreshPlayer(gameManager.getAccount()),
+            gameManager.hardRefreshPlanet(tx.intent.planetId),
+          ]);
         } else if (isUnconfirmedDepositArtifactTx(tx)) {
           await syncIndexerToReceipt();
           await Promise.all([
@@ -1000,7 +1003,10 @@ class GameManager extends EventEmitter {
           ]);
         } else if (isUnconfirmedWithdrawSilverTx(tx)) {
           await syncIndexerToReceipt();
-          await gameManager.softRefreshPlanet(tx.intent.locationId);
+          await Promise.all([
+            gameManager.hardRefreshPlayer(gameManager.getAccount()),
+            gameManager.softRefreshPlanet(tx.intent.locationId),
+          ]);
         } else if (isUnconfirmedCapturePlanetTx(tx)) {
           await syncIndexerToReceipt();
           await Promise.all([
