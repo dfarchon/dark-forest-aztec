@@ -1,0 +1,211 @@
+<title>Gasless onboarding for Dark Forest — a quota paymaster</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #14181f;
+    --muted: #5a6472;
+    --line: #e2e6ec;
+    --accent: #b9750d;      /* fuel / sponsorship */
+    --accent-soft: #fbf1df;
+    --good: #1f7a4d;
+    --warn: #b06a00;
+    --warn-soft: #fbf0dc;
+    --danger: #b23b3b;
+    --danger-soft: #fbeaea;
+    --code-bg: #f0f2f5;
+    --code-ink: #1d2530;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0e14;
+      --panel: #121822;
+      --ink: #e6ebf2;
+      --muted: #8a97a8;
+      --line: #212b38;
+      --accent: #f0a830;
+      --accent-soft: #241a0b;
+      --good: #4fd08a;
+      --warn: #e0a13e;
+      --warn-soft: #241c0c;
+      --danger: #f0817f;
+      --danger-soft: #241213;
+      --code-bg: #0e141c;
+      --code-ink: #cdd6e2;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:#f6f7f9;--panel:#fff;--ink:#14181f;--muted:#5a6472;--line:#e2e6ec;
+    --accent:#b9750d;--accent-soft:#fbf1df;--good:#1f7a4d;--warn:#b06a00;
+    --warn-soft:#fbf0dc;--danger:#b23b3b;--danger-soft:#fbeaea;--code-bg:#f0f2f5;--code-ink:#1d2530;
+  }
+  :root[data-theme="dark"] {
+    --bg:#0a0e14;--panel:#121822;--ink:#e6ebf2;--muted:#8a97a8;--line:#212b38;
+    --accent:#f0a830;--accent-soft:#241a0b;--good:#4fd08a;--warn:#e0a13e;
+    --warn-soft:#241c0c;--danger:#f0817f;--danger-soft:#241213;--code-bg:#0e141c;--code-ink:#cdd6e2;
+  }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.62; margin: 0; padding: 3.5rem 1.25rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1, h2, h3, code, pre, .mono, .eyebrow { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; }
+  h1 { font-size: 1.85rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0.4rem 0 0.6rem; text-wrap: balance; }
+  h2 { font-size: 1.12rem; letter-spacing: -0.01em; margin: 3rem 0 0.6rem; padding-top: 1.6rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 0.98rem; margin: 1.6rem 0 0.4rem; }
+  p { margin: 0 0 0.9rem; max-width: 68ch; }
+  a { color: var(--accent); }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.7rem; color: var(--accent); }
+  .lede { font-size: 1.12rem; color: var(--ink); }
+  .muted { color: var(--muted); }
+  strong { font-weight: 650; }
+
+  .flow {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.15rem 1.35rem; margin: 1.2rem 0; font-size: 0.92rem;
+  }
+  .flow ol { margin: 0; padding-left: 0; list-style: none; counter-reset: step; }
+  .flow li { counter-increment: step; padding: 0.5rem 0 0.5rem 2.4rem; position: relative; border-bottom: 1px solid var(--line); }
+  .flow li:last-child { border-bottom: none; padding-bottom: 0; }
+  .flow li:first-child { padding-top: 0; }
+  .flow li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.5rem;
+    width: 1.5rem; height: 1.5rem; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-family: ui-monospace, monospace; font-size: 0.78rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  .flow li:first-child::before { top: 0; }
+  .flow .k { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.86em; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin: 1.2rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  th { font-family: ui-monospace, monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+  td.num, td .addr { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .addr { font-size: 0.82rem; color: var(--muted); }
+
+  pre { background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1.05rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; margin: 0.5rem 0 1rem; }
+  code { font-size: 0.88em; background: var(--code-bg); padding: 0.08em 0.36em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+
+  .note { border-radius: 10px; padding: 0.9rem 1.2rem; margin: 1rem 0; border: 1px solid var(--line); }
+  .note h3 { margin-top: 0; }
+  .note.good { background: color-mix(in srgb, var(--good) 8%, transparent); border-color: color-mix(in srgb, var(--good) 30%, var(--line)); }
+  .note.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
+  .note.danger { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+  .note .tag { font-family: ui-monospace, monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
+  .note.good .tag { color: var(--good); }
+  .note.warn .tag { color: var(--warn); }
+  .note.danger .tag { color: var(--danger); }
+
+  ul.plain { padding-left: 1.15rem; }
+  ul.plain li { margin: 0.35rem 0; max-width: 66ch; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; font-size: 0.92rem; margin: 0.6rem 0 0; }
+  .kv dt { color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.82rem; }
+  .kv dd { margin: 0; }
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+</style>
+
+<main>
+  <span class="eyebrow">Aztec · fee sponsorship · handoff</span>
+  <h1>Gasless onboarding for Dark Forest</h1>
+  <p class="lede">A fee-paying contract your app deploys and funds. It covers each player's transaction fees — up to a daily allowance, and only for Dark Forest's own contracts — so a new player can start moving without first bridging any fee juice. No changes to your deployed game contracts are required.</p>
+
+  <h2>Why this exists</h2>
+  <p>Today a new player can't do anything until they bridge $AZTEC into fee juice. That wall is where most curious players drop off. This removes it: the app holds a small pool of fee juice, and pays on the player's behalf. The player just plays; when their daily allowance runs out, the game falls back to the normal path (their own gas, or the bridge).</p>
+
+  <h2>How it works — the "sandwich"</h2>
+  <p>Aztec's standard fee-payment contracts can't see <em>what</em> a transaction does, so they'd sponsor anything. To restrict sponsorship to Dark Forest, this paymaster becomes the transaction's entry point and wraps around the player's own account:</p>
+  <div class="flow">
+    <ol>
+      <li>The paymaster is the transaction origin. It checks every call in the player-signed payload targets an <span class="k">allowlisted</span> Dark Forest contract.</li>
+      <li>It records the player's daily allowance (one subscription per player per day, a per-day capacity cap), and asserts the fee is within its per-transaction ceiling.</li>
+      <li>It elects itself fee payer and ends setup.</li>
+      <li>It hands off to the <span class="k">player's own account</span>, which verifies the player's signature and runs the calls — so the game still sees <span class="k">the player</span> as <code>msg_sender</code>. Ownership checks keep working, untouched.</li>
+    </ol>
+  </div>
+  <p>The daily reset is pure chain-time arithmetic (UTC day index) — there's no cron, no scheduled job, and deliberately <strong>no admin key</strong>. Nothing is privileged after deployment, so nothing can be stolen.</p>
+
+  <h2>The Dark Forest configuration</h2>
+  <p>Everything app-specific lives in one config file; the contract itself is generic. This is the proposed mainnet policy — final per-transaction ceiling is set from measured gas at deploy time.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>Setting</th><th>Value</th><th>Meaning</th></tr>
+      <tr><td>Transactions / player / day</td><td class="num">30</td><td class="muted">how much free play each player gets</td></tr>
+      <tr><td>Players / day</td><td class="num">100</td><td class="muted">daily capacity (raise by redeploying)</td></tr>
+      <tr><td>Per-transaction ceiling</td><td class="num">~0.0000228 FJ</td><td class="muted">≈ 3× a measured game tx</td></tr>
+      <tr><td>Accepted maximum loss</td><td class="num">~1,370 FJ ($20)</td><td class="muted">the funding cap — see below</td></tr>
+    </table>
+  </div>
+  <p class="muted">Sponsored contracts: Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction, ArtifactVault. Admin and Config are deliberately excluded — administrative actions are never sponsored.</p>
+
+  <h2>What it costs to fund</h2>
+  <p>The surprising part: at the fee levels measured so far, <strong>the funding amount is barely a constraint</strong>. A game transaction cost a fraction of a cent, so even a small pool covers an enormous number of them. The levers that actually matter are the quota policy and the loss you accept — not how much you deposit.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>Funding</th><th>Fee juice</th><th>Sponsored txs*</th><th>Player-days**</th></tr>
+      <tr><td class="num">$5</td><td class="num">342</td><td class="num">~15,000,000</td><td class="num">~500,000</td></tr>
+      <tr><td class="num">$10</td><td class="num">685</td><td class="num">~30,000,000</td><td class="num">~1,000,000</td></tr>
+      <tr><td class="num">$20</td><td class="num">1,370</td><td class="num">~60,000,000</td><td class="num">~2,000,000</td></tr>
+      <tr><td class="num">$50</td><td class="num">3,425</td><td class="num">~150,000,000</td><td class="num">~5,000,000</td></tr>
+      <tr><td class="num">$100</td><td class="num">6,849</td><td class="num">~300,000,000</td><td class="num">~10,000,000</td></tr>
+    </table>
+  </div>
+  <p class="muted" style="font-size:0.85rem">* At the per-transaction ceiling; organic cost runs lower, so real coverage is larger. &nbsp; ** At 30 sponsored transactions per player per day. &nbsp; Fee juice ≈ $0.0146. The whole policy at full capacity every day (100 players × 30 txs, ×3 for the rollover window) costs ~0.205 FJ ≈ <strong>$0.003/day</strong> — and that figure doesn't grow with funding.</p>
+  <div class="note warn">
+    <span class="tag">Measure before you trust these</span>
+    <p style="margin:0.5rem 0 0">These use gas measured on a local network. Real Aztec-mainnet fees float with congestion and may differ substantially — the calibration script re-measures against live transactions, and that number sets the true budget. Treat the table as the shape (funding is generous; policy and loss are the real levers), not the exact figures.</p>
+  </div>
+
+  <h2>Operating it</h2>
+
+  <h3>Deploy</h3>
+  <p>One command, reading the config. It prints the whole plan (policy, worst-case daily spend, loss cap, every sponsored contract) and refuses any policy whose worst case exceeds the accepted loss:</p>
+  <pre><code>pnpm --filter contracts run deploy-fpc -- --config fpc/config/dark-forest.json</code></pre>
+
+  <h3>Fund — and refuel</h3>
+  <p><strong>Refueling never needs a redeploy or any special call.</strong> Anyone bridges fee juice to the paymaster's address, from any account, at any time. Its balance goes up and it keeps sponsoring. Do this whenever it runs low.</p>
+
+  <h3>Change the quotas (more players, more transactions)</h3>
+  <p>The policy and allowlist are fixed at construction, so there is no "update" transaction — you <strong>deploy a fresh instance</strong> with the new numbers and point the client at it (one env var). This is deliberate: immutability is what removes the admin key. The redeploy itself is a minute of work.</p>
+
+  <div class="note danger">
+    <span class="tag">Irreversible</span>
+    <p style="margin:0.5rem 0 0">Fee juice sent to a paymaster <strong>cannot be withdrawn</strong> — the protocol makes it non-transferable, which is also why no admin can drain it. So <strong>fund in tranches</strong>: keep each instance's balance modest, and when you retune, the small remainder in the old instance is what's stranded. The balance is the real, hard cap on total loss.</p>
+  </div>
+
+  <h2>Honest caveats</h2>
+  <p>This was built and proven end-to-end against your real contracts on a local network — a player with zero fee juice gets past onboarding and plays, sponsored. Two things you should know before scaling funding beyond a showcase:</p>
+
+  <div class="note warn">
+    <span class="tag">Scope of the restriction</span>
+    <p style="margin:0.5rem 0 0">The allowlist restricts sponsorship to Dark Forest for <strong>ordinary accounts</strong>. A determined attacker using a custom account contract can still spend <em>their own</em> daily allowance on non–Dark-Forest transactions. They gain nothing (fees go to the network, not to them), and every path stays bounded by the per-player quota and the paymaster balance. Closing this fully is a known, sound contract change (binding the player's account class) — worth adding before un-capped funding, unnecessary for a capped showcase.</p>
+  </div>
+
+  <div class="note warn">
+    <span class="tag">Gas is estimated, not yet measured on your network</span>
+    <p style="margin:0.5rem 0 0">The per-transaction gas limits are conservative estimates. A heavier-than-expected call could exceed them; if that happens at execution time the transaction reverts, the paymaster still pays, and the player loses one sponsored transaction. Calibrating against real transactions on the target network (a script exists for this) pins the ceiling before funding.</p>
+  </div>
+
+  <div class="note good">
+    <span class="tag">What's solid</span>
+    <p style="margin:0.5rem 0 0">Two independent security reviews found no critical defects. The allowance accounting is exact, the daily reset needs no operator, there's no admin key to compromise, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas.</p>
+  </div>
+
+  <h2>What you'd do to run it</h2>
+  <ul class="plain">
+    <li>Decide the funding tranche (start small — it's unrecoverable) and the quota numbers.</li>
+    <li>Deploy the paymaster against the game contracts, calibrate the gas ceiling, fund the first tranche.</li>
+    <li>Set <code>VITE_QUOTA_FPC_ADDRESS</code> in the client build — that single switch turns sponsorship on; without it the client behaves exactly as today.</li>
+    <li>Watch usage; refuel as needed; redeploy if you want bigger quotas.</li>
+  </ul>
+
+  <footer>
+    <p>Prototype and evaluation. Full implementation, runbook, and security review live in the project repo under <code>implementations-plan/quota-fpc/</code> and <code>docs/quota-fpc-local.md</code>. Not yet deployed to mainnet.</p>
+  </footer>
+</main>
