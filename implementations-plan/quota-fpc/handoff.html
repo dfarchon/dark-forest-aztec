@@ -236,11 +236,17 @@
             <input type="range" id="cost" min="1" max="1000" step="1" value="228" aria-describedby="costVal">
             <input type="number" id="costNum" step="any" value="0.0000228" aria-label="Fee juice per transaction">
           </div>
-          <div class="presets" id="costPresets">
-            <button type="button" class="preset" data-cost="0.0000076">Measured (sandbox)</button>
-            <button type="button" class="preset" data-cost="0.0000228" aria-pressed="true">Policy ceiling (3×)</button>
+          <div class="row" style="margin-top:0.6rem">
+            <label for="perTxUsd" style="margin:0;font-weight:600;font-size:0.86rem">…which is per transaction</label>
+            <input type="number" id="perTxUsd" step="any" aria-label="USD per transaction">
           </div>
-          <p class="hint"><strong>This is the number to verify.</strong> "Measured" is one real sandbox transaction; "policy ceiling" is the most the paymaster will ever pay per transaction. Real Aztec-mainnet fees float with congestion — the calibration script re-measures against live transactions, and that value replaces this. Everything else here is exact arithmetic; this input carries the uncertainty.</p>
+          <div class="presets" id="costPresets">
+            <button type="button" class="preset" data-cost="0.0000076">Sandbox measurement</button>
+            <button type="button" class="preset" data-cost="0.0000228" aria-pressed="true">Sandbox × 3 (the policy ceiling)</button>
+            <button type="button" class="preset" data-usd="0.001">If a tx costs $0.001</button>
+            <button type="button" class="preset" data-usd="0.01">If a tx costs $0.01</button>
+          </div>
+          <p class="hint"><strong>Do not trust the first two.</strong> They come from a local test network, which charges almost nothing — no congestion, no real proving market, no L1 data costs. A live network could plausibly be <em>thousands of times</em> more expensive, which is the difference between this page saying "three cents" and "several hundred dollars". The last two presets are illustrative round numbers, not estimates. Type the real figure here once the calibration script has measured it on the target network; everything else on this page is exact arithmetic and will follow.</p>
         </div>
         <div class="field">
           <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>
@@ -356,6 +362,10 @@
     $("costVal").textContent = state.cost.toExponential(2);
     $("costUsdVal").textContent = "≈ " + fmtUsd(state.cost * state.price) + " each";
     $("priceVal").textContent = "$" + state.price;
+    // Keep the USD-per-tx field in step unless it is being typed into.
+    if (document.activeElement !== $("perTxUsd")) {
+      $("perTxUsd").value = Number((state.cost * state.price).toPrecision(4));
+    }
   }
 
   function bindPair(rangeId, numId, key, fromRange, toRange) {
@@ -382,7 +392,8 @@
 
   function syncPresets() {
     document.querySelectorAll("#costPresets .preset").forEach((b) => {
-      b.setAttribute("aria-pressed", String(Math.abs(+b.dataset.cost - state.cost) < 1e-9));
+      const target = b.dataset.usd ? +b.dataset.usd / state.price : +b.dataset.cost;
+      b.setAttribute("aria-pressed", String(Math.abs(target - state.cost) < 1e-12));
     });
     document.querySelectorAll("#scenarioPresets .preset").forEach((b) => {
       b.setAttribute("aria-pressed", String(+b.dataset.players === state.players && +b.dataset.txs === state.txs));
@@ -410,12 +421,28 @@
       syncPresets(); recompute();
     });
   });
+  // Most people know what a transaction "should" cost in cents long before
+  // anyone has measured it in fee juice, so allow driving it from that end.
+  $("perTxUsd").addEventListener("input", () => {
+    const usd = parseFloat($("perTxUsd").value);
+    if (!Number.isFinite(usd) || usd <= 0 || state.price <= 0) return;
+    setCost(usd / state.price, { skipUsdField: true });
+  });
+
+  function setCost(cost, opts = {}) {
+    state.cost = cost;
+    $("costNum").value = Number(cost.toPrecision(6));
+    $("cost").value = Math.min(+$("cost").max, Math.max(1, Math.round(cost / 1e-7)));
+    syncPresets();
+    const active = document.activeElement;
+    recompute();
+    if (opts.skipUsdField && active === $("perTxUsd")) return;
+  }
+
   document.querySelectorAll("#costPresets .preset").forEach((b) => {
     b.addEventListener("click", () => {
-      state.cost = +b.dataset.cost;
-      $("costNum").value = state.cost;
-      $("cost").value = Math.round(state.cost / 1e-7);
-      syncPresets(); recompute();
+      // A preset is either a fee-juice figure or a dollar figure.
+      setCost(b.dataset.usd ? +b.dataset.usd / state.price : +b.dataset.cost);
     });
   });
 
