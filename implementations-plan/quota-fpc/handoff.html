@@ -158,7 +158,7 @@
       <li>It hands off to the <span class="k">player's own account</span>, which verifies the player's signature and runs the calls — so the game still sees <span class="k">the player</span> as <code>msg_sender</code>. Ownership checks keep working, untouched.</li>
     </ol>
   </div>
-  <p>The daily reset is pure chain-time arithmetic (UTC day index) — there's no cron, no scheduled job, and deliberately <strong>no admin key</strong>. Nothing is privileged after deployment, so nothing can be stolen.</p>
+  <p>The daily reset is pure chain-time arithmetic (UTC day index) — there's no cron and no scheduled job. Whoever deploys the paymaster also holds a key that can retune it; what that key can and cannot do is spelled out below.</p>
 
   <h2>The Dark Forest configuration</h2>
   <p>Everything app-specific lives in one config file; the contract itself is generic. This is the proposed mainnet policy — final per-transaction ceiling is set from measured gas at deploy time.</p>
@@ -166,7 +166,7 @@
     <table>
       <tr><th>Setting</th><th>Value</th><th>Meaning</th></tr>
       <tr><td>Transactions / player / day</td><td class="num">30</td><td class="muted">how much free play each player gets</td></tr>
-      <tr><td>Players / day</td><td class="num">100</td><td class="muted">daily capacity (raise by redeploying)</td></tr>
+      <tr><td>Players / day</td><td class="num">100</td><td class="muted">daily capacity (adjustable, takes 12h)</td></tr>
       <tr><td>Per-transaction ceiling</td><td class="num">~0.0000228 FJ</td><td class="muted">≈ 3× a measured game tx</td></tr>
       <tr><td>Accepted maximum loss</td><td class="num">~1,370 FJ ($20)</td><td class="muted">the funding cap — see below</td></tr>
     </table>
@@ -276,11 +276,16 @@
   <p><strong>Refueling never needs a redeploy or any special call.</strong> Anyone bridges fee juice to the paymaster's address, from any account, at any time. Its balance goes up and it keeps sponsoring. Do this whenever it runs low.</p>
 
   <h3>Change the quotas (more players, more transactions)</h3>
-  <p>The policy and allowlist are fixed at construction, so there is no "update" transaction — you <strong>deploy a fresh instance</strong> with the new numbers and point the client at it (one env var). This is deliberate: immutability is what removes the admin key. The redeploy itself is a minute of work.</p>
+  <p>One command, and no redeploy:</p>
+  <pre><code>pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --show
+pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-uses 50</code></pre>
+  <p><code>--show</code> tells you what is live now, what change is already queued and exactly when it lands. Any change takes effect <strong>twelve hours later</strong> — that delay is fixed in the contract and nobody, including the key holder, can shorten it. It exists so a change is always announced before it binds.</p>
+  <p>Two things the tool refuses, both of which are quiet disasters otherwise: overwriting a change you already have queued (only one can be pending at a time — a second silently replaces the first), and setting a spending ceiling so low that every sponsored transaction fails and players get billed their own gas.</p>
+  <p><strong>A reduction binds everyone the moment it lands</strong>, including players already midway through their day: their remaining count can drop, and anyone holding a slot above the new player limit stops being sponsored. Increases are always safe.</p>
 
   <div class="note danger">
     <span class="tag">Irreversible</span>
-    <p style="margin:0.5rem 0 0">Fee juice sent to a paymaster <strong>cannot be withdrawn</strong> — the protocol makes it non-transferable, which is also why no admin can drain it. So <strong>fund in tranches</strong>: keep each instance's balance modest, and when you retune, the small remainder in the old instance is what's stranded. The balance is the real, hard cap on total loss.</p>
+    <p style="margin:0.5rem 0 0">Fee juice sent to a paymaster <strong>cannot be withdrawn</strong> — the protocol makes it non-transferable, which is why not even the key holder can take it out. Retuning no longer strands anything, since the numbers change in place. But the balance is still the real, hard cap on what you can lose, and it is the <em>only</em> cap: the key can raise the spending limits, and there is no way to pull funds back. So <strong>fund in tranches</strong> — deposit what you would accept losing, and top up as it proves out.</p>
   </div>
 
   <h2>Honest caveats</h2>
@@ -289,6 +294,14 @@
   <div class="note good">
     <span class="tag">The restriction now holds for everyone</span>
     <p style="margin:0.5rem 0 0">Earlier this was only true for ordinary accounts — someone using a custom account contract could spend their own daily allowance elsewhere. That is closed. The paymaster now also checks <strong>which account software</strong> the player is running: only the wallet type your players actually use is sponsored, and it must be an account that cannot later swap its own code. Both halves matter — the first version of this check was defeated by an account upgrading itself after approval, which a security review caught before it shipped.</p>
+  </div>
+
+  <div class="note warn">
+    <span class="tag">Somebody holds a key</span>
+    <p style="margin:0.5rem 0 0">Whoever deploys the paymaster can afterwards change the numbers and the list of sponsored contracts. The address is fixed at deployment and <strong>cannot be transferred</strong> — so if you want to hold it, you should be the one who deploys. In our showcase deployment it is our own deploy account, on the machine we build from.</p>
+    <p><strong>What the key cannot do:</strong> take money out (the protocol makes deposited fee juice non-transferable, for everyone including us), shorten the twelve-hour notice period, or touch the wallet-security rules described above.</p>
+    <p><strong>What it can do:</strong> raise the spending limits, and point sponsorship at different contracts. So the honest framing is not "your funds could be stolen" but "sponsorship could be redirected until the balance runs down". Two consequences follow: the funding cap in our config is a sanity check rather than an enforced limit, and <strong>only ever deposit what you would accept losing</strong>.</p>
+    <p><strong>There is no emergency stop.</strong> Nothing takes effect in under twelve hours — not a spending cut, not removing a contract from the list. If something goes wrong, the earliest any fix lands is half a day later. Funding in small tranches is the protection; reacting quickly is not available.</p>
   </div>
 
   <div class="note warn">
@@ -303,7 +316,7 @@
 
   <div class="note good">
     <span class="tag">What's solid</span>
-    <p style="margin:0.5rem 0 0">Four independent security reviews across two rounds. The allowance accounting is exact, the daily reset needs no operator, there's no admin key to compromise, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas. Every claim on this page is backed by tests that run against the real contracts on a live network — including one proving the account-upgrade route is blocked.</p>
+    <p style="margin:0.5rem 0 0">Seven independent security reviews. The allowance accounting is exact, the daily reset needs no operator, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas. Every claim on this page is backed by tests that run against the real contracts on a live network — including one proving the account-upgrade route is blocked, and one that fast-forwards the clock to prove a queued change really is inert until its time.</p>
   </div>
 
   <h2>What you'd do to run it</h2>
@@ -311,7 +324,7 @@
     <li>Decide the funding tranche (start small — it's unrecoverable) and the quota numbers.</li>
     <li>Deploy the paymaster against the game contracts, calibrate the gas ceiling, fund the first tranche.</li>
     <li>Set <code>VITE_QUOTA_FPC_ADDRESS</code> in the client build — that single switch turns sponsorship on; without it the client behaves exactly as today.</li>
-    <li>Watch usage; refuel as needed; redeploy if you want bigger quotas.</li>
+    <li>Watch usage; refuel as needed; change the numbers with one command when you want to (twelve hours' notice, no redeploy).</li>
   </ul>
 
   <footer>

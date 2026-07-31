@@ -47,3 +47,18 @@ Also fixed in 9.1 but worth noting here: `get_quota_info` now derives remaining 
 
 ## 9.4 — Tests
 
+**Done 2026-07-31.** Gate: `pnpm --filter @dfpunk/quota-fpc run test` exit 0, and the integration suite **19/19, zero skipped** against the live local chain. Evidence emitted: `EVIDENCE[activation] inert before the delay elapsed, in force after` and `EVIDENCE[clamp] a reduction bound an allowance issued under the old policy`.
+
+Nine Phase 9 cases: bootstrap-live-at-first-anchor, admin-only setter, setter invariants (zero uses / no targets), CAS stale-vs-correct revision, activation inert-then-binding, clamping an already-issued allowance, plus the pre-existing account-class and published-account cases still green.
+
+Two things cost a run each:
+
+1. **`.send().wait()` does not exist here** — `send()` already awaits inclusion. Five tests failed identically; the pattern elsewhere in the file (`await deploy.send({from})`) was right there.
+2. **`warpL2TimeAtLeastBy` is NOT on the ordinary node client.** It lives on a separate debug client via `createAztecNodeDebugClient` from `@aztec/stdlib/interfaces/client` — the normal API deliberately has no way to move the clock. Codex predicted this exact snag ("provided the harness creates the debug client") when it verified the warp was viable; I skimmed past it.
+
+Design notes worth keeping:
+- Warping is **global and irreversible**, so the two time-travel tests deploy their own paymaster (`deployOwnFpc`). Running them against the shared instance would invalidate every generation and anchor the other tests captured in `beforeAll`.
+- The clamp test cuts `max_uses` to exactly what the claimant already spent, so a pass means they have NOTHING left rather than "one fewer" — that distinguishes real clamping from the off-by-one my first formula had.
+
+## 9.5 — Docs + handoff
+

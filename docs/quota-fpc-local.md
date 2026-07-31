@@ -85,6 +85,52 @@ hand.
 
 Note the printed `QUOTA_FPC_CONTRACT_ADDRESS`.
 
+## 3b. Retuning a deployed paymaster
+
+The policy and the sponsored-contract list can be changed after deploy — no
+redeploy, no client rebuild. Every change takes **12 hours** to activate, fixed
+in the contract; nothing, including the admin key, can shorten it.
+
+```bash
+# What is live, what is queued, and exactly when it lands
+pnpm --filter contracts run update-fpc-policy -- --fpc $QUOTA_FPC_CONTRACT_ADDRESS --show
+
+# Schedule a change (add --dry-run first to see the effect without sending)
+pnpm --filter contracts run update-fpc-policy -- --fpc $QUOTA_FPC_CONTRACT_ADDRESS --max-uses 20
+```
+
+`--fpc` is the address `deploy-fpc` printed. The signer must be the
+`adminAddress` the contract was deployed with; the tool prints both up front so
+a mismatch is obvious before anything is sent.
+
+Things it deliberately refuses:
+
+- **Overwriting a queued change** without `--replace-pending`. Only one change
+  can be pending at a time, and a second silently replaces the first — so with
+  the flag, edits apply on top of the *pending* settings rather than the live
+  ones, and nothing already decided is lost. The real guard is on-chain (the
+  contract takes an expected revision), so two operators racing cannot both win.
+- **A ceiling below what the client actually spends** at current fees. That one
+  value would make every sponsored transaction unprovable and charge players
+  their own gas, with no user-facing explanation.
+
+Two behaviours worth knowing before you cut anything:
+
+- A reduction binds **everyone** at activation, including players already
+  midway through their day — their counter can drop, and a player holding a
+  slot above a reduced player-limit stops being sponsored.
+- Sponsorship gets briefly unreliable in the last minutes before an activation:
+  transactions are stamped to expire at the changeover, so proofs started just
+  before it can miss. A wobble, not an outage.
+
+**There is no fast lever and no pause.** If something is going wrong, the
+earliest any change lands is 12 hours later. Funding in tranches is the
+protection.
+
+> **The config file goes stale.** `fpc/config/*.json` describes what was
+> DEPLOYED. Once you have retuned on-chain it no longer describes what is live —
+> read live state with `--show`, not from the file.
+
 ## 4. Fund the paymaster with fake fee juice
 
 The paymaster starts empty and sponsors nothing until funded. On a local network

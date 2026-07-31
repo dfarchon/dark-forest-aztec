@@ -21,6 +21,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import {
   HAS_SANDBOX,
   chainTimestamp,
+  warpChainBy,
   connect,
   evidence,
   feeJuiceOf,
@@ -49,6 +50,42 @@ async function initializerlessClassId(): Promise<bigint> {
     SchnorrInitializerlessAccountContractArtifact,
   );
   return id.toBigInt();
+}
+
+/** Reads the live bundle and returns it with the named fields overridden. */
+async function bundleFrom(
+  fpc: any,
+  overrides: {
+    maxFeeWei?: bigint;
+    maxUses?: number;
+    maxUsers?: number;
+    targets?: AztecAddress[];
+  },
+): Promise<any> {
+  const unwrap = (raw: any) => raw?.result ?? raw;
+  const from = fpc.address;
+  const policy = unwrap(await fpc.methods.get_policy().simulate({ from }));
+  const targets = unwrap(
+    await fpc.methods.get_allowed_targets().simulate({ from }),
+  );
+  const pad = (list: AztecAddress[]) => [
+    ...list,
+    ...Array(12 - list.length).fill(ZERO),
+  ];
+  return {
+    max_fee: overrides.maxFeeWei ?? BigInt(policy.max_fee ?? policy[0]),
+    max_uses: overrides.maxUses ?? Number(policy.max_uses ?? policy[1]),
+    max_users: overrides.maxUsers ?? Number(policy.max_users ?? policy[2]),
+    allowed_targets: overrides.targets ? pad(overrides.targets) : targets,
+  };
+}
+
+async function currentRevision(fpc: any, from: AztecAddress): Promise<bigint> {
+  const raw: any = await fpc.methods
+    .get_scheduled_settings()
+    .simulate({ from });
+  const [, , revision] = raw?.result ?? raw;
+  return BigInt(revision);
 }
 
 describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
@@ -112,6 +149,37 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
   };
   const recordCall = () => callsOf(target.methods.record());
 
+  /**
+   * A paymaster of this test's own, for cases that warp the chain. Warping is
+   * global and irreversible, so it must not run against the shared instance
+   * the other tests' generations and anchors depend on.
+   */
+  async function deployOwnFpc(): Promise<QuotaFpcContract> {
+    const deploy = QuotaFpcContract.deploy(
+      ctx.wallet,
+      player,
+      MAX_FEE,
+      MAX_USES,
+      MAX_USERS,
+      [target.address, ...Array(11).fill(ZERO)],
+      [await initializerlessClassId(), 0n, 0n, 0n],
+      true,
+    );
+    await deploy.send({ from: player });
+    const instance = await deploy.register();
+    // Its PublicImmutables must be anchored before a private call can read them.
+    const deadline = Date.now() + 120_000;
+    for (;;) {
+      try {
+        await instance.methods.get_policy().simulate({ from: player });
+        return instance;
+      } catch (err) {
+        if (Date.now() > deadline) throw err;
+        await new Promise((r) => setTimeout(r, 2_000));
+      }
+    }
+  }
+
   beforeAll(async () => {
     ctx = await connect();
     player = ctx.addresses[0];
@@ -132,6 +200,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     const allowedClasses = [await initializerlessClassId(), 0n, 0n, 0n];
     const fpcDeploy = QuotaFpcContract.deploy(
       ctx.wallet,
+      player, // admin
       MAX_FEE,
       MAX_USES,
       MAX_USERS,
@@ -165,6 +234,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     await expect(
       QuotaFpcContract.deploy(
         ctx.wallet,
+        player,
         MAX_FEE,
         0,
         MAX_USERS,
@@ -178,6 +248,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     await expect(
       QuotaFpcContract.deploy(
         ctx.wallet,
+        player,
         MAX_FEE,
         MAX_USES,
         MAX_USERS,
@@ -193,6 +264,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     await expect(
       QuotaFpcContract.deploy(
         ctx.wallet,
+        player,
         MAX_FEE,
         MAX_USES,
         MAX_USERS,
@@ -205,6 +277,72 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     ).rejects.toThrow(/at least one allowed account class/);
   });
 
+  /**
+   * The bootstrap trap. `DelayedPublicMutable` routes every write through the
+   * current delay, including the constructor's — so if the delay were declared
+   * as 12h, the paymaster would read an all-zero policy (silently, not as an
+   * error) and sponsor nothing for its first 12 hours.
+   *
+   * `beforeAll` already sponsored a transaction against a just-deployed
+   * instance, which is the real proof. This pins the mechanism directly.
+   */
+  test("settings are live at the first post-deploy anchor, not 12h later", async () => {
+    const raw: any = await fpc.methods.get_policy().simulate({ from: player });
+    const policy = raw?.result ?? raw;
+    expect(Number(policy.max_uses ?? policy[1])).toBe(MAX_USES);
+    expect(Number(policy.max_users ?? policy[2])).toBe(MAX_USERS);
+    expect(BigInt(policy.max_fee ?? policy[0])).toBe(MAX_FEE);
+
+    const targets: any = await fpc.methods
+      .get_allowed_targets()
+      .simulate({ from: player });
+    const live = (targets?.result ?? targets)
+      .map((t: any) => t.toString())
+      .filter((t: string) => !/^0x0+$/.test(t));
+    expect(live).toContain(target.address.toString());
+  });
+
+  test("only the admin can schedule a change", async () => {
+    const bundle = await bundleFrom(fpc, { maxUses: MAX_USES });
+    await expect(
+      fpc.methods.schedule_settings(bundle, 0n).send({ from: other }),
+    ).rejects.toThrow(/caller is not admin/i);
+  });
+
+  test("the setter re-asserts the constructor's invariants", async () => {
+    // A zero bundle is fail-closed but would brick sponsorship for 12h with no
+    // shortcut, so the guards live in the contract, not only in the tooling.
+    const zeroUses = await bundleFrom(fpc, { maxUses: 0 });
+    await expect(
+      fpc.methods.schedule_settings(zeroUses, 0n).send({ from: player }),
+    ).rejects.toThrow(/max_uses/i);
+
+    const noTargets = await bundleFrom(fpc, { targets: [] });
+    await expect(
+      fpc.methods.schedule_settings(noTargets, 0n).send({ from: player }),
+    ).rejects.toThrow(/at least one allowed target/i);
+  });
+
+  test("a stale expected_revision is rejected, a correct one replaces", async () => {
+    const rev = await currentRevision(fpc, player);
+    await fpc.methods
+      .schedule_settings(await bundleFrom(fpc, { maxUses: 2 }), rev)
+      .send({ from: player });
+
+    // Same revision again: this is the two-operators race, and it must lose.
+    await expect(
+      fpc.methods
+        .schedule_settings(await bundleFrom(fpc, { maxUses: 4 }), rev)
+        .send({ from: player }),
+    ).rejects.toThrow(/changed since you last read/i);
+
+    // With the new revision it replaces the pending change (no queue).
+    await fpc.methods
+      .schedule_settings(await bundleFrom(fpc, { maxUses: MAX_USES }), rev + 1n)
+      .send({ from: player });
+    expect(await currentRevision(fpc, player)).toBe(rev + 2n);
+  });
+
   test("a player whose account class is not allowlisted cannot be sponsored", async () => {
     // A paymaster that allowlists some OTHER class: the harness player's real
     // initializerless account is then exactly the attacker shape C1 described —
@@ -213,6 +351,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     const strangerClasses = [0x1234n, 0n, 0n, 0n];
     const wrongClassDeploy = QuotaFpcContract.deploy(
       ctx.wallet,
+      player,
       MAX_FEE,
       MAX_USES,
       MAX_USERS,
@@ -332,6 +471,7 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     const publishedAddress = victim;
     const publishedFpcDeploy = QuotaFpcContract.deploy(
       ctx.wallet,
+      player,
       MAX_FEE,
       MAX_USES,
       MAX_USERS,
@@ -578,6 +718,96 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
       expect(fpcBefore - fpcAfter).toBe(0n);
     }
   });
+  /**
+   * The point of the whole phase: a scheduled change is NOT in effect before
+   * its activation time, and IS after. Runs on its own instance because
+   * warping the chain 12h forward invalidates every generation and anchor the
+   * shared tests depend on.
+   */
+  test("a change is inert before its activation time and binds after", async () => {
+    const own = await deployOwnFpc();
+    const rev = await currentRevision(own, player);
+
+    await own.methods
+      .schedule_settings(await bundleFrom(own, { maxUsers: 7 }), rev)
+      .send({ from: player });
+
+    const before: any = await own.methods
+      .get_policy()
+      .simulate({ from: player });
+    expect(Number((before?.result ?? before).max_users)).toBe(MAX_USERS);
+
+    // 12h + a minute, then a transaction so a block carries the new time.
+    await warpChainBy(ctx.node, 43_260, () =>
+      target.methods.ping().send({ from: player }),
+    );
+
+    const after: any = await own.methods
+      .get_policy()
+      .simulate({ from: player });
+    expect(Number((after?.result ?? after).max_users)).toBe(7);
+    evidence("activation", "inert before the delay elapsed, in force after");
+  });
+
+  /**
+   * Clamping. A player holding an allowance issued under a larger policy must
+   * be bound by the reduction at activation — otherwise old cohorts keep
+   * spending under a later, higher fee ceiling and the loss bound is false.
+   */
+  test("a reduction clamps allowances already issued", async () => {
+    const own = await deployOwnFpc();
+    await fundWithFeeJuice(
+      ctx.node,
+      ctx.wallet,
+      own.address,
+      10n ** 21n,
+      player,
+      () => target.methods.ping().send({ from: player }),
+    );
+
+    const gen = generationAt(await chainTimestamp(ctx.node));
+    const claimant = ctx.addresses[2] ?? other;
+    const payload = await buildSandwichPayload(
+      {
+        calls: await recordCall(),
+        player: claimant,
+        fpcAddress: own.address,
+        generation: gen,
+        seat: 0,
+      },
+      ctx.wallet,
+      own as any,
+    );
+    await sendFromPaymaster(ctx, payload, claimant);
+
+    const held: any = await own.methods
+      .get_quota_info(claimant, gen)
+      .simulate({ from: claimant });
+    const [, heldRemaining] = held?.result ?? held;
+    expect(Number(heldRemaining)).toBe(MAX_USES - 1);
+
+    // Cut the per-player allowance to exactly what they have already spent.
+    const rev = await currentRevision(own, player);
+    await own.methods
+      .schedule_settings(await bundleFrom(own, { maxUses: 1 }), rev)
+      .send({ from: player });
+    await warpChainBy(ctx.node, 43_260, () =>
+      target.methods.ping().send({ from: player }),
+    );
+
+    // Their allowance is gone, not merely smaller: they spent 1, the cap is 1.
+    const now: any = await own.methods
+      .get_quota_info(claimant, gen)
+      .simulate({ from: claimant });
+    const [stillOn, nowRemaining] = now?.result ?? now;
+    expect(Boolean(stillOn)).toBe(false);
+    expect(Number(nowRemaining)).toBe(0);
+    evidence(
+      "clamp",
+      "a reduction bound an allowance issued under the old policy",
+    );
+  });
+
   // Runs last on purpose: it reports what the earlier tests actually paid.
   test("measurements are captured for calibration when asked", async () => {
     if (!process.env.QUOTA_FPC_MEASURE) return;

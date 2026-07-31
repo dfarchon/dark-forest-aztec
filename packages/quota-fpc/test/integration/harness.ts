@@ -43,6 +43,45 @@ export async function chainTimestamp(node: any): Promise<bigint> {
   return BigInt(block.header.globalVariables.timestamp);
 }
 
+/**
+ * Fast-forwards the local chain.
+ *
+ * Policy changes take 12 hours to activate, so without this the tests that
+ * prove "not in effect before, in effect after" would take 12 hours. The debug
+ * API only exists on a local network, which is exactly where these run.
+ *
+ * Anything derived from chain time before the warp (a generation index, an
+ * anchor) is stale afterwards and must be re-read.
+ */
+export async function warpChainBy(
+  node: any,
+  seconds: number,
+  poke?: () => Promise<unknown>,
+): Promise<bigint> {
+  const before = await chainTimestamp(node);
+  // Time control lives on a SEPARATE debug client, not the ordinary node
+  // client — the regular API deliberately has no way to move the clock.
+  const { createAztecNodeDebugClient } =
+    await import("@aztec/stdlib/interfaces/client");
+  const debug: any = createAztecNodeDebugClient(SANDBOX_URL!);
+  if (typeof debug.warpL2TimeAtLeastBy !== "function") {
+    throw new Error(
+      "This node exposes no warpL2TimeAtLeastBy; the activation tests need a local network.",
+    );
+  }
+  await debug.warpL2TimeAtLeastBy(seconds);
+  // The warp moves the clock, but a block still has to be built for the new
+  // time to be observable — an idle local chain produces none on its own.
+  if (poke) await poke();
+  const after = await chainTimestamp(node);
+  if (after < before + BigInt(seconds)) {
+    throw new Error(
+      `Warp did not take: ${before} -> ${after}, expected at least +${seconds}s`,
+    );
+  }
+  return after;
+}
+
 export async function feeJuiceOf(
   node: any,
   address: AztecAddress,
