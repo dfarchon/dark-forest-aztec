@@ -327,7 +327,13 @@
   }
   function fmtUsd(n) {
     if (n === 0) return "$0";
-    if (n < 0.01) return "$" + n.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+    // A per-transaction fee is a fraction of a cent, so fixed decimals round it
+    // away to "$0" — which reads as free and is wrong. Keep two significant
+    // figures instead, however small the number is.
+    if (n < 0.01) {
+      const decimals = Math.min(15, -Math.floor(Math.log10(n)) + 1);
+      return "$" + n.toFixed(decimals).replace(/0+$/, "").replace(/\.$/, "");
+    }
     if (n < 1000) return "$" + n.toFixed(2);
     return "$" + fmtInt(n);
   }

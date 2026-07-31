@@ -62,6 +62,13 @@ contracts/wallet_data_*/
 contracts/scripts/pxe_data_*/
 contracts/scripts/wallet_data_*/
 
+# Aztec PXE & wallet data written by test runs, anywhere. These are LMDB stores
+# (tens of MB) that every integration run rewrites; 44MB of them were committed
+# by accident once.
+aztec-wallet-data/
+**/aztec-wallet-data/
+*.mdb
+
 ############################################
 # Smart contract generated files
 ############################################
