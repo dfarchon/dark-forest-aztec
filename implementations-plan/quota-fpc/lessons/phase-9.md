@@ -62,3 +62,16 @@ Design notes worth keeping:
 
 ## 9.5 — Docs + handoff
 
+**Done 2026-07-31.** Gate: `pnpm --filter client run lint` exit 0, `pnpm --filter client run build` ✓ built, doc-claim grep returns no live claims, artifact republished to the same URL.
+
+Six claims in `handoff.html` were falsified by this phase and are rewritten:
+- "deliberately **no admin key**. Nothing is privileged after deployment, so nothing can be stolen" → a "Somebody holds a key" section separating what the key CAN do (raise limits, redirect sponsorship) from what it CANNOT (withdraw — the protocol forbids it for everyone; shorten the 12h notice; touch the account-class rules).
+- "there is no 'update' transaction — you deploy a fresh instance" → the actual `update-fpc-policy` commands, the 12h notice, the two refusals, and the warning that a reduction binds players mid-day.
+- "raise by redeploying" → "adjustable, takes 12h".
+- "four independent security reviews" → seven.
+- "when you retune, the small remainder in the old instance is what's stranded" → retuning strands nothing now, but the balance is still the only cap and the key can raise limits.
+- "redeploy if you want bigger quotas" → one command, 12h notice.
+
+**My own gate was wrong first.** The doc-claim grep matched `client/dist/**` build artifacts, which embed Noir source containing unrelated "no admin" text — it would have failed forever on noise. Scoped to source files with `--exclude-dir=dist,target,node_modules,artifacts`; it then found one genuinely stale sentence.
+
+`docs/quota-fpc-local.md` gains a "3b. Retuning a deployed paymaster" section with the commands, both refusals, the mid-day reduction behaviour, the pre-activation wobble, and a callout that `fpc/config/*.json` goes stale once you retune on-chain.
