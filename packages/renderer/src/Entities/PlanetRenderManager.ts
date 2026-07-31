@@ -64,7 +64,15 @@ export class PlanetRenderManager implements PlanetRenderManagerType {
 
     const artifacts = uiManager
       .getArtifactsWithIds(planet.heldArtifactIds)
-      .filter((a) => !!a) as Artifact[];
+      // Skip artifacts riding an optimistic voyage dot AT THEIR SOURCE:
+      // a departing ship must not appear on the source planet and in
+      // flight at once (other planets — e.g. an already-matured copy at
+      // the destination — render normally).
+      .filter(
+        (a) =>
+          !!a &&
+          this.renderer.artifactsInFlight.get(a.id) !== planet.locationId,
+      ) as Artifact[];
     const color = uiManager.isOwnedByMe(planet)
       ? whiteA
       : getOwnerColorVec(planet);

@@ -160,6 +160,28 @@ export interface RendererGameContext extends DiagnosticUpdater {
   getChainTimeMs(): number;
   /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
   getNaturalTimeMs(): number;
+  /**
+   * Continuously-advancing estimate of chain time in milliseconds, for
+   * display only (voyage motion, ETAs). Unlike getChainTimeMs (which steps
+   * once per block), this advances every frame and converges smoothly on
+   * each block update. Returns 0 before the first chain sync.
+   */
+  getDisplayTimeMs(): number;
+  /**
+   * Client estimate of a voyage's travel time in seconds (mirrors the
+   * contract's formula); used to animate not-yet-confirmed departures.
+   */
+  getTimeForMove(
+    fromId: LocationId,
+    toId: LocationId,
+    abandoning: boolean,
+  ): number;
+  /**
+   * True when the display clock has had no chain observation for its
+   * extrapolation window: countdowns should read "syncing" rather than
+   * appearing stuck.
+   */
+  getDisplayTimeStale(): boolean;
   // getCaptureZones(): Iterable<CaptureZone>;
 }
 
@@ -179,6 +201,16 @@ export class Renderer {
   frameCount: number;
   now: number; // chain time; computed once per frame for voyages / game-synced visuals
   naturalNow: number; // wall-clock ms; computed once per frame for cosmetic animations
+
+  /**
+   * Artifacts currently riding an optimistic (pre-confirmation) voyage
+   * dot, mapped to their SOURCE planet. Populated by the voyage pass
+   * each frame (which queues before planets); the planet pass skips the
+   * orbit icon only at that source planet, so a departing ship is never
+   * drawn there AND in flight at once — while an already-matured copy
+   * at the destination renders normally.
+   */
+  readonly artifactsInFlight = new Map<ArtifactId, LocationId>();
 
   // render engines
   public glManager: GameGLManager;
@@ -244,8 +276,9 @@ export class Renderer {
     this.viewport = viewport;
 
     this.frameCount = 0;
-    const chainMs = this.context.getChainTimeMs();
-    this.now = chainMs > 0 ? chainMs : Date.now();
+    // Stay 0 until the display clock initializes: a Date.now() fallback
+    // would run AHEAD of chain time and jump backwards on first sync.
+    this.now = this.context.getDisplayTimeMs();
     this.naturalNow = this.context.getNaturalTimeMs();
     this.config = config;
     autoBind(this);
@@ -333,8 +366,8 @@ export class Renderer {
 
   private loop() {
     this.frameCount++;
-    const chainMs = this.context.getChainTimeMs();
-    this.now = chainMs > 0 ? chainMs : Date.now();
+    // 0 until the display clock initializes (see constructor note).
+    this.now = this.context.getDisplayTimeMs();
     this.naturalNow = this.context.getNaturalTimeMs();
     this.draw();
     this.recordRender(Date.now());
