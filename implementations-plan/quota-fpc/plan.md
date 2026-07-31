@@ -154,7 +154,7 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 
 ---
 
-### Phase 9 — Admin-updatable policy (added 2026-07-31, user-directed)
+### Phase 9 — Admin-updatable policy ✓ (added and completed 2026-07-31, user-directed)
 
 **Why**: retuning currently means redeploying and stranding the old instance's balance. The DF team should be able to agree numbers with us, send one transaction, fund, and be done. This deliberately reverses the "no admin, nothing privileged" property of Phases 1–8 — see the amended Security section for what that costs.
 
@@ -243,19 +243,19 @@ A pending change sets every sponsored transaction's expiration to `timestamp_of_
 - **Ops**: the update script prints the activation time in UTC and warns that sponsorship gets flaky in the minutes around it.
 - **Test**: a proof spanning the cutover.
 
-#### 9.1 — Contract
+#### 9.1 ✓ — Contract
 
 `PolicyBundle`, merged storage, immutable `admin` constructor arg, ordered bootstrap, `schedule_settings`, `get_scheduled_settings`, rewire both private entrypoints to a single bundle read. Noir tests where cheap.
 
 **Validation gate** — Commands: `pnpm --filter contracts run build-contracts` && `pnpm --filter contracts run lint`. Pass: exit 0, `QuotaFpc.ts` regenerated with the new constructor arity and `schedule_settings`/`get_scheduled_settings` present. Layers: typecheck/lint + contract compile.
 
-#### 9.2 — Config + deploy
+#### 9.2 ✓ — Config + deploy
 
 `adminAddress` in the schema — **required and explicit, no deployer fallback** (user decision; a dry-run cannot display a signer-derived default, so a silent default means approving a deploy without seeing who permanently holds the key). Validated 32-byte and non-zero in the schema AND asserted non-zero on-chain, because a malformed immutable admin permanently bricks updates. extract the `perGeneration * 3n` worst-case helper so it is not copied a third time (recon: it exists in `schema.ts` and again in `deploy-fpc.ts`); `deploy-fpc.ts` passes admin + bundle; deploy output states plainly that `maxLossWei` is now a **deploy-time sanity check, not a bound**, because the admin can exceed it afterwards.
 
 **Validation gate** — Commands: `pnpm --filter @dfpunk/quota-fpc run test` && `pnpm --filter contracts run lint` && `pnpm --filter contracts run deploy-fpc -- --config fpc/config/dark-forest.json --dry-run`. Pass: exit 0; dry-run prints the admin address and the revised loss-cap wording. Layers: unit + lint + script smoke.
 
-#### 9.3 — The update script (`contracts/scripts/operator/update-fpc-policy.ts`)
+#### 9.3 ✓ — The update script (`contracts/scripts/operator/update-fpc-policy.ts`)
 
 For a non-expert operator. Lives in `contracts/scripts/operator/` (that is where the shared wallet/fee/env helpers are reachable); named to avoid the unrelated existing `update-config`. Behaviour:
 
@@ -282,7 +282,7 @@ pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FP
 ```
 Pass: lint exit 0; `--show` reports current settings, the pending change and its UTC activation time; the un-flagged second write is refused with a non-zero exit code; `--replace-pending` succeeds and reports it based the edit on the PENDING bundle; the below-floor write is refused. Layers: lint + live local-network script e2e.
 
-#### 9.4 — Tests
+#### 9.4 ✓ — Tests
 
 Integration (`packages/quota-fpc/test/integration/quota-fpc.test.ts`, the existing sandbox harness):
 
@@ -302,7 +302,7 @@ Schema unit tests for `adminAddress` (required, non-zero, malformed). Rewrite th
 
 Note the package suite cannot exercise `TxExecutor`'s fallback notice (no client tests exist at all — recon). The client changes above are therefore covered by a **manual full-stack check** recorded in the phase's lessons file: lower `max_fee` below the client floor on a local instance, warp past activation, attempt a move, and confirm the player sees a notice rather than a silent charge.
 
-#### 9.5 — Docs + handoff
+#### 9.5 ✓ — Docs + handoff
 
 Amend `docs/quota-fpc-local.md` with the update flow. Rewrite `handoff.html`: the claims *"there's no admin key to compromise"* and *"deliberately no admin key"* become **false** and must be replaced with an honest description — the operator holds a key that can retune the policy and the sponsored-contract list after 12 hours, the balance is the cap, and whoever deploys holds that key. Republish to the same Artifact URL.
 
