@@ -1234,6 +1234,22 @@ class GameUIManager extends EventEmitter {
     return this.gameManager.getChainTimeMs();
   }
 
+  public getDisplayTimeMs(): number {
+    return this.gameManager.getDisplayTimeMs();
+  }
+
+  public getDisplayTimeStale(): boolean {
+    return this.gameManager.getDisplayTimeStale();
+  }
+
+  public getTimeForMove(
+    fromId: LocationId,
+    toId: LocationId,
+    abandoning = false
+  ): number {
+    return this.gameManager.getTimeForMove(fromId, toId, abandoning);
+  }
+
   public getNaturalTimeMs(): number {
     return this.gameManager.getNaturalTimeMs();
   }

@@ -306,6 +306,9 @@ class GameManager extends EventEmitter {
    */
   private playerInterval: ReturnType<typeof setInterval>;
 
+  /** Fallback poll that rescues the display clock from a starved block feed. */
+  private clockStalenessInterval: ReturnType<typeof setInterval> | undefined;
+
   /**
    * Handle to an interval that periodically refreshes the scoreboard from our webserver.
    */
@@ -366,6 +369,12 @@ class GameManager extends EventEmitter {
    * Subscription to act on setting changes
    */
   private settingsSubscription: Subscription | undefined;
+
+  /** Unsubscribes the post-sync listener (arrival flush + refocus jump). */
+  private offClockSync: (() => void) | undefined;
+
+  /** One-shot: jump display time on the next successful clock sync. */
+  private pendingRefocusJump = false;
 
   /**
    * Setting to allow players to start game without plugins that were running during the previous
@@ -497,11 +506,47 @@ class GameManager extends EventEmitter {
       }
     }, 10_000);
 
-    this.contractsAPI.indexerConnection.blockNumber$.subscribe(() => {
-      this.chainClock.resync().then(() => {
-        this.entityStore.flushMaturedArrivals();
-      });
+    this.contractsAPI.indexerConnection.blockNumber$.subscribe((n) => {
+      this.chainClock.requestSync(n);
     });
+    // The block feed above starves whenever the indexer's tip poll fails
+    // or lags (its errors are swallowed) — without syncs the display
+    // clock freezes at its extrapolation cap. Fall back to a direct
+    // "latest" fetch after ~2.5 blocks of silence — and from the first
+    // tick when the boot sync itself never landed (msSinceLastSync stays
+    // Infinity: sync errors are swallowed, so nothing else retries).
+    this.clockStalenessInterval = setInterval(() => {
+      const starvedMs = this.chainClock.msSinceLastSync();
+      if (starvedMs > 180_000) {
+        console.warn(
+          starvedMs === Infinity
+            ? `[ChainClock] clock never synced — falling back to a ` +
+                `latest sync`
+            : `[ChainClock] block feed starved ` +
+                `${Math.round(starvedMs / 1000)}s — falling back to a ` +
+                `latest sync`
+        );
+        this.chainClock.requestSyncLatest();
+      }
+    }, 30_000);
+    // After EVERY successful clock sync (notified block, refocus,
+    // retries): flush matured arrivals against the fresh raw time, and
+    // consume a pending refocus jump so display time lands on a target
+    // that was actually just synced, never a stale extrapolation.
+    this.offClockSync = this.chainClock.onSynced(() => {
+      if (this.pendingRefocusJump) {
+        this.pendingRefocusJump = false;
+        this.chainClock.markDisplayDiscontinuity();
+      }
+      this.entityStore.flushMaturedArrivals();
+    });
+
+    // When the tab becomes visible again, jump display time to its best
+    // estimate instead of visibly fast-forwarding the smoothed clock.
+    document.addEventListener(
+      "visibilitychange",
+      this.onVisibilityChangeForDisplayTime
+    );
 
     this.hashRate = 0;
 
@@ -574,11 +619,26 @@ class GameManager extends EventEmitter {
     this.contractsAPI.destroy();
     this.persistentChunkStore.destroy();
     clearInterval(this.playerInterval);
+    clearInterval(this.clockStalenessInterval);
     clearInterval(this.diagnosticsInterval);
     clearInterval(this.scoreboardInterval);
     clearInterval(this.networkHealthInterval);
     this.settingsSubscription?.unsubscribe();
+    this.offClockSync?.();
+    document.removeEventListener(
+      "visibilitychange",
+      this.onVisibilityChangeForDisplayTime
+    );
   }
+
+  private onVisibilityChangeForDisplayTime = (): void => {
+    if (document.visibilityState === "visible") {
+      // Request a fresh sync; the onSynced listener performs the
+      // display jump + arrival flush once it actually succeeds.
+      this.pendingRefocusJump = true;
+      this.chainClock.requestSyncLatest();
+    }
+  };
 
   /**
    * Create GameManager. Caller must build ContractsAPI from Session
@@ -1463,6 +1523,22 @@ class GameManager extends EventEmitter {
   /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
   public getNaturalTimeMs(): number {
     return Date.now();
+  }
+
+  /**
+   * Continuously-advancing estimate of chain time in milliseconds, for
+   * display only (voyage motion, ETAs). Advances every frame at wall rate
+   * and converges smoothly on each block sync; never snaps backwards.
+   * Never use for transaction timestamps — those must stay on
+   * getChainTimeMs()/nowSec() (contracts assert timestamp freshness).
+   */
+  public getDisplayTimeMs(): number {
+    return this.chainClock.smoothedNowMs();
+  }
+
+  /** True when display time is frozen awaiting chain observations. */
+  public getDisplayTimeStale(): boolean {
+    return this.chainClock.displayTimeIsStale();
   }
 
   /**
