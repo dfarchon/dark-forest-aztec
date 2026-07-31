@@ -45,6 +45,7 @@
         "test:moveProof": "pnpm exec tsx scripts/test/test-moveProof.ts",
         "timestamp-ticker": "pnpm exec tsx scripts/dev/timestamp-ticker.ts",
         "update-config": "pnpm exec tsx scripts/dev/update-config.ts",
+        "update-fpc-policy": "pnpm exec tsx scripts/operator/update-fpc-policy.ts",
         "verify-perms": "pnpm exec tsx scripts/deploy/verify-storage-permissions.ts"
     },
     "dependencies": {
