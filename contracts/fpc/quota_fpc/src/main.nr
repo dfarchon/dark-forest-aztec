@@ -393,7 +393,9 @@ contract QuotaFpc {
         // holder the moment it activates, so at most one policy era is ever
         // live and no earlier cohort can spend under a later, higher max_fee.
         assert(quota.spent < settings.max_uses, "No sponsored transactions remaining");
-        assert(quota.seat < settings.max_users, "No sponsorship seats available today");
+        // Distinct from the capacity message on the subscribe path: seats are
+        // not full here, this player's seat fell outside a reduced cap.
+        assert(quota.seat < settings.max_users, "Sponsorship seat no longer within capacity");
 
         // Exhausted notes are never re-inserted — the note's absence IS the
         // exhaustion signal.

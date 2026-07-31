@@ -380,6 +380,16 @@ export function parseQuotaFpcConfig(
             'adminAddress is the zero address, which would permanently brick policy updates'
         );
     }
+    // An address is a field element. A value at or above the modulus is not a
+    // real address: it would be reduced on conversion, so the contract's admin
+    // would be a DIFFERENT account than the config names — and since the admin
+    // is immutable with no transfer, control would be permanently lost.
+    if (BigInt(adminAddress) >= FIELD_MODULUS) {
+        throw new QuotaFpcConfigError(
+            `adminAddress is not a valid field element: ${adminAddress}. ` +
+                'Deploying this would hand control to a different (unreachable) account.'
+        );
+    }
 
     // Worst case a single UTC day can cost, versus what the operator accepts
     // losing. NOTE the 3x: around a rollover, a stale-but-valid anchor can spend

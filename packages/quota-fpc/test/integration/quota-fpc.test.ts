@@ -22,6 +22,7 @@ import {
   HAS_SANDBOX,
   chainTimestamp,
   warpChainBy,
+  warpChainToDayStart,
   connect,
   evidence,
   feeJuiceOf,
@@ -746,7 +747,38 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
       .get_policy()
       .simulate({ from: player });
     expect(Number((after?.result ?? after).max_users)).toBe(7);
-    evidence("activation", "inert before the delay elapsed, in force after");
+    // A getter proves nothing about what the PRIVATE path enforces: delete the
+    // seat assertion inside subscribe_and_execute and the check above still
+    // passes. So drive a real sponsored send at a seat the new, lower cap
+    // forbids — it must now be unprovable.
+    await fundWithFeeJuice(
+      ctx.node,
+      ctx.wallet,
+      own.address,
+      10n ** 21n,
+      player,
+      () => target.methods.ping().send({ from: player }),
+    );
+    const gen = generationAt(await chainTimestamp(ctx.node));
+    const rejected = ctx.addresses[2] ?? other;
+    const tooHigh = await buildSandwichPayload(
+      {
+        calls: await recordCall(),
+        player: rejected,
+        fpcAddress: own.address,
+        generation: gen,
+        seat: 9, // >= the new max_users of 7, but < the original 40
+      },
+      ctx.wallet,
+      own as any,
+    );
+    await expect(sendFromPaymaster(ctx, tooHigh, rejected)).rejects.toThrow(
+      /No sponsorship seats available/i,
+    );
+    evidence(
+      "activation",
+      "inert before the delay elapsed; afterwards the private path enforced the new cap",
+    );
   });
 
   /**
@@ -765,6 +797,13 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
       () => target.methods.ping().send({ from: player }),
     );
 
+    // Start a UTC day first: the note is keyed to a generation, and a +12h
+    // warp from an arbitrary time can cross midnight, which would make the
+    // send below fail as "not currently sponsorable" instead of proving the
+    // clamp. From day-start there is 12h of headroom on either side.
+    await warpChainToDayStart(ctx.node, () =>
+      target.methods.ping().send({ from: player }),
+    );
     const gen = generationAt(await chainTimestamp(ctx.node));
     const claimant = ctx.addresses[2] ?? other;
     const payload = await buildSandwichPayload(
@@ -802,10 +841,87 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     const [stillOn, nowRemaining] = now?.result ?? now;
     expect(Boolean(stillOn)).toBe(false);
     expect(Number(nowRemaining)).toBe(0);
+    // The getter is NOT the enforcement. Without this, deleting the
+    // `spent < max_uses` assertion from sponsor_and_execute would leave this
+    // test green while the reduction did nothing at all.
+    const spendAgain = await buildSandwichPayload(
+      {
+        calls: await recordCall(),
+        player: claimant,
+        fpcAddress: own.address,
+        generation: gen,
+      },
+      ctx.wallet,
+      own as any,
+    );
+    await expect(sendFromPaymaster(ctx, spendAgain, claimant)).rejects.toThrow(
+      /No sponsored transactions remaining/i,
+    );
     evidence(
       "clamp",
-      "a reduction bound an allowance issued under the old policy",
+      "a reduction bound an allowance issued under the old policy, enforced on the private path",
     );
+  });
+
+  /**
+   * The other half of the clamp: cutting the PLAYER cap must bind players
+   * already admitted above it, or an earlier cohort keeps spending under a
+   * later, higher fee ceiling and the loss bound is a fiction. Distinct from
+   * the allowance clamp, and it reverts with its own message — telling an
+   * evicted player "today is full" would be false.
+   */
+  test("a player-cap cut evicts a seat already claimed above it", async () => {
+    const own = await deployOwnFpc();
+    await fundWithFeeJuice(
+      ctx.node,
+      ctx.wallet,
+      own.address,
+      10n ** 21n,
+      player,
+      () => target.methods.ping().send({ from: player }),
+    );
+    await warpChainToDayStart(ctx.node, () =>
+      target.methods.ping().send({ from: player }),
+    );
+    const gen = generationAt(await chainTimestamp(ctx.node));
+    const evicted = ctx.addresses[1] ?? other;
+
+    // Seat 5 is fine under the deployed cap of 40.
+    const first = await buildSandwichPayload(
+      {
+        calls: await recordCall(),
+        player: evicted,
+        fpcAddress: own.address,
+        generation: gen,
+        seat: 5,
+      },
+      ctx.wallet,
+      own as any,
+    );
+    await sendFromPaymaster(ctx, first, evicted);
+
+    const rev = await currentRevision(own, player);
+    await own.methods
+      .schedule_settings(await bundleFrom(own, { maxUsers: 3 }), rev)
+      .send({ from: player });
+    await warpChainBy(ctx.node, 43_260, () =>
+      target.methods.ping().send({ from: player }),
+    );
+
+    const again = await buildSandwichPayload(
+      {
+        calls: await recordCall(),
+        player: evicted,
+        fpcAddress: own.address,
+        generation: gen,
+      },
+      ctx.wallet,
+      own as any,
+    );
+    await expect(sendFromPaymaster(ctx, again, evicted)).rejects.toThrow(
+      /seat no longer within capacity/i,
+    );
+    evidence("seat-clamp", "a player-cap cut evicted a seat claimed above it");
   });
 
   // Runs last on purpose: it reports what the earlier tests actually paid.

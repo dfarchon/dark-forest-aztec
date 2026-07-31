@@ -53,6 +53,30 @@ export async function chainTimestamp(node: any): Promise<bigint> {
  * Anything derived from chain time before the warp (a generation index, an
  * anchor) is stale afterwards and must be re-read.
  */
+/**
+ * Moves the chain to just after the next UTC midnight.
+ *
+ * Allowance notes are keyed to a generation (a UTC day), so a test that warps
+ * +12h can land in the NEXT generation depending on the time of day — and then
+ * a sponsored send fails with "not currently sponsorable" instead of whatever
+ * the test meant to prove. Starting a day gives 12h of headroom either way,
+ * making such tests deterministic rather than clock-dependent.
+ */
+export async function warpChainToDayStart(
+  node: any,
+  poke?: () => Promise<unknown>,
+): Promise<bigint> {
+  const DAY = 86_400n;
+  const now = await chainTimestamp(node);
+  const target = (now / DAY + 1n) * DAY + 60n;
+  const { createAztecNodeDebugClient } =
+    await import("@aztec/stdlib/interfaces/client");
+  const debug: any = createAztecNodeDebugClient(SANDBOX_URL!);
+  await debug.warpL2TimeAtLeastTo(Number(target));
+  if (poke) await poke();
+  return chainTimestamp(node);
+}
+
 export async function warpChainBy(
   node: any,
   seconds: number,

@@ -75,3 +75,25 @@ Six claims in `handoff.html` were falsified by this phase and are rewritten:
 **My own gate was wrong first.** The doc-claim grep matched `client/dist/**` build artifacts, which embed Noir source containing unrelated "no admin" text — it would have failed forever on noise. Scoped to source files with `--exclude-dir=dist,target,node_modules,artifacts`; it then found one genuinely stale sentence.
 
 `docs/quota-fpc-local.md` gains a "3b. Retuning a deployed paymaster" section with the commands, both refusals, the mid-day reduction behaviour, the pre-activation wobble, and a callout that `fpc/config/*.json` goes stale once you retune on-chain.
+
+## Post-implementation audits (2026-07-31)
+
+Two independent reviews of the finished code. **No Critical findings.** Both verified the same core as correct: constructor write-then-raise ordering, exact `spent`/`seat` arithmetic with no over-grant across any sequence of policy changes, CAS atomicity, setter invariants matching the constructor, and the account-class controls remaining immutable and unreachable from the admin path.
+
+One reviewer added a sharp detail: `BOOTSTRAP_DELAY = 0` is safe **only** because the constructor's delay raise is unconditional — remove it and `get_effective_minimum_delay_at` computes `0 - 1` and underflows every private read.
+
+### Fixed
+
+1. **False-green tests, AGAIN (both reviewers, High).** The activation and clamp tests asserted on `get_policy` / `get_quota_info` — getters with their own independent clamp. Deleting the enforcement asserts from `sponsor_and_execute` would have left both green. Worse, `(false, 0)` is also what "no note found" returns, so a PXE that lost the note across the warp would have passed too. All three time-travel tests now drive a REAL sponsored send and require the private path to refuse it. **Third occurrence in this project of a test passing for the wrong reason — the pattern is always "assert on the observable rather than the mechanism".**
+2. **Seat clamp had no coverage at all** — the half that evicts players. Added.
+3. **The eviction message was a lie to players.** It reused `"No sponsorship seats available today"` → `no-seats` → *"Today's sponsored transactions have all been claimed"*, which is false: seats are free, this player was evicted by a `max_users` cut. New contract message `"Sponsorship seat no longer within capacity"`, new `seat-revoked` reason, honest copy.
+4. **`adminAddress` was not range-checked against the field modulus**, and the test's own `ADMIN = 0x33..33` was ABOVE it — so "a sane config parses" used an impossible address. A mistyped-but-plausible address would deploy and permanently lose control, since the admin is immutable with no transfer. Schema now rejects; test constant fixed; case added.
+5. **My clamp fix was time-of-day dependent** — a +12h warp can cross UTC midnight, making the sponsored send fail as "not currently sponsorable" instead of proving the clamp. Added `warpChainToDayStart` so those tests start a day with 12h of headroom either side.
+
+### Deferred, with reasons
+
+- **Client-side protections (High, codex).** The plan's cutover section promised a shared gas profile, a live `max_fee` precheck, one fresh-anchor retry, and a user-visible notice before self-pay. NOT implemented — the script-side floor guard is point-in-time and overridable, so a fee rise between scheduling and activation can still make sponsored sends unprovable, and `TxExecutor.ts:345` still logs and charges silently. **This is a real gap between plan and implementation and should be the first thing done next.**
+- **Operator script read-consistency (Med).** Live settings, scheduled settings and chain time are read separately; if activation lands between them, an unrelated edit can reschedule the pre-activation bundle. Needs a consistent snapshot plus a re-read before submit.
+- **`--cancel` and a pending→next field diff (Med).** `--replace-pending` carries unrelated pending fields forward silently.
+- **No-op reschedule restarts the 12h clock (Low).**
+- **`seat-picker` picks uniformly at random (Low).** With seats now consequential, a `max_users` cut evicts a random subset; lowest-free-seat allocation would bind the newest cohort instead.

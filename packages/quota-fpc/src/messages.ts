@@ -73,6 +73,15 @@ export function describeQuotaUnavailable(
         action: addGasAction(bridgeUrl),
       };
 
+    case "seat-revoked":
+      return {
+        headline:
+          "Sponsorship was narrowed today, so your free transactions have ended early.",
+        detail:
+          "Your remaining ones will be back at the daily reset. Until then, a little gas in your account keeps you playing.",
+        action: addGasAction(bridgeUrl),
+      };
+
     case "fee-spike":
       return {
         headline:

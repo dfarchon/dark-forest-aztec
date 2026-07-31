@@ -23,7 +23,9 @@ export type QuotaUnavailableReason =
   /** The chosen generation is no longer accepted (clock rolled over). */
   | "rollover"
   /** This call targets a contract the paymaster does not sponsor. */
-  | "not-sponsored";
+  | "not-sponsored"
+  /** Sponsorship was narrowed and this player's seat fell outside the new cap. */
+  | "seat-revoked";
 
 export class QuotaUnavailableError extends Error {
   constructor(
@@ -42,6 +44,9 @@ export function reasonFromRevert(
 ): QuotaUnavailableReason | undefined {
   if (/No sponsored transactions remaining/i.test(message)) return "exhausted";
   if (/No sponsorship seats available/i.test(message)) return "no-seats";
+  // Not the same as "seats are full": the operator lowered the player cap and
+  // this player was above it. Telling them the day is full would be untrue.
+  if (/seat no longer within capacity/i.test(message)) return "seat-revoked";
   if (/Gas settings exceed the sponsorship allowance/i.test(message))
     return "fee-spike";
   if (/Generation is not currently sponsorable/i.test(message))

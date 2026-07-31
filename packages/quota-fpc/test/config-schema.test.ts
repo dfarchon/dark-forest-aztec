@@ -13,7 +13,8 @@ import {
 
 const TARGET = `0x${"1".repeat(64)}`;
 const CLASS_ID = `0x${"2".repeat(64)}`;
-const ADMIN = `0x${"3".repeat(64)}`;
+// Must be BELOW the BN254 modulus to be a real address; 0x33..33 is not.
+const ADMIN = `0x0${"3".repeat(63)}`;
 
 function base(overrides: Record<string, unknown> = {}) {
   return {
@@ -145,6 +146,11 @@ describe("config validation", () => {
     expect(() => parseQuotaFpcConfig(base({ adminAddress: "0x1234" }))).toThrow(
       /32-byte/,
     );
+    // Valid-looking hex that is not a field element would silently resolve to a
+    // DIFFERENT account on deploy — and the admin cannot be transferred.
+    expect(() =>
+      parseQuotaFpcConfig(base({ adminAddress: `0x${"f".repeat(64)}` })),
+    ).toThrow(/field element/);
     // env: indirection is explicit, never a fallback: unset var = error.
     expect(() =>
       parseQuotaFpcConfig(base({ adminAddress: "env:MISSING_ADMIN" }), {}),
