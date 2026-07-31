@@ -19,3 +19,11 @@ Gotcha for later phases: the constructor arity changed (admin is FIRST), so ever
 
 ## 9.2 — Config + deploy
 
+**Done 2026-07-31.** Gate: `pnpm --filter @dfpunk/quota-fpc run test` exit 0 (43 passed, incl. 5 new adminAddress cases), `pnpm --filter contracts run lint` exit 0, dry-run prints the admin disclosure + "sanity check only" loss-cap wording, and an UNSET admin env var is refused (exit 2) rather than defaulted.
+
+- `adminAddress` supports the same `env:` indirection as targets — still explicit (unset var = hard error, never "use the deployer"), and a dry-run prints the resolved value without loading a signer, which was codex Med-6's exact concern with a deployer default.
+- `worstCasePerDayWei` extracted to schema.ts and now the ONLY copy (was duplicated in deploy-fpc.ts); `formatFeeJuice` local copy deleted in favour of shared `formatFeeJuiceWei`.
+- Both config JSONs point admin at `env:QUOTA_FPC_ADMIN_ADDRESS`, with the custody decision recorded in dark-forest.json's comment.
+
+## 9.3 — Update script
+

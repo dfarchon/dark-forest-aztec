@@ -1,7 +1,9 @@
 /**
- * The deploy-time config validation. A paymaster's policy is immutable, so a
- * config that passes here yet deploys something dangerous is expensive — these
- * tests pin the guards that a codex review found missing.
+ * The deploy-time config validation. The policy is retunable after deploy
+ * (12h delay), but the admin address and the account-class rules are
+ * constructor immutables — a config that passes here yet deploys something
+ * dangerous is still expensive. These tests pin the guards audits found
+ * missing.
  */
 import { describe, expect, test } from "vitest";
 import {
@@ -11,6 +13,7 @@ import {
 
 const TARGET = `0x${"1".repeat(64)}`;
 const CLASS_ID = `0x${"2".repeat(64)}`;
+const ADMIN = `0x${"3".repeat(64)}`;
 
 function base(overrides: Record<string, unknown> = {}) {
   return {
@@ -19,6 +22,7 @@ function base(overrides: Record<string, unknown> = {}) {
     maxLossWei: "1000000000",
     allowedTargets: [{ name: "T", address: TARGET }],
     allowedAccountClasses: [{ name: "C", classId: CLASS_ID }],
+    adminAddress: ADMIN,
     ...overrides,
   };
 }
@@ -127,6 +131,29 @@ describe("config validation", () => {
     expect(() =>
       parseQuotaFpcConfig(base({ requireUnpublishedAccounts: "yes" })),
     ).toThrow(/must be a boolean/);
+  });
+
+  test("adminAddress: absent, zero, malformed, and unresolved env are rejected; env: resolves", () => {
+    // The admin is immutable with no transfer — a config without one, or with
+    // a zero one, deploys a contract whose updates are permanently bricked.
+    expect(() =>
+      parseQuotaFpcConfig(base({ adminAddress: undefined })),
+    ).toThrow(/adminAddress is required/);
+    expect(() =>
+      parseQuotaFpcConfig(base({ adminAddress: `0x${"0".repeat(64)}` })),
+    ).toThrow(/zero address/);
+    expect(() => parseQuotaFpcConfig(base({ adminAddress: "0x1234" }))).toThrow(
+      /32-byte/,
+    );
+    // env: indirection is explicit, never a fallback: unset var = error.
+    expect(() =>
+      parseQuotaFpcConfig(base({ adminAddress: "env:MISSING_ADMIN" }), {}),
+    ).toThrow(/set MISSING_ADMIN/);
+    expect(
+      parseQuotaFpcConfig(base({ adminAddress: "env:MY_ADMIN" }), {
+        MY_ADMIN: ADMIN,
+      }).adminAddress,
+    ).toBe(ADMIN);
   });
 
   test("errors are QuotaFpcConfigError, so callers can distinguish them", () => {

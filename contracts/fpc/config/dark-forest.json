@@ -36,15 +36,15 @@
       "address": "0x2d6014c26d5c6a4a94430f963c188ce8246cbd39a85274a9d8ebc18f8bcedf66"
     }
   ],
-
-  "_comment_allowedAccountClasses": "ONLY the initializerless Schnorr class from @aztec/accounts 5.0.1 — what the embedded wallet actually uses. The plain SchnorrAccount class is deliberately EXCLUDED: it is published on deploy, and a published account can call ContractInstanceRegistry::update to upgrade itself to hostile code, which would be sponsored (the paymaster can only see the ORIGINAL class). Initializerless accounts send no deploy tx, so they are unpublished and cannot upgrade — see requireUnpublishedAccounts. Class ids hash the artifact (version-pinned, network-independent); the deploy script recomputes them from the installed packages and refuses to deploy on a mismatch. Bumping @aztec/accounts changes these ids and requires an FPC redeploy for players on the new version.",
+  "_comment_allowedAccountClasses": "ONLY the initializerless Schnorr class from @aztec/accounts 5.0.1 \u2014 what the embedded wallet actually uses. The plain SchnorrAccount class is deliberately EXCLUDED: it is published on deploy, and a published account can call ContractInstanceRegistry::update to upgrade itself to hostile code, which would be sponsored (the paymaster can only see the ORIGINAL class). Initializerless accounts send no deploy tx, so they are unpublished and cannot upgrade \u2014 see requireUnpublishedAccounts. Class ids hash the artifact (version-pinned, network-independent); the deploy script recomputes them from the installed packages and refuses to deploy on a mismatch. Bumping @aztec/accounts changes these ids and requires an FPC redeploy for players on the new version.",
   "allowedAccountClasses": [
     {
       "name": "SchnorrInitializerlessAccount",
       "classId": "0x28c2905b5e44745a50b78c9d3084443216b6b369a3c2ecf06640605bf630706f"
     }
   ],
-
   "_comment_requireUnpublishedAccounts": "Keep true. This is what makes the class allowlist bind the code that will actually execute rather than merely the class the account was created with.",
-  "requireUnpublishedAccounts": true
+  "requireUnpublishedAccounts": true,
+  "_comment_adminAddress": "REQUIRED, no default. The account that can reschedule the policy and the sponsored-contract list (12h delay). Immutable, no transfer: whoever this is holds it permanently. Decision 2026-07-31: the homelab deployer account; set QUOTA_FPC_ADMIN_ADDRESS to its address before deploying. It cannot withdraw funds, shorten the delay, or touch the account-class rules.",
+  "adminAddress": "env:QUOTA_FPC_ADMIN_ADDRESS"
 }

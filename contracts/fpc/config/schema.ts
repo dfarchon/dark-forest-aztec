@@ -83,6 +83,16 @@ export interface QuotaFpcConfig {
      */
     requireUnpublishedAccounts?: boolean;
     /**
+     * The account permitted to schedule policy/allowlist changes.
+     *
+     * Required and explicit — there is deliberately no "default to the
+     * deployer". The address is a constructor immutable with no transfer
+     * function, so whoever is named here holds it permanently; a silent
+     * default would mean approving a deployment without ever seeing who ends
+     * up with the key (and a dry-run cannot show it without loading a signer).
+     */
+    adminAddress: string;
+    /**
      * Total the operator is willing to lose, in fee juice wei. The deploy script
      * refuses to fund beyond this — the paymaster has no withdraw, so this is the
      * real budget control.
@@ -91,6 +101,35 @@ export interface QuotaFpcConfig {
 }
 
 export class QuotaFpcConfigError extends Error {}
+
+/**
+ * Worst case a single UTC day can cost, in fee-juice wei.
+ *
+ * The 3x is because around a rollover up to three generations are chargeable
+ * within one day: a stale-but-valid anchor can spend the previous one, current
+ * anchors the current one, and the closing grace window the next.
+ *
+ * Exported because three callers need the SAME number — schema validation, the
+ * deploy summary, and the policy-update script. It was previously duplicated
+ * between the first two, which is how they drift.
+ *
+ * NOTE: with a mutable policy this is a bound on the CURRENT settings only. It
+ * is not a cap on anything — the contract enforces no such limit, and an admin
+ * can schedule a larger policy later. The paymaster's balance is the only real
+ * bound.
+ */
+export function worstCasePerDayWei(policy: {
+    maxFeeWei: string | bigint;
+    maxUsesPerDay: number;
+    maxUsersPerDay: number;
+}): bigint {
+    return (
+        BigInt(policy.maxFeeWei) *
+        BigInt(policy.maxUsesPerDay) *
+        BigInt(policy.maxUsersPerDay) *
+        3n
+    );
+}
 
 /** The contract's u128 fields cannot hold more than this. */
 const U128_MAX = 2n ** 128n - 1n;
@@ -151,6 +190,7 @@ export function parseQuotaFpcConfig(
     raw: unknown,
     env: Record<string, string | undefined> = process.env
 ): QuotaFpcConfig & {
+    adminAddress: string;
     requireUnpublishedAccounts: boolean;
     resolvedTargets: { name: string; address: string }[];
 } {
@@ -311,6 +351,36 @@ export function parseQuotaFpcConfig(
     const requireUnpublishedAccounts =
         config.requireUnpublishedAccounts ?? true;
 
+    const rawAdmin = config.adminAddress?.trim();
+    if (!rawAdmin) {
+        throw new QuotaFpcConfigError(
+            'adminAddress is required: name the account that may schedule policy changes. ' +
+                'It is immutable and has no transfer function, so whoever is named holds it permanently.'
+        );
+    }
+    // Same env: indirection the targets support. This is still explicit — the
+    // operator must set the variable deliberately, and a dry-run prints the
+    // resolved value without loading any signer. What it is NOT is a fallback:
+    // an unset variable is an error, never "use the deployer".
+    const adminAddress = rawAdmin.startsWith('env:')
+        ? env[rawAdmin.slice(4)]?.trim()
+        : rawAdmin;
+    if (!adminAddress) {
+        throw new QuotaFpcConfigError(
+            `adminAddress resolves to nothing: set ${rawAdmin.slice(4)}`
+        );
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(adminAddress)) {
+        throw new QuotaFpcConfigError(
+            `adminAddress is not a 32-byte address: ${adminAddress}`
+        );
+    }
+    if (/^0x0+$/.test(adminAddress)) {
+        throw new QuotaFpcConfigError(
+            'adminAddress is the zero address, which would permanently brick policy updates'
+        );
+    }
+
     // Worst case a single UTC day can cost, versus what the operator accepts
     // losing. NOTE the 3x: around a rollover, a stale-but-valid anchor can spend
     // the previous generation, current anchors the current one, and the last 600s
@@ -321,17 +391,22 @@ export function parseQuotaFpcConfig(
     // This is validation only. It does NOT cap on-chain spending — the contract
     // has no such limit — so the paymaster's *balance* remains the ultimate cap.
     // Fund in tranches accordingly.
-    const perGeneration = maxFee * BigInt(maxUses) * BigInt(maxUsers);
-    const worstCasePerDay = perGeneration * 3n;
+    const worstCasePerDay = worstCasePerDayWei({
+        maxFeeWei: maxFee,
+        maxUsesPerDay: maxUses,
+        maxUsersPerDay: maxUsers,
+    });
     if (worstCasePerDay > maxLoss) {
         throw new QuotaFpcConfigError(
-            `Policy allows up to ${worstCasePerDay} wei/day (3 x maxFee x maxUses x maxUsers, for the ~3 generations ` +
+            `Initial policy allows up to ${worstCasePerDay} wei/day (3 x maxFee x maxUses x maxUsers, for the ~3 generations ` +
                 `spendable around a rollover) but maxLossWei is ${maxLoss}. Lower the policy or raise the loss budget ` +
-                `deliberately — funds sent to the paymaster cannot be recovered, and the balance is the only real cap.`
+                `deliberately. NOTE: this checks the INITIAL policy only — the admin can schedule a larger one after deploy, ` +
+                `so maxLossWei is a sanity check, not a bound. Funds sent to the paymaster cannot be recovered, and its ` +
+                `balance is the only real cap.`
         );
     }
 
-    return { ...config, requireUnpublishedAccounts, resolvedTargets };
+    return { ...config, adminAddress, requireUnpublishedAccounts, resolvedTargets };
 }
 
 /** Pads the allowlist to the contract's fixed-size array with zero addresses. */

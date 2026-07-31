@@ -23,23 +23,14 @@ import {
     padAllowedTargets,
     parseQuotaFpcConfig,
     QuotaFpcConfigError,
+    worstCasePerDayWei,
 } from '../../fpc/config/schema.js';
 import { getOptionalEnv, loadContractsEnv } from '../utils/env.js';
+import { formatFeeJuiceWei } from '../utils/feeJuiceUnits.js';
 import { buildFeeSendFields, prepareFeePayment } from '../utils/feePayment.js';
 import { createTolerantAztecNodeClient } from '../utils/nodeClient.js';
 import { setupWallet } from '../utils/wallet.js';
 import { getOrCreateAccount } from '../utils/wallet.js';
-
-const FEE_JUICE_DECIMALS = 18n;
-
-function formatFeeJuice(wei: bigint): string {
-    const whole = wei / 10n ** FEE_JUICE_DECIMALS;
-    const frac = (wei % 10n ** FEE_JUICE_DECIMALS)
-        .toString()
-        .padStart(Number(FEE_JUICE_DECIMALS), '0')
-        .slice(0, 4);
-    return `${whole}.${frac} FJ`;
-}
 
 /**
  * Class ids are hashes of the account artifacts, pinned to the installed
@@ -152,29 +143,42 @@ async function main() {
         throw err;
     }
 
-    const perGeneration =
-        BigInt(config.policy.maxFeeWei) *
-        BigInt(config.policy.maxUsesPerDay) *
-        BigInt(config.policy.maxUsersPerDay);
-    // 3x: up to three generations are chargeable within one UTC day around a
-    // rollover (see the freshness logic in the contract). This is what the
-    // config's loss-cap check gates on.
-    const worstCasePerDay = perGeneration * 3n;
+    // Shared with the schema's validation and the update script, so all three
+    // report the same number.
+    const worstCasePerDay = worstCasePerDayWei(config.policy);
 
     console.log(`\nDeployment:  ${config.name}`);
     if (config.description) console.log(`             ${config.description}`);
     console.log(`\nPolicy`);
     console.log(
-        `  per-transaction ceiling   ${formatFeeJuice(BigInt(config.policy.maxFeeWei))}`
+        `  per-transaction ceiling   ${formatFeeJuiceWei(BigInt(config.policy.maxFeeWei))}`
     );
     console.log(`  transactions per user/day ${config.policy.maxUsesPerDay}`);
     console.log(`  users per day             ${config.policy.maxUsersPerDay}`);
     console.log(
-        `  worst case per day (3 gen) ${formatFeeJuice(worstCasePerDay)}`
+        `  worst case per day (3 gen) ${formatFeeJuiceWei(worstCasePerDay)}`
     );
     console.log(
-        `  accepted maximum loss     ${formatFeeJuice(BigInt(config.maxLossWei))}`
+        `  accepted maximum loss     ${formatFeeJuiceWei(BigInt(config.maxLossWei))}  (sanity check only — see below)`
     );
+    console.log(`\nAdmin`);
+    console.log(`  ${config.adminAddress}`);
+    console.log(
+        `  This account can reschedule the policy and the sponsored-contract list, effective 12h later.`
+    );
+    console.log(
+        `  It is immutable and has no transfer function: whoever this is holds it permanently.`
+    );
+    console.log(
+        `  It CANNOT withdraw (fee juice is non-transferable), shorten the delay, or change the`
+    );
+    console.log(
+        `  account-class rules. Because it can raise the policy after deploy, maxLossWei bounds the`
+    );
+    console.log(
+        `  INITIAL policy only — the funded balance is the real cap. Nothing takes effect in under 12h;`
+    );
+    console.log(`  there is no pause.`);
     console.log(
         `\nSponsored contracts (${config.resolvedTargets.length}/${MAX_ALLOWED_TARGETS})`
     );
@@ -228,6 +232,7 @@ async function main() {
     console.log(`Deploying QuotaFpc from ${deployer.toString()} …`);
     const deployment = QuotaFpcContract.deploy(
         wallet as never,
+        AztecAddress.fromStringUnsafe(config.adminAddress) as never,
         BigInt(config.policy.maxFeeWei),
         config.policy.maxUsesPerDay,
         config.policy.maxUsersPerDay,
@@ -244,7 +249,7 @@ async function main() {
     console.log(
         `\nThe paymaster holds no fee juice yet and will sponsor nothing until funded.` +
             `\nFund it in tranches — there is no withdraw — keeping the total at or under` +
-            `\n${formatFeeJuice(BigInt(config.maxLossWei))}.\n`
+            `\n${formatFeeJuiceWei(BigInt(config.maxLossWei))}.\n`
     );
 }
 
