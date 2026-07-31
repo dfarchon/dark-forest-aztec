@@ -44,16 +44,6 @@ export async function chainTimestamp(node: any): Promise<bigint> {
 }
 
 /**
- * Fast-forwards the local chain.
- *
- * Policy changes take 12 hours to activate, so without this the tests that
- * prove "not in effect before, in effect after" would take 12 hours. The debug
- * API only exists on a local network, which is exactly where these run.
- *
- * Anything derived from chain time before the warp (a generation index, an
- * anchor) is stale afterwards and must be re-read.
- */
-/**
  * Moves the chain to just after the next UTC midnight.
  *
  * Allowance notes are keyed to a generation (a UTC day), so a test that warps
@@ -77,6 +67,15 @@ export async function warpChainToDayStart(
   return chainTimestamp(node);
 }
 
+/**
+ * Fast-forwards the local chain by a fixed amount.
+ *
+ * Policy changes take 12 hours to activate, so without this the tests that
+ * prove "not in effect before, in effect after" would take 12 hours.
+ *
+ * Anything derived from chain time before the warp (a generation index, an
+ * anchor) is stale afterwards and must be re-read.
+ */
 export async function warpChainBy(
   node: any,
   seconds: number,
