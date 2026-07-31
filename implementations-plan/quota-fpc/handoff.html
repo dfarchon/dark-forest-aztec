@@ -108,6 +108,35 @@
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; font-size: 0.92rem; margin: 0.6rem 0 0; }
   .kv dt { color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.82rem; }
   .kv dd { margin: 0; }
+
+  /* interactive cost calculator */
+  .calc { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.3rem 1.4rem; margin: 1.2rem 0; }
+  .calc .field { margin: 1.2rem 0; }
+  .calc .field:first-child { margin-top: 0; }
+  .calc label { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.45rem; }
+  .calc label .val { font-family: ui-monospace, monospace; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .calc .row { display: flex; align-items: center; gap: 0.85rem; }
+  .calc input[type=range] { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--code-bg); outline: none; }
+  .calc input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 19px; height: 19px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 3px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+  .calc input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 3px solid var(--panel); }
+  .calc input[type=number] { width: 6rem; padding: 0.35rem 0.5rem; font-family: ui-monospace, monospace; font-size: 0.86rem; text-align: right; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+  .calc input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .calc .presets { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; }
+  .calc .preset { font-family: ui-monospace, monospace; font-size: 0.74rem; padding: 0.3rem 0.65rem; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+  .calc .preset[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .calc-out { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 1.2rem 0; }
+  .calc-out .cell { background: var(--panel); padding: 1.05rem 1.2rem; }
+  .calc-out .cell.wide { grid-column: 1 / -1; }
+  .calc-out .k { font-family: ui-monospace, monospace; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); }
+  .calc-out output { display: block; font-family: ui-monospace, monospace; font-size: 1.5rem; font-weight: 650; margin-top: 0.2rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .calc-out .cell.usd output { color: var(--accent); }
+  .calc-out .sub { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+  .calc details { border: 1px solid var(--line); border-radius: 8px; margin-top: 1rem; }
+  .calc details summary { cursor: pointer; padding: 0.7rem 0.95rem; font-size: 0.86rem; font-weight: 600; }
+  .calc details[open] summary { border-bottom: 1px solid var(--line); }
+  .calc .adv { padding: 1rem; }
+  .calc .hint { font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0; }
+
   footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
 </style>
 
@@ -123,7 +152,7 @@
   <p>Aztec's standard fee-payment contracts can't see <em>what</em> a transaction does, so they'd sponsor anything. To restrict sponsorship to Dark Forest, this paymaster becomes the transaction's entry point and wraps around the player's own account:</p>
   <div class="flow">
     <ol>
-      <li>The paymaster is the transaction origin. It checks every call in the player-signed payload targets an <span class="k">allowlisted</span> Dark Forest contract.</li>
+      <li>The paymaster is the transaction origin. It checks every call in the player-signed payload targets an <span class="k">allowlisted</span> Dark Forest contract, and that the player is running <span class="k">approved account software</span> that cannot swap its own code.</li>
       <li>It records the player's daily allowance (one subscription per player per day, a per-day capacity cap), and asserts the fee is within its per-transaction ceiling.</li>
       <li>It elects itself fee payer and ends setup.</li>
       <li>It hands off to the <span class="k">player's own account</span>, which verifies the player's signature and runs the calls — so the game still sees <span class="k">the player</span> as <code>msg_sender</code>. Ownership checks keep working, untouched.</li>
@@ -145,21 +174,90 @@
   <p class="muted">Sponsored contracts: Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction, ArtifactVault. Admin and Config are deliberately excluded — administrative actions are never sponsored.</p>
 
   <h2>What it costs to fund</h2>
-  <p>The surprising part: at the fee levels measured so far, <strong>the funding amount is barely a constraint</strong>. A game transaction cost a fraction of a cent, so even a small pool covers an enormous number of them. The levers that actually matter are the quota policy and the loss you accept — not how much you deposit.</p>
-  <div class="tablewrap">
-    <table>
-      <tr><th>Funding</th><th>Fee juice</th><th>Sponsored txs*</th><th>Player-days**</th></tr>
-      <tr><td class="num">$5</td><td class="num">342</td><td class="num">~15,000,000</td><td class="num">~500,000</td></tr>
-      <tr><td class="num">$10</td><td class="num">685</td><td class="num">~30,000,000</td><td class="num">~1,000,000</td></tr>
-      <tr><td class="num">$20</td><td class="num">1,370</td><td class="num">~60,000,000</td><td class="num">~2,000,000</td></tr>
-      <tr><td class="num">$50</td><td class="num">3,425</td><td class="num">~150,000,000</td><td class="num">~5,000,000</td></tr>
-      <tr><td class="num">$100</td><td class="num">6,849</td><td class="num">~300,000,000</td><td class="num">~10,000,000</td></tr>
-    </table>
+  <p>Set how many players you're sponsoring, how many transactions each gets per day, and over how many days — and read off the fee juice and the total dollar cost. The surprising part it makes obvious: at measured fee levels, <strong>the funding amount is barely a constraint</strong> — the levers that actually matter are the quota policy and the loss you accept, not how much you deposit. The per-transaction cost is the one real unknown; adjust it under <em>Assumptions</em>.</p>
+
+  <div class="calc">
+    <div class="field">
+      <label for="players">Players sponsored <span class="val" id="playersVal">100</span></label>
+      <div class="row">
+        <input type="range" id="players" min="1" max="5000" step="1" value="100" aria-describedby="playersVal">
+        <input type="number" id="playersNum" min="1" value="100" aria-label="Players sponsored">
+      </div>
+    </div>
+    <div class="field">
+      <label for="txs">Transactions per player, per day <span class="val" id="txsVal">30</span></label>
+      <div class="row">
+        <input type="range" id="txs" min="1" max="200" step="1" value="30" aria-describedby="txsVal">
+        <input type="number" id="txsNum" min="1" value="30" aria-label="Transactions per player per day">
+      </div>
+      <div class="presets" id="scenarioPresets">
+        <button type="button" class="preset" data-players="20" data-txs="15">Quiet demo</button>
+        <button type="button" class="preset" data-players="100" data-txs="30">Full daily policy</button>
+        <button type="button" class="preset" data-players="1000" data-txs="30">1,000 players</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="days">Days sponsored <span class="val" id="daysVal">30</span></label>
+      <div class="row">
+        <input type="range" id="days" min="1" max="365" step="1" value="30" aria-describedby="daysVal">
+        <input type="number" id="daysNum" min="1" value="30" aria-label="Days sponsored">
+      </div>
+      <div class="presets" id="daysPresets">
+        <button type="button" class="preset" data-days="7">1 week</button>
+        <button type="button" class="preset" data-days="30" aria-pressed="true">1 month</button>
+        <button type="button" class="preset" data-days="365">1 year</button>
+      </div>
+    </div>
+
+    <div class="calc-out" aria-live="polite">
+      <div class="cell wide">
+        <span class="k">Total sponsored transactions</span>
+        <output id="outTxs">90,000</output>
+        <div class="sub" id="outTxsSub">100 players × 30/day × 30 days</div>
+      </div>
+      <div class="cell">
+        <span class="k">Fee juice needed</span>
+        <output id="outFj">2.05</output>
+        <div class="sub">$AZTEC, 1:1 with fee juice</div>
+      </div>
+      <div class="cell usd">
+        <span class="k">Total cost to sponsor</span>
+        <output id="outUsd">$0.03</output>
+        <div class="sub" id="outUsdSub">≈ $0.001 / day</div>
+      </div>
+    </div>
+
+    <details>
+      <summary>Assumptions — per-transaction cost &amp; token price</summary>
+      <div class="adv">
+        <div class="field">
+          <label for="cost">Fee juice per transaction <span class="val" id="costVal">2.28e-5</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.00000033 each</span></label>
+          <div class="row">
+            <input type="range" id="cost" min="1" max="1000" step="1" value="228" aria-describedby="costVal">
+            <input type="number" id="costNum" step="any" value="0.0000228" aria-label="Fee juice per transaction">
+          </div>
+          <div class="presets" id="costPresets">
+            <button type="button" class="preset" data-cost="0.0000076">Measured (sandbox)</button>
+            <button type="button" class="preset" data-cost="0.0000228" aria-pressed="true">Policy ceiling (3×)</button>
+          </div>
+          <p class="hint"><strong>This is the number to verify.</strong> "Measured" is one real sandbox transaction; "policy ceiling" is the most the paymaster will ever pay per transaction. Real Aztec-mainnet fees float with congestion — the calibration script re-measures against live transactions, and that value replaces this. Everything else here is exact arithmetic; this input carries the uncertainty.</p>
+        </div>
+        <div class="field">
+          <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>
+          <div class="row">
+            <input type="range" id="price" min="1" max="1000" step="1" value="146" aria-describedby="priceVal">
+            <input type="number" id="priceNum" step="any" value="0.0146" aria-label="AZTEC price in USD">
+          </div>
+          <p class="hint">Update if the token price has moved since this was written.</p>
+        </div>
+      </div>
+    </details>
   </div>
-  <p class="muted" style="font-size:0.85rem">* At the per-transaction ceiling; organic cost runs lower, so real coverage is larger. &nbsp; ** At 30 sponsored transactions per player per day. &nbsp; Fee juice ≈ $0.0146. The whole policy at full capacity every day (100 players × 30 txs, ×3 for the rollover window) costs ~0.205 FJ ≈ <strong>$0.003/day</strong> — and that figure doesn't grow with funding.</p>
+
+  <p class="muted" style="font-size:0.85rem">Worst case for the whole policy at full capacity every day — 100 players × 30 txs, ×3 for the daily-rollover window — is about <strong>0.205 FJ ≈ $0.003/day</strong> at the ceiling, and that figure doesn't grow with how much you fund. Funding just sets how many days of that you've pre-paid.</p>
   <div class="note warn">
     <span class="tag">Measure before you trust these</span>
-    <p style="margin:0.5rem 0 0">These use gas measured on a local network. Real Aztec-mainnet fees float with congestion and may differ substantially — the calibration script re-measures against live transactions, and that number sets the true budget. Treat the table as the shape (funding is generous; policy and loss are the real levers), not the exact figures.</p>
+    <p style="margin:0.5rem 0 0">The defaults use gas measured on a local network. Real Aztec-mainnet fees float with congestion and may differ substantially — the calibration script re-measures against live transactions, and that number sets the true budget. Treat this as the shape (funding is generous; policy and loss are the real levers), not an exact quote.</p>
   </div>
 
   <h2>Operating it</h2>
@@ -182,9 +280,14 @@
   <h2>Honest caveats</h2>
   <p>This was built and proven end-to-end against your real contracts on a local network — a player with zero fee juice gets past onboarding and plays, sponsored. Two things you should know before scaling funding beyond a showcase:</p>
 
+  <div class="note good">
+    <span class="tag">The restriction now holds for everyone</span>
+    <p style="margin:0.5rem 0 0">Earlier this was only true for ordinary accounts — someone using a custom account contract could spend their own daily allowance elsewhere. That is closed. The paymaster now also checks <strong>which account software</strong> the player is running: only the wallet type your players actually use is sponsored, and it must be an account that cannot later swap its own code. Both halves matter — the first version of this check was defeated by an account upgrading itself after approval, which a security review caught before it shipped.</p>
+  </div>
+
   <div class="note warn">
-    <span class="tag">Scope of the restriction</span>
-    <p style="margin:0.5rem 0 0">The allowlist restricts sponsorship to Dark Forest for <strong>ordinary accounts</strong>. A determined attacker using a custom account contract can still spend <em>their own</em> daily allowance on non–Dark-Forest transactions. They gain nothing (fees go to the network, not to them), and every path stays bounded by the per-player quota and the paymaster balance. Closing this fully is a known, sound contract change (binding the player's account class) — worth adding before un-capped funding, unnecessary for a capped showcase.</p>
+    <span class="tag">What that costs you</span>
+    <p style="margin:0.5rem 0 0">Sponsorship is limited to players on the standard embedded wallet. Two consequences worth knowing: upgrading the account library changes its identifier, so players on the new version need a paymaster redeploy to stay sponsored; and anyone who knows a player's account details can publish it on-chain, which permanently ends sponsorship <em>for that player</em>. That is a nuisance aimed at one person, not a way to take funds — but it is unfixable once done.</p>
   </div>
 
   <div class="note warn">
@@ -194,7 +297,7 @@
 
   <div class="note good">
     <span class="tag">What's solid</span>
-    <p style="margin:0.5rem 0 0">Two independent security reviews found no critical defects. The allowance accounting is exact, the daily reset needs no operator, there's no admin key to compromise, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas.</p>
+    <p style="margin:0.5rem 0 0">Four independent security reviews across two rounds. The allowance accounting is exact, the daily reset needs no operator, there's no admin key to compromise, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas. Every claim on this page is backed by tests that run against the real contracts on a live network — including one proving the account-upgrade route is blocked.</p>
   </div>
 
   <h2>What you'd do to run it</h2>
@@ -209,3 +312,107 @@
     <p>Prototype and evaluation. Full implementation, runbook, and security review live in the project repo under <code>implementations-plan/quota-fpc/</code> and <code>docs/quota-fpc-local.md</code>. Not yet deployed to mainnet.</p>
   </footer>
 </main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const state = { players: 100, txs: 30, days: 30, cost: 0.0000228, price: 0.0146 };
+
+  const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+  function fmtFj(n) {
+    if (n === 0) return "0";
+    if (n < 0.001) return n.toExponential(2);
+    if (n < 1) return n.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    if (n < 1000) return n.toFixed(2);
+    return fmtInt(n);
+  }
+  function fmtUsd(n) {
+    if (n === 0) return "$0";
+    if (n < 0.01) return "$" + n.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+    if (n < 1000) return "$" + n.toFixed(2);
+    return "$" + fmtInt(n);
+  }
+  const plural = (n, w) => fmtInt(n) + " " + w + (Math.round(n) === 1 ? "" : "s");
+
+  function recompute() {
+    const perDayTxs = state.players * state.txs;
+    const totalTxs = perDayTxs * state.days;
+    const fj = totalTxs * state.cost;
+    const usd = fj * state.price;
+    const usdPerDay = perDayTxs * state.cost * state.price;
+    $("outTxs").textContent = fmtInt(totalTxs);
+    $("outTxsSub").textContent = fmtInt(state.players) + " players × " + fmtInt(state.txs) + "/day × " + plural(state.days, "day");
+    $("outFj").textContent = fmtFj(fj);
+    $("outUsd").textContent = fmtUsd(usd);
+    $("outUsdSub").textContent = fmtInt(totalTxs) + " txs × " + fmtUsd(state.cost * state.price) + " · ≈ " + fmtUsd(usdPerDay) + "/day";
+    $("playersVal").textContent = fmtInt(state.players);
+    $("txsVal").textContent = fmtInt(state.txs);
+    $("daysVal").textContent = plural(state.days, "day");
+    $("costVal").textContent = state.cost.toExponential(2);
+    $("costUsdVal").textContent = "≈ " + fmtUsd(state.cost * state.price) + " each";
+    $("priceVal").textContent = "$" + state.price;
+  }
+
+  function bindPair(rangeId, numId, key, fromRange, toRange) {
+    const range = $(rangeId), num = $(numId);
+    range.addEventListener("input", () => {
+      state[key] = fromRange ? fromRange(+range.value) : +range.value;
+      num.value = (key === "cost" || key === "price") ? state[key] : Math.round(state[key]);
+      syncPresets(); recompute();
+    });
+    num.addEventListener("input", () => {
+      const v = parseFloat(num.value);
+      if (!Number.isFinite(v) || v < 0) return;
+      state[key] = v;
+      range.value = toRange ? toRange(v) : v;
+      syncPresets(); recompute();
+    });
+  }
+
+  bindPair("players", "playersNum", "players");
+  bindPair("txs", "txsNum", "txs");
+  bindPair("days", "daysNum", "days");
+  bindPair("cost", "costNum", "cost", (v) => v * 1e-7, (v) => Math.round(v / 1e-7));
+  bindPair("price", "priceNum", "price", (v) => v * 1e-4, (v) => Math.round(v / 1e-4));
+
+  function syncPresets() {
+    document.querySelectorAll("#costPresets .preset").forEach((b) => {
+      b.setAttribute("aria-pressed", String(Math.abs(+b.dataset.cost - state.cost) < 1e-9));
+    });
+    document.querySelectorAll("#scenarioPresets .preset").forEach((b) => {
+      b.setAttribute("aria-pressed", String(+b.dataset.players === state.players && +b.dataset.txs === state.txs));
+    });
+    document.querySelectorAll("#daysPresets .preset").forEach((b) => {
+      b.setAttribute("aria-pressed", String(+b.dataset.days === state.days));
+    });
+  }
+
+  document.querySelectorAll("#scenarioPresets .preset").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.players = +b.dataset.players; state.txs = +b.dataset.txs;
+      $("players").value = Math.min(state.players, +$("players").max);
+      $("playersNum").value = state.players;
+      $("txs").value = Math.min(state.txs, +$("txs").max);
+      $("txsNum").value = state.txs;
+      syncPresets(); recompute();
+    });
+  });
+  document.querySelectorAll("#daysPresets .preset").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.days = +b.dataset.days;
+      $("days").value = Math.min(state.days, +$("days").max);
+      $("daysNum").value = state.days;
+      syncPresets(); recompute();
+    });
+  });
+  document.querySelectorAll("#costPresets .preset").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.cost = +b.dataset.cost;
+      $("costNum").value = state.cost;
+      $("cost").value = Math.round(state.cost / 1e-7);
+      syncPresets(); recompute();
+    });
+  });
+
+  syncPresets();
+  recompute();
+</script>

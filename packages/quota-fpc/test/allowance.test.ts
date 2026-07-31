@@ -27,7 +27,6 @@ function inputs(overrides: Partial<FeeSourceInputs> = {}): FeeSourceInputs {
     ...(overrides.state ?? {}),
   };
   return {
-    state,
     chainTimestampSeconds: NOW,
     findFreeSeat: async () => 3,
     ownBalance: 0n,
