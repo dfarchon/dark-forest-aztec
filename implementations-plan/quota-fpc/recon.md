@@ -82,3 +82,161 @@ Source: `~/Projects/aztec-kit/packages/contracts/aztec/noir/subscription-fpc/src
 - `sync-env-and-artifacts.ts` has an `isAllowedKey` allowlist (lines 39-47) — the new FPC address keys must be added there or they silently won't propagate to `@dfpunk/contracts`.
 - The legacy typo flag `VITE_SPONSER_MODE` (env.ts:90-97) still parses — don't introduce a third spelling.
 - aztec-kit is yarn/turbo; dark-forest is pnpm. The FPC contract gets vendored INTO dark-forest (own Nargo package), not imported from aztec-kit.
+
+---
+
+# Recon — Phase 9 (admin-updatable policy)
+
+Four read-only explorers, 2026-07-31, against `worktree-quota-fpc` at `e27e8c8`.
+Scope: what an admin-updatable policy touches, and what already exists to reuse.
+
+## 1. Contract surface — `contracts/fpc/quota_fpc/src/main.nr`
+
+Every read/write of the two storage vars becoming mutable:
+
+| Line | Var | Op | Function | Context |
+|---|---|---|---|---|
+| 161 | `policy` | WRITE `.initialize()` | `constructor` | public |
+| 162 | `allowed_targets` | WRITE `.initialize()` | `constructor` | public |
+| 238 | `allowed_targets` | READ | `subscribe_and_execute` | **private** |
+| 243 | `policy` | READ | `subscribe_and_execute` | **private** |
+| 273 | `allowed_targets` | READ | `sponsor_and_execute` | **private** |
+| 278 | `policy` | READ | `sponsor_and_execute` | **private** |
+| 490 | `policy` | READ | `get_policy` | utility |
+| 495 | `allowed_targets` | READ | `get_allowed_targets` | utility |
+
+No `#[contract_library_method]` touches storage — they receive already-read values as
+params. Blast radius: 1 public writer, 4 private reads, 2 utility reads. **There is no
+`admin` constructor parameter today.** Both entrypoints read BOTH vars.
+
+Reuse-as-is: `assert_generation_fresh`, `assert_payload_allowed`,
+`assert_player_account_allowed`, `assert_fee_within_max`, nullifier helpers, and the whole
+`allowed_account_classes` / `require_unpublished_account` argument — its soundness rests on
+the ACCOUNT's registry delay, not on our storage mutability, so it is untouched by this.
+
+## 2. `DelayedPublicMutable` — upstream API (aztec-nr v5.0.1)
+
+`pub struct DelayedPublicMutable<T, let InitialDelay: u64, Context>`
+
+| Capability | Public | Private | Utility |
+|---|---|---|---|
+| read current value | `get_current_value()` | `get_current_value()` **(sets tx expiration)** | `get_current_value()` unconstrained |
+| read current delay | `get_current_delay()` | — | — |
+| inspect **scheduled** value | `get_scheduled_value()` | — | — |
+| schedule value change | `schedule_value_change()` / `..._and_get_...` | — | — |
+| schedule delay change | `schedule_delay_change()` | — | — |
+
+**Consequence for the ops script:** "what is currently scheduled?" is reachable ONLY from a
+public function. A utility getter cannot expose it — we must add a public view function and
+simulate it, or the feature is impossible.
+
+Prior art: `auth_contract` (immutable `admin: PublicImmutable<AztecAddress>` +
+`assert_eq(self.storage.admin.read(), self.msg_sender(), "caller is not admin")` then
+`schedule_value_change`) is the closest template. `token_blacklist_contract` bootstraps its
+first value with `schedule_value_change` straight from the constructor.
+`contract_instance_registry` uses `DEFAULT_UPDATE_DELAY = MAX_TX_LIFETIME`.
+
+Costs: storage slots `= T::N * 2 + 2`; public write `2N+2` SSTOREs; **private read is a flat
+~4k gates regardless of `T`'s size.**
+
+## 3. Findings that change the design
+
+**F1 — BLOCKER: a 12h delay bricks the contract for 12h after deploy.**
+`DelayedPublicMutable` has **no `initialize()`**. The only write path is
+`schedule_value_change`, which always lands at `now + current_delay`. A constructor that
+schedules with a 12h delay leaves `get_current_value()` returning the **zero value**
+(`max_fee=0, max_uses=0, max_users=0`, all-zero allowlist) for 12 hours — and an unset read
+does NOT error, it silently returns zeroes (unlike `PublicImmutable`, which asserts). Then
+`assert(seat < policy.max_users)` fails for everyone and every payload is
+"non-allowlisted": **the paymaster sponsors nothing for 12h after every deploy.**
+Fix: declare `InitialDelay = 0` so the constructor's schedule lands immediately, then call
+`schedule_delay_change(TARGET_DELAY)` in the same constructor — delay *increases* apply
+immediately, decreases are themselves delayed. Target delay stays a contract global with no
+admin entrypoint.
+
+**F2 — the delay shortens every sponsored transaction's life.** A private read calls
+`set_expiration_timestamp`, which only ever tightens (`min`). Quiescent the horizon is
+`anchor + current_delay`; with a change pending it is the activation time. The protocol
+ceiling is `MAX_TX_LIFETIME = 86400s`. aztec-nr states the **optimal delay is
+`MAX_TX_LIFETIME`** and recommends "at least a couple hours". 12h halves the inclusion
+window; 24h imposes no additional constraint. Same failure shape as the reverted expiration
+tightening (`6b33e64`), through a different door. **Open ask: 12h (chosen) vs 24h.**
+
+**F3 — merge the two vars into one packed struct.** The docs warn that values "often
+privately read together" should share one `T`: each separate var costs its own ~4k-gate
+historical read AND its own expiration tightening. Both entrypoints read both vars, so two
+vars = 2x cost and 2x tightening for nothing. Merging also makes "what's scheduled"
+unambiguous (only ONE change can be pending per variable). Merged `T` = 3 + 12 = 15 fields
+-> 32 storage slots per public write; private read stays ~4k gates.
+
+**F4 — re-scheduling silently REPLACES the pending change.** There is no queue: a second
+`schedule_value_change` before activation discards the first and resets the clock.
+Scheduling the *current* value is the documented cancel. The ops script must show what is
+pending before writing, or an operator will clobber a colleague's scheduled change.
+
+**F5 — notes freeze `max_uses`; seats are a live bound.** `QuotaNote.remaining` is set once
+from `policy.max_uses` at subscribe time and never re-read, so a mid-generation change
+splits the day (already-subscribed players keep the old allotment). `assert(seat <
+max_users)` is checked fresh, so raising `max_users` is purely additive and lowering it does
+not un-claim seats. Both behaviours are impossible today and must be stated as intended.
+
+**F6 — the client caches nothing, which is lucky.** `get_quota_info` is read per transaction
+and `get_policy` per seat search, both uncached (`WalletManager.ts:819, 892`). A raised
+`max_users` is picked up on the next seat search with no client change. `ConfigCache.ts` is
+the repo's memoisation pattern — deliberately NOT used here; keep it that way.
+
+**F7 — the client never reads `max_fee`, and the revert mapping is dead code.** Gas ceilings
+are hardcoded (`QUOTA_DA_GAS_LIMIT = 50_000`, `QUOTA_L2_GAS_LIMIT = 6_000_000`,
+`QUOTA_FEE_HEADROOM_MULTIPLIER = 2`, WalletManager.ts:363-368); the client never consults
+`max_fee`. Worse: `reasonFromRevert` / `QuotaUnavailableError` have **zero callers in
+`client/src`** — `TxExecutor.execute()` catches, `console.debug`s, and silently falls back to
+self-pay. An admin lowering `max_fee` therefore produces a silent self-pay with no
+explanation; and if it were wired, the copy says *"Network fees have spiked"* — factually
+wrong for an admin-caused change. `QuotaStatus.readQuotaStatus()` is also dead code.
+Pre-existing gaps that this change makes materially more likely to fire.
+
+## 4. Ops / config layer
+
+Script conventions (`contracts/scripts/`): header doc comment explaining *why*; hand-rolled
+`argv.indexOf('--flag')` parsing whose error message is the usage string;
+`loadContractsEnv({ optional: true })`; `createTolerantAztecNodeClient`; `setupWallet` +
+`getOrCreateAccount`; `prepareFeePayment` + `buildFeeSendFields`; padded human output;
+`main().catch(err => { console.error(err); process.exit(1) })` with distinct exit codes for
+domain errors (deploy-fpc uses 2, calibrate-gas 3).
+
+**Home for the new script: `contracts/scripts/operator/`** — `packages/quota-fpc/scripts/`
+deliberately avoids the shared utils and re-plumbs its own wallet/env, so putting it there
+means reinventing wallet, fee and env handling. Avoid the existing unrelated `update-config`
+(the game's Config contract); follow `deploy-fpc` / `calibrate-fpc-gas` naming.
+
+Reusable as-is: `loadContractsEnv`, `getOptionalEnv`/`getRequiredEnv`,
+`createTolerantAztecNodeClient`, `setupWallet`, `getOrCreateAccount`,
+`resolveDeployerAccount({mode:'loadOnly'})` for read-only paths, `prepareFeePayment`,
+`buildFeeSendFields`/`buildSendOpts`, `getContractInstances`, `unwrapSimulateResult`,
+`formatFeeJuiceWei`.
+
+Dedup risks: the `perGeneration * 3n` worst-case formula exists in `schema.ts` AND is
+re-derived in `deploy-fpc.ts` — the update script needs it too, so extract it rather than add
+a third copy. `formatFeeJuice` is a local copy in `deploy-fpc.ts` despite the shared
+`formatFeeJuiceWei`. `calibrate-gas.ts` already owns "what should max_fee be" — the update
+script must only APPLY a number.
+
+**Config drift (new problem):** `dark-forest.json` is today the source of truth, consumed
+only at deploy. Once policy is mutable it diverges from chain state and nothing keeps them in
+sync (no FPC equivalent of `sync-env-and-artifacts`). The update script must own this: treat
+the JSON as initial values only and always read live state, and/or rewrite it after a
+successful update.
+
+Address plumbing: `deploy-fpc` only PRINTS `QUOTA_FPC_CONTRACT_ADDRESS`; nothing writes it to
+`.env`. `calibrate-gas.ts` takes `--fpc <address>` — the convention to match.
+
+## 5. Test shapes to match
+
+All coverage is in `packages/quota-fpc/test/` (vitest). **No client-side tests exist.**
+Unit: `inputs(overrides)` builder (`allowance.test.ts`), hand-rolled node mocks
+(`seat-picker.test.ts`). `config-schema.test.ts`'s header literally says *"A paymaster's
+policy is immutable"* — this phase must rewrite it. Integration:
+`test/integration/quota-fpc.test.ts`, `describe.skipIf(!HAS_SANDBOX)`, deploys a real FPC and
+drives it through `buildSandwichPayload` / `sendFromPaymaster` — the natural home for "a
+policy change takes effect after the delay and not before". Note there is **no** existing
+coverage of the `max_fee` ceiling firing.

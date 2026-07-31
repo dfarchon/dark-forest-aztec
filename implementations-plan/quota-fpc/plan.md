@@ -24,6 +24,8 @@ aztec-kit's `SubscriptionFPC` works by **being the tx entrypoint**: it dispatche
 
 ## Architecture & Implementation
 
+> **Reading note (added 2026-07-31).** Everything in this section and in Phases 1-8 describes the design **as built through Phase 8**, when the policy and allowlist were constructor immutables and no privileged key existed. **Phase 9 deliberately reverses that.** Where the two disagree, **Phase 9 and its Transition semantics are canonical**; statements below in the present tense about "no admin", "immutable policy", "retuning means redeploying", or app-agnostic sponsorship are historical and superseded. They are kept rather than rewritten because two prior audit rounds reasoned against them.
+
 ### Components
 
 ```
@@ -152,6 +154,162 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 
 ---
 
+### Phase 9 — Admin-updatable policy (added 2026-07-31, user-directed)
+
+**Why**: retuning currently means redeploying and stranding the old instance's balance. The DF team should be able to agree numbers with us, send one transaction, fund, and be done. This deliberately reverses the "no admin, nothing privileged" property of Phases 1–8 — see the amended Security section for what that costs.
+
+**User decisions (fixed, not for the audits to re-litigate):** full admin control over `max_fee`/`max_uses`/`max_users` with no immutable bounds; the **target allowlist is also mutable**; delay is **12h**, fixed in the contract with no admin entrypoint to change it; the admin address is an **immutable constructor argument** with no transfer function (whoever deploys owns it — if DF deploys, DF owns it); `allowed_account_classes` and `require_unpublished_account` stay **immutable** (that is the C1 fix, hardened over two codex audits).
+
+#### Architecture (amends "The contract — no admin, fixed policy" above)
+
+One merged `DelayedPublicMutable`, not two:
+
+```
+global UPDATE_DELAY_SECONDS: u64 = 43_200;   // 12h, fixed. No entrypoint changes it.
+global BOOTSTRAP_DELAY: u64 = 0;             // see "the bootstrap trap" below
+
+#[derive(Deserialize, Eq, Packable, Serialize)]
+pub struct PolicyBundle {
+    max_fee: u128,
+    max_uses: u32,
+    max_users: u32,
+    allowed_targets: [AztecAddress; MAX_ALLOWED_TARGETS],
+}
+
+#[storage]
+struct Storage<Context> {
+    admin: PublicImmutable<AztecAddress, Context>,                          // NEW, immutable
+    settings: DelayedPublicMutable<PolicyBundle, BOOTSTRAP_DELAY, Context>, // was policy + allowed_targets
+    schedule_revision: PublicMutable<u64, Context>,                         // NEW, monotonic CAS counter
+    allowed_account_classes: PublicImmutable<[Field; MAX_ALLOWED_ACCOUNT_CLASSES], Context>, // unchanged
+    require_unpublished_account: PublicImmutable<bool, Context>,            // unchanged
+    quotas: Owned<PrivateSet<QuotaNote, Context>, Context>,                 // unchanged
+}
+```
+
+**`QuotaNote` changes shape.** It currently stores `{ remaining, generation }`. Clamping correctly requires knowing how much has been *spent*, not how much was left under a previous policy, and clamping seats requires knowing which seat a note belongs to:
+
+```
+struct QuotaNote { spent: u32, seat: u32, generation: u32 }   // was { remaining, generation }
+```
+
+`sponsor_and_execute` then asserts `note.spent < live.max_uses` and `note.seat < live.max_users`, and re-inserts with `spent + 1`. Deriving from `remaining` cannot work: `remaining` already excludes the use consumed by subscribing, so `min(remaining, new_max_uses)` **over-grants by one** — with a new cap of 1 an existing subscriber would get one *more* transaction (audit round 3). Storing `spent` makes the check exact and policy-independent.
+
+**The bootstrap trap and its fix (recon F1).** `DelayedPublicMutable` has no `initialize()`; every write goes through the timer, including the first. Declaring the delay as 12h would leave the settings reading as all-zeroes for 12h after deploy — an unset read returns zeroes rather than erroring — so `assert(seat < max_users)` fails for everyone and every payload is "non-allowlisted". **The paymaster would sponsor nothing for its first 12 hours.** Fix: declare the generic delay as `0`, and in the constructor, **in this order**:
+
+1. `settings.schedule_value_change(bundle)` — lands immediately because the current delay is 0.
+2. `settings.schedule_delay_change(UPDATE_DELAY_SECONDS)` — a delay *increase* applies immediately.
+
+Reversing those two lines reintroduces the dead window. A test asserts sponsorship works in the same block as deploy.
+
+**Why one bundle instead of two variables (trade-off, documented at user request).** Both private entrypoints read policy and targets together. Each separate `DelayedPublicMutable` costs its own ~4k-gate historical read *and* its own `set_expiration_timestamp` tightening, per sponsored transaction — aztec-nr's docs explicitly recommend grouping values that are read together. **The cost of bundling: only ONE change can be pending at a time across all four dials.** There is no queue — scheduling a `max_fee` change while a `max_users` change is still pending **silently discards the first and resets the clock** (recon F4). Keeping them separate would allow two independent pending changes, at 2× the per-transaction proving cost forever. Updates are rare; sponsored transactions are constant — bundling wins, but the operator tooling must make the single-slot behaviour impossible to trip over (see 9.3).
+
+**Reads.** Private: one `settings.get_current_value()` per entrypoint, replacing two `.read()`s. Utility `get_policy()` / `get_allowed_targets()` keep their signatures and derive from the bundle, so the client needs no change (recon F6: the client caches nothing and re-reads per transaction). The pending change is exposed through a **public view** simulated off-chain (see Writes below), not a hand-rolled utility getter.
+
+**Writes.** `#[external("public")] fn schedule_settings(bundle: PolicyBundle, expected_revision: u64)`:
+
+1. `assert_eq(self.storage.admin.read(), self.msg_sender(), "caller is not admin")` (the `auth_contract` pattern).
+2. **Re-assert the constructor's invariants** — `max_fee > 0`, `max_uses > 0`, `max_users > 0`, at least one non-zero target. The constructor has these (`main.nr:141-159`) and ledger row 15 exists precisely because the reference contract lost them when its setter was deleted. A setter without them loses them again, and a zero bundle bricks sponsorship for 12h with no shortcut.
+3. **Compare-and-swap against the monotonic `schedule_revision`**, NOT a timestamp: assert `expected_revision == schedule_revision.read()`. A failed call reverts, leaving the revision untouched. Timestamp-based CAS is unsound (audit round 2): `get_scheduled_value()` retains its timestamp *after* activation and the bootstrap write makes it non-zero, so "0 means nothing pending" can never hold; and two replacements included in the same block share an activation timestamp, so both would pass. A revision counter has neither problem. Re-scheduling always silently replaces (recon F4), and an off-chain `--replace-pending` flag cannot make that safe — two operators can both pass a CLI check and the later transaction wins with no trace.
+4. `schedule_value_change(bundle)`, then `schedule_revision.write(current + 1)` — public writes are immediate and transactions execute serially, so schedule-then-increment is atomic with no external call and no re-entrancy surface. The public view returns the revision alongside the pending bundle so the script can round-trip it.
+
+**Reading the pending change** uses the library's supported `get_scheduled_value()` on `PublicContext` via an `#[external("public")]` view that the script simulates off-chain (no gas, no transaction). A utility-context getter is *possible* by hand-rolling `WithHash::utility_public_storage_read` + `svc.get_scheduled()` — both audits confirmed the pieces are public API — but reaching into library internals to save one function, for a caller that already simulates, is the wrong trade.
+
+#### Transition semantics (user decision, revised 2026-07-31 after audit round 2)
+
+**Nothing takes effect in under 12 hours. There is no fast lever and no pause.** An earlier draft of this plan said `max_fee` "applies immediately" — that was wrong and is corrected here. Every dial waits the full delay; what differs is only what happens *at* activation:
+
+- **`max_fee` and the target allowlist** are read live in both private entrypoints, so at activation they apply to the very next sponsored transaction.
+- **`max_uses`** — **CLAMP** (user decision, revised after audit round 2). The note stores `spent`; every sponsored transaction asserts `note.spent < live.max_uses`. A reduction therefore bites for everyone at activation, including players already holding allowances. Grandfathering was chosen first and reversed: repeated updates (A -> B -> C every 12h) leave A-era allowances spending at C-era fees, which no single `max(old,new)` bound covers.
+- **`max_users`** — **ALSO CLAMP** (user decision, audit round 3). The note stores its `seat`; every sponsored transaction asserts `note.seat < live.max_users`. Clamping only allowances was not enough: seats claimed under a larger cap survived, so admitting 100 players, cutting to 1, then raising the fee would let all 100 spend at the new fee — making the stated bound false. Raising `max_users` remains purely additive; lowering it now stops high-seat holders at activation.
+- Consequence: **a player being sponsored can lose sponsorship mid-day**, not merely see a smaller counter. The client copy must present this as a policy change, not a fault.
+
+**Consequences to state in the ops output and the handoff:**
+- A reduction is fully effective at activation — no ~36h tail, because nothing is grandfathered.
+- A player mid-session can see their remaining count drop when a reduction activates. This is the accepted cost of clamping, and the client copy must not read as a bug.
+- **Incident response is 12 hours, minimum.** If a defect or abuse is discovered, the earliest any mitigation lands is the delay. Sizing funding tranches, not reacting quickly, remains the real control (Ask A10, reaffirmed under Phase 9).
+
+**Loss bound.** With BOTH dimensions clamped, every sponsored transaction is checked against the *live* bundle, so no earlier era's allowance or seat can be spent under a later era's fee. The homogeneous helper is therefore exactly correct, with no cross-product envelope:
+`worstCasePerGeneration = maxFeeWei * maxUsesPerDay * maxUsersPerDay`, `* 3n` for the generations chargeable around a rollover. The update script prints this for the *scheduled* bundle alongside the paymaster's live balance, so a raise is never approved against a stale mental model.
+
+#### The cutover window (both audits, High)
+
+A pending change sets every sponsored transaction's expiration to `timestamp_of_change - 1` (`scheduled_value_change.nr:117`), not to `anchor + delay`. In the final minutes before an activation the inclusion window therefore collapses toward zero, and a proof begun before the boundary can expire before it lands — surfacing as "Invalid expiration timestamp", the exact failure `main.nr:430-447` and commit `6b33e64` were written to eliminate. This is inherent to the mechanism (it is what makes private reads sound), so it is handled, not avoided:
+
+- **Client (root fix, in scope after audit round 2)**: three changes, because a script-side guard alone is point-in-time, overridable, and duplicates constants it does not own.
+  1. Move the gas profile (`QUOTA_DA_GAS_LIMIT`, `QUOTA_L2_GAS_LIMIT`, headroom) out of `WalletManager.ts:363-368` into `@dfpunk/quota-fpc` so the client and the ops script consume ONE definition instead of two copies that can drift.
+  2. **Read the effective `max_fee` before proving** and skip the sponsored path when the transaction cannot fit — rather than proving, failing, and discovering it in a catch block.
+  3. `TxExecutor.execute()` must **surface a cause-neutral, user-visible notice before falling back to self-pay** (`TxExecutor.ts:345-350` currently only `console.debug`s). Players must never be charged silently. Full `reasonFromRevert` taxonomy wiring stays out of scope; the notice does not need to explain *why*.
+- **Ops**: the update script prints the activation time in UTC and warns that sponsorship gets flaky in the minutes around it.
+- **Test**: a proof spanning the cutover.
+
+#### 9.1 — Contract
+
+`PolicyBundle`, merged storage, immutable `admin` constructor arg, ordered bootstrap, `schedule_settings`, `get_scheduled_settings`, rewire both private entrypoints to a single bundle read. Noir tests where cheap.
+
+**Validation gate** — Commands: `pnpm --filter contracts run build-contracts` && `pnpm --filter contracts run lint`. Pass: exit 0, `QuotaFpc.ts` regenerated with the new constructor arity and `schedule_settings`/`get_scheduled_settings` present. Layers: typecheck/lint + contract compile.
+
+#### 9.2 — Config + deploy
+
+`adminAddress` in the schema — **required and explicit, no deployer fallback** (user decision; a dry-run cannot display a signer-derived default, so a silent default means approving a deploy without seeing who permanently holds the key). Validated 32-byte and non-zero in the schema AND asserted non-zero on-chain, because a malformed immutable admin permanently bricks updates. extract the `perGeneration * 3n` worst-case helper so it is not copied a third time (recon: it exists in `schema.ts` and again in `deploy-fpc.ts`); `deploy-fpc.ts` passes admin + bundle; deploy output states plainly that `maxLossWei` is now a **deploy-time sanity check, not a bound**, because the admin can exceed it afterwards.
+
+**Validation gate** — Commands: `pnpm --filter @dfpunk/quota-fpc run test` && `pnpm --filter contracts run lint` && `pnpm --filter contracts run deploy-fpc -- --config fpc/config/dark-forest.json --dry-run`. Pass: exit 0; dry-run prints the admin address and the revised loss-cap wording. Layers: unit + lint + script smoke.
+
+#### 9.3 — The update script (`contracts/scripts/operator/update-fpc-policy.ts`)
+
+For a non-expert operator. Lives in `contracts/scripts/operator/` (that is where the shared wallet/fee/env helpers are reachable); named to avoid the unrelated existing `update-config`. Behaviour:
+
+- `--fpc <address>` (matching `calibrate-gas.ts`), `--show` prints current effective settings, **any pending change and when it activates**, and the paymaster balance.
+- Setting flags (`--max-uses`, `--max-users`, `--max-fee-wei`, `--add-target`, `--remove-target`) read the *current on-chain* bundle, apply only the named changes, and write the whole bundle back.
+- **Refuses to write while a change is pending** unless `--replace-pending` is passed, printing exactly what would be discarded. The flag is UX only — the real guard is the contract's compare-and-swap (9.1), because a CLI check cannot win a race against another operator.
+- **Edits are applied on top of the PENDING bundle when one exists** (user decision), so a second edit does not silently discard the first; falls back to the live bundle when nothing is pending. The script states which base it used.
+- Prints the scheduled bundle's worst-case spend per generation, the paymaster's live balance, and a plain-language "takes effect at <UTC time>" line. Reductions need no extra latency caveat under clamping — they are fully effective at activation.
+- **Refuses a `max_fee` below what the client can actually spend**, computed from the SHARED gas profile in `@dfpunk/quota-fpc` (not a second copy of the constants). Override: `--force-below-client-floor`. This is defence in depth — the root fix is client-side (see The cutover window); the script guard is point-in-time and overridable and must not be described as closing the incident.
+- Before confirming, displays **network, FPC address, signer, and the on-chain admin** so an operator cannot act against the wrong instance or discover mid-run that they are not the admin.
+- `--dry-run` everywhere. Distinct exit codes per the repo convention.
+- Does **not** calibrate gas — `calibrate-gas.ts` owns deriving the right `max_fee`; this only applies and sanity-floors a number.
+- Documents that `dark-forest.json` is *initial values only* once an update has happened, and prints the config-drift warning (recon: nothing keeps the file and the chain in sync).
+
+**Validation gate** — Commands, exactly:
+```
+pnpm --filter contracts run lint
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --show
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --max-uses 20 --dry-run
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --max-uses 20
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --max-users 60          # must REFUSE: pending
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --max-users 60 --replace-pending
+pnpm --filter contracts exec tsx scripts/operator/update-fpc-policy.ts --fpc $FPC --max-fee-wei 1 --replace-pending   # must REFUSE: below client floor, NOT "pending"
+```
+Pass: lint exit 0; `--show` reports current settings, the pending change and its UTC activation time; the un-flagged second write is refused with a non-zero exit code; `--replace-pending` succeeds and reports it based the edit on the PENDING bundle; the below-floor write is refused. Layers: lint + live local-network script e2e.
+
+#### 9.4 — Tests
+
+Integration (`packages/quota-fpc/test/integration/quota-fpc.test.ts`, the existing sandbox harness):
+
+1. **Bootstrap regression**: sponsorship succeeds at the **first possible post-deployment anchor**, with no 12h wait. (Phrased this way deliberately: "the same block as deploy" is not meaningful, since a private tx cannot anchor to constructor state until that block exists.)
+2. **Activation**: a scheduled change is NOT in effect before its activation time, and IS after — using the local debug API `warpL2TimeAtLeastBy(43_200)` (verified present: `@aztec/stdlib` `aztec-node-debug.d.ts:48`). Without warping this test would take 12 hours; adding the warp helper to `harness.ts` is explicit Phase 9 work. Note the harness captures `generation` once in `beforeAll`, so a warped test must re-derive it.
+3. **Cutover**: a proof begun before an activation boundary and included after it fails as expected, and the client's single fresh-anchor retry recovers.
+4. **Authorisation**: non-admin `schedule_settings` reverts.
+5. **Compare-and-swap**: a second schedule with a stale `expected_revision` reverts; with the correct one it replaces; **two replacements in the SAME block** cannot both succeed (the case a timestamp-based check would have let through); a failed call leaves the revision unchanged.
+6. **Setter invariants**: a zero-`max_uses` / zero-target bundle reverts.
+7. **`max_fee` ceiling fires** — no coverage exists today (recon), and Phase 9 makes it mutable.
+8. **Mutable allowlist**: adding a target makes it sponsorable after activation; removing one stops it.
+9. **Getter parity**: `get_policy()` / `get_allowed_targets()` return the same values the private path enforces.
+
+Schema unit tests for `adminAddress` (required, non-zero, malformed). Rewrite the `config-schema.test.ts` header, which currently states "A paymaster's policy is immutable".
+
+**Validation gate** — Commands: `pnpm --filter @dfpunk/quota-fpc run test` && `QUOTA_FPC_SANDBOX_URL=http://localhost:8590 pnpm --filter @dfpunk/quota-fpc run test:integration`. Pass: exit 0; **all nine integration cases above present and green**, with none of them skipped — `QUOTA_FPC_SANDBOX_URL` must be set so `describe.skipIf(!HAS_SANDBOX)` is satisfied. (`real-game.test.ts` legitimately stays skipped without the game deployment; the gate is about the nine cases, not a repo-wide zero-skip count.) clamping proven by a test that reduces `max_uses` while a player holds a larger allowance and asserts the spend is clamped at activation. Layers: unit + integration (live local network). **This is the phase gate for "done" per the user's Phase 0 answer.**
+
+Note the package suite cannot exercise `TxExecutor`'s fallback notice (no client tests exist at all — recon). The client changes above are therefore covered by a **manual full-stack check** recorded in the phase's lessons file: lower `max_fee` below the client floor on a local instance, warp past activation, attempt a move, and confirm the player sees a notice rather than a silent charge.
+
+#### 9.5 — Docs + handoff
+
+Amend `docs/quota-fpc-local.md` with the update flow. Rewrite `handoff.html`: the claims *"there's no admin key to compromise"* and *"deliberately no admin key"* become **false** and must be replaced with an honest description — the operator holds a key that can retune the policy and the sponsored-contract list after 12 hours, the balance is the cap, and whoever deploys holds that key. Republish to the same Artifact URL.
+
+**Validation gate** — Commands: `pnpm --filter client run lint` && `pnpm --filter client run build` && `grep -rni "no admin\|policy is immutable\|nobody can widen\|retuning means\|redeploy to retune" docs client contracts packages implementations-plan/quota-fpc/handoff.html`. Pass: exit 0 for lint/build; the grep returns **no live claims** (it deliberately does NOT search "admin key", since the required positive disclosure contains that phrase) (matches inside `plan.md`'s superseded rows and dated ledger entries are excluded by scoping the grep to the paths above, which deliberately omit `plan.md`); artifact republished and re-read to confirm the admin disclosure is present. Layers: lint + build + explicit doc assertion.
+
+---
+
 ## Security & Adversarial Considerations
 
 **Threat model**: the FPC custodies fee juice with no withdraw (protocol-non-transferable) and no pause. All drain paths are **griefing, not profit** — fees go to sequencers/burn, the attacker gains nothing (fable) — which lowers attacker motivation but not our duty to bound loss. The FPC balance is the absolute backstop: fund in small tranches, top up as the demo proves out.
@@ -161,8 +319,25 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 - **App-agnostic subsidy (accepted, Ask A4)**: quota spend is not bound to DF gameplay; a claimant can sponsor arbitrary txs within `max_fee`. Bounds above apply regardless of what the tx does.
 - **Freshness / time attacks**: generation validity = `day(anchor_ts)` (+1 only in the last 10min of a day); protocol enforces inclusion ≤ anchor+24h (`private_context.nr:189,442` — the load-bearing guarantee, cited per fable M2; an SDK bump changing `MAX_TX_LIFETIME` changes this analysis and is flagged in the handoff). Active exposure ≈ 2 generations (stale-anchor tail additionally cut by `set_expiration_timestamp`). No operator clock involved anywhere.
 - **Reverts**: all quota side effects are setup-phase/non-revertible and consistent; a deliberately-reverting tx burns the attacker's own quota while the FPC pays — bounded by the same daily arithmetic. Client never blind-retries a quota tx.
-- **No admin = no key to steal**: nothing privileged exists post-deploy. The deployer key is inert afterward. (Was codex High: hot rotation key on the same homelab box.)
-- **Config integrity**: policy is a constructor immutable — nobody can widen it, ever. Retuning = new deploy (documented).
+- ~~**No admin = no key to steal**: nothing privileged exists post-deploy.~~ **SUPERSEDED BY PHASE 9 — see "Admin key (Phase 9)" below.** True for Phases 1–8 only.
+- ~~**Config integrity**: policy is a constructor immutable — nobody can widen it, ever.~~ **SUPERSEDED BY PHASE 9.**
+
+### Admin key (Phase 9) — what reversing "no admin" costs
+
+The user chose full admin control with no immutable bounds, and a mutable target allowlist, accepting the following. These are consequences, not open questions:
+
+- **Correction to the Phases 1-8 threat model above (codex Med-4).** That section's "all drain paths are griefing, not profit" no longer holds: with a mutable allowlist an admin can point sponsorship at a contract they control and, if they can also sequence, capture the fees — extraction, not griefing. Its "app-agnostic subsidy / arbitrary txs" wording also predates the target binding and the C1 account-class binding, both of which now constrain what a *player* can do. And "no pause" is now only half true: scheduling a zero-ish bundle is a **delayed** pause (12h), which is the closest thing to an emergency brake this design has — worth naming in the incident runbook, though it is far too slow to stop an in-progress drain.
+- **The threat is not theft, it is redirection.** Fee juice remains non-transferable, so nobody can withdraw the pool. But an admin — or whoever takes that key — can point the allowlist at a contract they control and spam it. If they can also sequence, they capture those fees: this converts the pre-Phase-9 "burn the pool" griefing path into an **extraction** path. Still bounded by the balance.
+- **`maxLossWei` stops being a bound.** It validates the *initial* policy at deploy and nothing after. The deploy script must say so rather than implying a cap it no longer enforces.
+- **A single transaction can drain the pool** — with the caveat that this requires the balance to fit inside the protocol's per-transaction gas limits; beyond that it takes several. With `max_fee` freely settable, once 12h elapses a small number of sponsored transactions can consume the whole balance.
+- **A scheduled RAISE is a publicly announced start-gun (fable A3).** The pending value and its activation timestamp are public 12h ahead, so anyone can be first in line the second a higher `max_fee` goes live, and the collapsing expiration window around activation favours whoever has the fastest prover. Raises should be paired with funding and monitoring, not merely announced.
+- **The 12h delay is also OUR minimum incident-response time.** Nothing — not `max_fee`, not the allowlist — takes effect sooner, and there is no pause. Under clamping a reduction is fully effective at activation, but activation itself is still 12h out. The delay protects players from us; it does nothing to protect the pool from a fast attacker. Tranche sizing, not reaction speed, is the control.
+- **Migration: not applicable.** Phase 9 requires a fresh deployment, but nothing is deployed to mainnet — Phase 8 remains parked awaiting explicit go-ahead — so there is no production instance to cut over from, no stranded balance, and no split player base. (codex Med-7, discounted on these grounds; revisit if Phase 8 ships first.) "Fund in tranches" therefore changes meaning: the tranche is the immediate per-transaction exposure, not a day's worth of policy. Size tranches accordingly.
+- **12h is the only remaining guardrail**, and it is fixed in the contract with no entrypoint to change it — deliberately, so the key cannot shorten its own warning window.
+- **Key custody decision (user, 2026-07-31): the existing homelab deployer account holds the admin key**, same as every other script here — accepted for a capped showcase on the grounds that the key cannot withdraw anything, only retune, and that funding is tranche-limited. This **must be stated plainly in the DF handoff**, not implied. Ask A10 ("no pause") was originally accepted *because* no privileged key existed; that premise is now reversed, and the acceptance is re-affirmed on the new grounds above rather than inherited.
+- **Key custody is the whole security model now.** Whoever runs `deploy-fpc` becomes the permanent admin; there is no transfer function, so handing control to DF later means redeploying. The key lives on the same homelab box the earlier codex audit flagged — that finding was resolved then by *having no key at all*, and that resolution no longer applies.
+- **Unchanged by Phase 9**: the C1 account-class binding and `require_unpublished_account` stay immutable, so the "only unpublished accounts of blessed classes" guarantee is not under the key's control.
+- **New failure mode for players (recon F7)**: `reasonFromRevert`/`QuotaUnavailableError` have zero callers in `client/src` — `TxExecutor` catches, `console.debug`s, and silently self-pays. An admin lowering `max_fee` therefore charges players their own gas with no explanation, and the copy that *would* fire says "Network fees have spiked" — wrong for an admin-caused change. Phase 9 makes the copy cause-neutral; **wiring the mapping into the client is an explicit non-goal** (pre-existing gap, logged in the ledger).
 - **Client trust boundary**: UI counter is advisory; contract is sole enforcement; all quota inputs (`generation`, `seat`) asserted on-chain. Fee-spike handling degrades to own-balance/bridge, never to unbounded fees.
 - **Privacy (Asks A5)**: (1) `feePayer = FPC` is public — every sponsored tx is publicly attributable to DF (vs today's self-pay prod; the pre-audit "no regression" claim was wrong — fable M3). (2) Player nullifiers are deterministic over `(generation, player)`: since DF player addresses are public game state, an observer can compute who used sponsorship each day. Both are explicit accept/reject decisions for the user, not defaults.
 - **Cryptography**: no new primitives — Poseidon2 via aztec-nr `v5.0.1`; two domain separators (SEAT, PLAYER) following the reference's pattern.
@@ -224,6 +399,14 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 
 **Also rejected**: own no-quota `SponsoredFPC` clone (env-only, near-zero work) — no quotas, no counter, open-ended drain; user deselected it explicitly.
 
+### Phase 9 competing outline — "versioned instances, no mutability"
+
+Instead of making the live policy mutable, keep the contract immutable and make **redeploying cheap and safe**: a `deploy-fpc --from <old-address>` mode that reads the old instance's settings, applies the requested changes, deploys a fresh instance, and prints the one env var to swap. Retuning becomes "deploy + repoint + fund", with the old instance left to drain.
+
+- **Advantages**: keeps "no admin, nothing privileged, nobody can widen the policy" — the property two audits were built around and the one that made the handoff claim simple. No `DelayedPublicMutable`, so no bootstrap trap, no expiration tightening on every sponsored transaction, no single-pending-change footgun, no key custody question. Strictly less code and strictly less attack surface.
+- **Why rejected**: it does not deliver what the user asked for. Every retune strands the old instance's remaining fee juice (unrecoverable), forces a client rebuild to change `VITE_QUOTA_FPC_ADDRESS`, and splits players across two instances mid-day (the old one keeps sponsoring until repointed). "Agree the numbers, send one transaction, fund, done" is the actual requirement, and this cannot meet it.
+- **Worth keeping in view**: if Phase 9's audits surface a defect in the delayed-mutable approach that we cannot cleanly close, this is the fallback — it is what Phases 1–8 already are, plus a convenience flag.
+
 ## Decision ledger
 
 | # | Decision | Chosen | Rejected | Source | Status |
@@ -245,16 +428,55 @@ Deployer keys generated offline (`accountResolution` pattern; local `.env` only 
 | 15 | Constructor invariants | assert max_uses/max_users/max_fee > 0 | None (reference guards lived in sign_up, which we deleted) | codex final pass | settled |
 | 16 | Seat-collision retry | One fresh-seat retry iff provably not included; no retry for included txs | Blanket no-retry (hurts availability) / blind re-fire (double-burns) | codex final pass + fable H1 | settled |
 | 17 | Integration shape | **SANDWICH** — user decided 2026-07-29 on spike 1B evidence (call-binding proven, no DF redeploy, app sees player as msg_sender) | Standard sibling-call shape (app-agnostic subsidy) | user + spike 1B | settled |
+| 18 | C1 (malicious player account) | **Account-class allowlist + require_unpublished_account** (both needed; class alone is bypassable via ContractInstanceRegistry::update) | Class-only binding (codex audit 1: DO NOT SHIP); accepting C1 indefinitely | codex audits 1+2, 2026-07-31 | settled — closed |
+| 19 | Phase 9: mutability mechanism | **DelayedPublicMutable, 12h** | Versioned instances / cheap redeploy (strands balance, needs client rebuild, splits players mid-day) | user requirement + recon | settled |
+| 20 | Phase 9: admin authority | **Full control, no immutable bounds; target allowlist also mutable** | Bounded-within-deploy-time-limits (recommended by main, keeps "nobody can exceed the limits"); lower-only ratchet | **user, overriding main's recommendation** | settled — consequences documented in Security |
+| 21 | Phase 9: storage shape | **One merged PolicyBundle** | Two separate DelayedPublicMutables (2x ~4k-gate read + 2x expiration tightening per sponsored tx) | recon F3 + aztec-nr docs | settled — cost is ONE pending change across all dials (documented at user request) |
+| 22 | Phase 9: delay | **12h, fixed in contract, no entrypoint to change it** | 24h (aztec-nr's stated optimum = MAX_TX_LIFETIME, imposes no extra constraint); admin-changeable delay | **user, after being shown the library guidance** | settled — halves the tx inclusion window; accepted |
+| 23 | Phase 9: bootstrap | **Generic delay 0, constructor writes then raises to 12h (in that order)** | Declaring the generic as 12h (would leave the paymaster sponsoring NOTHING for 12h after every deploy — silently) | recon F1 | settled — regression test required |
+| 24 | Phase 9: admin custody | **Immutable constructor arg, no transfer; whoever deploys owns it** | Transferable admin (recommended by main for the "DF tunes without us" goal) | **user** | settled — handing over later means a redeploy |
+| 25 | Phase 9: client revert wiring | **Narrowed, not dropped**: one fresh-anchor retry + the silent-fallback path must surface a reason; full `reasonFromRevert` wiring still out of scope. Root cause closed script-side instead (max_fee floor guard) | Leaving it entirely out of scope (both audits: High) | codex + fable, 2026-07-31 | settled |
+| 26 | Phase 9: transition semantics | **CLAMP** to `min(remaining, live max_uses)` — user revised 2026-07-31 after audit round 2 showed repeated updates stack overlapping eras that no single `max(old,new)` bound covers | Grandfathering (chosen first, then reversed); a cooldown between changes; a high-water envelope across live eras | user, after codex round 2 Critical | settled — cost: a player's counter can drop mid-session |
+| 33 | Phase 9: CAS mechanism | **Monotonic `schedule_revision` counter** | `timestamp_of_change` comparison (unsound: retained after activation, non-zero from bootstrap, and same-block replacements share a timestamp) | codex round 2 | settled |
+| 34 | Phase 9: silent self-pay | **Root fix in scope**: single shared gas profile, read effective `max_fee` before proving, user-visible notice before any self-pay | Script-side guard alone (point-in-time, overridable, duplicates client constants) | codex round 2 | settled — full `reasonFromRevert` taxonomy still out |
+| 35 | Phase 9: admin key custody | **Existing homelab deployer account** | Dedicated offline key; deferring to Phase 8 | **user** | settled — must be disclosed in the DF handoff; re-affirms Ask A10 on new grounds |
+| 27 | Phase 9: pending-change safety | **On-chain compare-and-swap** against a monotonic `schedule_revision` (a timestamp comparison is unsound: retained post-activation, non-zero from bootstrap, and same-block replacements collide) | Off-chain `--replace-pending` flag alone (codex High-3: two operators both pass the CLI check, later tx silently wins) | codex | settled |
+| 28 | Phase 9: replacement base | **Apply edits on top of the PENDING bundle** when one exists | Basing on the live bundle (silently discards the pending edit) | user + codex | settled |
+| 29 | Phase 9: setter invariants | **Re-assert `> 0` and `>= 1` target inside `schedule_settings`** | Admin-check only (ledger row 15 exists because the reference lost exactly these guards with its setter) | fable A2 | settled |
+| 30 | Phase 9: scheduled-value getter | **Supported `get_scheduled_value()` public view, simulated** | Hand-rolled utility getter over `WithHash` + `svc` internals (viable, but reaches into internals for no gain) | fable, overriding main's earlier call | settled |
+| 31 | Phase 9: activation testing | **`warpL2TimeAtLeastBy(43_200)` in the harness** — verified present in `@aztec/stdlib` | Untested activation (both audits: the 12h gate is unprovable locally without it, contradicting "local only, no testnet") | codex + fable | settled |
+| 32 | Phase 9: `max_fee` floor | **Update script refuses a `max_fee` below the client's `gasLimits x liveFees x headroom`** | No guard (one admin tx makes every sponsored tx unprovable and silently charges every player) | fable, sharpened by codex | settled |
 | 18 | Reusability | Contract is app-agnostic; all app-specific values (allowlist, policy, loss cap) live in `contracts/fpc/config/*.json` validated by `schema.ts` — forking = one config file | DF-specific contract constants | user (2026-07-29) | settled |
 | Open | Asks A1-A10 | resolved 2026-07-29 (see Ask resolutions) | — | — | done |
 
 ## Audit verdicts
+
+### Phase 9, round 1 (2026-07-31)
+
+- **fable (Opus 4.8)** — `conditional approve` with 5 conditions: re-assert constructor invariants in the setter; name+test the expiration-horizon regression this repo already reverted once; make the 9.4 activation gate executable or admit it is untested; the script must refuse a `max_fee` below the client's gas floor; fix the utility-vs-anchor seat skew. **All 5 adopted.**
+- **codex (gpt-5.6-sol, session `019fb982-e714-7d93-959e-21b8cdb99228`)** — `reject`, blocking on: quota changes not atomic with existing quota state (mixed-era loss bound); pending replacement guarded only off-chain; policy failures silently charging players. **All 3 adopted** (see round 2/3 below for how the first was ultimately closed): replacement became an on-chain compare-and-swap; the silent-self-pay path got a client-side root fix.
+- Also adopted: explicit-only admin with an on-chain non-zero assert (codex Med-6 — the plan had contradicted itself by making it both required and deployer-defaulted); corrected stale threat-model claims (codex Med-4); `formatFeeJuiceWei` dedup (codex Low-8); rewritten 9.4/9.5 gates.
+- **Rejected**: codex Med-7 (migration phase) — nothing is deployed to mainnet, so there is no instance to migrate from. Recorded in Security.
+- **Overridden by the user**: transition semantics (ledger 26) — both audits and main recommended clamping; the user chose grandfathering. Consequences documented rather than argued.
+
+### Phase 9, rounds 2 and 3 (2026-07-31)
+
+- **Round 2** (fresh codex session `019fb98e-78a1-7a80-a2f6-b2492477cfdf`) — `reject`. Blocking: the `max(old,new)` transition bound is not conservative across REPEATED updates (A->B->C leaves A-era allowances spending at C-era fees); timestamp-based CAS is unsound; silent paid fallback still not closed. Also caught a **materially false claim** that `max_fee` "applies immediately" — it waits the full delay like everything else. All adopted; the user reversed grandfathering to clamping in response.
+- **Round 3** (resumed, verifying the fixes) — `reject`. Two real defects survived: (a) `min(note.remaining, live max_uses)` **over-grants by one**, because `remaining` already excludes the use consumed at subscription — fixed by storing `spent` and asserting `spent < live.max_uses`; (b) clamping allowances did not clamp **seats**, so a `max_users` cut left earlier cohorts spending at later fees and the stated bound was false — fixed by storing `seat` in the note and asserting `seat < live.max_users` (user decision). The remainder were my own propagation failures: the revision counter was described in prose but missing from the storage block and the signature, stale sentences still credited the script with closing the silent-charge incident, and one gate command tested the wrong refusal. All corrected.
+- **Round 4 deliberately not run** (user decision): the surviving items were specification inconsistencies rather than design flaws, and audits resume against the implementation diff, where they have historically found the most.
+
+### Prior rounds
 
 - **Codex round 1** (gpt-5.6-sol xhigh, fresh): **reject** — Critical: seat-without-player nullifier; app-agnostic drain. High: freshness pre-drain/3-gen; uses off-by-one + revert double-charge; hot admin key; gas/fallback gaps. All findings adopted (Decisions 3-9) or converted to explicit Asks (A4). Transcript: `audit-codex.md`.
 - **Fable round 1** (Plan agent, fable): **conditional approve**, 7 conditions — all adopted (Decisions 4,5,7,8,9 + spike re-scope + Asks A5-A8 + record fixes). Transcript: `audit-fable.md`.
 - **Codex final fresh-context pass** (gpt-5.6-sol xhigh, NEW session, saw revised plan + ledger + both round-1 transcripts): **conditional approve** — conditions: (1) specify+test rollover/SLACK semantics with explicit user acceptance of pre-squat + 2× rolling exposure; (2) evidence-based sync classification, never timeout-inferred exhaustion/self-pay; (3) constructor invariants + exact 2-D fee-cap tests; (4) external-wallet capabilities manifest or de-scope; (5) tranche derived post-calibration under an explicit max-loss cap. ALL folded in (Decisions 12-16, Asks A1/A6/A9/A10 revised/added, Inferences 1-4 tightened). Resolution check confirmed round-1 Criticals/Highs genuinely resolved (player nullifier, off-by-one, revert ordering, hot admin) with the app-agnostic subsidy correctly surfaced as an Ask. Transcript: `audit-codex.md`.
 
 ## ELI5 companion
+
+**Phase 9**: `eli5_mode = artifact`. Source `implementations-plan/quota-fpc/eli5-phase9.html`, published at
+https://claude.ai/code/artifact/3655f090-9b18-41ab-9bf8-dc3b9fac58a9 — republish that same source path to update in place.
+
+### Phases 1-8 (historical)
 
 - Artifact URL: https://claude.ai/code/artifact/39d78974-e960-4c38-ad0d-738fa4721168
 - Source file: `implementations-plan/quota-fpc/eli5.html` (redeploying this same path updates the same URL)
