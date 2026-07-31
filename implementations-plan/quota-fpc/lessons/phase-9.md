@@ -27,3 +27,23 @@ Gotcha for later phases: the constructor arity changed (admin is FIRST), so ever
 
 ## 9.3 — Update script
 
+**Done 2026-07-31.** Gate: `pnpm --filter contracts run lint` exit 0, plus the full command sequence against the live local chain (node :8590, FPC `0x0038f347…`):
+
+- `--show` → current settings + PENDING block with UTC activation + cutover warning ✓
+- `--dry-run` reduction → prints impact warning, sends nothing ✓
+- real schedule → accepted ✓
+- second write, no flag → **refused, exit 2** ✓
+- `--replace-pending` → **based on PENDING** (kept max-uses 3 while live was 5) ✓
+- `--max-fee-wei 1` → **refused, exit 3** (floor 122400000000000 wei at current fees) ✓
+
+**The bootstrap fix is proven on a real chain**: immediately after deploy, `--show` reported the real policy (5/20/0.001 FJ), not the all-zero bundle the naive ordering produces.
+
+Two bugs the live run found that review did not:
+
+1. **Chain time vs wall clock.** "Is a change pending?" compared on-chain timestamps against `Date.now()`. The local chain runs ~9.7h off wall clock (normal for an idling network), so the answer would have been wrong — a queued change reported as already live. Now reads the latest block's timestamp via `node.getBlockData('latest')` (the pattern `harness.ts:41` already used) and prints the skew when it exceeds 5 min. Would have been wrong on mainnet too, just less visibly.
+2. **Skew wording printed backwards** — said "behind your machine" while showing a negative number; the chain was AHEAD. Direction now computed explicitly.
+
+Also fixed in 9.1 but worth noting here: `get_quota_info` now derives remaining from the LIVE policy. It previously returned the note's stored value, so after a reduction the badge would advertise transactions the player no longer had.
+
+## 9.4 — Tests
+

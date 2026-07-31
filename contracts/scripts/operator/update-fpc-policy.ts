@@ -289,11 +289,14 @@ async function main() {
         );
     }
     const isPending = activatesAt > nowSeconds;
-    const skewSeconds = Math.floor(Date.now() / 1000) - nowSeconds;
-    if (Math.abs(skewSeconds) > 300) {
+    const skewMinutes = Math.round(
+        (nowSeconds - Math.floor(Date.now() / 1000)) / 60
+    );
+    if (Math.abs(skewMinutes) > 5) {
         console.log(
-            `\n  (chain clock is ${Math.round(skewSeconds / 60)} min behind your machine;` +
-                ` all times below are chain time)`
+            `\n  (chain clock is ${Math.abs(skewMinutes)} min ` +
+                `${skewMinutes > 0 ? 'AHEAD of' : 'BEHIND'} your machine; ` +
+                `every time shown here is chain time)`
         );
     }
 
