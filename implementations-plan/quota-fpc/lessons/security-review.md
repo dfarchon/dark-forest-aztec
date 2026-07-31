@@ -7,7 +7,7 @@ client send/allowance path. No Critical defects. Findings and dispositions below
 
 | # | Sev | Finding | Disposition |
 |---|-----|---------|-------------|
-| C1 | High | `player` is untrusted: a malicious account contract passed as `player` ignores the signed payload and sponsors arbitrary calls (the FPC has already become fee payer) | **ACCEPTED for the capped showcase (user, 2026-07-30)** — same posture as A4, balance-bounded; disclosed to the DF team. Class-id binding deferred to pre-scale. |
+| C1 | High | `player` is untrusted: a malicious account contract passed as `player` ignores the signed payload and sponsors arbitrary calls (the FPC has already become fee payer) | **CLOSED 2026-07-31** (was accepted 07-30). Account-class allowlist + `require_unpublished_account`. Two codex audits; the first found the class-only version still bypassable via `ContractInstanceRegistry::update`, the second verified the hardened version sound. See [account-class-binding.md](account-class-binding.md). |
 | C2 | Med | Loss-cap check used 1× per-generation; ~3 generations are chargeable around a rollover | FIXED — schema + deploy display use 3× |
 | C3 | Low | Fee ceiling added teardown gas; protocol `getFeeLimit()` bills `gas_limits × fees` only | FIXED — verified vs aztec-packages v5.0.1 source |
 | C4 | Low | Config accepted u128/u32 overflow and named zero-address targets | FIXED — bounds + zero checks, 5 tests |

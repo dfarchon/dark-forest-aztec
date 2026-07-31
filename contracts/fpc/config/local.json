@@ -33,5 +33,15 @@
       "name": "ArtifactVault",
       "address": "env:ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS"
     }
-  ]
+  ],
+
+  "_comment_allowedAccountClasses": "Mirrors mainnet: only the initializerless Schnorr class the embedded wallet uses. The plain (published) SchnorrAccount is excluded because a published account can upgrade itself via ContractInstanceRegistry::update — see requireUnpublishedAccounts. Ids are recomputed from the installed artifacts at deploy time.",
+  "allowedAccountClasses": [
+    {
+      "name": "SchnorrInitializerlessAccount",
+      "classId": "0x28c2905b5e44745a50b78c9d3084443216b6b369a3c2ecf06640605bf630706f"
+    }
+  ],
+
+  "requireUnpublishedAccounts": true
 }

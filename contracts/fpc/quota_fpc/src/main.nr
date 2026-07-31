@@ -35,6 +35,7 @@ contract QuotaFpc {
     use aztec::{
         authwit::entrypoint::FunctionCall,
         context::PrivateContext,
+        history::deployment::assert_contract_bytecode_was_not_published_by,
         macros::{
             functions::{allow_phase_change, external, initializer},
             notes::note,
@@ -45,6 +46,7 @@ contract QuotaFpc {
             note_getter_options::NoteGetterOptions, note_interface::NoteProperties,
             note_viewer_options::NoteViewerOptions,
         },
+        oracle::get_contract_instance::get_contract_instance,
         protocol::{
             abis::{function_selector::FunctionSelector, gas_settings::GasSettings},
             address::AztecAddress,
@@ -66,6 +68,15 @@ contract QuotaFpc {
     /// (Reference deployment: Dark Forest sponsors six player-facing contracts
     /// and deliberately excludes its Admin and Config contracts.)
     global MAX_ALLOWED_TARGETS: u32 = 12;
+    /// Account-class allowlist capacity. Sponsorship hands execution to the
+    /// player's own account contract, and a MALICIOUS account implementation
+    /// could ignore the validated payload — so only known account classes are
+    /// sponsored. A class id hashes the account artifact (version-specific,
+    /// network-independent). Zero entries pad, as with targets.
+    /// (Reference deployment: only the upstream initializerless Schnorr class —
+    /// see `require_unpublished_account`, which is why the plain, published
+    /// Schnorr variant is deliberately NOT listed.)
+    global MAX_ALLOWED_ACCOUNT_CLASSES: u32 = 4;
 
     global SEAT_NULLIFIER_SEPARATOR: u32 = 1397047636; // "SEAT" (0x53454154)
     global PLAYER_NULLIFIER_SEPARATOR: u32 = 1347180882; // "PLYR" (0x504c5952)
@@ -112,6 +123,8 @@ contract QuotaFpc {
     struct Storage<Context> {
         policy: PublicImmutable<Policy, Context>,
         allowed_targets: PublicImmutable<[AztecAddress; MAX_ALLOWED_TARGETS], Context>,
+        allowed_account_classes: PublicImmutable<[Field; MAX_ALLOWED_ACCOUNT_CLASSES], Context>,
+        require_unpublished_account: PublicImmutable<bool, Context>,
         quotas: Owned<PrivateSet<QuotaNote, Context>, Context>,
     }
 
@@ -122,6 +135,8 @@ contract QuotaFpc {
         max_uses: u32,
         max_users: u32,
         allowed_targets: [AztecAddress; MAX_ALLOWED_TARGETS],
+        allowed_account_classes: [Field; MAX_ALLOWED_ACCOUNT_CLASSES],
+        require_unpublished_account: bool,
     ) {
         assert(max_fee > 0, "max_fee must be greater than zero");
         assert(max_uses > 0, "max_uses must be greater than zero");
@@ -135,8 +150,18 @@ contract QuotaFpc {
         }
         assert(any_target, "at least one allowed target is required");
 
+        let mut any_class = false;
+        for class in allowed_account_classes {
+            if class != 0 {
+                any_class = true;
+            }
+        }
+        assert(any_class, "at least one allowed account class is required");
+
         self.storage.policy.initialize(Policy { max_fee, max_uses, max_users });
         self.storage.allowed_targets.initialize(allowed_targets);
+        self.storage.allowed_account_classes.initialize(allowed_account_classes);
+        self.storage.require_unpublished_account.initialize(require_unpublished_account);
     }
 
     // ------------------------------------------------------------------
@@ -209,7 +234,10 @@ contract QuotaFpc {
         begin_sponsorship(
             self.context,
             app_payload,
+            player,
             self.storage.allowed_targets.read(),
+            self.storage.allowed_account_classes.read(),
+            self.storage.require_unpublished_account.read(),
             generation,
         );
         let policy = self.storage.policy.read();
@@ -241,7 +269,10 @@ contract QuotaFpc {
         begin_sponsorship(
             self.context,
             app_payload,
+            player,
             self.storage.allowed_targets.read(),
+            self.storage.allowed_account_classes.read(),
+            self.storage.require_unpublished_account.read(),
             generation,
         );
         let policy = self.storage.policy.read();
@@ -299,13 +330,88 @@ contract QuotaFpc {
         assert(call_count > 0, "A sponsored transaction must do something");
     }
 
+    /// The hand-off (below) trusts the player's account contract to execute the
+    /// payload this contract just validated. A MALICIOUS account implementation
+    /// could ignore the payload and run anything, so sponsorship is limited to
+    /// account classes whose behavior is known. `get_contract_instance` returns
+    /// the address preimage and proves it hashes to `player`, and the preimage
+    /// commits to `original_contract_class_id` — so the class cannot be forged,
+    /// and the check works even for accounts that were never deployed on-chain
+    /// (initializerless accounts send no deploy transaction).
+    ///
+    /// THE ORIGINAL CLASS IS NOT THE EXECUTED CLASS. Private context exposes
+    /// only `original_contract_class_id`, while the private kernel validates
+    /// the called function against the contract's CURRENT class — which
+    /// `ContractInstanceRegistry::update` can change. An account whose class is
+    /// allowlisted could therefore schedule an upgrade to hostile code and,
+    /// after the delay, be sponsored while executing something else entirely:
+    /// exactly the hole this check exists to close.
+    ///
+    /// What makes the binding sound is that both `update` and
+    /// `set_update_delay` assert "msg.sender is not deployed" — they require
+    /// the account's address nullifier to exist, i.e. the instance must have
+    /// been PUBLISHED. An account proven unpublished as of the anchor block
+    /// therefore cannot have been updated by then.
+    ///
+    /// Publishing AFTER the anchor is not caught by this already-built proof.
+    /// What covers that window is the kernel, not this check: every private
+    /// account call reads the account's updated-class slot, and the kernel caps
+    /// the transaction's expiration at that read's time horizon — for an empty
+    /// entry, the default 86,400s update delay. So the transaction expires
+    /// before any update scheduled after the anchor could activate, and delay
+    /// reductions are themselves delayed. (Verified against v5.0.1:
+    /// private_kernel_circuit_output_composer.nr and validate_contract_address.nr.)
+    ///
+    /// Together, `require_unpublished_account` upgrades the class binding from
+    /// "the class it was created with" to "the class that will execute".
+    ///
+    /// Deployments that must sponsor published accounts can turn it off, at the
+    /// cost of accepting the upgrade path above; the reference deployment does
+    /// not, because the embedded wallet's accounts are never published.
+    ///
+    /// Known consequence: anyone holding a user's address preimage can publish
+    /// that instance (universal instances especially), which permanently ends
+    /// sponsorship for them and puts their instance metadata on chain. That is
+    /// griefing and a privacy leak, not a takeover — publishing cannot alter
+    /// the preimage, and `update` acts only on its own `msg_sender`.
+    #[contract_library_method]
+    fn assert_player_account_allowed(
+        context: &mut PrivateContext,
+        player: AztecAddress,
+        allowed_account_classes: [Field; MAX_ALLOWED_ACCOUNT_CLASSES],
+        require_unpublished_account: bool,
+    ) {
+        let instance = get_contract_instance(player);
+        let class_id = instance.original_contract_class_id.to_field();
+        let mut permitted = false;
+        for allowed in allowed_account_classes {
+            if (allowed != 0) & (class_id == allowed) {
+                permitted = true;
+            }
+        }
+        assert(permitted, "Player account class is not sponsored");
+
+        if require_unpublished_account {
+            // Unpublished => never updatable => the original class IS the
+            // executing class. See the note above.
+            assert_contract_bytecode_was_not_published_by(
+                context.get_anchor_block_header(),
+                player,
+            );
+        }
+    }
+
     /// Shared preamble: assert we are the transaction root, bind the payload,
-    /// check the generation, and bound the transaction's lifetime.
+    /// bind the player's account class, check the generation, and bound the
+    /// transaction's lifetime.
     #[contract_library_method]
     fn begin_sponsorship(
         context: &mut PrivateContext,
         app_payload: QuotaPayload,
+        player: AztecAddress,
         allowed_targets: [AztecAddress; MAX_ALLOWED_TARGETS],
+        allowed_account_classes: [Field; MAX_ALLOWED_ACCOUNT_CLASSES],
+        require_unpublished_account: bool,
         generation: u32,
     ) {
         assert(
@@ -313,6 +419,12 @@ contract QuotaFpc {
             "QuotaFpc must be the transaction entrypoint",
         );
         assert_payload_allowed(app_payload, allowed_targets);
+        assert_player_account_allowed(
+            context,
+            player,
+            allowed_account_classes,
+            require_unpublished_account,
+        );
         assert_generation_fresh(context.get_anchor_block_header().timestamp(), generation);
 
         // NOTE: an earlier version also tightened the transaction's expiration to
@@ -381,6 +493,11 @@ contract QuotaFpc {
     #[external("utility")]
     unconstrained fn get_allowed_targets() -> [AztecAddress; MAX_ALLOWED_TARGETS] {
         self.storage.allowed_targets.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_allowed_account_classes() -> [Field; MAX_ALLOWED_ACCOUNT_CLASSES] {
+        self.storage.allowed_account_classes.read()
     }
 
     /// (has_allowance, remaining) for a player in a generation. `has_allowance`

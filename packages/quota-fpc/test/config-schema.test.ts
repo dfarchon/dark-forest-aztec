@@ -10,6 +10,7 @@ import {
 } from "../../../contracts/fpc/config/schema.js";
 
 const TARGET = `0x${"1".repeat(64)}`;
+const CLASS_ID = `0x${"2".repeat(64)}`;
 
 function base(overrides: Record<string, unknown> = {}) {
   return {
@@ -17,6 +18,7 @@ function base(overrides: Record<string, unknown> = {}) {
     policy: { maxFeeWei: "1000", maxUsesPerDay: 10, maxUsersPerDay: 10 },
     maxLossWei: "1000000000",
     allowedTargets: [{ name: "T", address: TARGET }],
+    allowedAccountClasses: [{ name: "C", classId: CLASS_ID }],
     ...overrides,
   };
 }
@@ -61,6 +63,45 @@ describe("config validation", () => {
     ).toThrow(/u32 maximum/);
   });
 
+  test("account classes: absent, zero, out-of-field, and duplicate are rejected", () => {
+    // Absent or empty would sponsor ANY account contract — the C1 hole.
+    expect(() =>
+      parseQuotaFpcConfig(base({ allowedAccountClasses: [] })),
+    ).toThrow(/at least one account class/);
+    // Zero is the contract's empty-slot marker: a named class resolving to it
+    // would be silently dropped.
+    expect(() =>
+      parseQuotaFpcConfig(
+        base({
+          allowedAccountClasses: [
+            { name: "Z", classId: `0x${"0".repeat(64)}` },
+          ],
+        }),
+      ),
+    ).toThrow(/zero/);
+    // At/above the field modulus the on-chain value would differ from config.
+    expect(() =>
+      parseQuotaFpcConfig(
+        base({
+          allowedAccountClasses: [
+            { name: "F", classId: `0x${"f".repeat(64)}` },
+          ],
+        }),
+      ),
+    ).toThrow(/field element/);
+    // Same id twice is always a config mistake.
+    expect(() =>
+      parseQuotaFpcConfig(
+        base({
+          allowedAccountClasses: [
+            { name: "A", classId: CLASS_ID },
+            { name: "B", classId: CLASS_ID },
+          ],
+        }),
+      ),
+    ).toThrow(/twice/);
+  });
+
   test("a named zero-address target is rejected, not silently dropped", () => {
     expect(() =>
       parseQuotaFpcConfig(
@@ -72,6 +113,20 @@ describe("config validation", () => {
         }),
       ),
     ).toThrow(/zero address/);
+  });
+
+  test("the unpublished-account requirement defaults ON and rejects non-booleans", () => {
+    // Absent must mean ON: without it the class allowlist binds only the
+    // account's original class, and a published account can upgrade away from
+    // it. A config that forgets the field must get the safe posture.
+    expect(parseQuotaFpcConfig(base()).requireUnpublishedAccounts).toBe(true);
+    expect(
+      parseQuotaFpcConfig(base({ requireUnpublishedAccounts: false }))
+        .requireUnpublishedAccounts,
+    ).toBe(false);
+    expect(() =>
+      parseQuotaFpcConfig(base({ requireUnpublishedAccounts: "yes" })),
+    ).toThrow(/must be a boolean/);
   });
 
   test("errors are QuotaFpcConfigError, so callers can distinguish them", () => {

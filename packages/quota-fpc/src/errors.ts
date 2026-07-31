@@ -47,5 +47,9 @@ export function reasonFromRevert(
   if (/Generation is not currently sponsorable/i.test(message))
     return "rollover";
   if (/non-allowlisted contract/i.test(message)) return "not-sponsored";
+  // The player's ACCOUNT class isn't allowlisted (never true for the embedded
+  // wallet unless its account version drifted from the paymaster's config).
+  // Same player outcome as an unsponsored target: fall back to their own gas.
+  if (/account class is not sponsored/i.test(message)) return "not-sponsored";
   return undefined;
 }

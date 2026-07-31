@@ -17,7 +17,9 @@ import path from 'node:path';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 
 import {
+    MAX_ALLOWED_ACCOUNT_CLASSES,
     MAX_ALLOWED_TARGETS,
+    padAllowedAccountClasses,
     padAllowedTargets,
     parseQuotaFpcConfig,
     QuotaFpcConfigError,
@@ -39,7 +41,77 @@ function formatFeeJuice(wei: bigint): string {
     return `${whole}.${frac} FJ`;
 }
 
-function parseArgs(argv: string[]): { configPath: string; dryRun: boolean } {
+/**
+ * Class ids are hashes of the account artifacts, pinned to the installed
+ * `@aztec/accounts` version. A config carrying ids from a different version
+ * would deploy an immutable allowlist that matches NO real account — every
+ * sponsorship attempt would fail — so recompute and refuse on any mismatch.
+ * Known upstream classes are checked by name; an unrecognized name FAILS unless
+ * `--allow-unverified-account-class` is passed, so a typo cannot quietly ship
+ * an unchecked id.
+ */
+async function verifyAccountClassIds(
+    classes: { name: string; classId: string }[],
+    allowUnverified: boolean
+): Promise<{ verified: number; unverified: number }> {
+    const { getContractClassFromArtifact } =
+        await import('@aztec/aztec.js/contracts');
+    const {
+        SchnorrAccountContractArtifact,
+        SchnorrInitializerlessAccountContractArtifact,
+    } = await import('@aztec/accounts/schnorr');
+
+    const known = new Map<string, bigint>();
+    for (const [name, artifact] of [
+        ['SchnorrAccount', SchnorrAccountContractArtifact],
+        [
+            'SchnorrInitializerlessAccount',
+            SchnorrInitializerlessAccountContractArtifact,
+        ],
+    ] as const) {
+        const { id } = await getContractClassFromArtifact(artifact);
+        known.set(name, id.toBigInt());
+    }
+
+    let verified = 0;
+    let unverified = 0;
+    for (const entry of classes) {
+        const expected = known.get(entry.name.trim());
+        if (expected === undefined) {
+            // Fail closed. A typo ("SchnorrInitializerlesAccount") would
+            // otherwise ship an unverified id behind a warning nobody reads —
+            // bricking sponsorship at best, blessing hostile code at worst.
+            if (!allowUnverified) {
+                throw new Error(
+                    `Cannot verify account class "${entry.name}": not one this script knows ` +
+                        `(${[...known.keys()].join(', ')}). Fix the name, or pass ` +
+                        `--allow-unverified-account-class to ship its id unchecked on purpose.`
+                );
+            }
+            console.warn(
+                `  WARNING: ${entry.name} ships UNVERIFIED (--allow-unverified-account-class).`
+            );
+            unverified += 1;
+            continue;
+        }
+        if (BigInt(entry.classId) !== expected) {
+            throw new Error(
+                `Config classId for ${entry.name} (${entry.classId}) does not match the installed ` +
+                    `@aztec/accounts artifact (0x${expected.toString(16).padStart(64, '0')}). ` +
+                    `The config is pinned to a different version — update it, or deploy from the matching checkout. ` +
+                    `Deploying anyway would ship an immutable allowlist that rejects every real account.`
+            );
+        }
+        verified += 1;
+    }
+    return { verified, unverified };
+}
+
+function parseArgs(argv: string[]): {
+    configPath: string;
+    dryRun: boolean;
+    allowUnverified: boolean;
+} {
     const configIndex = argv.indexOf('--config');
     if (configIndex === -1 || !argv[configIndex + 1]) {
         throw new Error(
@@ -50,11 +122,14 @@ function parseArgs(argv: string[]): { configPath: string; dryRun: boolean } {
     return {
         configPath: argv[configIndex + 1],
         dryRun: argv.includes('--dry-run'),
+        allowUnverified: argv.includes('--allow-unverified-account-class'),
     };
 }
 
 async function main() {
-    const { configPath, dryRun } = parseArgs(process.argv.slice(2));
+    const { configPath, dryRun, allowUnverified } = parseArgs(
+        process.argv.slice(2)
+    );
     loadContractsEnv({ optional: true } as never);
 
     const resolved = path.resolve(process.cwd(), configPath);
@@ -106,6 +181,27 @@ async function main() {
     for (const target of config.resolvedTargets) {
         console.log(`  ${target.name.padEnd(20)} ${target.address}`);
     }
+    console.log(
+        `\nSponsored account classes (${config.allowedAccountClasses.length}/${MAX_ALLOWED_ACCOUNT_CLASSES})`
+    );
+    for (const accountClass of config.allowedAccountClasses) {
+        console.log(
+            `  ${accountClass.name.padEnd(30)} ${accountClass.classId}`
+        );
+    }
+    const { verified, unverified } = await verifyAccountClassIds(
+        config.allowedAccountClasses,
+        allowUnverified
+    );
+    // Report both counts: saying "class ids match" while some shipped
+    // unchecked would misrepresent what was actually verified.
+    console.log(
+        `  ${verified} verified against the installed @aztec/accounts artifacts` +
+            (unverified > 0 ? `, ${unverified} UNVERIFIED` : '')
+    );
+    console.log(
+        `  unpublished-account requirement  ${config.requireUnpublishedAccounts ? 'ON' : 'OFF — published accounts can upgrade to hostile code and still be sponsored'}`
+    );
 
     if (dryRun) {
         console.log('\nDry run: config is valid, nothing was sent.\n');
@@ -125,6 +221,9 @@ async function main() {
     const allowed = padAllowedTargets(
         config.resolvedTargets.map((t) => t.address)
     ).map((a) => AztecAddress.fromStringUnsafe(a));
+    const allowedClasses = padAllowedAccountClasses(
+        config.allowedAccountClasses.map((c) => BigInt(c.classId))
+    );
 
     console.log(`Deploying QuotaFpc from ${deployer.toString()} …`);
     const deployment = QuotaFpcContract.deploy(
@@ -132,7 +231,9 @@ async function main() {
         BigInt(config.policy.maxFeeWei),
         config.policy.maxUsesPerDay,
         config.policy.maxUsersPerDay,
-        allowed as never
+        allowed as never,
+        allowedClasses as never,
+        config.requireUnpublishedAccounts as never
     );
     await deployment.send({ from: deployer, ...buildFeeSendFields(feeCtx) });
     const fpc = await deployment.register();
