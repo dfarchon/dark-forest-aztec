@@ -1,2 +1,0 @@
-[workspace]
-members = ["spike_fpc", "sandwich_fpc", "spike_target"]
