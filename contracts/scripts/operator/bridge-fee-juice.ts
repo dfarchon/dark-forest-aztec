@@ -50,6 +50,23 @@ import { createTolerantAztecNodeClient } from '../utils/nodeClient.js';
 const FJ = 10n ** 18n;
 
 /**
+ * The portal's `DepositToAztecPublic` log, as this script reads it.
+ *
+ * `key` and `index` identify the resulting L1->L2 message and are what the L2
+ * claim is made against; the first three fields are only used to confirm the
+ * log belongs to THIS deposit rather than another in the same block.
+ */
+type DepositLog = {
+    args: {
+        to: string;
+        amount: bigint;
+        secretHash: string;
+        key: string;
+        index: bigint;
+    };
+};
+
+/**
  * Default journal location, deliberately OUTSIDE the repository.
  *
  * This file holds claim secrets. A path inside the working tree is one
@@ -62,23 +79,45 @@ function defaultJournalPath(): string {
 }
 
 /**
- * Append one record and do not return until the bytes are on the platter.
+ * Append one record and do not return until the bytes are durably on disk.
  *
- * `appendFileSync` alone is not enough: it returns once the write reaches the
- * OS page cache, so a crash or power loss in the next instant loses it — which
- * is exactly the failure this journal exists to survive. The explicit `fsync`
- * is the whole point. The mode argument only applies when the file is created,
- * so the permissions are re-asserted on every write.
+ * Three separate things can lose a record that "was written", and all three
+ * matter here because the record holds the only copy of a claim secret:
+ *
+ *  1. `appendFileSync` returns once the bytes reach the OS page cache, so a
+ *     crash in the next instant loses them. Hence the explicit `fsync`.
+ *  2. `writeSync` may write FEWER bytes than asked. An unchecked partial write
+ *     can persist a record truncated mid-secret, which is worse than no record
+ *     at all: it looks like evidence and is not. Hence the loop.
+ *  3. A newly created file's DIRECTORY ENTRY is not durable until the parent
+ *     directory is itself fsynced. Without that, power loss after the deposit
+ *     can leave a journal that no longer exists.
+ *
+ * The mode argument only applies when the file is created, so permissions are
+ * re-asserted on every write.
  */
 function journalSync(journalPath: string, record: unknown): void {
+    const isNew = !fs.existsSync(journalPath);
+    const buf = Buffer.from(`${JSON.stringify(record)}\n`, 'utf8');
     const fd = fs.openSync(journalPath, 'a', 0o600);
     try {
-        fs.writeSync(fd, `${JSON.stringify(record)}\n`);
+        let written = 0;
+        while (written < buf.length) {
+            written += fs.writeSync(fd, buf, written, buf.length - written);
+        }
         fs.fsyncSync(fd);
     } finally {
         fs.closeSync(fd);
     }
     fs.chmodSync(journalPath, 0o600);
+    if (isNew) {
+        const dirFd = fs.openSync(path.dirname(journalPath), 'r');
+        try {
+            fs.fsyncSync(dirFd);
+        } finally {
+            fs.closeSync(dirFd);
+        }
+    }
 }
 
 function parseArgs(argv: string[]) {
@@ -209,8 +248,16 @@ async function main() {
     });
 
     // The inbox write is hard to estimate tightly and an out-of-gas revert here
-    // would be the expensive kind of failure, so double the estimate — the same
-    // 100% buffer the SDK's own inbox deposit path applies.
+    // would be the expensive kind of failure, so pad the estimate. The SDK's
+    // inbox deposit path uses max(100%, L1_GAS_LIMIT_BUFFER_PERCENTAGE), so an
+    // operator who has raised that env var for a congested L1 keeps their
+    // larger buffer rather than silently getting the floor.
+    const bufferPercent = (() => {
+        const raw = Number(getOptionalEnv('L1_GAS_LIMIT_BUFFER_PERCENTAGE'));
+        return Number.isFinite(raw) && raw > 100
+            ? BigInt(Math.floor(raw))
+            : 100n;
+    })();
     const gasEstimate = await l1Client.estimateContractGas({
         address: portalHex,
         abi: FeeJuicePortalAbi,
@@ -223,7 +270,7 @@ async function main() {
         abi: FeeJuicePortalAbi,
         functionName: 'depositToAztecPublic',
         args: args as never,
-        gas: gasEstimate * 2n,
+        gas: gasEstimate + (gasEstimate * bufferPercent) / 100n,
     } as never);
     console.log(`\n  L1 deposit tx ${hash}`);
     const receipt = await l1Client.waitForTransactionReceipt({ hash });
@@ -238,13 +285,13 @@ async function main() {
         portalHex,
         FeeJuicePortalAbi,
         'DepositToAztecPublic',
-        (l: { args: { secretHash: string; amount: bigint; to: string } }) =>
+        (l: DepositLog) =>
             l.args.secretHash.toLowerCase() ===
                 claimSecretHash.toString().toLowerCase() &&
             l.args.amount === amount &&
             l.args.to.toLowerCase() === to.toLowerCase(),
         logger
-    );
+    ) as DepositLog;
 
     journalSync(journalPath, {
         state: 'DEPOSIT_CONFIRMED',

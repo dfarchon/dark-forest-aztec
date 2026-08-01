@@ -299,7 +299,7 @@ async function main() {
 
     const scheduled = unwrap(
         await fpc.methods.get_scheduled_settings().simulate({ from: signer })
-    );
+    ) as unknown as [Record<string, unknown>, bigint | number, bigint | number];
     const [schedBundle, timestampOfChange, revision] = scheduled;
     const activatesAt = Number(timestampOfChange);
     const isPending = activatesAt > nowSeconds;
@@ -314,7 +314,7 @@ async function main() {
     );
 
     const scheduledBundle: Bundle = {
-        maxFeeWei: BigInt(schedBundle.max_fee),
+        maxFeeWei: BigInt(schedBundle.max_fee as never),
         maxUses: Number(schedBundle.max_uses),
         maxUsers: Number(schedBundle.max_users),
         targets: realTargets(schedBundle.allowed_targets),
@@ -325,7 +325,7 @@ async function main() {
     // over the separately-read policy, which may predate the changeover.
     const current: Bundle = isPending
         ? {
-              maxFeeWei: BigInt(live.max_fee ?? live[0]),
+              maxFeeWei: BigInt((live.max_fee ?? live[0]) as never),
               maxUses: Number(live.max_uses ?? live[1]),
               maxUsers: Number(live.max_users ?? live[2]),
               targets: liveTargets,
@@ -359,8 +359,14 @@ async function main() {
         console.log('\nNothing pending.');
     }
 
-    const balance = await node.getFeeJuiceBalance?.(
-        AztecAddress.fromStringUnsafe(flags.fpc)
+    // `getFeeJuiceBalance` is a helper over the node, NOT a node method. It was
+    // previously called as `node.getFeeJuiceBalance?.(…)`, which is always
+    // undefined — so `--show` silently never printed the balance, which is one
+    // of the two numbers an operator actually came here for.
+    const { getFeeJuiceBalance } = await import('@aztec/aztec.js/utils');
+    const balance = await getFeeJuiceBalance(
+        AztecAddress.fromStringUnsafe(flags.fpc),
+        node as never
     );
     if (balance !== undefined) {
         console.log(

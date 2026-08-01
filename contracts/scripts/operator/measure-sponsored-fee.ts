@@ -49,7 +49,7 @@ function parseArgs(argv: string[]) {
         fpc,
         target,
         method: get('--method') ?? 'ping',
-        count: Number(get('--count') ?? 2),
+        count: Number(get('--count') ?? '2'),
         jsonOut: get('--json'),
     };
 }
@@ -90,6 +90,11 @@ async function main() {
     );
 
     const block = await node.getBlockData('latest');
+    if (!block) {
+        throw new Error(
+            `Node ${nodeUrl} returned no latest block — it is still syncing, or the URL is wrong.`
+        );
+    }
     const chainSeconds = BigInt(block.header.globalVariables.timestamp);
     const generation = generationAt(chainSeconds);
 
@@ -127,12 +132,29 @@ async function main() {
               })
             : undefined;
 
-        const requested = await app.methods[method]().request();
+        // `--method` is operator-supplied, so this index is dynamic by design;
+        // an unknown name fails loudly on the next line rather than silently.
+        const methods = app.methods as unknown as Record<
+            string,
+            () => { request(): Promise<unknown> }
+        >;
+        if (typeof methods[method] !== 'function') {
+            throw new Error(
+                `Target has no method "${method}". Pass --method with one it does have.`
+            );
+        }
+        const requested = await methods[method]().request();
         const calls =
             (requested as { calls?: unknown[] }).calls ?? (requested as never);
 
         const payload = await buildSandwichPayload(
-            { calls: calls as never, player, fpcAddress, generation, seat },
+            {
+                calls: calls as never,
+                player,
+                fpcAddress,
+                generation,
+                seat: seat ?? undefined,
+            },
             wallet as never,
             paymaster as never
         );
