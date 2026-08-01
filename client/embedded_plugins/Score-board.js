@@ -102,6 +102,10 @@ class Plugin {
     this.refresh_button.onclick = () => this.update_players();
 
     this.interval_handle = window.setInterval(() => this.update_timer(), 1000);
+    this.refresh_interval_handle = window.setInterval(
+      () => this.update_players(),
+      10_000
+    );
     this.update_timer();
     this.update_players();
   }
@@ -169,7 +173,7 @@ class Plugin {
     for (const player of players) {
       const address = (player.address || player).toString().toLowerCase();
       const raw = getScore(address);
-      const score = raw != null ? Math.floor(Number(raw) / 1000) : undefined;
+      const score = raw != null ? Number(raw) : undefined;
       this.scoreboard.set(address, score);
     }
     this.update_table();
@@ -199,6 +203,10 @@ class Plugin {
     if (this.interval_handle) {
       window.clearInterval(this.interval_handle);
       this.interval_handle = null;
+    }
+    if (this.refresh_interval_handle) {
+      window.clearInterval(this.refresh_interval_handle);
+      this.refresh_interval_handle = null;
     }
     this.timer = null;
     this.table = null;
