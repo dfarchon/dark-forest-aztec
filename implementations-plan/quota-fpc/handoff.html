@@ -187,6 +187,26 @@
   <p class="muted">The admin key is ours, on our build machine. <strong>You should deploy your own</strong> — the admin cannot be transferred, so the only way for the address to be yours is for you to be the one who deploys it. One command, same config file. This deployment exists so you can see it working before you spend anything.</p>
 
   <div class="note good">
+    <span class="tag">Played, on mainnet, sponsored</span>
+    <p style="margin:0.5rem 0 0">A real player spawned into your live world and played, paying nothing. Every action below was sponsored by the paymaster and settled on mainnet:</p>
+    <div class="tablewrap" style="margin:0.8rem 0">
+      <table>
+        <tr><th>Action</th><th>Fee juice</th><th>USD</th><th>Gas used</th></tr>
+        <tr><td>Spawn a player</td><td class="num">1.89</td><td class="num">$0.028</td><td class="num">18% of budget</td></tr>
+        <tr><td>Claim spaceships</td><td class="num">4.60</td><td class="num">$0.069</td><td class="num">45% of budget</td></tr>
+        <tr><td>A move</td><td class="num">6.58</td><td class="num">$0.098</td><td class="num">65% of budget</td></tr>
+      </table>
+    </div>
+    <p style="margin:0.5rem 0 0">The sixth action was refused — <em>"sponsorship unavailable: exhausted"</em> — because the daily allowance is five. The quota enforced itself exactly, unprompted, and the player was offered the normal paid route instead of being stuck. The five actions cost <strong>26.22</strong> in total, matching the paymaster's balance to four decimal places.</p>
+  </div>
+
+  <div class="note warn">
+    <span class="tag">A move uses two thirds of its gas budget</span>
+    <p style="margin:0.5rem 0 0">Sponsored transactions run under a fixed gas budget — tighter than an ordinary transaction, because the paymaster must know its exposure in advance. A move used <strong>65%</strong> of it. That works, with room to spare, but it is the number to watch: a materially heavier action could exceed the budget and fall back to the player paying, even though the same action would succeed if they paid for it themselves.<br><br>
+    We have measured spawning, spaceships and moves. <strong>Artifact operations are untested</strong> — worth one sponsored run each before you rely on them.</p>
+  </div>
+
+  <div class="note good">
     <span class="tag">Proven against your own contracts</span>
     <p style="margin:0.5rem 0 0">Not just against a test contract. We sent a sponsored transaction through the live paymaster aimed at <strong>your deployed Core contract</strong> (tx <code>0x06b841ce…79ea5</code>). It was accepted, paid for by the paymaster, and settled — <strong>1.16 fee juice</strong>, charged to us, not to the sender.<br><br>
     The game call itself reverted, deliberately: we aimed it at an admin-only method that checks permissions before touching anything, so it could not alter your game. That is the point — it proves the paymaster sponsors and pays for transactions aimed at the real Dark Forest contracts, without us needing to make a move in your live world.<br><br>
@@ -254,18 +274,21 @@
           <label for="cost">Fee juice per transaction <span class="val" id="costVal">2.28e-5</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.00000033 each</span></label>
           <div class="row">
             <input type="range" id="cost" min="1" max="400" step="1" value="9" aria-describedby="costVal">
-            <input type="number" id="costNum" step="any" value="0.85" aria-label="Fee juice per transaction">
+            <input type="number" id="costNum" step="any" value="6.58" aria-label="Fee juice per transaction">
           </div>
           <div class="row" style="margin-top:0.6rem">
             <label for="perTxUsd" style="margin:0;font-weight:600;font-size:0.86rem">…which is per transaction</label>
             <input type="number" id="perTxUsd" step="any" aria-label="USD per transaction">
           </div>
           <div class="presets" id="costPresets">
-            <button type="button" class="preset" data-cost="0.85" aria-pressed="true">Measured: sponsored tx</button>
-            <button type="button" class="preset" data-cost="6.86">Measured: a deploy</button>
+            <button type="button" class="preset" data-cost="6.58" aria-pressed="true">A move (measured)</button>
+            <button type="button" class="preset" data-cost="1.89">Spawning a player</button>
+            <button type="button" class="preset" data-cost="4.60">Claiming spaceships</button>
             <button type="button" class="preset" data-cost="20.24">Worst case at gas limits</button>
           </div>
-          <p class="hint"><strong>Real, measured on Aztec mainnet on 1 August 2026 — sponsored transactions we actually sent.</strong> A player's first sponsored transaction of the day cost <strong>0.85 fee juice</strong>; each one after that cost <strong>0.82</strong>. (The first is slightly dearer because it also claims the player's slot and opens their allowance.) A contract deployment, for scale, cost 6.86. The worst case — a transaction using every bit of gas the client permits — is 20.24, and the paymaster refuses anything above 25, so there is roughly thirty-fold headroom. Earlier drafts used a figure from a local test network that charges almost nothing; it was around <em>888,000 times</em> too low. Fees float with demand, so re-measure before committing a large budget.</p>
+          <p class="hint"><strong>Measured by playing Dark Forest on Aztec mainnet, 1 August 2026 — real moves, sponsored, paid by the paymaster.</strong> A move costs <strong>6.58</strong> fee juice, spawning a player <strong>1.89</strong>, claiming spaceships <strong>4.60</strong>. The five sponsored actions of that session cost 26.22 in total, which matches the paymaster's balance to four decimal places.<br><br>
+          <strong>Note how much the action matters.</strong> An earlier draft of this page used 0.85 — the cost of a bare sponsored transaction against a do-nothing contract. That is the paymaster's own overhead, not the price of playing, and it understates a real move by <strong>almost eight times</strong>. Budget from the action you expect players to perform, not from the sponsorship machinery. (An even earlier draft used a local-testnet figure that was ~888,000× too low.)<br><br>
+          The worst case — a transaction using every bit of gas the client permits — is 20.24, and the paymaster refuses anything above 25. Fees float with demand, so re-measure before committing a large budget.</p>
         </div>
         <div class="field">
           <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>

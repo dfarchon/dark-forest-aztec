@@ -334,6 +334,30 @@ Note the cost: **1.159 FJ against 0.849 for the synthetic target.** A real contr
 
 The technique generalises: to check a fresh deployment sponsors the right contracts without gameplay, aim a payload at an allowlisted contract's admin-gated method. A private proof that succeeds proves the allowlist binding; the revert afterwards is expected and harmless.
 
+### Measured by actually playing (2026-08-01)
+
+The one figure no script could produce. A real player spawned into the live mainnet world and played, sponsored:
+
+| Action | Fee juice | USD | L2 gas | % of the 6M budget |
+|---|---|---|---|---|
+| `initialize_player` (spawn) | 1.890 | $0.028 | 1,111,789 | 18.5% |
+| `give_spaceships` | 4.603 | $0.069 | 2,707,994 | 45.1% |
+| `move` | 6.617 | $0.099 | 3,892,820 | 64.9% |
+| `move` | 6.520 | $0.098 | 3,835,551 | 63.9% |
+| `move` | 6.594 | $0.099 | 3,878,339 | 64.6% |
+
+The five fees sum to 26.2235 FJ and the paymaster's balance fell 98.84102799 → 72.61756974, a difference of 26.2234583 — agreement to seven significant figures between an application log and on-chain state, which is the strongest possible check that the logging measures what it claims.
+
+The sixth action was refused with `Sponsorship unavailable: exhausted` against `maxUsesPerDay: 5`. The quota enforced itself exactly, on mainnet, unprompted.
+
+**A real move costs 7.7x what the synthetic measurement suggested.** The 0.85 FJ figure was a sponsored transaction against a do-nothing target: it measures the paymaster's own overhead, not the price of playing. Calling it a "floor" was right but far too gentle — the artifact's calculator was defaulting to it, so anyone budgeting from that page would have under-funded by nearly an order of magnitude. Now defaults to a measured move, with spawn and spaceships as presets.
+
+The generalisable form: **a synthetic benchmark measures the harness, and the harness is usually the cheap part.** The gap is not a correction factor to apply, it is a signal that the benchmark was measuring a different thing.
+
+**The gas headroom is the finding to watch.** A move used 64.9% of `QUOTA_L2_GAS_LIMIT`. That passes, but the margin is 35%, and the limit is one this client imposes on sponsored transactions only — a self-paid move has no such ceiling. So a heavier action can fail *when sponsored* while succeeding when the player pays, which is the confusing failure mode to design against. Raising the limit is not free either: the required `max_fee` scales with it, and at the current 25 FJ ceiling with 2x headroom the arithmetic supports about 7.35M L2 gas, so the client's 6M limit binds first — correctly, but with less room than it appears.
+
+Artifact operations (prospect, find, vault) remain unmeasured.
+
 ### The network reserves the WORST case, not the real cost
 
 The measurement paymaster was funded with 12 FJ — comfortably more than the ~0.85 a sponsored transaction actually costs — and sponsored nothing:
