@@ -199,3 +199,26 @@ Only the last is trustworthy. The rate-based figure is a ceiling, not a price �
 **A gameplay-level figure is still outstanding** and cannot be scripted: `initialize_player` needs mined spawn coordinates plus indexer-derived state hashes, which is why Phase 4 originally required manual play. A real Dark Forest move costs the above plus the game's own logic. The client is configured for a capture session (`client/.env`, `VITE_QUOTA_DEBUG=true`) which logs each sponsorship decision, allowance read and settled fee.
 
 **Accidental proof, worth recording**: re-running the measurement script was refused on mainnet with `Invalid tx: Existing nullifier` — the one-subscription-per-player-per-day rule enforcing itself on a live network, unprompted.
+
+## Final verification (2026-08-01)
+
+- Integration suite: **20/20 on a live local network, none skipped** — re-run after the codex-driven fixes to confirm no regression. Includes the three time-travel cases that fast-forward 12h to prove activation timing, allowance clamping, and seat eviction on the private path.
+- Gates: `pnpm --filter @dfpunk/quota-fpc run test` (43 passed), `pnpm --filter client run lint`, `pnpm --filter contracts run build-contracts` — all exit 0.
+- PR: https://github.com/dfarchon/dark-forest-aztec/pull/37 (fork `alejoamiras:worktree-quota-fpc` -> `dfarchon/main`).
+- Secret scan before pushing: no env or key material tracked; the drpc RPC key exists only in gitignored `contracts/.env.mainnet`; the sole `SECRET=` match in the diff is a console template printing a claim to the operator's own terminal.
+
+### Mainnet artifacts
+
+| | |
+|---|---|
+| Production paymaster (DF contracts only) | `0x11c2c722967ff512e143620292e0cce90bd96406c3c5af63db65df9901caaf37` — 300 FJ |
+| Admin / deployer | `0x157e64ac5ca521894cff836599ea449c8e25ae81bc7e1f2e7a8cf933b7442ba7` |
+| Measurement paymaster (disposable) | `0x1e87a754a2cf05587897200226deebfe92aa09fa0d32740b4623e29de0dbece4` — ~118 FJ |
+| Measurement target (disposable) | `0x1e189ffa5b964a97534890c88306f8077774dc62ff890cd2aa337ee4d6a8eb84` |
+| Stranded by the derivation mistake | 60 AZTEC at `0x05a76212…b25c` (recoverable in principle) |
+
+### Still open
+
+1. **Gameplay-level fee.** Requires playing through the client — `initialize_player` needs mined spawn coordinates plus indexer state. The client is configured (`client/.env`, `VITE_QUOTA_DEBUG=true`) and logs each sponsorship decision, allowance read and settled fee. A real move costs the measured sandwich overhead plus the game's own logic.
+2. **`max_uses` increases do not revive already-exhausted players** (codex Med). Terminal notes are not retained, so a player who spent their allowance stays exhausted until the next generation even if the cap rises. Documented rather than fixed; raising a cap mid-day is not a case the showcase needs.
+3. **Two fee snapshots** in the affordability precheck versus the gas settings (codex Low). Fees can move between the two reads, which slightly weakens the exactness of the pre-proof check.
