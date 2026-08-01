@@ -2,13 +2,13 @@
   "name": "dark-forest-mainnet",
   "description": "Sponsors Dark Forest gameplay on Aztec mainnet: a per-player daily allowance of free transactions, restricted to the game's player-facing contracts. Admin and Config contracts are deliberately excluded.",
   "policy": {
-    "_comment_maxFeeWei": "Measured on 2026-07-29: costliest sponsored path (first-of-day) cost 7595511600000 wei; this is that x3 headroom. Re-calibrate against mainnet before funding, since fee levels differ.",
-    "maxFeeWei": "22786534800000",
-    "maxUsesPerDay": 30,
-    "maxUsersPerDay": 100
+    "_comment_maxFeeWei": "MEASURED ON MAINNET 2026-08-01, not guessed. getCurrentMinFees reported feePerL2Gas=1686254293252, feePerDaGas=0 (stable across reads at block 22469). At the client's gas limits (50k DA / 6M L2) a transaction costs 10.12 FJ, and the client applies a 2x fee headroom, so max_fee must be at least 20.24 FJ or every sponsored transaction fails to prove. 25 FJ leaves ~23% margin for fee movement. The previous value (0.0000228 FJ) came from a local sandbox and was ~888,000x too small \u2014 it would have sponsored nothing.",
+    "maxFeeWei": "25000000000000000000",
+    "maxUsesPerDay": 5,
+    "maxUsersPerDay": 2
   },
-  "_comment_maxLossWei": "$20 at AZTEC ~= $0.0146 => ~1370 fee juice. Funding never exceeds this; the paymaster has no withdraw.",
-  "maxLossWei": "1370000000000000000000",
+  "_comment_maxLossWei": "800 FJ = the tranche actually bridged. NOTE: with Phase 9 the admin can schedule a larger policy after deploy, so this is a deploy-time sanity check, not an enforced bound. The paymaster's balance is the only real cap.",
+  "maxLossWei": "800000000000000000000",
   "_comment_allowedTargets": "Player-facing gameplay contracts only. Addresses may be literals or 'env:VAR_NAME'. Deliberately absent: ADMIN and CONFIG (admin operations must not be sponsored) and all storage contracts (players never call them directly).",
   "allowedTargets": [
     {
@@ -46,5 +46,6 @@
   "_comment_requireUnpublishedAccounts": "Keep true. This is what makes the class allowlist bind the code that will actually execute rather than merely the class the account was created with.",
   "requireUnpublishedAccounts": true,
   "_comment_adminAddress": "REQUIRED, no default. The account that can reschedule the policy and the sponsored-contract list (12h delay). Immutable, no transfer: whoever this is holds it permanently. Decision 2026-07-31: the homelab deployer account; set QUOTA_FPC_ADMIN_ADDRESS to its address before deploying. It cannot withdraw funds, shorten the delay, or touch the account-class rules.",
-  "adminAddress": "env:QUOTA_FPC_ADMIN_ADDRESS"
+  "adminAddress": "env:QUOTA_FPC_ADMIN_ADDRESS",
+  "_comment_policy_size": "Sized to the funded tranche, NOT to demand. Worst case is maxFee x uses x users x 3 generations = 750 FJ against 800 FJ funded. Real spend is far lower \u2014 the ceiling is charged on gas LIMITS while the fee paid follows gas USED \u2014 but the ceiling is what bounds liability. Scaling to something like 100 players x 30 transactions would need ~60,700 FJ per generation, roughly 76x this budget."
 }

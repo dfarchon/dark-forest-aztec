@@ -56,6 +56,7 @@ interface Flags {
     dryRun: boolean;
     replacePending: boolean;
     forceBelowFloor: boolean;
+    cancel: boolean;
     maxUses?: number;
     maxUsers?: number;
     maxFeeWei?: bigint;
@@ -81,7 +82,7 @@ function parseArgs(argv: string[]): Flags {
             'Usage: update-fpc-policy --fpc <address> [--show]\n' +
                 '         [--max-uses <n>] [--max-users <n>] [--max-fee-wei <n>]\n' +
                 '         [--add-target <address>] [--remove-target <address>]\n' +
-                '         [--replace-pending] [--force-below-client-floor] [--dry-run]'
+                '         [--cancel] [--replace-pending] [--force-below-client-floor] [--dry-run]'
         );
     }
     if (!/^0x[0-9a-fA-F]{64}$/.test(fpc)) {
@@ -125,6 +126,7 @@ function parseArgs(argv: string[]): Flags {
         dryRun: argv.includes('--dry-run'),
         replacePending: argv.includes('--replace-pending'),
         forceBelowFloor: argv.includes('--force-below-client-floor'),
+        cancel: argv.includes('--cancel'),
         maxUses: num('--max-uses'),
         maxUsers: num('--max-users'),
         maxFeeWei,
@@ -169,6 +171,44 @@ function printBundle(label: string, b: Bundle): void {
     );
 }
 
+/**
+ * Field-by-field difference between two bundles, in plain language.
+ *
+ * Printed before every write because `--replace-pending` bases edits on the
+ * PENDING bundle: changing one dial silently carries the others forward, and
+ * an operator who has forgotten what was queued would not otherwise see them.
+ */
+function describeDiff(from: Bundle, to: Bundle): string[] {
+    const lines: string[] = [];
+    if (from.maxFeeWei !== to.maxFeeWei) {
+        lines.push(
+            `  per-transaction ceiling  ${formatFeeJuiceWei(from.maxFeeWei)} -> ${formatFeeJuiceWei(to.maxFeeWei)}`
+        );
+    }
+    if (from.maxUses !== to.maxUses) {
+        lines.push(
+            `  transactions per user    ${from.maxUses} -> ${to.maxUses}${to.maxUses < from.maxUses ? '   (REDUCTION)' : ''}`
+        );
+    }
+    if (from.maxUsers !== to.maxUsers) {
+        lines.push(
+            `  users per day            ${from.maxUsers} -> ${to.maxUsers}${to.maxUsers < from.maxUsers ? '   (REDUCTION)' : ''}`
+        );
+    }
+    const a = new Set(from.targets.map((t) => t.toLowerCase()));
+    const b = new Set(to.targets.map((t) => t.toLowerCase()));
+    for (const t of b)
+        if (!a.has(t)) lines.push(`  + sponsored contract     ${t}`);
+    for (const t of a)
+        if (!b.has(t)) lines.push(`  - sponsored contract     ${t}`);
+    return lines;
+}
+
+/** True when two bundles are identical in every field. */
+function sameBundle(a: Bundle, b: Bundle): boolean {
+    return describeDiff(a, b).length === 0;
+}
+
 /** Applies only the flags the operator actually passed. */
 function applyEdits(base: Bundle, flags: Flags): Bundle {
     const targets = new Set(base.targets.map((t) => t.toLowerCase()));
@@ -197,6 +237,7 @@ function applyEdits(base: Bundle, flags: Flags): Bundle {
 
 function hasEdits(flags: Flags): boolean {
     return (
+        flags.cancel ||
         flags.maxUses !== undefined ||
         flags.maxUsers !== undefined ||
         flags.maxFeeWei !== undefined ||
@@ -253,32 +294,15 @@ async function main() {
         }`
     );
 
-    const live = unwrap(
-        await fpc.methods.get_policy().simulate({ from: signer })
-    );
-    const liveTargets = realTargets(
-        unwrap(
-            await fpc.methods.get_allowed_targets().simulate({ from: signer })
-        )
-    );
-
-    const current: Bundle = {
-        maxFeeWei: BigInt(live.max_fee ?? live[0]),
-        maxUses: Number(live.max_uses ?? live[1]),
-        maxUsers: Number(live.max_users ?? live[2]),
-        targets: liveTargets,
-    };
-    printBundle('In force now', current);
-
-    const scheduled = unwrap(
-        await fpc.methods.get_scheduled_settings().simulate({ from: signer })
-    );
-    const [schedBundle, timestampOfChange, revision] = scheduled;
-    const activatesAt = Number(timestampOfChange);
-    // CHAIN time, not wall-clock time. The contract stamps activation from
-    // block timestamps, and a chain can lag wall clock badly (a local network
-    // idling behind by hours is normal). Comparing against Date.now() would
-    // report a pending change as already live, or vice versa.
+    // ORDER MATTERS. Read the clock FIRST, then the schedule, then the live
+    // policy. Reading them in any order takes three separate snapshots, and an
+    // activation landing between two of them makes the pair disagree: the
+    // schedule looks already-applied while the "live" read still shows the old
+    // values. Editing from that stale bundle would quietly schedule the
+    // pre-activation policy straight back in.
+    //
+    // CHAIN time, never wall clock: the contract stamps activation from block
+    // timestamps, and a chain can sit hours off a laptop's clock.
     const latestBlock = await node.getBlockData('latest');
     const nowSeconds = Number(
         latestBlock?.header?.globalVariables?.timestamp ?? 0
@@ -288,7 +312,42 @@ async function main() {
             'Could not read the chain timestamp from the latest block'
         );
     }
+
+    const scheduled = unwrap(
+        await fpc.methods.get_scheduled_settings().simulate({ from: signer })
+    );
+    const [schedBundle, timestampOfChange, revision] = scheduled;
+    const activatesAt = Number(timestampOfChange);
     const isPending = activatesAt > nowSeconds;
+
+    const live = unwrap(
+        await fpc.methods.get_policy().simulate({ from: signer })
+    );
+    const liveTargets = realTargets(
+        unwrap(
+            await fpc.methods.get_allowed_targets().simulate({ from: signer })
+        )
+    );
+
+    const scheduledBundle: Bundle = {
+        maxFeeWei: BigInt(schedBundle.max_fee),
+        maxUses: Number(schedBundle.max_uses),
+        maxUsers: Number(schedBundle.max_users),
+        targets: realTargets(schedBundle.allowed_targets),
+    };
+
+    // Once the activation timestamp has passed, the scheduled bundle IS the
+    // live one — and it was read from a single consistent view, so prefer it
+    // over the separately-read policy, which may predate the changeover.
+    const current: Bundle = isPending
+        ? {
+              maxFeeWei: BigInt(live.max_fee ?? live[0]),
+              maxUses: Number(live.max_uses ?? live[1]),
+              maxUsers: Number(live.max_users ?? live[2]),
+              targets: liveTargets,
+          }
+        : scheduledBundle;
+    printBundle('In force now', current);
     const skewMinutes = Math.round(
         (nowSeconds - Math.floor(Date.now() / 1000)) / 60
     );
@@ -300,12 +359,7 @@ async function main() {
         );
     }
 
-    const pending: Bundle = {
-        maxFeeWei: BigInt(schedBundle.max_fee),
-        maxUses: Number(schedBundle.max_uses),
-        maxUsers: Number(schedBundle.max_users),
-        targets: realTargets(schedBundle.allowed_targets),
-    };
+    const pending = scheduledBundle;
 
     if (isPending) {
         printBundle(
@@ -333,8 +387,49 @@ async function main() {
     if (flags.show || !hasEdits(flags)) {
         console.log(
             '\nNothing to change. Pass --max-uses / --max-users / --max-fee-wei /' +
-                ' --add-target / --remove-target to schedule one.\n'
+                ' --add-target / --remove-target to schedule one, or --cancel to\n' +
+                'drop a pending change.\n'
         );
+        return;
+    }
+
+    // --cancel: the documented way to drop a pending change is to schedule the
+    // CURRENT values, which supersedes it. There is no "unschedule".
+    if (flags.cancel) {
+        if (!isPending) {
+            console.error(
+                '\nRefusing: nothing is pending, so there is nothing to cancel.\n'
+            );
+            process.exit(2);
+        }
+        console.log(
+            '\nCancelling the pending change by re-scheduling what is live now.'
+        );
+        console.log('Discarding:');
+        for (const line of describeDiff(current, pending)) console.log(line);
+        console.log(
+            `\nNOTE: the live settings do not change, but they are re-scheduled, so\n` +
+                `they only become "settled" again after the 12h delay elapses.`
+        );
+        if (flags.dryRun) {
+            console.log('\nDry run: nothing was sent.\n');
+            return;
+        }
+        const cancelFeeCtx = await prepareFeePayment(wallet);
+        await fpc.methods
+            .schedule_settings(
+                {
+                    max_fee: current.maxFeeWei,
+                    max_uses: current.maxUses,
+                    max_users: current.maxUsers,
+                    allowed_targets: padAllowedTargets(current.targets).map(
+                        (a) => AztecAddress.fromStringUnsafe(a)
+                    ),
+                } as never,
+                BigInt(revision) as never
+            )
+            .send({ from: signer, ...buildFeeSendFields(cancelFeeCtx) });
+        console.log('\nCancelled.\n');
         return;
     }
 
@@ -372,6 +467,23 @@ async function main() {
         process.exit(3);
     }
 
+    // A reschedule that changes nothing still restarts the 12h clock, pushing
+    // a pending activation further away for no reason. Almost always a typo.
+    if (sameBundle(base, next)) {
+        console.error(
+            `\nRefusing: that would schedule settings identical to the ${
+                isPending ? 'pending' : 'live'
+            } ones.\n` +
+                `Nothing would change, but the 12h clock would restart. Use --cancel if\n` +
+                `that is what you meant.\n`
+        );
+        process.exit(4);
+    }
+
+    console.log(
+        `\nChanges (from the ${isPending ? 'PENDING' : 'live'} settings):`
+    );
+    for (const line of describeDiff(base, next)) console.log(line);
     printBundle('WOULD SCHEDULE', next);
     const effectiveAt = new Date((nowSeconds + UPDATE_DELAY_SECONDS) * 1000);
     console.log(

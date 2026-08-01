@@ -97,3 +97,32 @@ One reviewer added a sharp detail: `BOOTSTRAP_DELAY = 0` is safe **only** becaus
 - **`--cancel` and a pending→next field diff (Med).** `--replace-pending` carries unrelated pending fields forward silently.
 - **No-op reschedule restarts the 12h clock (Low).**
 - **`seat-picker` picks uniformly at random (Low).** With seats now consequential, a `max_users` cut evicts a random subset; lowest-free-seat allocation would bind the newest cohort instead.
+
+## MAINNET FEE MEASUREMENT — the sandbox figure was wrong by ~888,000x (2026-08-01)
+
+Read from the live mainnet node (`getCurrentMinFees`, stable across three reads at block 22469 — not a spike):
+
+```
+feePerL2Gas  1,686,254,293,252 wei
+feePerDaGas  0
+```
+
+At the client's gas LIMITS (50k DA / 6M L2, `gas-profile.ts`):
+
+| | |
+|---|---|
+| per-tx at limits | **10.12 FJ** |
+| client applies 2x headroom, so `max_fee` must be at least | **20.24 FJ** |
+| `dark-forest.json` currently sets | **0.0000228 FJ** |
+| shortfall | **~888,000x** |
+
+**Consequences, all of which had to be caught before funding:**
+
+1. **Deploying the current config would produce a paymaster that sponsors nothing.** Every sponsored transaction would exceed `max_fee` and fail to prove. The showcase would have looked completely broken, and the cause (`Gas settings exceed the sponsorship allowance`) points at the paymaster rather than at the config.
+2. **The artifact calculator was wildly optimistic.** Its default said 90,000 sponsored transactions cost ~$0.03; at real mainnet rates the same figure is **~$26,600**. The honest per-transaction cost at the ceiling is **~$0.30**, not $0.0000003.
+3. **The funded 800 AZTEC buys ~40 transactions at the ceiling**, not millions. Actual spend will be lower — the ceiling is charged on gas LIMITS while the fee paid follows gas USED — but the order of magnitude stands.
+4. **The reference policy is unaffordable.** 100 users x 30 transactions = 3,000 per generation would need ~60,700 FJ per generation against 800 FJ funded, i.e. ~76x the entire budget.
+
+The whole "funding is not the binding constraint, the policy is" framing in the handoff was an artefact of measuring on a network that charges almost nothing. **On mainnet, funding is exactly the binding constraint.**
+
+Measuring BEFORE deploying (rather than deploying a disposable instance first) cost nothing and caught all of this — `getCurrentMinFees` is a free read and is precisely the input the client multiplies to build `maxFeesPerGas`.
