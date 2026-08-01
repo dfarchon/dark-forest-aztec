@@ -420,19 +420,11 @@ async function registerQuotaFpcWithWallet(
   const { QuotaFpcContractArtifact } =
     await import("@dfpunk/contracts/artifacts/QuotaFpc");
   onRegisterProgress?.("Registering sponsored-transaction paymaster");
-  // BOTH calls are required, and the reason is easy to miss. Registering an
-  // instance records only the address -> class mapping; the ARTIFACT is stored
-  // separately, keyed by class id, and that is what the PXE looks up when it
-  // syncs a contract's private state. The PXE's own docs are explicit that
-  // instance registration "performs no validation, so a missing or mismatched
-  // artifact only surfaces when the contract is later simulated" — which is
-  // exactly how this failed: registration appeared to succeed, and the error
-  // arrived much later as "No artifact registered for contract class …".
-  //
-  // It matters here specifically because the paymaster HOLDS PRIVATE STATE for
-  // the player: quota notes live in its PrivateSet, so the wallet must sync it
-  // like any other contract the player owns notes in, and syncing needs the
-  // artifact to find `sync_state`.
+  // Class AND instance: the artifact is stored separately, keyed by class id,
+  // and that is what the PXE looks up when syncing. It matters here because the
+  // paymaster holds PRIVATE STATE for the player — quota notes live in its
+  // PrivateSet — so the wallet syncs it like any contract the player owns notes
+  // in, and syncing needs the artifact to resolve `sync_state`.
   await wallet.registerContractClass(QuotaFpcContractArtifact);
   await wallet.registerContract(instance, QuotaFpcContractArtifact);
   return instance.address;
@@ -879,17 +871,10 @@ export class WalletManager {
   /**
    * The paymaster contract handle, or undefined when none is configured.
    *
-   * Registers the artifact before handing back a handle. `.at()` only builds a
-   * typed wrapper — it tells the PXE nothing — so simulating against a handle
-   * whose artifact was never registered fails with "No artifact registered for
-   * contract class …". Setup registers the paymaster during wallet
-   * construction, but anything that reads the paymaster BEFORE that point (or
-   * after a PXE store reset, which discards registrations) would otherwise hit
-   * exactly that error and be reported as "could not pick a seat" — i.e. as an
-   * absent allowance rather than as a missing artifact.
-   *
-   * Registration is idempotent, so doing it here costs nothing when setup has
-   * already run and repairs the ordering when it has not.
+   * Registers the artifact first: `.at()` only builds a typed wrapper and tells
+   * the PXE nothing, so a reader that arrives before setup has registered the
+   * paymaster fails with "No artifact registered for contract class …".
+   * Registration is idempotent, so this is free when setup already ran.
    */
   async getQuotaFpcContract(): Promise<unknown | undefined> {
     if (!this.quotaFpcAddress) return undefined;

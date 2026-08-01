@@ -82,13 +82,9 @@ async function main() {
         QUOTA_FEE_HEADROOM_MULTIPLIER,
     } = await import('@dfpunk/quota-fpc');
 
-    // Both contracts already exist on chain, so their instances come from the
-    // node rather than from instantiation params. Registering them is not
-    // optional: `.at()` only builds a typed handle, and simulating a private
-    // call needs the ARTIFACT in the local PXE. A PXE that happens to know them
-    // (because it deployed them earlier in its own store) hides this — which is
-    // why it worked during the original measurement and failed the first time
-    // it ran against an existing deployment from a fresh store.
+    // Registering is not optional: `.at()` only builds a typed handle, and
+    // simulating needs the ARTIFACT in the local PXE. A store that already knows
+    // the contracts hides this, so it only fails against a fresh one.
     const registerExisting = async (
         address: AztecAddress,
         artifact: unknown
