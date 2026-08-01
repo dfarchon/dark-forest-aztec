@@ -420,6 +420,20 @@ async function registerQuotaFpcWithWallet(
   const { QuotaFpcContractArtifact } =
     await import("@dfpunk/contracts/artifacts/QuotaFpc");
   onRegisterProgress?.("Registering sponsored-transaction paymaster");
+  // BOTH calls are required, and the reason is easy to miss. Registering an
+  // instance records only the address -> class mapping; the ARTIFACT is stored
+  // separately, keyed by class id, and that is what the PXE looks up when it
+  // syncs a contract's private state. The PXE's own docs are explicit that
+  // instance registration "performs no validation, so a missing or mismatched
+  // artifact only surfaces when the contract is later simulated" — which is
+  // exactly how this failed: registration appeared to succeed, and the error
+  // arrived much later as "No artifact registered for contract class …".
+  //
+  // It matters here specifically because the paymaster HOLDS PRIVATE STATE for
+  // the player: quota notes live in its PrivateSet, so the wallet must sync it
+  // like any other contract the player owns notes in, and syncing needs the
+  // artifact to find `sync_state`.
+  await wallet.registerContractClass(QuotaFpcContractArtifact);
   await wallet.registerContract(instance, QuotaFpcContractArtifact);
   return instance.address;
 }
@@ -672,6 +686,26 @@ export class WalletManager {
       },
     });
 
+    // Register the paymaster's ARTIFACT before anything else touches the
+    // wallet. `EmbeddedWallet.create` queues a background sync of every
+    // contract the persisted store remembers, and syncing a contract requires
+    // its artifact — so a paymaster remembered from an earlier session is
+    // synced before application setup gets a chance to register anything, and
+    // fails. Registering the class here is cheap, needs no node round-trip and
+    // no instance, and lands before that queued job runs.
+    if (config.quotaFpcAddress?.trim()) {
+      try {
+        const { QuotaFpcContractArtifact } =
+          await import("@dfpunk/contracts/artifacts/QuotaFpc");
+        await wallet.registerContractClass(QuotaFpcContractArtifact);
+      } catch (err) {
+        console.warn(
+          "[WalletManager] could not pre-register the QuotaFpc class:",
+          err
+        );
+      }
+    }
+
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
     let quotaFpcAddress: AztecAddress | undefined = undefined;
@@ -863,13 +897,16 @@ export class WalletManager {
     const { QuotaFpcContract, QuotaFpcContractArtifact } =
       await import("@dfpunk/contracts/artifacts/QuotaFpc");
     try {
+      const w = this.wallet as unknown as {
+        registerContractClass(a: unknown): Promise<void>;
+        registerContract(i: unknown, a?: unknown): Promise<void>;
+      };
+      // Class first: the artifact is what the failing lookup needs, and it can
+      // be registered independently of any instance.
+      await w.registerContractClass(QuotaFpcContractArtifact);
       const instance = await this.node.getContract(this.quotaFpcAddress);
       if (instance) {
-        await (
-          this.wallet as unknown as {
-            registerContract(i: unknown, a: unknown): Promise<void>;
-          }
-        ).registerContract(instance, QuotaFpcContractArtifact);
+        await w.registerContract(instance, QuotaFpcContractArtifact);
       }
     } catch (err) {
       // Not fatal on its own: if setup already registered it the call is
