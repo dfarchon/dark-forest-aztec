@@ -156,6 +156,67 @@ async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
   } catch {
     /* best-effort cleanup */
   }
+
+  // Deliberately NOT filtered by `currentPrefix`. This function only runs once
+  // the caller has decided the persisted data is stale, and the store causing
+  // trouble is usually the CURRENT one: the network fingerprint lives in the
+  // very storage being cleared, so it reads as absent on every load, the
+  // IndexedDB wipe repeats, and the OPFS store quietly survives forever.
+  // Keeping it is what produces a wallet that re-syncs contracts from an
+  // earlier session before any artifact can be registered.
+  await clearStaleOpfsStores();
+}
+
+/**
+ * The same cleanup for OPFS, which is where the PXE store actually lives.
+ *
+ * Clearing only IndexedDB looks like it works — the message says "clearing PXE
+ * data" and no error follows — while leaving the real store untouched. The
+ * result is a wallet that keeps re-syncing contracts remembered from a
+ * previous network, and it surfaces far from the cause: the sync runs inside
+ * `EmbeddedWallet.create`, before application code can register any artifact,
+ * so it reports "No artifact registered for contract class …" for a contract
+ * nobody has asked about yet. Registering later cannot fix it, because the
+ * failing sync has already happened.
+ *
+ * `currentPrefix` is supported for callers that want to spare the active
+ * network, but the caller above deliberately passes nothing: a full reset is
+ * the point, and the cost is a resync rather than a wallet that is subtly
+ * wrong.
+ */
+async function clearStaleOpfsStores(currentPrefix?: string): Promise<void> {
+  try {
+    const root = await navigator?.storage?.getDirectory?.();
+    if (!root) return;
+    const stalePatterns = [/^pxe_data/, /^wallet_data/];
+    const doomed: string[] = [];
+    for await (const name of (
+      root as unknown as { keys(): AsyncIterable<string> }
+    ).keys()) {
+      if (
+        stalePatterns.some((p) => p.test(name)) &&
+        (!currentPrefix || !name.startsWith(currentPrefix))
+      ) {
+        doomed.push(name);
+      }
+    }
+    for (const name of doomed) {
+      try {
+        await root.removeEntry(name, { recursive: true });
+        console.info(`[WalletManager] removed stale OPFS store ${name}`);
+      } catch (err) {
+        // An exclusive SAH handle held by another tab is the usual cause, and
+        // it is worth saying so: the symptom otherwise looks like a corrupt
+        // wallet rather than a second tab.
+        console.warn(
+          `[WalletManager] could not remove stale OPFS store ${name} (another tab may hold it):`,
+          err
+        );
+      }
+    }
+  } catch {
+    /* best-effort cleanup */
+  }
 }
 
 /**
