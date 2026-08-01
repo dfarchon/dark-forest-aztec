@@ -161,17 +161,30 @@
   <p>The daily reset is pure chain-time arithmetic (UTC day index) — there's no cron and no scheduled job. Whoever deploys the paymaster also holds a key that can retune it; what that key can and cannot do is spelled out below.</p>
 
   <h2>The Dark Forest configuration</h2>
-  <p>Everything app-specific lives in one config file; the contract itself is generic. This is the proposed mainnet policy — final per-transaction ceiling is set from measured gas at deploy time.</p>
+  <p>Everything app-specific lives in one config file; the contract itself is generic. This is what is <strong>live on mainnet right now</strong>, deliberately sized to a showcase tranche rather than to demand — every number here is a knob you can turn without redeploying.</p>
   <div class="tablewrap">
     <table>
       <tr><th>Setting</th><th>Value</th><th>Meaning</th></tr>
-      <tr><td>Transactions / player / day</td><td class="num">30</td><td class="muted">how much free play each player gets</td></tr>
-      <tr><td>Players / day</td><td class="num">100</td><td class="muted">daily capacity (adjustable, takes 12h)</td></tr>
-      <tr><td>Per-transaction ceiling</td><td class="num">~0.0000228 FJ</td><td class="muted">≈ 3× a measured game tx</td></tr>
-      <tr><td>Accepted maximum loss</td><td class="num">~1,370 FJ ($20)</td><td class="muted">the funding cap — see below</td></tr>
+      <tr><td>Transactions / player / day</td><td class="num">5</td><td class="muted">how much free play each player gets</td></tr>
+      <tr><td>Players / day</td><td class="num">2</td><td class="muted">daily capacity (adjustable, takes 12h)</td></tr>
+      <tr><td>Per-transaction ceiling</td><td class="num">25 FJ</td><td class="muted">≈ 29× a measured game tx; the worst case is 20.24</td></tr>
+      <tr><td>Funded</td><td class="num">100 FJ</td><td class="muted">the real cap — top up any time, no redeploy</td></tr>
     </table>
   </div>
   <p class="muted">Sponsored contracts: Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction, ArtifactVault. Admin and Config are deliberately excluded — administrative actions are never sponsored.</p>
+
+  <h3>Live on Aztec mainnet</h3>
+  <p>Not a proposal — this is deployed, funded, and sponsoring today. Point the operator tooling at it and it answers.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>What</th><th>Address</th></tr>
+      <tr><td>Paymaster</td><td class="addr">0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4</td></tr>
+      <tr><td>Admin</td><td class="addr">0x157e64ac5ca521894cff836599ea449c8e25ae81bc7e1f2e7a8cf933b7442ba7</td></tr>
+    </table>
+  </div>
+  <pre><code>pnpm --filter contracts run update-fpc-policy -- \
+  --fpc 0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4 --show</code></pre>
+  <p class="muted">The admin key is ours, on our build machine. <strong>You should deploy your own</strong> — the admin cannot be transferred, so the only way for the address to be yours is for you to be the one who deploys it. One command, same config file. This deployment exists so you can see it working before you spend anything.</p>
 
   <h2>What it costs to fund</h2>
   <p>Set how many players you're sponsoring, how many transactions each gets per day, and over how many days — and read off the fee juice and the total dollar cost. The surprising part it makes obvious: at measured fee levels, <strong>the funding amount is barely a constraint</strong> — the levers that actually matter are the quota policy and the loss you accept, not how much you deposit. The per-transaction cost is the one real unknown; adjust it under <em>Assumptions</em>.</p>
@@ -259,10 +272,10 @@
     </details>
   </div>
 
-  <p class="muted" style="font-size:0.85rem">Worst case for the whole policy at full capacity every day — 100 players × 30 txs, ×3 for the daily-rollover window — is about <strong>0.205 FJ ≈ $0.003/day</strong> at the ceiling, and that figure doesn't grow with how much you fund. Funding just sets how many days of that you've pre-paid.</p>
+  <p class="muted" style="font-size:0.85rem">Two numbers are easy to confuse. The <strong>ceiling</strong> (25) is what the paymaster refuses to exceed on any single transaction; the <strong>cost</strong> (about 0.85) is what one actually settles for. The gap is deliberate: the ceiling is charged against gas <em>limits</em>, the fee against gas <em>used</em>. So the worst case for this policy — 2 players × 5 transactions, ×3 for the daily-rollover window — is 750 at the ceiling but nearer <strong>26</strong> in practice.</p>
   <div class="note warn">
-    <span class="tag">Measure before you trust these</span>
-    <p style="margin:0.5rem 0 0">The defaults use gas measured on a local network. Real Aztec-mainnet fees float with congestion and may differ substantially — the calibration script re-measures against live transactions, and that number sets the true budget. Treat this as the shape (funding is generous; policy and loss are the real levers), not an exact quote.</p>
+    <span class="tag">Re-measure before a large budget</span>
+    <p style="margin:0.5rem 0 0">These figures were measured on Aztec mainnet on 1 August 2026, by sending real sponsored transactions through the deployed paymaster. Mainnet fees float with congestion, and an earlier draft of this page used a local-network figure that was roughly <em>888,000 times</em> too low — which is exactly the mistake that makes a paymaster sponsor nothing. Re-run the measurement script before committing real money, and treat the shape (policy and accepted loss are the levers, not deposit size) as the durable part.</p>
   </div>
 
   <h2>Operating it</h2>
@@ -273,6 +286,12 @@
 
   <h3>Fund — and refuel</h3>
   <p><strong>Refueling never needs a redeploy or any special call.</strong> Anyone bridges fee juice to the paymaster's address, from any account, at any time. Its balance goes up and it keeps sponsoring. Do this whenever it runs low.</p>
+
+  <div class="note danger">
+    <span class="tag">Fund above the reserve, or nothing works</span>
+    <p style="margin:0.5rem 0 0">A sponsored transaction <em>settles</em> for well under one $AZTEC, but the network will not accept it unless the paymaster already holds the <strong>worst case</strong> that transaction could possibly cost — currently about <strong>21</strong>. Fund it with less than that and it sponsors precisely nothing, while looking perfectly healthy: the balance is positive, the policy is correct, and every player is quietly billed their own gas. The error only appears at submission, as "Insufficient fee payer balance", long after the funding decision.<br><br>
+    So there is a floor, not just a budget. <code>--show</code> now prints it and says plainly whether the current balance clears it. Keep a comfortable multiple above it — the reserve is re-checked per transaction and rises with network fees.</p>
+  </div>
 
   <h3>Change the quotas (more players, more transactions)</h3>
   <p>One command, and no redeploy:</p>

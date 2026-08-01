@@ -211,7 +211,8 @@ Only the last is trustworthy. The rate-based figure is a ceiling, not a price �
 
 | | |
 |---|---|
-| Production paymaster (DF contracts only) | `0x11c2c722967ff512e143620292e0cce90bd96406c3c5af63db65df9901caaf37` — 300 FJ |
+| **Production paymaster (DF contracts only)** | **`0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4`** — 100 FJ |
+| Superseded paymaster (older bytecode) | `0x11c2c722967ff512e143620292e0cce90bd96406c3c5af63db65df9901caaf37` — 300 FJ stranded, see below |
 | Admin / deployer | `0x157e64ac5ca521894cff836599ea449c8e25ae81bc7e1f2e7a8cf933b7442ba7` |
 | Measurement paymaster (disposable) | `0x1e87a754a2cf05587897200226deebfe92aa09fa0d32740b4623e29de0dbece4` — ~118 FJ |
 | Measurement target (disposable) | `0x1e189ffa5b964a97534890c88306f8077774dc62ff890cd2aa337ee4d6a8eb84` |
@@ -295,6 +296,41 @@ This is the local-run counterpart to the standing rule that *a service being unr
 `compile-contracts` writes `contracts/target/`, but the client imports `@dfpunk/contracts/artifacts/…`, which is a *copy* made by `copy-artifacts`. Running only the compile step left the two 17 minutes apart, so the client build that "passed" had bundled the previous bytecode. The integration tests were unaffected — they import from `target/` directly, which is why they genuinely did exercise the change.
 
 Same failure family as the lint-instead-of-tsc habit: a gate ran, and it was green, and it was not looking at the artifact under test. `build-contracts` (compile → codegen → copy) is the step that makes them agree; verify with `cmp` rather than assuming.
+
+### The network reserves the WORST case, not the real cost
+
+The measurement paymaster was funded with 12 FJ — comfortably more than the ~0.85 a sponsored transaction actually costs — and sponsored nothing:
+
+```
+Invalid tx: Insufficient fee payer balance (required=20458700481600000000, available=12000000000000000000)
+```
+
+The sequencer admits a transaction only if the fee payer can cover **gas limits × fee rates**, i.e. the most it could conceivably cost, not what it will cost. At mainnet rates with the client's 2× headroom that is **~20.5 FJ**, against a settled fee of ~0.85 — a 24× gap.
+
+So a paymaster has a **minimum working balance**, not merely a budget, and below it everything looks healthy: positive balance, correct policy, and every player quietly billed their own gas. The failure appears only at submission, long after the funding decision.
+
+This is now surfaced where it will actually be read — `update-fpc-policy --show` computes the reserve from live fee rates and says plainly whether the balance clears it — and called out in the handoff. It is exactly the class of fact that is obvious once measured and invisible until then.
+
+### Measured on mainnet, with the shipping bytecode
+
+| | |
+|---|---|
+| First of day (claims a seat, opens the allowance) | **0.8491 FJ** |
+| Subsequent | **0.8219 – 0.8227 FJ** |
+| Worst case the client permits | 20.24 FJ |
+| Contract ceiling | 25 FJ |
+
+Statistically identical to the pre-fix bytecode (0.8516 / 0.8220), which confirms the unconditional-insert change did not move the cost: it only affects the terminal transaction, and a terminal transaction now costs what an ordinary one does instead of slightly less. The artifact's calculator figures stand.
+
+### Funding before the audit cleared cost 300 FJ
+
+The first paymaster was deployed and funded with 300 FJ *before* the verification audit ran. The audit then forced a contract change, and a contract change is a new **contract class** — so the repo's artifact no longer matched the deployed instance, and `update-fpc-policy --show` against the live address failed outright with `No artifact registered for contract class 0x147f9a9b…`. The PR's own tooling could not operate the paymaster it had deployed.
+
+That made the redeploy compulsory rather than cosmetic, and the 300 FJ unrecoverable: fee juice is protocol-non-transferable, so there is no withdraw, no migration, and no sweep. Roughly $4.50, which is cheap tuition for the actual lesson:
+
+**Fund last.** Deploying is ~7 FJ and repeatable; funding is irreversible and one-way. The correct order is deploy → verify the tooling can drive the deployed instance → audit → *then* fund, and fund a canary before the tranche. The second deployment followed exactly that sequence: deploy (7 FJ), `--show` against the new address, audit clearance, 5 FJ canary bridged and claimed, then the remaining 95.
+
+The general form: **when one step is reversible and the next is not, never let the irreversible one run first for convenience.** Nothing about funding early made anything faster; it only removed the option to change my mind.
 
 ### One finding was an artifact of my own concurrency
 

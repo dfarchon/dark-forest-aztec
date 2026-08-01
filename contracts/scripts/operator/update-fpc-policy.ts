@@ -368,10 +368,39 @@ async function main() {
         AztecAddress.fromStringUnsafe(flags.fpc),
         node as never
     );
+    // Read once, above both consumers: the balance report and the ceiling
+    // check below must judge against the SAME fee snapshot, or they can
+    // disagree about what the network currently costs.
+    const fees = await node.getCurrentMinFees();
     if (balance !== undefined) {
         console.log(
             `\nPaymaster balance ${formatFeeJuiceWei(BigInt(balance))}`
         );
+        // The sequencer admits a transaction only if the fee payer can cover
+        // the MAXIMUM the transaction could possibly cost — gas limits times
+        // fee rates — not what it will actually cost. Sponsored transactions
+        // settle for well under a fee juice each, but the balance is checked
+        // against roughly 20 FJ, so a paymaster funded below that sponsors
+        // NOTHING while looking perfectly healthy. The failure surfaces as
+        // "Insufficient fee payer balance" at admission, long after funding,
+        // which is the worst possible place to learn it.
+        const reserve = sponsoredFeeFloorWei(
+            BigInt(fees.feePerDaGas),
+            BigInt(fees.feePerL2Gas)
+        );
+        if (BigInt(balance) < reserve) {
+            console.log(
+                `  NOT ENOUGH TO SPONSOR ANYTHING. At current fee rates a single\n` +
+                    `  sponsored transaction requires ${formatFeeJuiceWei(reserve)} on hand, because the\n` +
+                    `  network reserves the worst case rather than the real cost (which is\n` +
+                    `  under 1 FJ). Bridge more before expecting this to work.`
+            );
+        } else {
+            console.log(
+                `  covers ~${BigInt(balance) / reserve} more transaction(s) at the worst-case reserve of ${formatFeeJuiceWei(reserve)};\n` +
+                    `  real settled cost is far lower, so the true number is much higher.`
+            );
+        }
     }
 
     if (flags.show || !hasEdits(flags)) {
@@ -442,7 +471,6 @@ async function main() {
 
     const next = applyEdits(base, flags);
 
-    const fees = await node.getCurrentMinFees();
     const floor = sponsoredFeeFloorWei(
         BigInt(fees.feePerDaGas),
         BigInt(fees.feePerL2Gas)

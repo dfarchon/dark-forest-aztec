@@ -82,12 +82,45 @@ async function main() {
         QUOTA_FEE_HEADROOM_MULTIPLIER,
     } = await import('@dfpunk/quota-fpc');
 
+    // Both contracts already exist on chain, so their instances come from the
+    // node rather than from instantiation params. Registering them is not
+    // optional: `.at()` only builds a typed handle, and simulating a private
+    // call needs the ARTIFACT in the local PXE. A PXE that happens to know them
+    // (because it deployed them earlier in its own store) hides this — which is
+    // why it worked during the original measurement and failed the first time
+    // it ran against an existing deployment from a fresh store.
+    const registerExisting = async (
+        address: AztecAddress,
+        artifact: unknown
+    ) => {
+        const instance = await (
+            node as unknown as {
+                getContract(a: AztecAddress): Promise<unknown>;
+            }
+        ).getContract(address);
+        if (!instance) {
+            throw new Error(
+                `No contract deployed at ${address.toString()} on ${nodeUrl}`
+            );
+        }
+        await (
+            wallet as unknown as {
+                registerContract(i: unknown, a: unknown): Promise<void>;
+            }
+        ).registerContract(instance, artifact);
+    };
+
     const fpcAddress = AztecAddress.fromStringUnsafe(fpc);
+    const targetAddress = AztecAddress.fromStringUnsafe(target);
+    const { QuotaFpcContractArtifact } =
+        await import('../artifacts/QuotaFpc.js');
+    const { FpcTestTargetContractArtifact } =
+        await import('../artifacts/FpcTestTarget.js');
+    await registerExisting(fpcAddress, QuotaFpcContractArtifact);
+    await registerExisting(targetAddress, FpcTestTargetContractArtifact);
+
     const paymaster = await QuotaFpcContract.at(fpcAddress, wallet as never);
-    const app = await FpcTestTargetContract.at(
-        AztecAddress.fromStringUnsafe(target),
-        wallet as never
-    );
+    const app = await FpcTestTargetContract.at(targetAddress, wallet as never);
 
     const block = await node.getBlockData('latest');
     if (!block) {
@@ -120,8 +153,24 @@ async function main() {
         `  subscribed today? ${alreadySubscribed ? `yes, ${(info as [boolean, number])[1]} left` : 'no'}`
     );
 
+    // Never ask for more transactions than the allowance can actually cover.
+    // Without this the run ends on a failure that looks like a defect but is
+    // the policy working exactly as intended — and, worse, the exhausted state
+    // is indistinguishable from "the note has not synced yet", since
+    // get_quota_info reports (false, 0) for both.
+    const remainingNow = alreadySubscribed
+        ? Number((info as [boolean, number])[1])
+        : Number.MAX_SAFE_INTEGER;
+    const affordable = Math.min(count, remainingNow);
+    if (affordable < count) {
+        console.log(
+            `  NOTE: asked for ${count}, but this player has ${remainingNow} sponsored transaction(s)\n` +
+                `  left today. Measuring ${affordable}. The daily allowance resets at 00:00 UTC.`
+        );
+    }
+
     const results: { label: string; feeWei: string }[] = [];
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < affordable; i++) {
         const first = i === 0 && !alreadySubscribed;
         const seat = first
             ? await findFreeSeat({
@@ -195,6 +244,34 @@ async function main() {
         );
         if (typeof fee === 'bigint') {
             results.push({ label, feeWei: fee.toString() });
+        }
+
+        // The allowance note this transaction just wrote is not visible to the
+        // local PXE the instant the transaction settles, and the NEXT iteration
+        // needs it — `sponsor_and_execute` pops the note and asserts it found
+        // one. Firing straight into the next send makes a healthy paymaster
+        // report "No sponsored transactions remaining" purely because this
+        // process outran its own note sync.
+        //
+        // The game client meets the same race and handles it properly, by
+        // treating a sync-pending allowance as retryable rather than as
+        // exhausted. This is only a measurement tool, so it waits instead.
+        if (i + 1 < affordable) {
+            const deadline = Date.now() + 120_000;
+            for (;;) {
+                const raw: unknown = await paymaster.methods
+                    .get_quota_info(player, generation)
+                    .simulate({ from: player });
+                const info = (raw as { result?: unknown }).result ?? raw;
+                if ((info as [boolean, number])[0]) break;
+                if (Date.now() > deadline) {
+                    throw new Error(
+                        'Allowance never became visible to the local PXE; ' +
+                            'the transaction settled but its note did not sync.'
+                    );
+                }
+                await new Promise((r) => setTimeout(r, 3_000));
+            }
         }
     }
 
