@@ -93,14 +93,28 @@ function defaultJournalPath(): string {
  *     directory is itself fsynced. Without that, power loss after the deposit
  *     can leave a journal that no longer exists.
  *
- * The mode argument only applies when the file is created, so permissions are
- * re-asserted on every write.
+ * Everything below acts on the open DESCRIPTOR rather than the path, because
+ * any path-based check can be invalidated between the check and the use: a
+ * rotation or cleanup that swaps the file in that window would send the
+ * permission change, or the durability guarantee, to a file that is no longer
+ * this one. For the same reason the parent directory is fsynced
+ * unconditionally — the file may have been rotated away and recreated by our
+ * own `open`, in which case its directory entry is new even though the path
+ * existed a moment earlier.
+ *
+ * A journal on tmpfs cannot survive power loss no matter what is done here;
+ * the default lives on real disk, and `--journal` is the operator's call.
  */
 function journalSync(journalPath: string, record: unknown): void {
-    const isNew = !fs.existsSync(journalPath);
     const buf = Buffer.from(`${JSON.stringify(record)}\n`, 'utf8');
     const fd = fs.openSync(journalPath, 'a', 0o600);
     try {
+        if (!fs.fstatSync(fd).isFile()) {
+            throw new Error(
+                `Journal ${journalPath} is not a regular file; refusing to write a claim secret to it`
+            );
+        }
+        fs.fchmodSync(fd, 0o600);
         let written = 0;
         while (written < buf.length) {
             written += fs.writeSync(fd, buf, written, buf.length - written);
@@ -109,14 +123,11 @@ function journalSync(journalPath: string, record: unknown): void {
     } finally {
         fs.closeSync(fd);
     }
-    fs.chmodSync(journalPath, 0o600);
-    if (isNew) {
-        const dirFd = fs.openSync(path.dirname(journalPath), 'r');
-        try {
-            fs.fsyncSync(dirFd);
-        } finally {
-            fs.closeSync(dirFd);
-        }
+    const dirFd = fs.openSync(path.dirname(journalPath), 'r');
+    try {
+        fs.fsyncSync(dirFd);
+    } finally {
+        fs.closeSync(dirFd);
     }
 }
 
@@ -252,11 +263,14 @@ async function main() {
     // inbox deposit path uses max(100%, L1_GAS_LIMIT_BUFFER_PERCENTAGE), so an
     // operator who has raised that env var for a congested L1 keeps their
     // larger buffer rather than silently getting the floor.
-    const bufferPercent = (() => {
+    // Basis points, and rounded UP: the SDK accepts fractional percentages such
+    // as 150.5, and flooring one would quietly hand back a SMALLER buffer than
+    // the operator asked for — surfacing as an out-of-gas revert, which is
+    // exactly the failure the buffer exists to prevent.
+    const bufferBps = (() => {
         const raw = Number(getOptionalEnv('L1_GAS_LIMIT_BUFFER_PERCENTAGE'));
-        return Number.isFinite(raw) && raw > 100
-            ? BigInt(Math.floor(raw))
-            : 100n;
+        const percent = Number.isFinite(raw) && raw > 100 ? raw : 100;
+        return BigInt(Math.ceil(percent * 100));
     })();
     const gasEstimate = await l1Client.estimateContractGas({
         address: portalHex,
@@ -270,7 +284,7 @@ async function main() {
         abi: FeeJuicePortalAbi,
         functionName: 'depositToAztecPublic',
         args: args as never,
-        gas: gasEstimate + (gasEstimate * bufferPercent) / 100n,
+        gas: gasEstimate + (gasEstimate * bufferBps + 9_999n) / 10_000n,
     } as never);
     console.log(`\n  L1 deposit tx ${hash}`);
     const receipt = await l1Client.waitForTransactionReceipt({ hash });
