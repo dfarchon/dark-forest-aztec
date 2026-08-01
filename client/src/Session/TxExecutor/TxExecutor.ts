@@ -113,6 +113,28 @@ function isRetryableBeforeBroadcast(err: unknown): boolean {
   );
 }
 
+/**
+ * Verbose sponsorship diagnostics, off unless VITE_QUOTA_DEBUG is set.
+ *
+ * Exists for capture sessions against a real network: the interesting facts —
+ * which path a transaction took, what the paymaster's allowance said, what the
+ * fee actually was — are otherwise invisible, and a screen recording of the
+ * game shows none of them.
+ */
+function quotaLog(event: string, detail?: unknown): void {
+  try {
+    if (!import.meta.env?.VITE_QUOTA_DEBUG) return;
+
+    console.log(
+      `%c[quota] ${event}`,
+      "color:#e0a642;font-weight:bold",
+      detail ?? ""
+    );
+  } catch {
+    /* diagnostics must never affect the transaction path */
+  }
+}
+
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
 
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
@@ -368,6 +390,25 @@ export class TxExecutor {
               activeAddress
             );
             sponsoredSubmission = sponsoredHash;
+            quotaLog("SPONSORED ✓ submitted", {
+              txHash: String(sponsoredHash),
+              method,
+              paymaster: quotaFpcAddress,
+              player: String(activeAddress),
+            });
+            // The fee the PAYMASTER actually paid — the number that matters
+            // for budgeting, and only knowable after inclusion.
+            void waitForTx(this.node, sponsoredHash as never)
+              .then((r) => {
+                const fee = (r as { transactionFee?: bigint })?.transactionFee;
+                quotaLog("SPONSORED ✓ settled", {
+                  txHash: String(sponsoredHash),
+                  feeWei: fee?.toString(),
+                  feeJuice: fee ? Number(fee) / 1e18 : undefined,
+                  status: (r as { status?: string })?.status,
+                });
+              })
+              .catch(() => undefined);
           } catch (err) {
             // Retry ONLY when the failure provably happened before anything
             // was broadcast. A blanket retry is unsafe: if sendTx reached the
@@ -654,6 +695,10 @@ export class TxExecutor {
               "This move wasn't sponsored, so it's coming out of your own gas.",
             detail: undefined,
           };
+      quotaLog("NOT sponsored — player pays", {
+        reason: reason ?? "unknown",
+        message: message.slice(0, 200),
+      });
       const NotificationManager = NotificationMod.default;
       NotificationManager.getInstance().notify(
         NotificationType.TxInitError,
@@ -707,6 +752,12 @@ export class TxExecutor {
       minSelfPayBalance: 1n,
       paymasterBalance: await getFeeJuiceBalance(quotaFpcAddress, this.node),
       minPaymasterBalance: 1n,
+    });
+
+    quotaLog("allowance read", {
+      generation,
+      state,
+      decision: source.kind,
     });
 
     if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {

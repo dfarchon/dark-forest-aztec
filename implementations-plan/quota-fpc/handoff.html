@@ -233,19 +233,19 @@
         <div class="field">
           <label for="cost">Fee juice per transaction <span class="val" id="costVal">2.28e-5</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.00000033 each</span></label>
           <div class="row">
-            <input type="range" id="cost" min="1" max="400" step="1" value="69" aria-describedby="costVal">
-            <input type="number" id="costNum" step="any" value="6.86" aria-label="Fee juice per transaction">
+            <input type="range" id="cost" min="1" max="400" step="1" value="9" aria-describedby="costVal">
+            <input type="number" id="costNum" step="any" value="0.85" aria-label="Fee juice per transaction">
           </div>
           <div class="row" style="margin-top:0.6rem">
             <label for="perTxUsd" style="margin:0;font-weight:600;font-size:0.86rem">…which is per transaction</label>
             <input type="number" id="perTxUsd" step="any" aria-label="USD per transaction">
           </div>
           <div class="presets" id="costPresets">
-            <button type="button" class="preset" data-cost="6.86" aria-pressed="true">Measured on mainnet</button>
-            <button type="button" class="preset" data-cost="20.24">Worst case (the ceiling)</button>
-            <button type="button" class="preset" data-cost="25">Configured ceiling</button>
+            <button type="button" class="preset" data-cost="0.85" aria-pressed="true">Measured: sponsored tx</button>
+            <button type="button" class="preset" data-cost="6.86">Measured: a deploy</button>
+            <button type="button" class="preset" data-cost="20.24">Worst case at gas limits</button>
           </div>
-          <p class="hint"><strong>These are real, measured on Aztec mainnet on 1 August 2026.</strong> A transaction we actually sent cost <strong>6.86 fee juice</strong>. The worst case — what a transaction costs if it uses every bit of gas the game client allows — is <strong>20.24</strong>, and the paymaster is configured to refuse anything above 25. Earlier drafts of this page used a figure from a local test network that charges almost nothing; it was roughly <em>888,000 times</em> too low, which is the difference between this page saying "three cents" and "twenty-six thousand dollars". Fees float with demand, so re-measure before committing a large budget.</p>
+          <p class="hint"><strong>Real, measured on Aztec mainnet on 1 August 2026 — sponsored transactions we actually sent.</strong> A player's first sponsored transaction of the day cost <strong>0.85 fee juice</strong>; each one after that cost <strong>0.82</strong>. (The first is slightly dearer because it also claims the player's slot and opens their allowance.) A contract deployment, for scale, cost 6.86. The worst case — a transaction using every bit of gas the client permits — is 20.24, and the paymaster refuses anything above 25, so there is roughly thirty-fold headroom. Earlier drafts used a figure from a local test network that charges almost nothing; it was around <em>888,000 times</em> too low. Fees float with demand, so re-measure before committing a large budget.</p>
         </div>
         <div class="field">
           <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>
@@ -333,7 +333,7 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = { players: 100, txs: 30, days: 30, cost: 6.86, price: 0.0146 };
+  const state = { players: 100, txs: 30, days: 30, cost: 0.85, price: 0.0146 };
 
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
   function fmtFj(n) {

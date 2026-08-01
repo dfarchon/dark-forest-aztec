@@ -32,6 +32,7 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "local-network": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
+        "measure-sponsored-fee": "pnpm exec tsx scripts/operator/measure-sponsored-fee.ts",
         "prettier": "prettier --write \"scripts/**/*.{ts,js,json}\"",
         "prettier:check": "prettier --check \"scripts/**/*.{ts,js,json}\"",
         "read:balance": "pnpm exec tsx scripts/read/read-fee-juice-balance.ts",
