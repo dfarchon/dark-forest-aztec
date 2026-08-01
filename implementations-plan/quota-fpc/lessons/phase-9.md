@@ -297,6 +297,22 @@ This is the local-run counterpart to the standing rule that *a service being unr
 
 Same failure family as the lint-instead-of-tsc habit: a gate ran, and it was green, and it was not looking at the artifact under test. `build-contracts` (compile → codegen → copy) is the step that makes them agree; verify with `cmp` rather than assuming.
 
+### Version compatibility: 5.0.1 against a 5.1.0 mainnet node
+
+The stack is pinned to **5.0.1**; the mainnet node reports **5.1.0** (`l1ChainId 1`, `rollupVersion 4248422647`). A minor-version gap is not automatically safe here, because the one thing that silently rejects *every* player is an account-class mismatch: the paymaster allowlists a class id, and if real wallets are a different class, sponsorship fails for everyone with no obvious cause.
+
+Verified rather than assumed, three ways:
+
+1. **The config's class id is real.** `@aztec/accounts`'s `SchnorrInitializerlessAccountContractArtifact`, recomputed from the installed package, hashes to `0x28c2905b…706f` — exactly what `dark-forest.json` pins. (The deploy script already refuses to deploy on a mismatch, but that only proves the config agrees with our own packages.)
+2. **The client produces that same class.** The client creates wallets with `wallet.createSchnorrInitializerlessAccount(...)` from `@aztec/wallets`, a different package from the one the config's id is derived from. Instantiating an account through that exact API yields `originalContractClassId == currentContractClassId == 0x28c2905b…706f`. So the class the paymaster sponsors is the class real players actually run — which is the check that matters, and the one a version bump would break first.
+3. **The 5.1.0 node accepts our 5.0.1 transactions.** Not inference: sponsored transactions built by this stack were proven, admitted, and settled on that node, and the paymaster's own account-class and unpublished-account assertions passed inside them.
+
+The standing hazard is recorded in the config comment: bumping `@aztec/accounts` changes the class id and requires an FPC redeploy for players on the new version.
+
+### The allowlist points at the real game, verified on chain
+
+Reading the live paymaster's policy gives six addresses. Each was checked against the node: a contract **is** deployed at every one, and its on-chain contract class matches the class computed from this repo's own compiled artifact for Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction and ArtifactVault. So sponsorship is bound to the genuine deployed game, not to addresses copied from a stale config.
+
 ### The network reserves the WORST case, not the real cost
 
 The measurement paymaster was funded with 12 FJ — comfortably more than the ~0.85 a sponsored transaction actually costs — and sponsored nothing:
