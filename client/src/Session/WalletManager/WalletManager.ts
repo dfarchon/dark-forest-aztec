@@ -71,6 +71,14 @@ import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/Playe
 import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
+import {
+  QUOTA_DA_GAS_LIMIT,
+  QUOTA_FEE_HEADROOM_MULTIPLIER,
+  QUOTA_L2_GAS_LIMIT,
+  QUOTA_TEARDOWN_DA_GAS_LIMIT,
+  QUOTA_TEARDOWN_L2_GAS_LIMIT,
+  sponsoredFeeFloorWei,
+} from "@dfpunk/quota-fpc";
 
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
 import { KeyStore } from "./KeyStore";
@@ -355,17 +363,11 @@ async function registerQuotaFpcWithWallet(
   return instance.address;
 }
 
-/**
- * Per-transaction gas ceilings for sponsored transactions. The data-gas cap is
- * far tighter than the L2 cap on Aztec networks and is easy to exceed by
- * accident; these values were measured against a live network in Phase 1.
- */
-const QUOTA_DA_GAS_LIMIT = 50_000;
-const QUOTA_L2_GAS_LIMIT = 6_000_000;
-const QUOTA_TEARDOWN_DA_GAS_LIMIT = 5_000;
-const QUOTA_TEARDOWN_L2_GAS_LIMIT = 500_000;
-/** Absorbs fee movement between proving and inclusion. */
-const QUOTA_FEE_HEADROOM_MULTIPLIER = 2;
+// Per-transaction gas ceilings for sponsored transactions now live in
+// @dfpunk/quota-fpc (imported at the top of this file). They are shared
+// because the operator tooling must refuse to set a paymaster ceiling below
+// what this client actually spends, and two copies of those numbers is exactly
+// how that check silently stops matching reality.
 
 export class WalletManager {
   private readonly node: AztecNode;
@@ -916,6 +918,51 @@ export class WalletManager {
    * `scope` must be the PLAYER: the allowance note is delivered to them, and
    * proving needs their keys to see it.
    */
+  /**
+   * Refuses sponsorship when the paymaster's live per-transaction ceiling is
+   * below what this client would spend at current fees.
+   *
+   * Both sides of that comparison move independently: an operator can lower
+   * the ceiling (effective 12h later) and network fees drift on their own. If
+   * they cross, every sponsored transaction becomes unprovable — so the caller
+   * must fall back deliberately and visibly, rather than a proof failing deep
+   * in the stack and the player quietly paying.
+   */
+  private async assertSponsorshipAffordable(): Promise<void> {
+    const fpc = await this.getQuotaFpcContract();
+    if (!fpc) return;
+    const fees = await this.node.getCurrentMinFees();
+    const floor = sponsoredFeeFloorWei(
+      BigInt(fees.feePerDaGas),
+      BigInt(fees.feePerL2Gas)
+    );
+    const raw: unknown = await (
+      fpc as unknown as {
+        methods: {
+          get_policy(): {
+            simulate(o: { from: AztecAddress }): Promise<unknown>;
+          };
+        };
+      }
+    ).methods
+      .get_policy()
+      .simulate({ from: this.activeAddress! });
+    const policy = (raw as { result?: unknown }).result ?? raw;
+    const maxFee = BigInt(
+      (policy as { max_fee?: bigint | number })?.max_fee ??
+        (policy as (bigint | number)[])[0]
+    );
+    if (maxFee < floor) {
+      const { QuotaUnavailableError } = await import("@dfpunk/quota-fpc");
+      throw new QuotaUnavailableError(
+        "fee-spike",
+        `Sponsorship covers up to ${maxFee} wei per transaction, but this one needs ${floor}.`,
+        // Retryable: fees fall, or the operator raises the ceiling.
+        true
+      );
+    }
+  }
+
   async sendFromQuotaPaymaster(
     executionPayload: unknown,
     scope: AztecAddress
@@ -932,6 +979,13 @@ export class WalletManager {
 
     const { DefaultEntrypoint } = await import("@aztec/entrypoints/default");
     const { GasSettings, Gas } = await import("@aztec/stdlib/gas");
+
+    // Check the paymaster can actually afford us BEFORE spending seconds on a
+    // proof. The ceiling is retunable by its admin and network fees move, so
+    // the two can drift apart at any time; proving first and discovering it in
+    // a revert wastes the player's time and (without this) silently charges
+    // them. Failing here is loud and instant.
+    await this.assertSponsorshipAffordable();
 
     // Explicit limits are mandatory here: the wallet's default is the network
     // maximum, which no sane per-transaction ceiling would ever cover.

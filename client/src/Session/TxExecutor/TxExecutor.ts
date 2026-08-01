@@ -37,6 +37,7 @@ import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
 } from "../../config/env";
+import { NotificationType } from "../../Frontend/Game/NotificationManager";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
@@ -343,10 +344,27 @@ export class TxExecutor {
             );
             sponsoredSubmission = sponsoredHash;
           } catch (err) {
-            console.debug(
-              "[TxExecutor] sponsorship unavailable, paying normally:",
-              err
-            );
+            // One retry against a FRESH anchor. Sponsorship reads the
+            // paymaster's settings from a historical block, and around a
+            // scheduled policy change the transaction is stamped to expire at
+            // the changeover — so a proof begun just before it can miss.
+            // Re-proving against a newer anchor clears that specific case; if
+            // it fails again the cause is not timing.
+            try {
+              sponsoredSubmission = await this.trySponsoredSend(
+                contract,
+                method,
+                contractArgs,
+                quotaFpcAddress,
+                activeAddress
+              );
+            } catch (retryErr) {
+              // Falling back means the PLAYER pays. That must never be
+              // silent: before this, the only trace was a console.debug, so a
+              // lowered ceiling or an exhausted allowance charged people with
+              // no explanation at all.
+              await this.notifySponsorshipFallback(retryErr ?? err);
+            }
           }
         }
         const sponsoredFpcAddress = sponsoredSubmission
@@ -577,6 +595,53 @@ export class TxExecutor {
    * that should quietly fall back to the player paying, not errors that stop a
    * move.
    */
+  /**
+   * Tells the player, in plain language, that this transaction is coming out
+   * of their own gas rather than being sponsored.
+   *
+   * Sponsorship can stop for several reasons the player cannot see — their
+   * daily allowance ran out, the operator narrowed the policy, network fees
+   * outran the paymaster's ceiling. Whatever the cause, being charged without
+   * being told is the one outcome that is never acceptable, so this is
+   * best-effort but unconditional: it never rethrows, because failing to show
+   * a notice must not also fail the transaction.
+   */
+  private async notifySponsorshipFallback(err: unknown): Promise<void> {
+    try {
+      const message = String(
+        (err as { message?: string })?.message ?? err ?? ""
+      );
+      const [{ reasonFromRevert, describeQuotaUnavailable }, NotificationMod] =
+        await Promise.all([
+          import("@dfpunk/quota-fpc"),
+          import("../../Frontend/Game/NotificationManager"),
+        ]);
+      // NotificationType is a `const enum`: it is erased at compile time, so
+      // it must come from the STATIC import above — reading it off the dynamic
+      // module object yields undefined at runtime.
+      const reason = reasonFromRevert(message);
+      const copy = reason
+        ? describeQuotaUnavailable(reason, {})
+        : {
+            headline:
+              "This move wasn't sponsored, so it's coming out of your own gas.",
+            detail: undefined,
+          };
+      const NotificationManager = NotificationMod.default;
+      NotificationManager.getInstance().notify(
+        NotificationType.TxInitError,
+        `${copy.headline}${copy.detail ? ` ${copy.detail}` : ""}`
+      );
+      console.debug("[TxExecutor] sponsorship unavailable:", message);
+    } catch (notifyErr) {
+      // Never let the notice itself break the transaction path.
+      console.debug(
+        "[TxExecutor] could not surface fallback notice:",
+        notifyErr
+      );
+    }
+  }
+
   private async trySponsoredSend(
     contract: { methods: Record<string, ContractMethod> },
     method: string,

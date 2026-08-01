@@ -31,6 +31,15 @@ export {
 export { humanizeDuration, inAbout, resetsIn } from "./duration.js";
 
 export {
+  QUOTA_DA_GAS_LIMIT,
+  QUOTA_L2_GAS_LIMIT,
+  QUOTA_TEARDOWN_DA_GAS_LIMIT,
+  QUOTA_TEARDOWN_L2_GAS_LIMIT,
+  QUOTA_FEE_HEADROOM_MULTIPLIER,
+  sponsoredFeeFloorWei,
+} from "./gas-profile.js";
+
+export {
   describeQuotaUnavailable,
   describeSponsored,
   flattenQuotaMessage,
