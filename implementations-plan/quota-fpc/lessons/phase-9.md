@@ -334,6 +334,32 @@ Note the cost: **1.159 FJ against 0.849 for the synthetic target.** A real contr
 
 The technique generalises: to check a fresh deployment sponsors the right contracts without gameplay, aim a payload at an allowlisted contract's admin-gated method. A private proof that succeeds proves the allowlist binding; the revert afterwards is expected and harmless.
 
+### Three copies of every artifact, and only one of them is the client's
+
+The mainnet play session was blocked for four rounds by `No artifact registered for contract class 0x115cfdfd… (contract 0x0572042f…)`. Three fixes were attempted and none worked, because the diagnosis was wrong each time.
+
+The compiled artifact is written to **three** places, each with a different consumer:
+
+| path | consumer |
+|---|---|
+| `contracts/target/` | the Noir compiler's own output; the integration tests import from here |
+| `contracts/scripts/artifacts/` | the operator scripts (`deploy-fpc`, `update-fpc-policy`, …) |
+| `packages/contracts/src/artifacts/` | `@dfpunk/contracts` — **the client and the server** |
+
+`build-contracts` updated the first two and never the third. Every *other* contract stayed byte-identical because its source had not changed that cycle, so only QuotaFpc diverged — which is exactly why the game worked and only the paymaster failed, and exactly what made it look like a paymaster bug.
+
+So the browser registered a three-day-old artifact whose class id was `0x0e554d67…`. **Registration genuinely succeeded every time — it filed the artifact under the stale class**, and the PXE's lookup for the deployed class found nothing. That is why re-registering, registering earlier, and registering the class explicitly all changed precisely nothing: the call was never the problem.
+
+None of these directories is committed (every `artifacts` dir is gitignored), so they are pure build output and drift is invisible to git.
+
+**What is in place now:**
+
+- `copy-artifacts` propagates to `packages/contracts` as well. Deliberately not via `sync-env-and-artifacts`, which also regenerates `index.ts` from `contracts/.env` and would reintroduce local-network addresses.
+- `pnpm --filter contracts run check-artifacts` compares class ids across all three copies and fails with both ids and the consumer named. It runs at the end of `build-contracts`, so a failed copy cannot pass silently, and it is the first thing to run when the client behaves as though the contract were different.
+- The guard was verified by breaking it on purpose, not just by watching it pass.
+
+**The rule, because this cost four rounds:** when a generated file has N copies, verify the copy the *consumer* loads, not the one the build just wrote. A class-id comparison across the copies would have found this in under a minute, and I had already been bitten twice the same day — once by the operator script loading a stale copy, once by the client build bundling stale bytecode — without generalising it.
+
 ### Measured by actually playing (2026-08-01)
 
 The one figure no script could produce. A real player spawned into the live mainnet world and played, sponsored:

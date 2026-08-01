@@ -233,20 +233,62 @@ derive from chain time and therefore agree with each other.
 
 ## 5d. Artifacts must match what is deployed
 
-`sync-env-and-artifacts` prompts `Overwrite? (y/N)` before replacing
-`packages/contracts/src/artifacts`. If that prompt goes unanswered the client
-keeps an **older** build than the one on chain, and every call fails with:
+**Check this FIRST when a contract behaves as though it were a different
+contract.** It is the highest-frequency cause in this repo, and its symptom
+points nowhere near its cause:
 
 ```
 No artifact registered for contract class 0x… (contract 0x…):
   register it by calling wallet.registerContract(...)
 ```
 
-The class id is derived from bytecode, so any recompile invalidates a previously
-copied artifact. After redeploying, confirm they match:
+That message is not asking you to call `registerContract`. Registration has
+almost certainly already happened — and *succeeded*, filing the artifact under
+a **stale class id**, so the lookup for the deployed class finds nothing.
+Calling it again, earlier, or more explicitly changes nothing.
+
+One command settles it:
 
 ```bash
-cp -f contracts/target/QuotaFpc.ts contracts/target/quota_fpc-QuotaFpc.json   packages/contracts/src/artifacts/
+pnpm --filter contracts run check-artifacts
+```
+
+It compares class ids across every copy and, on a mismatch, names the consumer
+and prints both ids:
+
+```
+STALE    client + server (@dfpunk/contracts): quota_fpc-QuotaFpc.json
+           compiled 0x115cfdfd…
+           in use   0x0e554d67…
+```
+
+### Why there is anything to check
+
+The compiled artifact is written to **three** places, each with its own
+consumer, and none of them is committed:
+
+| path | consumer |
+|---|---|
+| `contracts/target/` | compiler output; the integration tests read this |
+| `contracts/scripts/artifacts/` | the operator scripts |
+| `packages/contracts/src/artifacts/` | `@dfpunk/contracts` — **client and server** |
+
+`copy-artifacts` now propagates to all of them and `build-contracts` runs
+`check-artifacts` afterwards, so the normal path keeps them aligned. Drift
+comes from the shortcuts: running `compile-contracts` alone, or leaving
+`sync-env-and-artifacts`' `Overwrite? (y/N)` prompt unanswered.
+
+Prefer `build-contracts` over `compile-contracts` for exactly this reason. And
+note what `sync-env-and-artifacts` also does — it regenerates
+`packages/contracts/src/index.ts` from `contracts/.env`, which will overwrite
+the deployed contract ADDRESSES with whatever network that file describes. That
+file is tracked, so a local-network run can commit local addresses over the
+mainnet ones. Use `copy-artifacts` when you only want artifacts.
+
+If you need the manual escape hatch:
+
+```bash
+cp -f contracts/target/*.json contracts/target/*.ts packages/contracts/src/artifacts/
 ```
 
 ## 6. What to actually look at
