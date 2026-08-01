@@ -156,3 +156,46 @@ No Critical. Confirmed all five earlier fixes genuinely landed, and independentl
 1. **The retry was unsafe.** Any exception rebuilt the transaction with a fresh nonce, so a lost `sendTx` response would replay the player's move and burn a second allowance. Now allow-listed to failures that provably occur before broadcast.
 2. **The headline fix missed its main case.** `trySponsoredSend` *returns undefined* — rather than throwing — when the allowance is spent, seats are gone, or the paymaster is empty. Those are the common cases, and they bypassed both retry and notice, so the exact scenario the work set out to fix still charged players silently. Now throws a typed reason.
 3. Med: the gas profile was still copied in the operator script behind a stale TODO, despite the commit message claiming it was shared. `contracts` now depends on `@dfpunk/quota-fpc` and imports `sponsoredFeeFloorWei`.
+
+## Version compatibility: 5.0.1 stack vs 5.1.0 mainnet node — RESOLVED
+
+Checked before spending anything, because a mismatch in the account-class allowlist would silently reject every real player.
+
+| Check | Result |
+|---|---|
+| SDK 5.0.1 → mainnet node | connects; `nodeVersion 5.1.0`, `protocolVersion 4248422647`, `l1ChainId 1` |
+| Our initializerless Schnorr class id | `0x28c2905b…706f` |
+| That class publicly registered on mainnet? | **no — and this is expected**, initializerless accounts are never published, which is exactly what `require_unpublished_account` relies on |
+| Dark Forest allowlisted contracts live on mainnet | **6/6** (Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction, ArtifactVault) |
+
+**The reasoning that resolves it: class ids follow the CLIENT, not the node.** A class id is a hash of the account artifact shipped in `@aztec/accounts`. Dark Forest's client is this repository, pinned to 5.0.1, so players get 5.0.1 initializerless accounts regardless of which node version the network runs. The node's version does not enter that hash.
+
+Confirmed empirically afterwards: a sponsored transaction from a 5.0.1-derived account was accepted by the 5.1.0 mainnet node and paid for by the paymaster.
+
+Standing consequence, already documented as the version-bump caveat: if DF rebuilds its client on a newer `@aztec/accounts`, the class id changes and sponsorship stops for players on the new build until the paymaster is redeployed.
+
+## MEASURED: what a sponsored transaction actually costs on mainnet
+
+| | fee juice | ~USD @ $0.0146 |
+|---|---|---|
+| First sponsored transaction of a player's day | **0.8516** | ~$0.012 |
+| Each subsequent one | **0.8220** | ~$0.012 |
+| A contract deployment, for scale | 6.855 | ~$0.10 |
+| Worst case at the client's gas limits | 20.24 | ~$0.30 |
+| Configured ceiling | 25 | ~$0.37 |
+
+The first is dearer because it also claims the player's seat and opens the allowance note. Roughly **thirty-fold headroom** between real cost and the ceiling.
+
+How the estimate travelled, which is the whole argument for measuring:
+
+| Source | 90,000 sponsored transactions |
+|---|---|
+| Sandbox guess (original config) | $0.03 |
+| Mainnet fee rates x gas LIMITS | $26,595 |
+| **Measured reality** | **~$1,117** |
+
+Only the last is trustworthy. The rate-based figure is a ceiling, not a price — transactions are billed on gas USED.
+
+**A gameplay-level figure is still outstanding** and cannot be scripted: `initialize_player` needs mined spawn coordinates plus indexer-derived state hashes, which is why Phase 4 originally required manual play. A real Dark Forest move costs the above plus the game's own logic. The client is configured for a capture session (`client/.env`, `VITE_QUOTA_DEBUG=true`) which logs each sponsorship decision, allowance read and settled fee.
+
+**Accidental proof, worth recording**: re-running the measurement script was refused on mainnet with `Invalid tx: Existing nullifier` — the one-subscription-per-player-per-day rule enforcing itself on a live network, unprompted.
