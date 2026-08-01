@@ -220,5 +220,82 @@ Only the last is trustworthy. The rate-based figure is a ceiling, not a price �
 ### Still open
 
 1. **Gameplay-level fee.** Requires playing through the client — `initialize_player` needs mined spawn coordinates plus indexer state. The client is configured (`client/.env`, `VITE_QUOTA_DEBUG=true`) and logs each sponsorship decision, allowance read and settled fee. A real move costs the measured sandwich overhead plus the game's own logic.
-2. **`max_uses` increases do not revive already-exhausted players** (codex Med). Terminal notes are not retained, so a player who spent their allowance stays exhausted until the next generation even if the cap rises. Documented rather than fixed; raising a cap mid-day is not a case the showcase needs.
-3. **Two fee snapshots** in the affordability precheck versus the gas settings (codex Low). Fees can move between the two reads, which slightly weakens the exactness of the pre-proof check.
+2. **Two fee snapshots** in the affordability precheck versus the gas settings (codex Low). Fees can move between the two reads, which slightly weakens the exactness of the pre-proof check.
+
+## Round 3: fixing what the verification pass found (2026-08-01)
+
+The audit that was supposed to bless the deployment returned **"Not sound for mainnet as-is"** instead. Four findings, and the two that mattered were both cases of a stated guarantee being false rather than merely weak.
+
+### The client build was broken, and lint said otherwise
+
+`resolveFeeSource` returns `{ kind: "blocked", reason }`, but the caller compared `source.kind` against `"self-pay-exhausted"` and `"sync-pending"` — values that live on `reason`, not `kind`. Two `TS2367` errors. The build had been broken for some time, and every unavailability reason collapsed into one, so `sync-pending` — the only retryable case — never retried.
+
+It survived because **the gate that was run was `lint`, and the gate that would have caught it was `tsc`**. This is the second time in this plan that a green result came from running the wrong command. The rule that follows: a gate is only evidence for the failure mode it can actually observe, and "the code compiles" is not something a linter observes. `pnpm --filter client run build` is now the gate, not `lint`.
+
+### Sponsored-then-self-paid could submit a move twice
+
+On a failed sponsored send the client fell through to an ordinary self-paid send. That is correct only when the failure provably happened *before* broadcast; otherwise the move may already be in the mempool and the player pays for — and plays — the same move twice.
+
+The predicate was doing two jobs at once. It is now split: `isProvablyPreBroadcast()` answers "is retrying SAFE", `isRetryableBeforeBroadcast()` answers "is retrying safe AND useful". Anything not provably pre-broadcast now fails loudly rather than silently duplicating. Paying twice is recoverable; a duplicated move in a game with irreversible state is not.
+
+### The bridge script could strand funds silently
+
+The claim secret is generated *inside* `bridgeTokensPublic` and returned only after the L1 deposit mines. A crash in that window loses an unrecoverable preimage — fee juice with no claim secret cannot be redeemed by anyone, ever.
+
+Mitigated, not eliminated: a mode-0600 journal records IN_FLIGHT before the L1 write and the claim the instant it exists, so a loss is visible rather than silent. The honest fix is to generate the secret locally and call the portal deposit directly, which is recorded in the file header as the next change.
+
+### Reversing codex on the `max_uses` asymmetry
+
+Codex found that raising `max_uses` does not revive already-exhausted players — terminal notes were deleted, and the player nullifier bars re-subscribing — and recommended documenting it and fixing it in a later revision. That recommendation was **not** taken.
+
+The reasoning: the DF team's most likely first action after handoff is turning exactly this knob, and with a 12-hour activation delay the change lands mid-generation almost by construction. So the failure is not an edge case, it is the expected path — a raise that quietly helps only the players who did not need it.
+
+The note is now inserted unconditionally on both paths, including when already terminal. **Exhaustion is the assert, never the note's absence.** The note records what has been SPENT, not what remains, so it stays meaningful when the policy moves underneath it. Cost is one note on the last transaction of a player's day; the previous behaviour was cheaper and wrong.
+
+This is the shape of the whole plan in miniature: storing consumption rather than entitlement is what makes a value safe to change later. The same reasoning produced `spent` over `remaining` in Phase 8.
+
+## Round 4: the verification pass finds the fixes half-done (2026-08-01)
+
+Re-audited. Verdict: **"still not sound for mainnet"** — every one of the four fixes came back PARTIAL. Worth recording, because the pattern is consistent: each fix was correct about the thing it addressed and wrong about its own edges.
+
+### `Existing nullifier` was not safe to treat as pre-broadcast
+
+The retry predicate allow-listed the error signatures known to be raised before broadcast. `Existing nullifier` was included, reasoned safe because this executor runs at `maxConcurrency: 1` and therefore never has two sponsored sends in flight.
+
+That reasoning was too small. The conflicting transaction does not have to come from this queue — a reload, a second device, or a second executor instance all produce one, and the concurrency setting is a constructor argument, not an invariant. And the error is raised *precisely because* something else got there first, which is the opposite of evidence that this move was never sent. Removed from the allow-list.
+
+The general lesson: **an allow-list of "safe" error signatures is only as sound as the least-examined entry.** Reasoning about one entry from a local property of the process is not enough when the conflict is, by definition, non-local.
+
+### The bridge journal was a mitigation pretending to be a fix
+
+The audit refused the journal-only approach for mainnet funds, and it was right to. Writing an IN_FLIGHT marker before the deposit makes a loss *visible*; it does not make it *recoverable*, because the claim secret still only existed inside the SDK call. It also introduced a new failure: the post-deposit journal append could throw before the secret was ever printed, so a disk-full condition would have destroyed funds that the old code would have merely printed. The mitigation was strictly worse than nothing in that branch.
+
+Two further faults, both mine: `mode: 0o600` applies only when a file is created, not to an existing one; and the journal lived at `process.cwd()`, i.e. **inside the repository** — a file full of claim secrets, one `git add -A` from being published.
+
+Rewritten to do the real thing. The deposit is now assembled from the same SDK primitives (`generateClaimSecret`, the portal's own `L1TokenManager` for approval, `depositToAztecPublic`, `extractEvent`) in the one order that is safe: generate the secret, `fsync` it to a journal in the home directory, and only then touch L1. Everything the deposit produces afterwards — message key, leaf index — is re-readable from the L1 logs forever. The secret is the only unrecoverable part, so it is the only part that must exist on disk beforehand.
+
+Verified end-to-end against the local network rather than reasoned about: minted L1 fee asset, ran the real script, got `SECRET_GENERATED` then `DEPOSIT_CONFIRMED` in a `0600` journal, and confirmed the deposit is claimable on L2 with the locally-generated secret. That last step matters most — a subtly wrong secret would produce a deposit that mines successfully and can never be redeemed, which looks exactly like success until it doesn't.
+
+### A gate was wrong for the third time
+
+The audit found `buildSendOpts` still declared `SponsoredFeePaymentMethod` while returning `FeePaymentMethod` — a `TS2322` that `pnpm --filter contracts run lint` cannot see, because that script is `eslint .` and nothing more. This is the third time in this plan a green gate came from a command that could not observe the failure.
+
+The standing correction: **name the failure mode first, then pick the command that observes it.** For type errors that is `tsc`, for the client it is `run build`, and neither is `lint`.
+
+### An idle local network looks exactly like a broken bridge
+
+The end-to-end bridge test appeared to fail: the L1 deposit mined, but ten minutes of polling never found the L1→L2 message, and the claim kept returning `No L1 to L2 message found for message hash`. The natural reading is that the hand-rolled deposit produced a malformed message.
+
+It did not. **Neither chain was advancing.** Local anvil mines on demand, not on a timer, and the sequencer produces L2 blocks only when there is something to put in them — so with no other work running, an L1→L2 message simply sits in the inbox forever. `anvil_mine` plus one trivial integration test (L1 370→390, L2 146→153) and the message was consumed immediately.
+
+This is the local-run counterpart to the standing rule that *a service being unreachable is not proof it is broken*: **on an idle local network, "not yet included" is the default state, not a symptom.** Diagnose by checking whether the block numbers move before concluding anything about the code. Mainnet has no such failure mode — both chains advance regardless of what this repo is doing.
+
+### An artifact copy step made a green gate meaningless
+
+`compile-contracts` writes `contracts/target/`, but the client imports `@dfpunk/contracts/artifacts/…`, which is a *copy* made by `copy-artifacts`. Running only the compile step left the two 17 minutes apart, so the client build that "passed" had bundled the previous bytecode. The integration tests were unaffected — they import from `target/` directly, which is why they genuinely did exercise the change.
+
+Same failure family as the lint-instead-of-tsc habit: a gate ran, and it was green, and it was not looking at the artifact under test. `build-contracts` (compile → codegen → copy) is the step that makes them agree; verify with `cmp` rather than assuming.
+
+### One finding was an artifact of my own concurrency
+
+The audit reported the `max_uses == 1` case as still unfixed. It was not — the auditor happened to read `main.nr` while a background job had temporarily reverted it to run a negative check. Running an experiment that mutates the working tree while an audit reads it makes the audit's output untrustworthy in both directions. That the auditor independently concluded "the new enforcement test cannot pass against current code" is, by accident, exactly the negative result the experiment was designed to produce.

@@ -7,6 +7,7 @@
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
@@ -49,6 +50,15 @@ export type FeePaymentContext = {
     mode: FeePaymentMode;
     /** Present only when `mode === 'sponsored'`. */
     sponsoredFpc?: SponsoredFpcInstance;
+    /**
+     * Present when the account has a bridged claim it has not yet redeemed. A
+     * freshly bridged account holds a claim, not a balance, so it cannot pay
+     * for the transaction that would redeem it — the claim rides along with
+     * its first real transaction instead. Takes precedence over every other
+     * mode: an unredeemed claim is the only thing such an account can pay
+     * with.
+     */
+    claimPaymentMethod?: FeePaymentMethod;
 };
 
 /**
@@ -154,7 +164,7 @@ export async function prepareFeePayment(
  */
 export function buildFeeSendFields(
     ctx: FeePaymentContext
-): { fee: { paymentMethod: unknown } } | Record<string, never> {
+): { fee: { paymentMethod: FeePaymentMethod } } | Record<string, never> {
     // A freshly bridged account holds a CLAIM, not a balance — it literally
     // cannot pay for the transaction that would redeem it. This method bundles
     // the claim into the transaction it pays for, which is the only way a new
@@ -185,7 +195,7 @@ export function buildSendOpts(
     ctx: FeePaymentContext
 ): {
     from: AztecAddress;
-    fee?: { paymentMethod: SponsoredFeePaymentMethod };
+    fee?: { paymentMethod: FeePaymentMethod };
 } {
     return { from, ...buildFeeSendFields(ctx) };
 }

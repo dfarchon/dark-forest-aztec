@@ -280,7 +280,7 @@
 pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-uses 50</code></pre>
   <p><code>--show</code> tells you what is live now, what change is already queued and exactly when it lands. Any change takes effect <strong>twelve hours later</strong> — that delay is fixed in the contract and nobody, including the key holder, can shorten it. It exists so a change is always announced before it binds.</p>
   <p>Two things the tool refuses, both of which are quiet disasters otherwise: overwriting a change you already have queued (only one can be pending at a time — a second silently replaces the first), and setting a spending ceiling so low that every sponsored transaction fails and players get billed their own gas.</p>
-  <p><strong>A reduction binds everyone the moment it lands</strong>, including players already midway through their day: their remaining count can drop, and anyone holding a slot above the new player limit stops being sponsored. Increases are always safe.</p>
+  <p><strong>A reduction binds everyone the moment it lands</strong>, including players already midway through their day: their remaining count can drop, and anyone holding a slot above the new player limit stops being sponsored. Increases take nothing away from anyone, and reach players already midway through their day as well as new ones.</p>
 
   <div class="note danger">
     <span class="tag">Irreversible</span>

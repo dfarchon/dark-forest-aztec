@@ -97,19 +97,48 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
  * paymaster refusing to sponsor, and the allowance still syncing — rather than
  * trying to enumerate everything unsafe.
  */
-function isRetryableBeforeBroadcast(err: unknown): boolean {
-  const name = (err as { name?: string })?.name;
-  if (name === "QuotaUnavailableError") {
-    return Boolean((err as { retryable?: boolean }).retryable);
+function isProvablyPreBroadcast(err: unknown): boolean {
+  if ((err as { name?: string })?.name === "QuotaUnavailableError") {
+    // Raised by our own pre-flight, before anything is built or sent.
+    return true;
   }
   const message = String((err as { message?: string })?.message ?? err ?? "");
-  // Proving-time rejections: the transaction was never submitted.
+  // Rejections raised while proving or by the node's admission checks — in
+  // every one of these the transaction was refused, not accepted.
+  //
+  // `Existing nullifier` is deliberately NOT in this set, though it is tempting:
+  // it is raised by the node, not by proving, and precisely BECAUSE some other
+  // transaction got there first. That other transaction may be an earlier,
+  // ambiguous attempt at THIS move — from a reload, a second device, or another
+  // executor instance. A local send queue cannot rule any of that out, so the
+  // conflict is not evidence that this move was never broadcast, and self-paying
+  // after it could replay the move.
   return (
     /Gas settings exceed the sponsorship allowance/i.test(message) ||
     /Invalid expiration timestamp/i.test(message) ||
     /No sponsorship seats available/i.test(message) ||
     /seat no longer within capacity/i.test(message) ||
-    /No sponsored transactions remaining/i.test(message)
+    /No sponsored transactions remaining/i.test(message) ||
+    /account class is not sponsored/i.test(message) ||
+    /non-allowlisted contract/i.test(message) ||
+    /Sponsorship covers up to/i.test(message)
+  );
+}
+
+/**
+ * Whether re-attempting is both SAFE and USEFUL.
+ *
+ * Safety is `isProvablyPreBroadcast` — anything else may already be in flight,
+ * and rebuilding would replay the player's move. Usefulness is narrower still:
+ * only a wallet that was mid-sync has any prospect of succeeding second time.
+ */
+function isRetryableBeforeBroadcast(err: unknown): boolean {
+  if (!isProvablyPreBroadcast(err)) return false;
+  if ((err as { name?: string })?.name === "QuotaUnavailableError") {
+    return Boolean((err as { retryable?: boolean }).retryable);
+  }
+  return /Invalid expiration timestamp/i.test(
+    String((err as { message?: string })?.message ?? err ?? "")
   );
 }
 
@@ -426,8 +455,27 @@ export class TxExecutor {
                   activeAddress
                 );
               } catch (retryErr) {
+                // The retry itself may now be ambiguous. Same rule applies.
+                if (!isProvablyPreBroadcast(retryErr)) {
+                  throw new Error(
+                    "Sponsored transaction status unknown — not retrying or " +
+                      "self-paying, because it may already have been submitted. " +
+                      "Check your recent moves before trying again.",
+                    { cause: retryErr }
+                  );
+                }
                 await this.notifySponsorshipFallback(retryErr ?? err);
               }
+            } else if (!isProvablyPreBroadcast(err)) {
+              // Could not prove nothing was sent. Falling through to the
+              // ordinary self-paid send would replay the move — sponsored
+              // first, then paid for again. Failing loudly is the safe answer.
+              throw new Error(
+                "Sponsored transaction status unknown — not self-paying, " +
+                  "because the move may already have been submitted. " +
+                  "Check your recent moves before trying again.",
+                { cause: err }
+              );
             } else {
               // Falling back means the PLAYER pays. That must never be silent:
               // before this, the only trace was a console.debug.
@@ -767,14 +815,17 @@ export class TxExecutor {
       // most often was the one that charged them without a word. Throw the
       // typed reason instead, so the caller can explain it.
       const { QuotaUnavailableError } = await import("@dfpunk/quota-fpc");
+      // The reason lives on the `blocked` variant, not on `kind` — comparing
+      // `kind` against reason names silently collapsed every cause into one
+      // and meant a still-syncing wallet was never retried.
       const reason =
-        source.kind === "self-pay-exhausted" ? "exhausted" : source.kind;
+        source.kind === "blocked" ? source.reason : "paymaster-empty";
       throw new QuotaUnavailableError(
-        reason as never,
-        `Sponsorship unavailable: ${source.kind}`,
+        reason,
+        `Sponsorship unavailable: ${reason}`,
         // Only a wallet still catching up is worth retrying; the rest are
-        // settled facts that a fresh anchor will not change.
-        source.kind === "sync-pending"
+        // settled facts a fresh anchor will not change.
+        reason === "sync-pending"
       );
     }
 

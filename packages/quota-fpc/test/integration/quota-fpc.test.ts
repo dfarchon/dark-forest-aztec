@@ -155,12 +155,14 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
    * global and irreversible, so it must not run against the shared instance
    * the other tests' generations and anchors depend on.
    */
-  async function deployOwnFpc(): Promise<QuotaFpcContract> {
+  async function deployOwnFpc(
+    overrides: { maxUses?: number } = {},
+  ): Promise<QuotaFpcContract> {
     const deploy = QuotaFpcContract.deploy(
       ctx.wallet,
       player,
       MAX_FEE,
-      MAX_USES,
+      overrides.maxUses ?? MAX_USES,
       MAX_USERS,
       [target.address, ...Array(11).fill(ZERO)],
       [await initializerlessClassId(), 0n, 0n, 0n],
@@ -860,6 +862,101 @@ describe.skipIf(!HAS_SANDBOX)("QuotaFpc integration", () => {
     evidence(
       "clamp",
       "a reduction bound an allowance issued under the old policy, enforced on the private path",
+    );
+  });
+
+  test("a raise reaches a player who had already run out", async () => {
+    // The mirror of the clamp test, and the harder direction. A player who has
+    // spent their allowance cannot subscribe again — the player nullifier for
+    // the day is already in the tree — so the ONLY way a raise can reach them
+    // is if their exhausted note was retained. Deleting a terminal note (which
+    // is what an implementation naturally wants to do, since it is worthless
+    // under the current policy) silently turns every raise into a change that
+    // helps only the players who did not need it.
+    const own = await deployOwnFpc({ maxUses: 1 });
+    await fundWithFeeJuice(
+      ctx.node,
+      ctx.wallet,
+      own.address,
+      10n ** 21n,
+      player,
+      () => target.methods.ping().send({ from: player }),
+    );
+
+    await warpChainToDayStart(ctx.node, () =>
+      target.methods.ping().send({ from: player }),
+    );
+    const gen = generationAt(await chainTimestamp(ctx.node));
+    const claimant = ctx.addresses[2] ?? other;
+
+    // One use, one cap: subscribing exhausts them immediately.
+    await sendFromPaymaster(
+      ctx,
+      await buildSandwichPayload(
+        {
+          calls: await recordCall(),
+          player: claimant,
+          fpcAddress: own.address,
+          generation: gen,
+          seat: 0,
+        },
+        ctx.wallet,
+        own as any,
+      ),
+      claimant,
+    );
+    await expect(
+      sendFromPaymaster(
+        ctx,
+        await buildSandwichPayload(
+          {
+            calls: await recordCall(),
+            player: claimant,
+            fpcAddress: own.address,
+            generation: gen,
+          },
+          ctx.wallet,
+          own as any,
+        ),
+        claimant,
+      ),
+    ).rejects.toThrow(/No sponsored transactions remaining/i);
+
+    const rev = await currentRevision(own, player);
+    await own.methods
+      .schedule_settings(await bundleFrom(own, { maxUses: 2 }), rev)
+      .send({ from: player });
+    await warpChainBy(ctx.node, 43_260, () =>
+      target.methods.ping().send({ from: player }),
+    );
+
+    const after: any = await own.methods
+      .get_quota_info(claimant, gen)
+      .simulate({ from: claimant });
+    const [backOn, revived] = after?.result ?? after;
+    expect(Boolean(backOn)).toBe(true);
+    expect(Number(revived)).toBe(1);
+
+    // Enforcement, not the getter: this send is what proves the retained note
+    // is actually spendable under the raised cap. Same generation throughout,
+    // so no daily rollover can be mistaken for the revival.
+    await sendFromPaymaster(
+      ctx,
+      await buildSandwichPayload(
+        {
+          calls: await recordCall(),
+          player: claimant,
+          fpcAddress: own.address,
+          generation: gen,
+        },
+        ctx.wallet,
+        own as any,
+      ),
+      claimant,
+    );
+    evidence(
+      "raise",
+      "a raise reached a player who had already exhausted their allowance, same generation",
     );
   });
 

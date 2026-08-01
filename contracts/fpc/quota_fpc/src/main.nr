@@ -353,13 +353,18 @@ contract QuotaFpc {
 
         // Written before `end_setup` (below) so it is non-revertible: an app-call
         // revert must never consume a seat while losing the player's allowance.
-        // This subscription IS the first use, hence `spent: 1`; a note is only
-        // worth carrying if further uses remain under the CURRENT policy.
-        if settings.max_uses >= 2 {
-            self.storage.quotas.at(player).insert(QuotaNote { spent: 1, seat, generation }).deliver(
-                MessageDelivery::onchain_unconstrained().with_sender(player),
-            );
-        }
+        // This subscription IS the first use, hence `spent: 1`.
+        //
+        // The note is written unconditionally, even when it is already terminal
+        // under the current policy. It records what the player has SPENT, not
+        // what they have left, so it stays meaningful after the policy moves
+        // underneath it — a later raise of `max_uses` becomes spendable instead
+        // of being unreachable for want of a note. The player nullifier makes
+        // re-subscribing impossible, so a missing note would strand that player
+        // until the next daily rollover.
+        self.storage.quotas.at(player).insert(QuotaNote { spent: 1, seat, generation }).deliver(
+            MessageDelivery::onchain_unconstrained().with_sender(player),
+        );
 
         sponsor_and_hand_off(self.context, app_payload, player, settings.max_fee);
     }
@@ -397,17 +402,20 @@ contract QuotaFpc {
         // not full here, this player's seat fell outside a reduced cap.
         assert(quota.seat < settings.max_users, "Sponsorship seat no longer within capacity");
 
-        // Exhausted notes are never re-inserted — the note's absence IS the
-        // exhaustion signal.
+        // Re-inserted even when it is now terminal. Exhaustion is the assert
+        // above (`spent < max_uses`), never the note's absence: dropping the
+        // note would make a later raise of `max_uses` unreachable for exactly
+        // the players who ran out, since the player nullifier bars them from
+        // subscribing again. The cost is one note on the last transaction of a
+        // player's day; the alternative is a raise that silently helps only
+        // those who did not need it.
         let spent = quota.spent + 1;
-        if spent < settings.max_uses {
-            self
-                .storage
-                .quotas
-                .at(player)
-                .insert(QuotaNote { spent, seat: quota.seat, generation })
-                .deliver(MessageDelivery::onchain_unconstrained().with_sender(player));
-        }
+        self
+            .storage
+            .quotas
+            .at(player)
+            .insert(QuotaNote { spent, seat: quota.seat, generation })
+            .deliver(MessageDelivery::onchain_unconstrained().with_sender(player));
 
         sponsor_and_hand_off(self.context, app_payload, player, settings.max_fee);
     }

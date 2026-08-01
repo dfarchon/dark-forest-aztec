@@ -76,6 +76,8 @@ Entrypoints (both private, `#[allow_phase_change]`, called by the player's accou
 
 Accounting semantics: `subscribe` is use #1; a note holds *remaining* uses and disappears at exhaustion; `sponsor` of a `remaining==1` note consumes it without reinsertion. Effective per-player daily cap = exactly `max_uses`. Reverted app calls still consume the use and the FPC still pays (all quota side effects are setup-phase, non-revertible, consistently) — deliberate: reverts can't be free rides, and state is never half-burned.
 
+> **Superseded by Phase 9 — the note stores `spent`, not `remaining`, and is never dropped.** Both changes fall out of the same fact: once the policy became updatable, a note holding *entitlement* went stale the moment the policy moved. `remaining` was computed against the cap in force when it was written, so clamping it against a lower cap over-granted by one (`remaining` excludes the subscribing use). And dropping the note at exhaustion made the note's *absence* the exhaustion signal, so a later **raise** of `max_uses` could not reach the players who had run out — the player nullifier bars them from subscribing again. The shipped note is `QuotaNote { spent, seat, generation }`, inserted unconditionally on both paths including when already terminal; exhaustion is the assert `spent < max_uses`, evaluated against the **live** policy. Consumption is a fact about the past and stays true; entitlement is a claim about the present and does not.
+
 ### The client quota engine (`@dfpunk/quota-fpc`, browser-safe core)
 
 All decision logic lives in the package (unit-testable — fable M6), TxExecutor becomes a thin adapter:
