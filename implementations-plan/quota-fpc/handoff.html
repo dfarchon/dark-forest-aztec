@@ -186,6 +186,13 @@
   --fpc 0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4 --show</code></pre>
   <p class="muted">The admin key is ours, on our build machine. <strong>You should deploy your own</strong> — the admin cannot be transferred, so the only way for the address to be yours is for you to be the one who deploys it. One command, same config file. This deployment exists so you can see it working before you spend anything.</p>
 
+  <div class="note good">
+    <span class="tag">Proven against your own contracts</span>
+    <p style="margin:0.5rem 0 0">Not just against a test contract. We sent a sponsored transaction through the live paymaster aimed at <strong>your deployed Core contract</strong> (tx <code>0x06b841ce…79ea5</code>). It was accepted, paid for by the paymaster, and settled — <strong>1.16 fee juice</strong>, charged to us, not to the sender.<br><br>
+    The game call itself reverted, deliberately: we aimed it at an admin-only method that checks permissions before touching anything, so it could not alter your game. That is the point — it proves the paymaster sponsors and pays for transactions aimed at the real Dark Forest contracts, without us needing to make a move in your live world.<br><br>
+    <strong>What is still untested:</strong> a real game action that <em>succeeds</em>. Spawning a player needs mined coordinates and live world state, which only the game client can produce. That one session is the last gap, and it is also what will give the true per-move cost — expect it above the 0.85 figure below, since a real contract does more work.</p>
+  </div>
+
   <h2>What it costs to fund</h2>
   <p>Set how many players you're sponsoring, how many transactions each gets per day, and over how many days — and read off the fee juice and the total dollar cost. The surprising part it makes obvious: at measured fee levels, <strong>the funding amount is barely a constraint</strong> — the levers that actually matter are the quota policy and the loss you accept, not how much you deposit. The per-transaction cost is the one real unknown; adjust it under <em>Assumptions</em>.</p>
 

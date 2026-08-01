@@ -313,6 +313,27 @@ The standing hazard is recorded in the config comment: bumping `@aztec/accounts`
 
 Reading the live paymaster's policy gives six addresses. Each was checked against the node: a contract **is** deployed at every one, and its on-chain contract class matches the class computed from this repo's own compiled artifact for Core, Move, ArtifactProspect, ArtifactFind, ArtifactAction and ArtifactVault. So sponsorship is bound to the genuine deployed game, not to addresses copied from a stale config.
 
+### A real sponsored transaction against the live game
+
+Measuring against `FpcTestTarget` proves the mechanism but not the deployment: it leaves open whether the *production* paymaster will sponsor a transaction aimed at Dark Forest's own contracts. Every player-facing method on Core and Move is private and needs mined spawn coordinates plus indexer-derived state hashes — the Phase 4 manual-play blocker — so a successful game action still cannot be scripted.
+
+But the sponsorship path does not depend on the game call succeeding. Every public method on Core opens with `assert(msg_sender == admin, "Only admin")`, which reverts **before** any storage write, so a non-admin call is inert by construction. Passing Core's own current `config_storage_address` as the argument makes it doubly inert: even an impossible write would be a no-op.
+
+Sent through the production paymaster, tx `0x06b841ce7a73f84b2d1ea785a9974fd924c4b55fc2178d286c76b2a816f79ea5`:
+
+| | |
+|---|---|
+| Private proof | **succeeded** — allowlist accepted the real Core address, account-class and unpublished checks passed |
+| Settlement | included, then reverted on Core's admin check, exactly as designed |
+| Paymaster paid | **1.1590 FJ** |
+| Quota | seat claimed, one use consumed (4 left) |
+
+So the production instance provably sponsors, pays for, and settles transactions aimed at the genuine deployed game. What is still unproven is a game action that *succeeds*, which needs a play session.
+
+Note the cost: **1.159 FJ against 0.849 for the synthetic target.** A real contract does more work before reverting — storage reads and the admin check — and a successful game action would cost more still. Treat 0.85 as a floor for gameplay, not an estimate of it.
+
+The technique generalises: to check a fresh deployment sponsors the right contracts without gameplay, aim a payload at an allowlisted contract's admin-gated method. A private proof that succeeds proves the allowlist binding; the revert afterwards is expected and harmless.
+
 ### The network reserves the WORST case, not the real cost
 
 The measurement paymaster was funded with 12 FJ — comfortably more than the ~0.85 a sponsored transaction actually costs — and sponsored nothing:
