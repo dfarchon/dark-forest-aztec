@@ -7,7 +7,7 @@
     "maxUsesPerDay": 5,
     "maxUsersPerDay": 2
   },
-  "_comment_maxLossWei": "800 FJ = the tranche actually bridged. NOTE: with Phase 9 the admin can schedule a larger policy after deploy, so this is a deploy-time sanity check, not an enforced bound. The paymaster's balance is the only real cap.",
+  "_comment_maxLossWei": "A DEPLOY-TIME sanity ceiling on the initial policy, NOT the amount funded and NOT enforced afterwards. NOTE: with Phase 9 the admin can schedule a larger policy after deploy, so this is a deploy-time sanity check, not an enforced bound. The paymaster's balance is the only real cap.",
   "maxLossWei": "800000000000000000000",
   "_comment_allowedTargets": "Player-facing gameplay contracts only. Addresses may be literals or 'env:VAR_NAME'. Deliberately absent: ADMIN and CONFIG (admin operations must not be sponsored) and all storage contracts (players never call them directly).",
   "allowedTargets": [

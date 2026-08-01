@@ -402,10 +402,16 @@ async function main() {
             // consumed is the settled fee, so the usable budget is everything
             // above the floor.
             const spendable = BigInt(balance) - reserve;
-            const typicalFeeWei = 1_200_000_000_000_000_000n; // ~1.2 FJ, measured on mainnet
+            // A real game move, measured on mainnet 2026-08-01. An earlier
+            // value of 1.2 FJ came from a sponsored call that reached a
+            // contract and reverted early; a move that actually executes costs
+            // 5.5x that, so the runway this printed was optimistic by the same
+            // factor. Estimate from the heaviest ordinary action, not the
+            // cheapest observed one.
+            const typicalFeeWei = 6_580_000_000_000_000_000n; // 6.58 FJ, a move
             console.log(
                 `  clears the ${formatFeeJuiceWei(reserve)} reserve, leaving ${formatFeeJuiceWei(spendable)} spendable\n` +
-                    `  — roughly ${spendable / typicalFeeWei} more sponsored transactions at ~1.2 FJ each.\n` +
+                    `  — roughly ${spendable / typicalFeeWei} more sponsored moves at ~6.58 FJ each.\n` +
                     `  Sponsorship stops once the balance falls back below the reserve, not at zero.`
             );
         }
