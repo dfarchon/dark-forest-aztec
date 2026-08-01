@@ -781,12 +781,41 @@ export class WalletManager {
     return this.node;
   }
 
-  /** The paymaster contract handle, or undefined when none is configured. */
+  /**
+   * The paymaster contract handle, or undefined when none is configured.
+   *
+   * Registers the artifact before handing back a handle. `.at()` only builds a
+   * typed wrapper — it tells the PXE nothing — so simulating against a handle
+   * whose artifact was never registered fails with "No artifact registered for
+   * contract class …". Setup registers the paymaster during wallet
+   * construction, but anything that reads the paymaster BEFORE that point (or
+   * after a PXE store reset, which discards registrations) would otherwise hit
+   * exactly that error and be reported as "could not pick a seat" — i.e. as an
+   * absent allowance rather than as a missing artifact.
+   *
+   * Registration is idempotent, so doing it here costs nothing when setup has
+   * already run and repairs the ordering when it has not.
+   */
   async getQuotaFpcContract(): Promise<unknown | undefined> {
     if (!this.quotaFpcAddress) return undefined;
     if (this.quotaFpcContract) return this.quotaFpcContract;
-    const { QuotaFpcContract } =
+    const { QuotaFpcContract, QuotaFpcContractArtifact } =
       await import("@dfpunk/contracts/artifacts/QuotaFpc");
+    try {
+      const instance = await this.node.getContract(this.quotaFpcAddress);
+      if (instance) {
+        await (
+          this.wallet as unknown as {
+            registerContract(i: unknown, a: unknown): Promise<void>;
+          }
+        ).registerContract(instance, QuotaFpcContractArtifact);
+      }
+    } catch (err) {
+      // Not fatal on its own: if setup already registered it the call is
+      // redundant, and if it genuinely cannot be registered the simulate below
+      // fails with a clearer error than this one would give.
+      console.debug("[WalletManager] QuotaFpc re-register skipped:", err);
+    }
     this.quotaFpcContract = QuotaFpcContract.at(
       this.quotaFpcAddress,
       this.wallet
