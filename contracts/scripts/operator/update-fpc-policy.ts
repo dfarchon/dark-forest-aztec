@@ -396,9 +396,17 @@ async function main() {
                     `  under 1 FJ). Bridge more before expecting this to work.`
             );
         } else {
+            // Dividing the balance by the reserve is the WRONG arithmetic and
+            // badly understates capacity: the reserve is a floor the balance
+            // must stay above, not a per-transaction charge. What is actually
+            // consumed is the settled fee, so the usable budget is everything
+            // above the floor.
+            const spendable = BigInt(balance) - reserve;
+            const typicalFeeWei = 1_200_000_000_000_000_000n; // ~1.2 FJ, measured on mainnet
             console.log(
-                `  covers ~${BigInt(balance) / reserve} more transaction(s) at the worst-case reserve of ${formatFeeJuiceWei(reserve)};\n` +
-                    `  real settled cost is far lower, so the true number is much higher.`
+                `  clears the ${formatFeeJuiceWei(reserve)} reserve, leaving ${formatFeeJuiceWei(spendable)} spendable\n` +
+                    `  — roughly ${spendable / typicalFeeWei} more sponsored transactions at ~1.2 FJ each.\n` +
+                    `  Sponsorship stops once the balance falls back below the reserve, not at zero.`
             );
         }
     }

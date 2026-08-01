@@ -77,6 +77,16 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "credentialless",
     },
+    // Vite refuses requests whose Host header it does not recognise, which
+    // blocks reaching a dev server through any tunnel or reverse proxy — and
+    // the wallet REQUIRES a secure context (crypto.subtle, OPFS), so plain
+    // http://<lan-ip> is not an option and a proxy is the only way to test on
+    // another device. Supplied by env so no machine's hostname is baked into
+    // the repository.
+    allowedHosts: (process.env.VITE_ALLOWED_HOSTS ?? "")
+      .split(",")
+      .map((h) => h.trim())
+      .filter(Boolean),
   },
   build: {
     target: "esnext",

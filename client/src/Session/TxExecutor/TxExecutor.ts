@@ -24,6 +24,7 @@ import type { AztecNode } from "@aztec/aztec.js/node";
 import { waitForTx } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type TxHash, type TxReceipt, TxStatus } from "@aztec/stdlib/tx";
+import { QUOTA_DA_GAS_LIMIT, QUOTA_L2_GAS_LIMIT } from "@dfpunk/quota-fpc";
 import type {
   PersistedTransaction,
   Transaction,
@@ -162,6 +163,119 @@ function quotaLog(event: string, detail?: unknown): void {
   } catch {
     /* diagnostics must never affect the transaction path */
   }
+}
+
+/**
+ * Calibration logging for a real play session.
+ *
+ * The fee a sponsored transaction settles for is easy to measure and is NOT
+ * the number that decides whether sponsorship works. That number is GAS USED
+ * against the limits this client imposes on the sponsored path
+ * (QUOTA_DA_GAS_LIMIT / QUOTA_L2_GAS_LIMIT) — limits that ordinary self-paid
+ * transactions never have to satisfy. A real move that exceeds them fails
+ * while the same move, self-paid, succeeds. Synthetic targets cannot reveal
+ * that, because their gas footprint is nothing like a game action's.
+ *
+ * So every record here carries gas used, the limits it was measured against,
+ * and the resulting headroom. Records also accumulate on `window` so a whole
+ * session can be exported in one piece rather than scraped out of the console.
+ */
+type FineTuneRecord = Record<string, unknown> & { event: string; at: string };
+
+/**
+ * Console exporters, attached once so a session can be handed over whole.
+ *
+ * Scraping records out of a browser console loses ordering and truncates
+ * nested objects, which are exactly the parts that matter here. `__fineTuneDump()`
+ * returns the session as JSON; `__fineTuneCopy()` puts it on the clipboard.
+ */
+function ensureFineTuneExporters(): void {
+  const w = window as unknown as {
+    __fineTune?: unknown[];
+    __fineTuneDump?: () => string;
+    __fineTuneCopy?: () => void;
+  };
+  if (w.__fineTuneDump) return;
+  w.__fineTuneDump = () => JSON.stringify(w.__fineTune ?? [], null, 2);
+  w.__fineTuneCopy = () => {
+    const text = w.__fineTuneDump!();
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => console.log(`[Fine-tune] copied ${text.length} chars`))
+      .catch(() => console.log(text));
+  };
+  console.log(
+    "%c[Fine-tune] logging ON — run __fineTuneCopy() when done, or __fineTuneDump()",
+    "color:#2f9e6b;font-weight:bold"
+  );
+}
+
+function fineTune(event: string, detail: Record<string, unknown> = {}): void {
+  try {
+    if (!import.meta.env?.VITE_QUOTA_DEBUG) return;
+    ensureFineTuneExporters();
+    const record: FineTuneRecord = {
+      event,
+      at: new Date().toISOString(),
+      ...detail,
+    };
+    const w = window as unknown as { __fineTune?: FineTuneRecord[] };
+    (w.__fineTune ??= []).push(record);
+    console.log(
+      `%c[Fine-tune] ${event}`,
+      "color:#2f9e6b;font-weight:bold",
+      record
+    );
+  } catch {
+    /* diagnostics must never affect the transaction path */
+  }
+}
+
+/**
+ * Gas actually consumed, as reported by a simulation.
+ *
+ * `gasUsed` is only populated when the simulation was asked for metadata, so
+ * an absent value here means the call site forgot the flag — not that the
+ * action used no gas. Reported as `undefined` rather than 0 for that reason: a
+ * zero would quietly read as "uses nothing", which is the opposite of the
+ * truth and exactly the sort of thing that makes a calibration run worthless.
+ */
+function readSimulatedGas(sim: unknown): {
+  daGas?: number;
+  l2Gas?: number;
+} {
+  const total = (
+    sim as { gasUsed?: { totalGas?: { daGas?: number; l2Gas?: number } } }
+  )?.gasUsed?.totalGas;
+  if (!total) return {};
+  const daGas = Number(total.daGas);
+  const l2Gas = Number(total.l2Gas);
+  return {
+    daGas: Number.isFinite(daGas) ? daGas : undefined,
+    l2Gas: Number.isFinite(l2Gas) ? l2Gas : undefined,
+  };
+}
+
+/** Gas figures alongside the sponsored profile they must fit inside. */
+function gasVsLimits(daGas?: number, l2Gas?: number): Record<string, unknown> {
+  return {
+    daGasUsed: daGas,
+    daGasLimit: QUOTA_DA_GAS_LIMIT,
+    daGasPctOfLimit:
+      daGas === undefined
+        ? undefined
+        : +((daGas / QUOTA_DA_GAS_LIMIT) * 100).toFixed(1),
+    l2GasUsed: l2Gas,
+    l2GasLimit: QUOTA_L2_GAS_LIMIT,
+    l2GasPctOfLimit:
+      l2Gas === undefined
+        ? undefined
+        : +((l2Gas / QUOTA_L2_GAS_LIMIT) * 100).toFixed(1),
+    fitsSponsoredProfile:
+      daGas === undefined || l2Gas === undefined
+        ? undefined
+        : daGas <= QUOTA_DA_GAS_LIMIT && l2Gas <= QUOTA_L2_GAS_LIMIT,
+  };
 }
 
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
@@ -409,7 +523,13 @@ export class TxExecutor {
         let sponsoredSubmission: TxHash | undefined;
         const quotaFpcAddress = this.walletManager.getQuotaFpcAddress();
         const activeAddress = this.walletManager.getActiveAddress();
+        const sponsoredStartedAt = Date.now();
         if (quotaFpcAddress && activeAddress) {
+          fineTune("action started", {
+            action: method,
+            paymaster: quotaFpcAddress,
+            player: String(activeAddress),
+          });
           try {
             const sponsoredHash = await this.trySponsoredSend(
               contract,
@@ -425,6 +545,11 @@ export class TxExecutor {
               paymaster: quotaFpcAddress,
               player: String(activeAddress),
             });
+            fineTune("sponsored submitted", {
+              action: method,
+              txHash: String(sponsoredHash),
+              provingMs: Date.now() - sponsoredStartedAt,
+            });
             // The fee the PAYMASTER actually paid — the number that matters
             // for budgeting, and only knowable after inclusion.
             void waitForTx(this.node, sponsoredHash as never)
@@ -436,9 +561,71 @@ export class TxExecutor {
                   feeJuice: fee ? Number(fee) / 1e18 : undefined,
                   status: (r as { status?: string })?.status,
                 });
+                // No simulation ran on this path, and the receipt carries no
+                // gas breakdown — but the fee is billed gas x rates, and Aztec
+                // mainnet currently prices DA gas at zero, which makes L2 gas
+                // exactly recoverable from the fee. Recorded with the rates it
+                // was derived from so the arithmetic can be rechecked rather
+                // than trusted.
+                void this.node
+                  .getCurrentMinFees()
+                  .then(
+                    (fees: { feePerDaGas: bigint; feePerL2Gas: bigint }) => {
+                      const perL2 = BigInt(fees.feePerL2Gas);
+                      const perDa = BigInt(fees.feePerDaGas);
+                      const derivable =
+                        fee !== undefined && perDa === 0n && perL2 > 0n;
+                      const l2Gas = derivable ? Number(fee / perL2) : undefined;
+                      fineTune("sponsored settled", {
+                        action: method,
+                        txHash: String(sponsoredHash),
+                        status: (r as { status?: string })?.status,
+                        feeJuice: fee ? Number(fee) / 1e18 : undefined,
+                        feeWei: fee?.toString(),
+                        ...gasVsLimits(undefined, l2Gas),
+                        l2GasDerivedFromFee: derivable,
+                        feePerL2Gas: perL2.toString(),
+                        feePerDaGas: perDa.toString(),
+                        // Worth stating outright: this transaction was ACCEPTED,
+                        // so it fits the sponsored gas profile. That is the
+                        // pass/fail answer, independent of the arithmetic above.
+                        provesActionFitsSponsoredProfile: true,
+                      });
+                    }
+                  )
+                  .catch(() =>
+                    fineTune("sponsored settled", {
+                      action: method,
+                      txHash: String(sponsoredHash),
+                      feeJuice: fee ? Number(fee) / 1e18 : undefined,
+                      provesActionFitsSponsoredProfile: true,
+                    })
+                  );
               })
-              .catch(() => undefined);
+              .catch((err) =>
+                fineTune("sponsored settle FAILED", {
+                  action: method,
+                  txHash: String(sponsoredHash),
+                  error: String(err).slice(0, 400),
+                })
+              );
           } catch (err) {
+            fineTune("sponsored FAILED", {
+              action: method,
+              error: String(
+                (err as { message?: string })?.message ?? err
+              ).slice(0, 600),
+              errorName: (err as { name?: string })?.name,
+              provablyPreBroadcast: isProvablyPreBroadcast(err),
+              willRetry: isRetryableBeforeBroadcast(err),
+              // If this says true, the action does not fit the sponsored gas
+              // profile and the limits need raising — the single most useful
+              // outcome this session can produce.
+              looksLikeGasLimit:
+                /gas|limit|exceed|too large|DA/i.test(
+                  String((err as { message?: string })?.message ?? err)
+                ) || undefined,
+            });
             // Retry ONLY when the failure provably happened before anything
             // was broadcast. A blanket retry is unsafe: if sendTx reached the
             // node but its response was lost, rebuilding produces a second
@@ -549,6 +736,9 @@ export class TxExecutor {
         }
         const invocation = methodFn(...contractArgs);
 
+        // Filled by the simulation below when calibration logging is on.
+        let simulatedGas: { daGas?: number; l2Gas?: number } = {};
+
         // A sponsored transaction has already been assembled, proven and sent
         // by the paymaster path above; simulating or sending it again here
         // would duplicate the work and the transaction.
@@ -561,9 +751,22 @@ export class TxExecutor {
               `[TxExecutor] contractArgs (${contractArgs.length}):`,
               contractArgs
             );
-            const simResult = unwrapSimulateResult(
-              await invocation.simulate(simulateOpts)
+            // `gasUsed` is only populated when metadata is requested, and it
+            // is the whole point of a calibration run: it reports what the
+            // action ACTUALLY needs, unconstrained by the sponsored profile.
+            // Requested only under the debug flag so ordinary play is
+            // unchanged.
+            const rawSim = await invocation.simulate(
+              (import.meta.env?.VITE_QUOTA_DEBUG
+                ? { ...simulateOpts, includeMetadata: true }
+                : simulateOpts) as never
             );
+            simulatedGas = readSimulatedGas(rawSim);
+            fineTune("simulated (gas measured)", {
+              action: tx.intent.methodName,
+              ...gasVsLimits(simulatedGas.daGas, simulatedGas.l2Gas),
+            });
+            const simResult = unwrapSimulateResult(rawSim);
             console.debug(
               `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
               simResult
@@ -609,6 +812,25 @@ export class TxExecutor {
           dontThrowOnRevert: true,
           waitForStatus: TxStatus.PROPOSED,
         });
+
+        {
+          const fee = (receipt as { transactionFee?: bigint })?.transactionFee;
+          fineTune(
+            sponsoredSubmission ? "settled (sponsored)" : "settled (SELF-PAID)",
+            {
+              action: tx.intent.methodName,
+              paidBy: sponsoredSubmission ? "paymaster" : "player",
+              status: receipt.status,
+              reverted: receipt.hasExecutionReverted(),
+              feeJuice: fee ? Number(fee) / 1e18 : undefined,
+              // Self-paid transactions are NOT bound by the sponsored gas
+              // profile, so simulated gas here is the honest measure of what
+              // the action needs — and `fitsSponsoredProfile` answers, without
+              // anyone having to risk a sponsored send, whether it would work.
+              ...gasVsLimits(simulatedGas.daGas, simulatedGas.l2Gas),
+            }
+          );
+        }
 
         // 8. Check result — v0.6 lines 386-397
         if (receipt.hasExecutionReverted() || receipt.isDropped()) {
