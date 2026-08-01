@@ -167,7 +167,7 @@
       <tr><th>Setting</th><th>Value</th><th>Meaning</th></tr>
       <tr><td>Transactions / player / day</td><td class="num">5</td><td class="muted">how much free play each player gets</td></tr>
       <tr><td>Players / day</td><td class="num">2</td><td class="muted">daily capacity (adjustable, takes 12h)</td></tr>
-      <tr><td>Per-transaction ceiling</td><td class="num">25 FJ</td><td class="muted">≈ 29× a measured game tx; the worst case is 20.24</td></tr>
+      <tr><td>Per-transaction ceiling</td><td class="num">25 FJ</td><td class="muted">≈ 3.8× a measured move; the worst case at the client's gas limits is 20.24</td></tr>
       <tr><td>Funded</td><td class="num">100 FJ</td><td class="muted">the real cap — top up any time, no redeploy</td></tr>
     </table>
   </div>
@@ -184,6 +184,7 @@
   </div>
   <pre><code>pnpm --filter contracts run update-fpc-policy -- \
   --fpc 0x0572042f6b9a6e6d33077a15c203ca81006ae162eab322efe32eeaffff5729d4 --show</code></pre>
+  <p class="muted">Code: <a href="https://github.com/dfarchon/dark-forest-aztec/pull/37">pull request #37</a>. The contract is <code>contracts/fpc/quota_fpc/src/main.nr</code>; the policy that produced this deployment is <code>contracts/fpc/config/dark-forest.json</code>.</p>
   <p class="muted">The admin key is ours, on our build machine. <strong>You should deploy your own</strong> — the admin cannot be transferred, so the only way for the address to be yours is for you to be the one who deploys it. One command, same config file. This deployment exists so you can see it working before you spend anything.</p>
 
   <div class="note good">
@@ -193,8 +194,8 @@
       <table>
         <tr><th>Action</th><th>Fee juice</th><th>USD</th><th>Gas used</th></tr>
         <tr><td>Spawn a player</td><td class="num">1.89</td><td class="num">$0.028</td><td class="num">18% of budget</td></tr>
-        <tr><td>Claim spaceships</td><td class="num">4.60</td><td class="num">$0.069</td><td class="num">45% of budget</td></tr>
-        <tr><td>A move</td><td class="num">6.58</td><td class="num">$0.098</td><td class="num">65% of budget</td></tr>
+        <tr><td>Claim spaceships</td><td class="num">4.60</td><td class="num">$0.067</td><td class="num">45% of budget</td></tr>
+        <tr><td>A move</td><td class="num">6.58</td><td class="num">$0.096</td><td class="num">65% of budget</td></tr>
       </table>
     </div>
     <p style="margin:0.5rem 0 0">The sixth action was refused — <em>"sponsorship unavailable: exhausted"</em> — because the daily allowance is five. The quota enforced itself exactly, unprompted, and the player was offered the normal paid route instead of being stuck. The five actions cost <strong>26.22</strong> in total, matching the paymaster's balance to four decimal places.</p>
@@ -202,19 +203,13 @@
 
   <div class="note warn">
     <span class="tag">A move uses two thirds of its gas budget</span>
-    <p style="margin:0.5rem 0 0">Sponsored transactions run under a fixed gas budget — tighter than an ordinary transaction, because the paymaster must know its exposure in advance. A move used <strong>65%</strong> of it. That works, with room to spare, but it is the number to watch: a materially heavier action could exceed the budget and fall back to the player paying, even though the same action would succeed if they paid for it themselves.<br><br>
-    We have measured spawning, spaceships and moves. <strong>Artifact operations are untested</strong> — worth one sponsored run each before you rely on them.</p>
+    <p style="margin:0.5rem 0 0">Sponsored transactions run under a fixed gas budget, tighter than an ordinary transaction's, because the paymaster must bound its exposure up front. A move uses <strong>65%</strong> of it — fine, but it's the number to watch: a heavier action could exceed it and fail <em>when sponsored</em> while succeeding if the player pays.<br><br>
+    <strong>Artifact operations are untested.</strong> Worth one sponsored run each.</p>
   </div>
 
-  <div class="note good">
-    <span class="tag">Proven against your own contracts</span>
-    <p style="margin:0.5rem 0 0">Not just against a test contract. We sent a sponsored transaction through the live paymaster aimed at <strong>your deployed Core contract</strong> (tx <code>0x06b841ce…79ea5</code>). It was accepted, paid for by the paymaster, and settled — <strong>1.16 fee juice</strong>, charged to us, not to the sender.<br><br>
-    The game call itself reverted, deliberately: we aimed it at an admin-only method that checks permissions before touching anything, so it could not alter your game. That is the point — it proves the paymaster sponsors and pays for transactions aimed at the real Dark Forest contracts, without us needing to make a move in your live world.<br><br>
-    <strong>What is still untested:</strong> a real game action that <em>succeeds</em>. Spawning a player needs mined coordinates and live world state, which only the game client can produce. That one session is the last gap, and it is also what will give the true per-move cost — expect it above the 0.85 figure below, since a real contract does more work.</p>
-  </div>
 
   <h2>What it costs to fund</h2>
-  <p>Set how many players you're sponsoring, how many transactions each gets per day, and over how many days — and read off the fee juice and the total dollar cost. The surprising part it makes obvious: at measured fee levels, <strong>the funding amount is barely a constraint</strong> — the levers that actually matter are the quota policy and the loss you accept, not how much you deposit. The per-transaction cost is the one real unknown; adjust it under <em>Assumptions</em>.</p>
+  <p>Set players, transactions per day, and days — read off the fee juice and dollar cost. On mainnet, <strong>funding is the binding constraint</strong> — an earlier draft of this page claimed the opposite, on the strength of a test network that charges almost nothing. The quota policy bounds your exposure per day; the balance bounds it absolutely. Adjust the per-transaction cost under <em>Assumptions</em> if you want to model a different action.</p>
 
   <div class="calc">
     <div class="field">
@@ -257,13 +252,13 @@
       </div>
       <div class="cell">
         <span class="k">Fee juice needed</span>
-        <output id="outFj">2.05</output>
+        <output id="outFj">592,200</output>
         <div class="sub">$AZTEC, 1:1 with fee juice</div>
       </div>
       <div class="cell usd">
         <span class="k">Total cost to sponsor</span>
-        <output id="outUsd">$0.03</output>
-        <div class="sub" id="outUsdSub">≈ $0.001 / day</div>
+        <output id="outUsd">$8,646</output>
+        <div class="sub" id="outUsdSub">≈ $288 / day</div>
       </div>
     </div>
 
@@ -271,7 +266,7 @@
       <summary>Assumptions — per-transaction cost &amp; token price</summary>
       <div class="adv">
         <div class="field">
-          <label for="cost">Fee juice per transaction <span class="val" id="costVal">2.28e-5</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.00000033 each</span></label>
+          <label for="cost">Fee juice per transaction <span class="val" id="costVal">6.58</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.096 each</span></label>
           <div class="row">
             <input type="range" id="cost" min="1" max="400" step="1" value="9" aria-describedby="costVal">
             <input type="number" id="costNum" step="any" value="6.58" aria-label="Fee juice per transaction">
@@ -286,9 +281,9 @@
             <button type="button" class="preset" data-cost="4.60">Claiming spaceships</button>
             <button type="button" class="preset" data-cost="20.24">Worst case at gas limits</button>
           </div>
-          <p class="hint"><strong>Measured by playing Dark Forest on Aztec mainnet, 1 August 2026 — real moves, sponsored, paid by the paymaster.</strong> A move costs <strong>6.58</strong> fee juice, spawning a player <strong>1.89</strong>, claiming spaceships <strong>4.60</strong>. The five sponsored actions of that session cost 26.22 in total, which matches the paymaster's balance to four decimal places.<br><br>
-          <strong>Note how much the action matters.</strong> An earlier draft of this page used 0.85 — the cost of a bare sponsored transaction against a do-nothing contract. That is the paymaster's own overhead, not the price of playing, and it understates a real move by <strong>almost eight times</strong>. Budget from the action you expect players to perform, not from the sponsorship machinery. (An even earlier draft used a local-testnet figure that was ~888,000× too low.)<br><br>
-          The worst case — a transaction using every bit of gas the client permits — is 20.24, and the paymaster refuses anything above 25. Fees float with demand, so re-measure before committing a large budget.</p>
+          <p class="hint"><strong>Measured by playing, on mainnet, 1 August 2026.</strong> A move costs <strong>6.58</strong> fee juice; spawning <strong>1.89</strong>; spaceships <strong>4.60</strong>.<br><br>
+          <strong>Budget from the action, not the machinery.</strong> An earlier draft used 0.85 — a sponsored transaction against a do-nothing contract. That is the paymaster's overhead, and it understates a real move by <strong>8×</strong>.<br><br>
+          Worst case at the client's gas limits is 20.24; the paymaster refuses anything above 25. Fees float — re-measure before a large budget.</p>
         </div>
         <div class="field">
           <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>
@@ -302,10 +297,11 @@
     </details>
   </div>
 
-  <p class="muted" style="font-size:0.85rem">Two numbers are easy to confuse. The <strong>ceiling</strong> (25) is what the paymaster refuses to exceed on any single transaction; the <strong>cost</strong> (about 0.85) is what one actually settles for. The gap is deliberate: the ceiling is charged against gas <em>limits</em>, the fee against gas <em>used</em>. So the worst case for this policy — 2 players × 5 transactions, ×3 for the daily-rollover window — is 750 at the ceiling but nearer <strong>26</strong> in practice.</p>
+  <p class="muted" style="font-size:0.85rem"><strong>The ceiling is not the cost.</strong> The ceiling (25) is the most the paymaster will pay for one transaction; a real move settles for <strong>6.58</strong>. The ceiling is charged against gas <em>limits</em>, the fee against gas <em>used</em> — that gap is the most useful thing to know when budgeting.<br><br>
+  Worst case for this policy is 1,875 at the ceiling, ~490 at measured cost. <strong>Both exceed what is funded, by design:</strong> the balance is the real cap. When it runs out, sponsorship stops and players pay their own way.</p>
   <div class="note warn">
     <span class="tag">Re-measure before a large budget</span>
-    <p style="margin:0.5rem 0 0">These figures were measured on Aztec mainnet on 1 August 2026, by sending real sponsored transactions through the deployed paymaster. Mainnet fees float with congestion, and an earlier draft of this page used a local-network figure that was roughly <em>888,000 times</em> too low — which is exactly the mistake that makes a paymaster sponsor nothing. Re-run the measurement script before committing real money, and treat the shape (policy and accepted loss are the levers, not deposit size) as the durable part.</p>
+    <p style="margin:0.5rem 0 0">Measured on mainnet, 1 August 2026, from real sponsored transactions. Fees float with congestion — re-run the measurement script before committing real money.</p>
   </div>
 
   <h2>Operating it</h2>
@@ -319,8 +315,8 @@
 
   <div class="note danger">
     <span class="tag">Fund above the reserve, or nothing works</span>
-    <p style="margin:0.5rem 0 0">A sponsored transaction <em>settles</em> for well under one $AZTEC, but the network will not accept it unless the paymaster already holds the <strong>worst case</strong> that transaction could possibly cost — currently about <strong>21</strong>. Fund it with less than that and it sponsors precisely nothing, while looking perfectly healthy: the balance is positive, the policy is correct, and every player is quietly billed their own gas. The error only appears at submission, as "Insufficient fee payer balance", long after the funding decision.<br><br>
-    So there is a floor, not just a budget. <code>--show</code> now prints it and says plainly whether the current balance clears it. Keep a comfortable multiple above it — the reserve is re-checked per transaction and rises with network fees.</p>
+    <p style="margin:0.5rem 0 0">The network won't accept a sponsored transaction unless the paymaster already holds the <strong>worst case</strong> it could cost — about <strong>21</strong> — even though it settles for far less. Fund below that and it sponsors nothing while looking healthy: positive balance, correct policy, every player quietly billed their own gas. The error appears only at submission.<br><br>
+    So there is a floor, not just a budget. <code>--show</code> prints it and says whether you clear it. The reserve rises with network fees, so keep well above it.</p>
   </div>
 
   <h3>Change the quotas (more players, more transactions)</h3>
@@ -333,15 +329,31 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
 
   <div class="note danger">
     <span class="tag">Irreversible</span>
-    <p style="margin:0.5rem 0 0">Fee juice sent to a paymaster <strong>cannot be withdrawn</strong> — the protocol makes it non-transferable, which is why not even the key holder can take it out. Retuning no longer strands anything, since the numbers change in place. But the balance is still the real, hard cap on what you can lose, and it is the <em>only</em> cap: the key can raise the spending limits, and there is no way to pull funds back. So <strong>fund in tranches</strong> — deposit what you would accept losing, and top up as it proves out.</p>
+    <p style="margin:0.5rem 0 0">Fee juice sent to a paymaster <strong>cannot be withdrawn</strong> — the protocol makes it non-transferable, so not even the key holder can take it out. Retuning strands nothing (the numbers change in place), but the balance is the only hard cap on what you can lose, and the key can raise the limits. <strong>Fund in tranches:</strong> deposit what you'd accept losing, top up as it proves out.</p>
+  </div>
+
+  <h2>Privacy, and who can abuse this</h2>
+  <p>You are building a privacy game, so these deserve stating rather than leaving to be discovered.</p>
+
+  <div class="note warn">
+    <span class="tag">What sponsorship reveals</span>
+    <p style="margin:0.5rem 0 0">To enforce one allowance per player per day, the contract publishes a marker derived from the player's address and the day. It cannot enumerate players — but <strong>if you already suspect an address, you can confirm whether it used sponsorship that day.</strong><br><br>
+    Seat markers use small numbers, so anyone can count seats used per day. Capacity data, not player data.<br><br>
+    The other way: all sponsored transactions share one fee payer, so players don't pay from their own funded accounts — a privacy <em>gain</em> over bridging from an exchange.</p>
+  </div>
+
+  <div class="note danger">
+    <span class="tag">There is no sybil resistance</span>
+    <p style="margin:0.5rem 0 0">Accounts are free, so one person can create several and take every seat, every day. The daily caps bound the cost, the balance bounds it absolutely — but <strong>the caps are a spend limit, not a fairness mechanism.</strong><br><br>
+    At showcase size that's fine: worst case, one person burns the day's allowance and everyone else pays their own gas, as they do today. To scale this to real onboarding you'll want a gate in front — invite code, account age, whatever you already trust. On-chain, ten players and one person with ten accounts are indistinguishable.</p>
   </div>
 
   <h2>Honest caveats</h2>
-  <p>This was built and proven end-to-end against your real contracts on a local network — a player with zero fee juice gets past onboarding and plays, sponsored. Two things you should know before scaling funding beyond a showcase:</p>
+  <p>A player with zero fee juice gets past onboarding and plays, sponsored — proven on mainnet, against your real contracts. Things you should know before scaling funding beyond a showcase:</p>
 
   <div class="note good">
     <span class="tag">The restriction now holds for everyone</span>
-    <p style="margin:0.5rem 0 0">Earlier this was only true for ordinary accounts — someone using a custom account contract could spend their own daily allowance elsewhere. That is closed. The paymaster now also checks <strong>which account software</strong> the player is running: only the wallet type your players actually use is sponsored, and it must be an account that cannot later swap its own code. Both halves matter — the first version of this check was defeated by an account upgrading itself after approval, which a security review caught before it shipped.</p>
+    <p style="margin:0.5rem 0 0">The paymaster checks <strong>which account software</strong> the player runs: only your players' wallet type is sponsored, and it must be an account that cannot later swap its own code. Both halves matter — the first version of this check was defeated by an account upgrading itself after approval, caught in review before it shipped.</p>
   </div>
 
   <div class="note warn">
@@ -354,17 +366,21 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
 
   <div class="note warn">
     <span class="tag">What that costs you</span>
-    <p style="margin:0.5rem 0 0">Sponsorship is limited to players on the standard embedded wallet. Two consequences worth knowing: upgrading the account library changes its identifier, so players on the new version need a paymaster redeploy to stay sponsored; and anyone who knows a player's account details can publish it on-chain, which permanently ends sponsorship <em>for that player</em>. That is a nuisance aimed at one person, not a way to take funds — but it is unfixable once done.</p>
+    <p style="margin:0.5rem 0 0">Sponsorship only covers players on the standard embedded wallet. Two consequences worth knowing: upgrading the account library changes its identifier, so players on the new version need a paymaster redeploy to stay sponsored; and anyone who knows a player's account details can publish it on-chain, which permanently ends sponsorship <em>for that player</em>. That is a nuisance aimed at one person, not a way to take funds — but it is unfixable once done.</p>
   </div>
 
   <div class="note warn">
-    <span class="tag">Gas is estimated, not yet measured on your network</span>
-    <p style="margin:0.5rem 0 0">The per-transaction gas limits are conservative estimates. A heavier-than-expected call could exceed them; if that happens at execution time the transaction reverts, the paymaster still pays, and the player loses one sponsored transaction. Calibrating against real transactions on the target network (a script exists for this) pins the ceiling before funding.</p>
+    <span class="tag">Two different failure modes, two different outcomes</span>
+    <p style="margin:0.5rem 0 0">If a call exceeds the gas budget, the outcome depends on <em>when</em> it is caught:<br><br>
+    <strong>Refused before broadcast</strong> — nothing was sent; the player pays their own gas, no allowance consumed.<br>
+    <strong>Accepted, then reverts</strong> — the paymaster has already committed, so it pays and one sponsored transaction is consumed. Deliberate: otherwise a revert would be a free ride.<br><br>
+    Re-measure after any change to the gas profile or the game contracts.</p>
   </div>
 
   <div class="note good">
     <span class="tag">What's solid</span>
-    <p style="margin:0.5rem 0 0">Seven independent security reviews. The allowance accounting is exact, the daily reset needs no operator, and a reverting game move is handled correctly (it consumes one use rather than stranding the player mid-day). The whole thing degrades safely: if sponsorship is ever unavailable, players simply fall back to their own gas. Every claim on this page is backed by tests that run against the real contracts on a live network — including one proving the account-upgrade route is blocked, and one that fast-forwards the clock to prove a queued change really is inert until its time.</p>
+    <p style="margin:0.5rem 0 0">21 integration tests run against real contracts on a live network — including one proving the account-upgrade route is blocked, and one that fast-forwards the clock to prove a queued change is inert until its time.<br><br>
+    <strong>On review, precisely:</strong> many rounds of adversarial review across two model families, which found and fixed real defects — an account-upgrade bypass, an off-by-one in allowance clamping, a fund-stranding window in the bridge script. That is <em>self-commissioned automated review, not a third-party audit.</em> No external auditor has seen this.</p>
   </div>
 
   <h2>What you'd do to run it</h2>
@@ -376,13 +392,13 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
   </ul>
 
   <footer>
-    <p>Prototype and evaluation. Full implementation, runbook, and security review live in the project repo under <code>implementations-plan/quota-fpc/</code> and <code>docs/quota-fpc-local.md</code>. Not yet deployed to mainnet.</p>
+    <p>Prototype and evaluation. Full implementation, runbook, and security review live in the project repo under <code>implementations-plan/quota-fpc/</code> and <code>docs/quota-fpc-local.md</code>. Deployed and funded on Aztec mainnet; the addresses are above.</p>
   </footer>
 </main>
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = { players: 100, txs: 30, days: 30, cost: 0.85, price: 0.0146 };
+  const state = { players: 100, txs: 30, days: 30, cost: 6.58, price: 0.0146 };
 
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
   function fmtFj(n) {
