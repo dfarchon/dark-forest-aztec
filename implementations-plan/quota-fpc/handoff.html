@@ -233,20 +233,19 @@
         <div class="field">
           <label for="cost">Fee juice per transaction <span class="val" id="costVal">2.28e-5</span> <span class="sub" id="costUsdVal" style="display:inline">≈ $0.00000033 each</span></label>
           <div class="row">
-            <input type="range" id="cost" min="1" max="1000" step="1" value="228" aria-describedby="costVal">
-            <input type="number" id="costNum" step="any" value="0.0000228" aria-label="Fee juice per transaction">
+            <input type="range" id="cost" min="1" max="400" step="1" value="69" aria-describedby="costVal">
+            <input type="number" id="costNum" step="any" value="6.86" aria-label="Fee juice per transaction">
           </div>
           <div class="row" style="margin-top:0.6rem">
             <label for="perTxUsd" style="margin:0;font-weight:600;font-size:0.86rem">…which is per transaction</label>
             <input type="number" id="perTxUsd" step="any" aria-label="USD per transaction">
           </div>
           <div class="presets" id="costPresets">
-            <button type="button" class="preset" data-cost="0.0000076">Sandbox measurement</button>
-            <button type="button" class="preset" data-cost="0.0000228" aria-pressed="true">Sandbox × 3 (the policy ceiling)</button>
-            <button type="button" class="preset" data-usd="0.001">If a tx costs $0.001</button>
-            <button type="button" class="preset" data-usd="0.01">If a tx costs $0.01</button>
+            <button type="button" class="preset" data-cost="6.86" aria-pressed="true">Measured on mainnet</button>
+            <button type="button" class="preset" data-cost="20.24">Worst case (the ceiling)</button>
+            <button type="button" class="preset" data-cost="25">Configured ceiling</button>
           </div>
-          <p class="hint"><strong>Do not trust the first two.</strong> They come from a local test network, which charges almost nothing — no congestion, no real proving market, no L1 data costs. A live network could plausibly be <em>thousands of times</em> more expensive, which is the difference between this page saying "three cents" and "several hundred dollars". The last two presets are illustrative round numbers, not estimates. Type the real figure here once the calibration script has measured it on the target network; everything else on this page is exact arithmetic and will follow.</p>
+          <p class="hint"><strong>These are real, measured on Aztec mainnet on 1 August 2026.</strong> A transaction we actually sent cost <strong>6.86 fee juice</strong>. The worst case — what a transaction costs if it uses every bit of gas the game client allows — is <strong>20.24</strong>, and the paymaster is configured to refuse anything above 25. Earlier drafts of this page used a figure from a local test network that charges almost nothing; it was roughly <em>888,000 times</em> too low, which is the difference between this page saying "three cents" and "twenty-six thousand dollars". Fees float with demand, so re-measure before committing a large budget.</p>
         </div>
         <div class="field">
           <label for="price">$AZTEC price (USD) <span class="val" id="priceVal">$0.0146</span></label>
@@ -334,7 +333,7 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = { players: 100, txs: 30, days: 30, cost: 0.0000228, price: 0.0146 };
+  const state = { players: 100, txs: 30, days: 30, cost: 6.86, price: 0.0146 };
 
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
   function fmtFj(n) {
@@ -400,7 +399,7 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
   bindPair("players", "playersNum", "players");
   bindPair("txs", "txsNum", "txs");
   bindPair("days", "daysNum", "days");
-  bindPair("cost", "costNum", "cost", (v) => v * 1e-7, (v) => Math.round(v / 1e-7));
+  bindPair("cost", "costNum", "cost", (v) => v * 0.1, (v) => Math.round(v / 0.1));
   bindPair("price", "priceNum", "price", (v) => v * 1e-4, (v) => Math.round(v / 1e-4));
 
   function syncPresets() {
@@ -445,7 +444,7 @@ pnpm --filter contracts run update-fpc-policy -- --fpc &lt;address&gt; --max-use
   function setCost(cost, opts = {}) {
     state.cost = cost;
     $("costNum").value = Number(cost.toPrecision(6));
-    $("cost").value = Math.min(+$("cost").max, Math.max(1, Math.round(cost / 1e-7)));
+    $("cost").value = Math.min(+$("cost").max, Math.max(1, Math.round(cost / 0.1)));
     syncPresets();
     const active = document.activeElement;
     recompute();

@@ -88,6 +88,31 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   });
 }
 
+/**
+ * True only for failures that cannot have left a transaction in flight.
+ *
+ * The dangerous case is a send that reached the sequencer while the response
+ * was lost: rebuilding then replays the player's action under a new nonce.
+ * So this allow-lists the reasons known to arise BEFORE broadcast — the
+ * paymaster refusing to sponsor, and the allowance still syncing — rather than
+ * trying to enumerate everything unsafe.
+ */
+function isRetryableBeforeBroadcast(err: unknown): boolean {
+  const name = (err as { name?: string })?.name;
+  if (name === "QuotaUnavailableError") {
+    return Boolean((err as { retryable?: boolean }).retryable);
+  }
+  const message = String((err as { message?: string })?.message ?? err ?? "");
+  // Proving-time rejections: the transaction was never submitted.
+  return (
+    /Gas settings exceed the sponsorship allowance/i.test(message) ||
+    /Invalid expiration timestamp/i.test(message) ||
+    /No sponsorship seats available/i.test(message) ||
+    /seat no longer within capacity/i.test(message) ||
+    /No sponsored transactions remaining/i.test(message)
+  );
+}
+
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
 
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
@@ -344,26 +369,28 @@ export class TxExecutor {
             );
             sponsoredSubmission = sponsoredHash;
           } catch (err) {
-            // One retry against a FRESH anchor. Sponsorship reads the
-            // paymaster's settings from a historical block, and around a
-            // scheduled policy change the transaction is stamped to expire at
-            // the changeover — so a proof begun just before it can miss.
-            // Re-proving against a newer anchor clears that specific case; if
-            // it fails again the cause is not timing.
-            try {
-              sponsoredSubmission = await this.trySponsoredSend(
-                contract,
-                method,
-                contractArgs,
-                quotaFpcAddress,
-                activeAddress
-              );
-            } catch (retryErr) {
-              // Falling back means the PLAYER pays. That must never be
-              // silent: before this, the only trace was a console.debug, so a
-              // lowered ceiling or an exhausted allowance charged people with
-              // no explanation at all.
-              await this.notifySponsorshipFallback(retryErr ?? err);
+            // Retry ONLY when the failure provably happened before anything
+            // was broadcast. A blanket retry is unsafe: if sendTx reached the
+            // node but its response was lost, rebuilding produces a second
+            // transaction with a fresh nonce — replaying the player's move and
+            // burning a second allowance. Losing sponsorship is recoverable;
+            // moving twice is not.
+            if (isRetryableBeforeBroadcast(err)) {
+              try {
+                sponsoredSubmission = await this.trySponsoredSend(
+                  contract,
+                  method,
+                  contractArgs,
+                  quotaFpcAddress,
+                  activeAddress
+                );
+              } catch (retryErr) {
+                await this.notifySponsorshipFallback(retryErr ?? err);
+              }
+            } else {
+              // Falling back means the PLAYER pays. That must never be silent:
+              // before this, the only trace was a console.debug.
+              await this.notifySponsorshipFallback(err);
             }
           }
         }
@@ -683,7 +710,21 @@ export class TxExecutor {
     });
 
     if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
-      return undefined;
+      // The COMMON case — allowance spent, no seats left, paymaster empty,
+      // mid-rollover, wallet still syncing. Returning undefined here used to
+      // skip the fallback notice entirely, so the very situation players hit
+      // most often was the one that charged them without a word. Throw the
+      // typed reason instead, so the caller can explain it.
+      const { QuotaUnavailableError } = await import("@dfpunk/quota-fpc");
+      const reason =
+        source.kind === "self-pay-exhausted" ? "exhausted" : source.kind;
+      throw new QuotaUnavailableError(
+        reason as never,
+        `Sponsorship unavailable: ${source.kind}`,
+        // Only a wallet still catching up is worth retrying; the rest are
+        // settled facts that a fresh anchor will not change.
+        source.kind === "sync-pending"
+      );
     }
 
     const methodFn = contract.methods[method];

@@ -98,10 +98,39 @@ export function getAccountMinBalanceFjWei(): bigint {
  * Always prints the active fee payment mode.
  */
 export async function prepareFeePayment(
-    wallet: EmbeddedWallet
+    wallet: EmbeddedWallet,
+    /** The account that will send — required to redeem a bridged claim. */
+    from?: AztecAddress
 ): Promise<FeePaymentContext> {
     const mode = getFeePaymentMode();
     console.log(`💳 FEE_PAYMENT_MODE=${mode}`);
+
+    // If a bridged-but-unredeemed claim is configured, it takes precedence:
+    // it is the only thing that can pay when the account balance is still zero.
+    const claimAmount = getOptionalEnv('QUOTA_FPC_CLAIM_AMOUNT');
+    const claimSecret = getOptionalEnv('QUOTA_FPC_CLAIM_SECRET');
+    const claimLeafIndex = getOptionalEnv('QUOTA_FPC_CLAIM_LEAF_INDEX');
+    if (claimAmount && claimSecret && claimLeafIndex && from) {
+        const { FeeJuicePaymentMethodWithClaim } =
+            await import('@aztec/aztec.js/fee');
+        console.log(
+            '🎟️  Redeeming a bridged fee-juice claim with this transaction.'
+        );
+        console.log(
+            '    Clear QUOTA_FPC_CLAIM_* from the env once it has been redeemed —'
+        );
+        console.log(
+            '    a claim is single-use and reusing it will fail the next transaction.'
+        );
+        return {
+            mode,
+            claimPaymentMethod: new FeeJuicePaymentMethodWithClaim(from!, {
+                claimAmount: Fr.fromString(claimAmount),
+                claimSecret: Fr.fromString(claimSecret),
+                messageLeafIndex: BigInt(claimLeafIndex),
+            } as never),
+        };
+    }
 
     if (mode === 'sponsored') {
         console.log('📝 Registering SponsoredFPC contract...');
@@ -125,9 +154,14 @@ export async function prepareFeePayment(
  */
 export function buildFeeSendFields(
     ctx: FeePaymentContext
-):
-    | { fee: { paymentMethod: SponsoredFeePaymentMethod } }
-    | Record<string, never> {
+): { fee: { paymentMethod: unknown } } | Record<string, never> {
+    // A freshly bridged account holds a CLAIM, not a balance — it literally
+    // cannot pay for the transaction that would redeem it. This method bundles
+    // the claim into the transaction it pays for, which is the only way a new
+    // account gets started on a network where SponsoredFPC is unfunded.
+    if (ctx.claimPaymentMethod) {
+        return { fee: { paymentMethod: ctx.claimPaymentMethod } };
+    }
     if (ctx.mode === 'sponsored') {
         if (!ctx.sponsoredFpc) {
             throw new Error(

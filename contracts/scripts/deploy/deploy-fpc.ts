@@ -219,7 +219,7 @@ async function main() {
     const deployer = await getOrCreateAccount(wallet, node);
     // Same fee path the game's own deploy uses, so a fresh deployer with no
     // fee juice can still publish (FEE_PAYMENT_MODE, default 'sponsored').
-    const feeCtx = await prepareFeePayment(wallet);
+    const feeCtx = await prepareFeePayment(wallet, deployer);
 
     const { QuotaFpcContract } = await import('../artifacts/QuotaFpc.js');
     const allowed = padAllowedTargets(

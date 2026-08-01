@@ -329,6 +329,9 @@ importers:
       '@dfpunk/hashing':
         specifier: workspace:*
         version: link:../packages/hashing
+      '@dfpunk/quota-fpc':
+        specifier: workspace:*
+        version: link:../packages/quota-fpc
       '@dfpunk/utils':
         specifier: workspace:*
         version: link:../packages/utils

@@ -10,11 +10,13 @@
         "aztec:fmt": "aztec-nargo fmt --workspace",
         "aztec:fmt:check": "aztec-nargo fmt --workspace --check",
         "aztec:fmt:lint-staged": "node -e \"require('child_process').execSync('aztec-nargo fmt --workspace', {stdio:'inherit'})\"",
+        "bridge-fee-juice": "pnpm exec tsx scripts/operator/bridge-fee-juice.ts",
         "build": "pnpm build-contracts",
         "build-contracts": "pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts",
         "bytecode-check": "pnpm exec tsx scripts/dev/bytecode-check.ts",
         "calibrate-fpc-gas": "pnpm exec tsx scripts/operator/calibrate-gas.ts",
         "circuit-info": "pnpm exec tsx scripts/dev/circuit-info.ts",
+        "claim-fee-juice": "pnpm exec tsx scripts/operator/claim-fee-juice.ts",
         "clean": "del-cli dist node_modules target codegenCache.json scripts/artifacts",
         "clean-pxe": "del-cli pxe_data_* wallet_data_* ./scripts/pxe_data_* ./scripts/wallet_data_* .store",
         "clean-store": "del-cli pxe_data_* wallet_data_* ./scripts/pxe_data_* ./scripts/wallet_data_* ./scripts/.test-accounts.json .store",
@@ -50,6 +52,7 @@
     },
     "dependencies": {
         "@dfpunk/hashing": "workspace:*",
+        "@dfpunk/quota-fpc": "workspace:*",
         "@dfpunk/utils": "workspace:*"
     },
     "devDependencies": {

@@ -126,3 +126,33 @@ At the client's gas LIMITS (50k DA / 6M L2, `gas-profile.ts`):
 The whole "funding is not the binding constraint, the policy is" framing in the handoff was an artefact of measuring on a network that charges almost nothing. **On mainnet, funding is exactly the binding constraint.**
 
 Measuring BEFORE deploying (rather than deploying a disposable instance first) cost nothing and caught all of this — `getCurrentMinFees` is a free read and is precisely the input the client multiplies to build `maxFeesPerGas`.
+
+## MAINNET DEPLOYMENT — live 2026-08-01
+
+```
+paymaster  0x11c2c722967ff512e143620292e0cce90bd96406c3c5af63db65df9901caaf37
+admin      0x157e64ac5ca521894cff836599ea449c8e25ae81bc7e1f2e7a8cf933b7442ba7
+deploy tx  0x251f6c73e96ae4f189610f7f4037c9679a0ac0479761afd7d6fbf9c073ae9b65
+funded     300 FJ (bridged from L1, claimed on the paymaster's behalf)
+```
+
+**First measured mainnet transaction fee: 6.855300444128783688 FJ** (the deploy itself, status `checkpointed`). Against the 20.24 FJ worst case at the client's gas limits, that confirms real usage sits comfortably under the ceiling rather than the ceiling being arbitrary.
+
+### Two things mainnet does that no local network does
+
+1. **SponsoredFPC is unfunded on mainnet.** `FEE_PAYMENT_MODE=sponsored` fails with `Not enough balance for fee payer`. A fresh account genuinely cannot transact — which is precisely the onboarding wall this project exists to remove, encountered first-hand.
+2. **A bridged account holds a CLAIM, not a balance**, so it cannot pay for the transaction that would redeem it. `FeeJuicePaymentMethodWithClaim` bundles the claim into the transaction it pays for. A bridged CONTRACT has the mirror problem — it cannot send at all — so someone else must call `FeeJuice.claim` on its behalf. Both paths now exist as operator scripts (`bridge-fee-juice`, `claim-fee-juice`) and as a claim mode in `prepareFeePayment`.
+
+### My mistake, recorded because it cost real money
+
+I derived the deployer address with `getSchnorrInitializerlessAccountContractAddress(secret, signingKey, salt)`. The real signature is **`(signingPrivateKey, salt, secretKey)`** — permuted. The resulting address was not the account the wallet uses, and **60 AZTEC (~$0.88) was bridged to it before the mismatch surfaced**. Fee juice cannot be moved, so it is stranded at an address whose keys I hold only in permuted form; recoverable in principle by instantiating the account with the permuted values, not worth the effort at this size.
+
+**Lesson: never derive an address from a helper whose argument order you have assumed.** The wallet reports its own derived address (`read-fee-juice-balance` prints it) — ask it, and compare, before sending anything anywhere.
+
+### Codex loop — round 2 of the post-implementation audit
+
+No Critical. Confirmed all five earlier fixes genuinely landed, and independently verified the arithmetic (floor 20.235 FJ, so 25 FJ clears it; worst case 750 FJ under the 800 funded). Two High findings, both fixed:
+
+1. **The retry was unsafe.** Any exception rebuilt the transaction with a fresh nonce, so a lost `sendTx` response would replay the player's move and burn a second allowance. Now allow-listed to failures that provably occur before broadcast.
+2. **The headline fix missed its main case.** `trySponsoredSend` *returns undefined* — rather than throwing — when the allowance is spent, seats are gone, or the paymaster is empty. Those are the common cases, and they bypassed both retry and notice, so the exact scenario the work set out to fix still charged players silently. Now throws a typed reason.
+3. Med: the gas profile was still copied in the operator script behind a stale TODO, despite the commit message claiming it was shared. `contracts` now depends on `@dfpunk/quota-fpc` and imports `sponsoredFeeFloorWei`.

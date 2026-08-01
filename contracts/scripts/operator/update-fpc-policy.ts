@@ -38,17 +38,10 @@ import { getOrCreateAccount, setupWallet } from '../utils/wallet.js';
 /** Must match UPDATE_DELAY_SECONDS in the contract. */
 const UPDATE_DELAY_SECONDS = 43_200;
 
-/**
- * What the client will try to spend on a sponsored transaction. Mirrors the
- * gas profile the client uses; a ceiling below this makes every sponsored
- * transaction unprovable.
- *
- * TODO(9.4): import these from `@dfpunk/quota-fpc` once the shared gas profile
- * lands, so there is one definition rather than two that can drift.
- */
-const CLIENT_DA_GAS_LIMIT = 50_000n;
-const CLIENT_L2_GAS_LIMIT = 6_000_000n;
-const CLIENT_FEE_HEADROOM = 2n;
+// The client's gas profile, imported rather than copied. Two copies of these
+// numbers is exactly how this script's floor check silently stops matching
+// what the client actually spends.
+import { sponsoredFeeFloorWei } from '@dfpunk/quota-fpc';
 
 interface Flags {
     fpc: string;
@@ -140,15 +133,6 @@ interface Bundle {
     maxUses: number;
     maxUsers: number;
     targets: string[];
-}
-
-/** The lowest per-transaction ceiling that still lets the client transact. */
-function clientFloorWei(feePerDaGas: bigint, feePerL2Gas: bigint): bigint {
-    return (
-        (CLIENT_DA_GAS_LIMIT * feePerDaGas +
-            CLIENT_L2_GAS_LIMIT * feePerL2Gas) *
-        CLIENT_FEE_HEADROOM
-    );
 }
 
 function printBundle(label: string, b: Bundle): void {
@@ -453,7 +437,7 @@ async function main() {
     const next = applyEdits(base, flags);
 
     const fees = await node.getCurrentMinFees();
-    const floor = clientFloorWei(
+    const floor = sponsoredFeeFloorWei(
         BigInt(fees.feePerDaGas),
         BigInt(fees.feePerL2Gas)
     );
