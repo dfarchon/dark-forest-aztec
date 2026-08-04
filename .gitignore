@@ -146,3 +146,6 @@ packages/network/
 df-gaia/
 
 wallet_data*
+
+# Machine-specific vite overrides (hostnames, proxies) — never commit.
+client/vite.config.local.*
