@@ -113,6 +113,23 @@ function isProvablyPreBroadcast(err: unknown): boolean {
   // executor instance. A local send queue cannot rule any of that out, so the
   // conflict is not evidence that this move was never broadcast, and self-paying
   // after it could replay the move.
+  // `Invalid tx: …` is the node's own rejection, raised by `isValidTx` BEFORE
+  // the transaction reaches the pool — so it proves the transaction was never
+  // admitted. It covers the two failures players actually hit: the paymaster
+  // sitting below the sequencer's reserve, and gas settings the node refuses.
+  //
+  // This is only sound because the sponsored send goes through a NON-RETRYING
+  // client (see WalletManager.sendOnce). With retries, this same string could
+  // be the answer to a second attempt while the first sits accepted in the
+  // mempool, and falling back would replay the player's move.
+  if (/Invalid tx:/i.test(message)) {
+    // …except a nullifier conflict, which reports only "some nullifier
+    // exists", never which one. It may be someone else taking the same seat
+    // (safe) or this player's own move already in flight (not safe), and the
+    // message cannot tell them apart.
+    return !/Existing nullifier/i.test(message);
+  }
+
   return (
     /Gas settings exceed the sponsorship allowance/i.test(message) ||
     /Invalid expiration timestamp/i.test(message) ||

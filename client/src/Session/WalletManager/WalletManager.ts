@@ -15,6 +15,7 @@ import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
+import { makeFetch } from "@aztec/foundation/json-rpc/client";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { TxHash } from "@aztec/stdlib/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -438,6 +439,8 @@ async function registerQuotaFpcWithWallet(
 
 export class WalletManager {
   private readonly node: AztecNode;
+  /** Needed to build the non-retrying send client; see `sendOnce`. */
+  private readonly nodeUrl?: string;
   private readonly wallet: Wallet;
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly quotaFpcAddress: AztecAddress | undefined;
@@ -458,9 +461,11 @@ export class WalletManager {
     sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore,
     isExternal: boolean,
-    quotaFpcAddress?: AztecAddress
+    quotaFpcAddress?: AztecAddress,
+    nodeUrl?: string
   ) {
     this.node = node;
+    this.nodeUrl = nodeUrl;
     this.wallet = wallet;
     this.sponsoredFpcAddress = sponsoredFpcAddress;
     this.quotaFpcAddress = quotaFpcAddress;
@@ -737,7 +742,8 @@ export class WalletManager {
       sponsoredFpcAddress,
       keyStore,
       false,
-      quotaFpcAddress
+      quotaFpcAddress,
+      config.nodeUrl
     );
   }
 
@@ -943,9 +949,23 @@ export class WalletManager {
         };
       }
 
-      // No note. That means either "never used today" or "used it all up" — the
-      // note is deleted on the last free transaction, so its absence alone
-      // cannot tell them apart. The player nullifier persists and can.
+      // `get_quota_info` collapses two different states into (false, 0): the
+      // player has no note, and the player has a note they cannot use. So a
+      // false here does NOT mean "out of transactions".
+      //
+      // The player nullifier tells us they started today, but it is read from
+      // the NODE while the note is read from the local PXE — and the PXE lags
+      // by seconds. Immediately after a player's first sponsored move the two
+      // disagree, and treating that disagreement as proof of exhaustion tells
+      // a player with four moves left that they have none. That is the exact
+      // wall this paymaster exists to remove, so it is the worst possible
+      // thing to get wrong.
+      //
+      // Report it as inconclusive instead. The contract is the authority on
+      // whether an allowance remains: if it really is spent, the sponsored
+      // send fails with "No sponsored transactions remaining", which is
+      // already handled as a safe pre-broadcast failure and falls back to
+      // self-pay. Guessing here buys nothing and can only be wrong.
       const { hasSubscribed } = await import("@dfpunk/quota-fpc");
       const alreadyClaimed = await hasSubscribed({
         node: this.node as never,
@@ -955,11 +975,12 @@ export class WalletManager {
       });
       return {
         generation,
-        // Claimed today with no note left means the allowance is spent; the
-        // caller reads that as exhausted rather than trying to subscribe again.
         subscribed: alreadyClaimed,
         remaining: 0,
-        syncing: false,
+        // Started today but no usable note visible yet: either the PXE has not
+        // caught up, or the allowance is genuinely spent. Never assert the
+        // second from the outside.
+        syncing: alreadyClaimed,
       };
     } catch (err) {
       console.debug("[WalletManager] could not read allowance:", err);
@@ -968,10 +989,17 @@ export class WalletManager {
   }
 
   /**
-   * Whether the paymaster can sponsor a new player right now — i.e. today's
-   * generation still has a free seat. Used by onboarding so it does not promise
-   * sponsorship it cannot deliver. Any read failure returns false (fall back to
-   * self-funding) rather than a false promise.
+   * Whether THIS player can be sponsored right now.
+   *
+   * Two different questions, and asking only the second is a bug: a player who
+   * already holds a seat needs an allowance, not a free seat. Checking seats
+   * alone turns every returning player away as soon as the day fills up — and
+   * sends them to the funding flow they had already been spared, while they
+   * still hold unused sponsored transactions.
+   *
+   * So: allowance first, seats only for players who have not started today.
+   * Any read failure returns false (fall back to self-funding) rather than a
+   * promise that cannot be kept.
    */
   async hasSponsorshipCapacity(): Promise<boolean> {
     try {
@@ -982,6 +1010,21 @@ export class WalletManager {
       const generation = generationAt(
         BigInt(block!.header.globalVariables.timestamp)
       );
+
+      // Already playing today with transactions left: no seat needed.
+      if (this.activeAddress) {
+        const allowance = await this.readQuotaAllowance(
+          quotaFpc,
+          this.activeAddress,
+          generation
+        );
+        if (allowance.remaining > 0) return true;
+        // Inconclusive (the PXE is still catching up) is not a refusal. The
+        // contract decides at send time; refusing here would be the same false
+        // negative one layer higher up.
+        if (allowance.syncing) return true;
+      }
+
       const seat = await this.findQuotaSeat(quotaFpc, generation);
       return seat !== null;
     } catch (err) {
@@ -1123,8 +1166,42 @@ export class WalletManager {
 
     const proven = await wallet.pxe.proveTx(txRequest, { scopes: [scope] });
     const tx = await proven.toTx();
-    await this.node.sendTx(tx as never);
+
+    // Sent through a NON-RETRYING client, deliberately.
+    //
+    // The shared node client retries at 1s/2s/3s, which is right for reads and
+    // wrong for this: if an attempt is accepted but its response is lost, a
+    // retry re-sends and the error finally surfaced belongs to the retry, not
+    // to the transaction's real fate. The caller would then see a rejection
+    // that looks conclusive ("Invalid tx: …") while the first attempt is in
+    // the mempool — and self-paying on the strength of it would submit the
+    // player's move twice.
+    //
+    // One attempt, one outcome, so a rejection response actually means what it
+    // says. Everything else stays unknown, and is treated as such.
+    await this.sendOnce().sendTx(tx as never);
     return tx.getTxHash();
+  }
+
+  /**
+   * A node client that does not retry, for calls where a retry would change
+   * the meaning of the answer rather than just its latency.
+   */
+  private sendOnceClient?: AztecNode;
+
+  private sendOnce(): AztecNode {
+    // Without a URL there is nothing to build a second client from, so fall
+    // back to the shared one. That is the retrying transport, so callers must
+    // keep treating ambiguous send failures as unknown — which they do.
+    if (!this.nodeUrl) return this.node;
+    if (!this.sendOnceClient) {
+      this.sendOnceClient = createAztecNodeClient(
+        this.nodeUrl,
+        {},
+        makeFetch([], false)
+      );
+    }
+    return this.sendOnceClient;
   }
 
   getActiveAddress(): AztecAddress | undefined {
