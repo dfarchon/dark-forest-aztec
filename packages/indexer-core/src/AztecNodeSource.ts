@@ -116,70 +116,76 @@ function toIdStr(v: unknown): string {
 }
 
 /**
- * Wraps two AztecNode clients (primary + backup) behind a transparent Proxy.
+ * Wraps an AztecNode client (primary + N backups) behind a transparent Proxy.
  *
- * Every method call goes to the currently-active node. If the primary fails
- * (network error, timeout, etc.), the proxy switches to the backup and retries
- * the call. After a cooldown period it probes the primary again and switches
- * back on success.
+ * Every method call goes to the currently-active node. If the active node fails
+ * (network error, timeout, etc.), the proxy cascades to the next backup and
+ * retries the call. After a cooldown period it probes the primary again and
+ * switches back on success.
  *
- * If no backup URL is provided, the primary is returned as-is (no overhead).
+ * If no backup URLs are provided, the primary is returned as-is (no overhead).
  */
-function createFailoverNode(primaryUrl: string, backupUrl?: string): AztecNode {
+function createFailoverNode(
+  primaryUrl: string,
+  backupUrls: string[],
+): AztecNode {
   const primary = createAztecNodeClient(primaryUrl) as AztecNode;
 
-  if (!backupUrl) return primary;
+  if (backupUrls.length === 0) return primary;
 
-  const backup = createAztecNodeClient(backupUrl) as AztecNode;
+  const backups = backupUrls.map(
+    (url) => createAztecNodeClient(url) as AztecNode,
+  );
+  const nodes: AztecNode[] = [primary, ...backups];
+  const labels = ["primary", ...backups.map((_, i) => `backup${i + 1}`)];
   const COOLDOWN_MS = 60_000; // try primary again after 60 s on backup
 
-  let active: AztecNode = primary;
-  let activeLabel = "primary";
+  let activeIndex = 0;
   let lastFailoverAt = 0;
 
-  const tryPrimaryRecovery = (): void => {
-    if (active === primary) return;
+  /** After cooldown, probe the primary (index 0) again. */
+  const tryRecovery = (): void => {
+    if (activeIndex === 0) return;
     if (Date.now() - lastFailoverAt < COOLDOWN_MS) return;
-    active = primary;
-    activeLabel = "primary";
-  };
-
-  const failover = (reason: string): void => {
-    if (active === backup) return;
-    active = backup;
-    activeLabel = "backup";
-    lastFailoverAt = Date.now();
-    console.warn(
-      `[FailoverNode] Switched to backup (${reason}). Will retry primary in ${COOLDOWN_MS / 1000}s.`,
-    );
+    activeIndex = 0;
   };
 
   return new Proxy({} as AztecNode, {
     get(_target, prop: string | symbol) {
-      tryPrimaryRecovery();
+      tryRecovery();
 
-      const value = Reflect.get(active, prop, active);
+      const current = nodes[activeIndex];
+      const value = Reflect.get(current, prop, current);
 
       if (typeof value !== "function") return value;
 
-      // Wrap async methods so a rejection on primary triggers failover + retry.
+      // Wrap async methods so a rejection cascades through backups.
       return async (...args: unknown[]) => {
-        try {
-          return await (value as (...a: unknown[]) => unknown).apply(
-            active,
-            args,
-          );
-        } catch (err) {
-          if (active === primary) {
-            const msg = err instanceof Error ? err.message : String(err);
-            failover(msg);
-            // Retry once on backup.
-            const backupValue = Reflect.get(backup, prop, backup) as (
+        let tryIndex = activeIndex;
+
+        while (true) {
+          try {
+            const node = nodes[tryIndex];
+            const fn = Reflect.get(node, prop, node) as (
               ...a: unknown[]
             ) => unknown;
-            return await backupValue.apply(backup, args);
+            return await fn.apply(node, args);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const nextIndex = tryIndex + 1;
+
+            if (nextIndex < nodes.length) {
+              tryIndex = nextIndex;
+              activeIndex = nextIndex;
+              lastFailoverAt = Date.now();
+              console.warn(
+                `[FailoverNode] Switched to ${labels[activeIndex]} (${msg}). Will retry primary in ${COOLDOWN_MS / 1000}s.`,
+              );
+              continue;
+            }
+
+            throw err; // all nodes exhausted
           }
-          throw err;
         }
       };
     },
@@ -190,12 +196,12 @@ function createFailoverNode(primaryUrl: string, backupUrl?: string): AztecNode {
  * Returns an IBlockEventSource that reads public storage events from the Aztec node.
  * @param nodeUrl - Aztec node URL (e.g. http://localhost:8080)
  * @param contractAddresses - Optional map of storage contract name to hex address; omitted entries use defaults from @dfpunk/contracts
- * @param backupNodeUrl - Optional backup Aztec node URL for automatic failover
+ * @param backupNodeUrls - Optional array of backup Aztec node URLs for automatic failover (cascades primary → backup1 → backup2 → ...)
  */
 export function createAztecNodeBlockSource(
   nodeUrl: string,
   contractAddresses?: StorageContractAddresses,
-  backupNodeUrl?: string,
+  backupNodeUrls?: string[],
 ): {
   getLatestBlockNumber: () => Promise<number>;
   getBlockUpdates: (
@@ -203,7 +209,7 @@ export function createAztecNodeBlockSource(
     toBlock: number,
   ) => Promise<BlockUpdates>;
 } {
-  const node = createFailoverNode(nodeUrl, backupNodeUrl);
+  const node = createFailoverNode(nodeUrl, backupNodeUrls ?? []);
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
 
   const specsWithArtifacts = STORAGE_SPECS.filter((spec) => {

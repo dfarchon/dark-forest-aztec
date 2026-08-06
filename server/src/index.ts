@@ -86,8 +86,10 @@ async function main(): Promise<void> {
   console.log(
     `[Server] Aztec node: ${config.aztecNodeUrl} (${config.nodeKind})`,
   );
-  if (config.aztecNodeUrlBackup) {
-    console.log(`[Server] Aztec node backup: ${config.aztecNodeUrlBackup}`);
+  if (config.aztecNodeUrlBackups.length > 0) {
+    console.log(
+      `[Server] Aztec node backups: ${config.aztecNodeUrlBackups.join(", ")}`,
+    );
   }
   console.log(`[Server] Start block: ${config.indexerStartBlock}`);
   console.log(`[Server] Contracts start block: ${contracts.startBlock}`);
@@ -124,7 +126,9 @@ async function main(): Promise<void> {
   const source = createAztecNodeBlockSource(
     config.aztecNodeUrl,
     undefined,
-    config.aztecNodeUrlBackup || undefined,
+    config.aztecNodeUrlBackups.length > 0
+      ? config.aztecNodeUrlBackups
+      : undefined,
   );
   const indexer = new IndexerService({
     source,

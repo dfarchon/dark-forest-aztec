@@ -12,7 +12,8 @@ export const DEFAULT_CORS_ORIGINS = [
 
 export interface ServerRuntimeConfig {
   aztecNodeUrl: string;
-  aztecNodeUrlBackup: string;
+  /** Backup RPC URLs (comma-separated in AZTEC_NODE_URL_BACKUP env). */
+  aztecNodeUrlBackups: string[];
   nodeKind: "local" | "remote";
   port: number;
   sqlitePath: string;
@@ -69,7 +70,10 @@ export function parseServerConfig(
   env: Record<string, string | undefined> = process.env,
 ): ServerRuntimeConfig {
   const aztecNodeUrl = parseAztecNodeUrl(env.AZTEC_NODE_URL);
-  const aztecNodeUrlBackup = env.AZTEC_NODE_URL_BACKUP?.trim() || "";
+  const aztecNodeUrlBackups = (env.AZTEC_NODE_URL_BACKUP ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
   const snapshotSchemaVersion = parseIntEnv(
     env.SNAPSHOT_SCHEMA_VERSION,
     1,
@@ -82,7 +86,7 @@ export function parseServerConfig(
   }
   return {
     aztecNodeUrl,
-    aztecNodeUrlBackup,
+    aztecNodeUrlBackups,
     nodeKind: detectNodeKind(aztecNodeUrl),
     port: parseIntEnv(env.PORT, 3001, "PORT"),
     sqlitePath: env.SQLITE_PATH?.trim() || "./data/indexer.db",
