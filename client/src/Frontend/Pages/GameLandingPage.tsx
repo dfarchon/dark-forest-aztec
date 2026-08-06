@@ -160,6 +160,47 @@ function printGameLandingDebugConfig({
   console.groupEnd();
 }
 
+function downloadQuickJoinAccountBackup(gameUIManager: GameUIManager): boolean {
+  const credentials = gameUIManager.getAccountCredentials();
+  const account = gameUIManager.getAccount();
+  const homeCoordinates = gameUIManager.getGameManager().getHomeCoords();
+
+  if (!credentials || !account || !homeCoordinates) {
+    console.error(
+      "Unable to download Quick Join account backup: account information is incomplete."
+    );
+    return false;
+  }
+
+  try {
+    const payload = {
+      secretKey: credentials.secretKey,
+      salt: credentials.salt,
+      signingKey: credentials.signingKey,
+      address: account,
+      homeCoordinates: {
+        x: homeCoordinates.x,
+        y: homeCoordinates.y,
+      },
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const accountString = String(account);
+    const safeAddr =
+      accountString.length >= 10 ? accountString.slice(0, 10) : "account";
+    a.download = `dark-forest-privacy-${safeAddr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    console.error("Failed to download Quick Join account backup:", err);
+    return false;
+  }
+}
+
 function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
   const [downloadState, setDownloadState] = useState<
     "idle" | "downloaded" | "failed"
@@ -1039,6 +1080,7 @@ export function GameLandingPage() {
   const quickBootstrapEffectGenRef = useRef(0);
   const quickEnterTimeoutRef = useRef<number | null>(null);
   const quickEnterFinalizeScheduledRef = useRef(false);
+  const quickJoinBackupAttemptedRef = useRef(false);
   const [enterTransitionVisible, setEnterTransitionVisible] = useState(false);
   const [refreshTransitionVisible, setRefreshTransitionVisible] =
     useState(false);
@@ -3170,6 +3212,13 @@ export function GameLandingPage() {
         .getGameManager()
         .on(GameManagerEvent.InitializedPlayer, () => {
           setTimeout(() => {
+            if (
+              skipTerminalPromptsRef.current &&
+              !quickJoinBackupAttemptedRef.current
+            ) {
+              quickJoinBackupAttemptedRef.current = true;
+              downloadQuickJoinAccountBackup(gameUIManager);
+            }
             terminal.current?.println("Initializing game...");
             setStep(TerminalPromptStep.ALL_CHECKS_PASS);
           });
