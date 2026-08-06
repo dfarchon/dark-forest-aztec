@@ -4,15 +4,21 @@ import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
 import TutorialManager from "../../Backend/GameLogic/TutorialManager";
-import { getEffectiveSponsoredFpcAddressOverride } from "../../config/connection";
 import {
+  getEffectiveSponsoredFpcAddressOverride,
+  getEffectiveUseSponsoredFpc,
+  setConnectionOverrides,
+} from "../../config/connection";
+import {
+  getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
   getSponsorMode,
 } from "../../config/env";
+import { externalLinks } from "../../config/externalLinks";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { Btn } from "../Components/Btn";
-import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
-import { TextInput } from "../Components/Input";
+import { Link, Section, SectionHeader, Spacer } from "../Components/CoreUI";
+import { Checkbox, DarkForestCheckbox, TextInput } from "../Components/Input";
 import { Slider } from "../Components/Slider";
 import { Green, Red } from "../Components/Text";
 import Viewport, { getDefaultScroll } from "../Game/Viewport";
@@ -62,16 +68,22 @@ export function SettingsPane({
   const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const account = useAccount(uiManager);
   const isDevelopment = process.env.NODE_ENV !== "production";
+  const sponsorMode = getSponsorMode();
 
   const [balance, setBalance] = useState<number>(0);
+  const [accountFjWei, setAccountFjWei] = useState<bigint>(0n);
   const [sponsorFjWei, setSponsorFjWei] = useState<bigint | undefined>(
     undefined
+  );
+  const [useSponsoredFpc, setUseSponsoredFpc] = useState(
+    getEffectiveUseSponsoredFpc()
   );
 
   useEffect(() => {
     if (!uiManager) return;
     const updateBalance = () => {
       setBalance(uiManager.getMyBalance());
+      setAccountFjWei(uiManager.getMyBalanceBn());
     };
 
     updateBalance();
@@ -83,7 +95,13 @@ export function SettingsPane({
   }, [uiManager]);
 
   useEffect(() => {
-    if (!visible || !getSponsorMode()) return;
+    if (visible) {
+      setUseSponsoredFpc(getEffectiveUseSponsoredFpc());
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !sponsorMode || !useSponsoredFpc) return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -104,11 +122,19 @@ export function SettingsPane({
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [visible, uiManager]);
+  }, [sponsorMode, useSponsoredFpc, visible, uiManager]);
 
   const sponsorFjMinWei = getSponsoredFpcMinBalanceFjWei();
   const sponsorFjLow =
     sponsorFjWei !== undefined && sponsorFjWei < sponsorFjMinWei;
+  const accountFjMinWei = getAccountMinBalanceFjWei();
+  const accountFjLow = accountFjWei < accountFjMinWei;
+
+  const onUseSponsoredFpcChange = (e: Event) => {
+    const enabled = (e.target as DarkForestCheckbox).checked;
+    setConnectionOverrides({ useSponsoredFpc: enabled });
+    setUseSponsoredFpc(enabled);
+  };
 
   const [failure, setFailure] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
@@ -232,106 +258,126 @@ export function SettingsPane({
           </Row>
         </Section>
 
-        {getSponsorMode() && (
-          <Section>
-            <SectionHeader>Sponsor gas (SponsoredFPC)</SectionHeader>
-            Fees can be paid by a SponsoredFPC contract on Aztec. Set or change
-            the address in <b>Connection settings</b> on the landing page before
-            you enter, then refresh so the wallet reloads it.
-            <Spacer height={12} />
-            <Row>
-              <span>Local / env override</span>
-              <span
-                style={{
-                  wordBreak: "break-all",
-                  maxWidth: 260,
-                  textAlign: "right",
-                  fontFamily: "monospace",
-                  fontSize: "11px",
+        <Section>
+          <SectionHeader>Transaction fees</SectionHeader>
+          {sponsorMode && (
+            <>
+              <Checkbox
+                label="Use SponsoredFPC to pay transaction fees"
+                checked={useSponsoredFpc}
+                onChange={onUseSponsoredFpcChange}
+              />
+              <Spacer height={12} />
+            </>
+          )}
+
+          {useSponsoredFpc ? (
+            <>
+              SponsoredFPC is the selected payer. If its FeeJuice balance is too
+              low, transactions fail instead of charging your account.
+              <Spacer height={12} />
+              <Row>
+                <span>Local / env override</span>
+                <span
+                  style={{
+                    wordBreak: "break-all",
+                    maxWidth: 260,
+                    textAlign: "right",
+                    fontFamily: "monospace",
+                    fontSize: "11px",
+                  }}
+                >
+                  {getEffectiveSponsoredFpcAddressOverride() ??
+                    "(none — canonical)"}
+                </span>
+              </Row>
+              <Row>
+                <span>Active payer (this session)</span>
+                <span
+                  style={{
+                    wordBreak: "break-all",
+                    maxWidth: 260,
+                    textAlign: "right",
+                    fontFamily: "monospace",
+                    fontSize: "11px",
+                  }}
+                >
+                  {uiManager.getGameManager().getSponsoredFpcAddress() ?? "—"}
+                </span>
+              </Row>
+              <Row>
+                <span>SponsoredFPC FeeJuice</span>
+                <span>
+                  {sponsorFjWei === undefined
+                    ? "—"
+                    : formatFeeJuiceWei(sponsorFjWei)}
+                </span>
+              </Row>
+              <Row>
+                <span>Minimum balance</span>
+                <span>{formatFeeJuiceWei(sponsorFjMinWei)}</span>
+              </Row>
+              {sponsorFjLow && (
+                <>
+                  <Spacer height={8} />
+                  <Red>
+                    SponsoredFPC balance is below the configured minimum.
+                    Transactions are blocked; fund it or change the address in
+                    Connection settings.
+                  </Red>
+                </>
+              )}
+              <Spacer height={8} />
+              <Btn
+                size="stretch"
+                onClick={async () => {
+                  const addr = uiManager
+                    .getGameManager()
+                    .getSponsoredFpcAddress();
+                  if (!addr) {
+                    setFailure("No SponsoredFPC address for this session.");
+                    return;
+                  }
+                  try {
+                    await window.navigator.clipboard.writeText(addr);
+                    setSuccess("Copied SponsoredFPC address.");
+                  } catch (err) {
+                    console.error(err);
+                    setFailure("Failed to copy to clipboard.");
+                  }
                 }}
               >
-                {getEffectiveSponsoredFpcAddressOverride() ??
-                  "(none — canonical)"}
-              </span>
-            </Row>
-            <Row>
-              <span>Active payer (this session)</span>
-              <span
-                style={{
-                  wordBreak: "break-all",
-                  maxWidth: 260,
-                  textAlign: "right",
-                  fontFamily: "monospace",
-                  fontSize: "11px",
-                }}
-              >
-                {uiManager.getGameManager().getSponsoredFpcAddress() ?? "—"}
-              </span>
-            </Row>
-            <Row>
-              <span>SponsoredFPC FeeJuice</span>
-              <span
-                style={{
-                  wordBreak: "break-all",
-                  maxWidth: 260,
-                  textAlign: "right",
-                  fontFamily: "monospace",
-                  fontSize: "11px",
-                }}
-              >
-                {sponsorFjWei === undefined
-                  ? "—"
-                  : formatFeeJuiceWei(sponsorFjWei)}
-              </span>
-            </Row>
-            <Row>
-              <span>Minimum balance (preflight)</span>
-              <span
-                style={{
-                  wordBreak: "break-all",
-                  maxWidth: 260,
-                  textAlign: "right",
-                  fontFamily: "monospace",
-                  fontSize: "11px",
-                }}
-              >
-                {formatFeeJuiceWei(sponsorFjMinWei)}
-              </span>
-            </Row>
-            {sponsorFjLow && (
-              <>
-                <Spacer height={8} />
-                <Red>
-                  SponsoredFPC balance is below the configured minimum. Fund it
-                  or change SponsoredFPC address in Connection settings, save,
-                  then refresh the page.
-                </Red>
-              </>
-            )}
-            <Spacer height={8} />
-            <Btn
-              size="stretch"
-              onClick={async () => {
-                const addr = uiManager
-                  .getGameManager()
-                  .getSponsoredFpcAddress();
-                if (!addr) {
-                  setFailure("No SponsoredFPC address for this session.");
-                  return;
-                }
-                try {
-                  await window.navigator.clipboard.writeText(addr);
-                  setSuccess("Copied SponsoredFPC address.");
-                } catch (err) {
-                  console.error(err);
-                  setFailure("Failed to copy to clipboard.");
-                }
-              }}
-            >
-              Copy active SponsoredFPC address
-            </Btn>
-          </Section>
-        )}
+                Copy active SponsoredFPC address
+              </Btn>
+            </>
+          ) : (
+            <>
+              Your active account pays transaction fees with its own FeeJuice.
+              <Spacer height={12} />
+              <Row>
+                <span>Account FeeJuice</span>
+                <span>{formatFeeJuiceWei(accountFjWei)}</span>
+              </Row>
+              <Row>
+                <span>Minimum balance</span>
+                <span>{formatFeeJuiceWei(accountFjMinWei)}</span>
+              </Row>
+              {accountFjLow && (
+                <>
+                  <Spacer height={8} />
+                  <Red>
+                    Account FeeJuice is below the configured minimum. Fund this
+                    account before sending transactions.
+                  </Red>
+                </>
+              )}
+              <Spacer height={8} />
+              <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
+                Open FeeJuice bridge
+              </Link>
+            </>
+          )}
+        </Section>
 
         {/* Gas price section removed: Aztec uses sponsored fee payment */}
 
