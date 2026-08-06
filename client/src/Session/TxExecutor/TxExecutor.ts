@@ -32,6 +32,7 @@ import type {
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
+import { getEffectiveUseSponsoredFpc } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
@@ -312,8 +313,16 @@ export class TxExecutor {
         time_called = Date.now();
 
         // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
-        const sponsoredFpcAddress = this.walletManager.getSponsoredFpcAddress();
-        if (sponsoredFpcAddress) {
+        const useSponsoredFpc = getEffectiveUseSponsoredFpc();
+        const sponsoredFpcAddress = useSponsoredFpc
+          ? this.walletManager.getSponsoredFpcAddress()
+          : undefined;
+        if (useSponsoredFpc) {
+          if (!sponsoredFpcAddress) {
+            throw new Error(
+              "[TxExecutor] SponsoredFPC payment is selected, but no SponsoredFPC is registered. Check Connection settings and refresh the page."
+            );
+          }
           const sponsorFjBal =
             await this.walletManager.getSponsoredFpcFeeJuiceBalance();
           const minWei = getSponsoredFpcMinBalanceFjWei();
@@ -344,12 +353,12 @@ export class TxExecutor {
             }
           }
         }
-        const sendOptsNoWait = sponsoredFpcAddress
+        const sendOptsNoWait = useSponsoredFpc
           ? ({
               from: this.walletManager.getActiveAddress()!,
               fee: {
                 paymentMethod: new SponsoredFeePaymentMethod(
-                  sponsoredFpcAddress
+                  sponsoredFpcAddress!
                 ),
               },
               wait: NO_WAIT,

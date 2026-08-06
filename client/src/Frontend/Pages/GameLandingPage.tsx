@@ -32,6 +32,7 @@ import {
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
   getEffectiveSponsoredFpcAddressOverride,
+  getEffectiveUseSponsoredFpc,
 } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
@@ -150,6 +151,7 @@ function printGameLandingDebugConfig({
     proverEnabled: getProverEnabled(),
     proverUrl: getEffectiveProverUrl(),
     sponsorMode: getSponsorMode(),
+    useSponsoredFpc: getEffectiveUseSponsoredFpc(),
     sponsoredFpcAddress:
       getEffectiveSponsoredFpcAddressOverride() ?? "(default from salt)",
     sponsoredFpcMinBalanceFjWei: getSponsoredFpcMinBalanceFjWei().toString(),
@@ -322,6 +324,10 @@ async function runSponsorInfrastructurePreflightGate(params: {
   }
 
   while (true) {
+    if (!getEffectiveUseSponsoredFpc()) {
+      await runAccountFeeJuicePreflightGate(params);
+      return;
+    }
     const wm = getWalletManager();
     if (!wm) {
       terminal.current?.println(
@@ -503,6 +509,10 @@ async function runAccountFeeJuicePreflightGate(params: {
   }
 
   outer: while (true) {
+    if (getEffectiveUseSponsoredFpc()) {
+      await runSponsorInfrastructurePreflightGate(params);
+      return;
+    }
     const wm = getWalletManager();
     if (!wm) {
       terminal.current?.println(
@@ -1433,8 +1443,18 @@ export function GameLandingPage() {
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 
-        if (sponsorMode) {
+        if (getEffectiveUseSponsoredFpc()) {
           await runSponsorInfrastructurePreflightGate({
+            terminal: terminalHandle,
+            getWalletManager: () => walletManagerRef.current,
+            setConnectionSettingsOpen,
+            setTerminalVisible,
+            entryMode: "quick",
+            rebuildWalletAfterConnectionSave,
+            onRefreshPage: playRefreshPageTransition,
+          });
+        } else {
+          await runAccountFeeJuicePreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
             setConnectionSettingsOpen,
@@ -2122,7 +2142,10 @@ export function GameLandingPage() {
           terminal.current?.newline();
           terminal.current?.newline();
 
-          if (sponsorMode && !walletMenuSponsorStatusPrintedRef.current) {
+          if (
+            getEffectiveUseSponsoredFpc() &&
+            !walletMenuSponsorStatusPrintedRef.current
+          ) {
             walletMenuSponsorStatusPrintedRef.current = true;
             await printInitialSponsorStatus(terminal);
           }
@@ -2318,7 +2341,6 @@ export function GameLandingPage() {
       isLobby,
       localAccountCount,
       selectWalletMode,
-      sponsorMode,
     ]
   );
 
@@ -2719,7 +2741,7 @@ export function GameLandingPage() {
       terminal.current?.println("");
       terminal.current?.println(`Welcome, player ${playerAddress}.`);
       if (walletManager.isExternalWallet()) {
-        if (sponsorMode) {
+        if (getEffectiveUseSponsoredFpc()) {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
@@ -2747,7 +2769,7 @@ export function GameLandingPage() {
         return;
       }
 
-      if (sponsorMode) {
+      if (getEffectiveUseSponsoredFpc()) {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
@@ -2778,7 +2800,7 @@ export function GameLandingPage() {
       }
       setStep(TerminalPromptStep.FETCHING_ETH_DATA);
     },
-    [playRefreshPageTransition, rebuildWalletAfterConnectionSave, sponsorMode]
+    [playRefreshPageTransition, rebuildWalletAfterConnectionSave]
   );
 
   const advanceStateFromCheckFeeJuice = useCallback(
@@ -2787,7 +2809,7 @@ export function GameLandingPage() {
       if (!walletManager) throw new Error("no wallet manager");
 
       if (walletManager.isExternalWallet()) {
-        if (sponsorMode) {
+        if (getEffectiveUseSponsoredFpc()) {
           await runSponsorInfrastructurePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
@@ -2815,7 +2837,7 @@ export function GameLandingPage() {
         return;
       }
 
-      if (sponsorMode) {
+      if (getEffectiveUseSponsoredFpc()) {
         await runSponsorInfrastructurePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
@@ -2846,7 +2868,7 @@ export function GameLandingPage() {
       }
       setStep(TerminalPromptStep.FETCHING_ETH_DATA);
     },
-    [playRefreshPageTransition, rebuildWalletAfterConnectionSave, sponsorMode]
+    [playRefreshPageTransition, rebuildWalletAfterConnectionSave]
   );
 
   const advanceStateFromFetchingEthData = useCallback(

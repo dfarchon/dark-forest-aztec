@@ -7,6 +7,7 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
+  getEffectiveUseSponsoredFpc,
   setConnectionOverrides,
 } from "../../config/connection";
 import {
@@ -16,9 +17,10 @@ import {
   getSponsoredFpcAddressFromEnv,
   getSponsorMode,
 } from "../../config/env";
+import { externalLinks } from "../../config/externalLinks";
 import dfstyles from "../Styles/dfstyles";
 import { Btn } from "./Btn";
-import { Title } from "./CoreUI";
+import { Link, Title } from "./CoreUI";
 import { TextInput } from "./Input";
 import { Modal } from "./Modal";
 import { Text } from "./Text";
@@ -34,8 +36,87 @@ function isValidHttpUrl(s: string): boolean {
 }
 
 const ConnectionSettingsContent = styled.div`
-  max-width: 400px;
-  min-width: 320px;
+  box-sizing: border-box;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 96px);
+  padding-right: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+`;
+
+const FeePaymentSection = styled.div`
+  margin: 2px 0 12px;
+  text-align: left;
+`;
+
+const FeePaymentToggle = styled.label`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid ${dfstyles.colors.borderDark};
+  border-radius: ${dfstyles.borderRadius};
+  background: ${dfstyles.colors.backgroundlight};
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    border-color: ${dfstyles.colors.subtext};
+  }
+`;
+
+const FeePaymentCheckbox = styled.input`
+  width: 17px;
+  height: 17px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: ${dfstyles.colors.dfgreen};
+  cursor: pointer;
+`;
+
+const FeePaymentToggleCopy = styled.span`
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.35;
+`;
+
+const FeePaymentTitle = styled.span`
+  color: ${dfstyles.colors.text};
+  font-size: ${dfstyles.fontSize};
+`;
+
+const FeePaymentSubtitle = styled.span`
+  color: ${dfstyles.colors.subtext};
+  font-size: ${dfstyles.fontSizeS};
+`;
+
+const FeePaymentDetails = styled.div`
+  margin-top: 8px;
+  padding: 11px 12px;
+  border-left: 2px solid ${dfstyles.colors.dfgreen};
+  background: ${dfstyles.colors.background};
+  text-align: left;
+`;
+
+const FeePaymentStatus = styled.div`
+  margin-bottom: 6px;
+  color: ${dfstyles.colors.dfgreen};
+  font-size: ${dfstyles.fontSizeS};
+`;
+
+const FeePaymentHelp = styled.p`
+  margin: 0 0 10px;
+  color: ${dfstyles.colors.subtext};
+  font-size: ${dfstyles.fontSizeS};
+  line-height: 1.45;
+`;
+
+const FeePaymentFieldLabel = styled.label`
+  display: block;
+  margin-bottom: 5px;
+  color: ${dfstyles.colors.text};
 `;
 
 export function ConnectionSettingsModal({
@@ -51,6 +132,7 @@ export function ConnectionSettingsModal({
   const [indexerUrlInput, setIndexerUrlInput] = useState("");
   const [proverUrlInput, setProverUrlInput] = useState("");
   const [sponsoredFpcInput, setSponsoredFpcInput] = useState("");
+  const [useSponsoredFpc, setUseSponsoredFpc] = useState(true);
   const [saveMessage, setSaveMessage] = useState<
     "saved" | "restored" | "error" | null
   >(null);
@@ -67,6 +149,7 @@ export function ConnectionSettingsModal({
         ? localSponsor.trim()
         : ""
     );
+    setUseSponsoredFpc(getEffectiveUseSponsoredFpc());
   }, []);
 
   useEffect(() => {
@@ -97,7 +180,7 @@ export function ConnectionSettingsModal({
       return;
     }
     const sponsorTrimmed = sponsoredFpcInput.trim();
-    if (sponsorMode && sponsorTrimmed.length > 0) {
+    if (sponsorMode && useSponsoredFpc && sponsorTrimmed.length > 0) {
       try {
         AztecAddress.fromStringUnsafe(sponsorTrimmed);
       } catch {
@@ -113,6 +196,7 @@ export function ConnectionSettingsModal({
         ? {
             sponsoredFpcAddress:
               sponsorTrimmed.length > 0 ? sponsorTrimmed : "",
+            useSponsoredFpc,
           }
         : {}),
     });
@@ -123,6 +207,7 @@ export function ConnectionSettingsModal({
     proverUrlInput,
     sponsoredFpcInput,
     sponsorMode,
+    useSponsoredFpc,
   ]);
 
   const handleRestoreDefault = useCallback(() => {
@@ -130,12 +215,15 @@ export function ConnectionSettingsModal({
       nodeUrl: "",
       indexerBootstrapUrl: undefined,
       proverUrl: "",
-      ...(sponsorMode ? { sponsoredFpcAddress: "" } : {}),
+      ...(sponsorMode
+        ? { sponsoredFpcAddress: "", useSponsoredFpc: null }
+        : {}),
     });
     setNodeUrlInput(getNodeUrl());
     setIndexerUrlInput(getIndexerBootstrapUrl() ?? "");
     setProverUrlInput(getProverUrl());
     setSponsoredFpcInput("");
+    setUseSponsoredFpc(sponsorMode);
     setSaveMessage("restored");
   }, [sponsorMode]);
 
@@ -143,7 +231,7 @@ export function ConnectionSettingsModal({
 
   return (
     <Modal
-      contain={["top", "left", "right"]}
+      contain={["top", "bottom", "left", "right"]}
       initialX={anchorPosition?.x}
       initialY={anchorPosition?.y}
       onMouseDown={(e) => {
@@ -194,34 +282,61 @@ export function ConnectionSettingsModal({
           placeholder={getProverUrl()}
           style={{ width: "100%", marginBottom: 12 }}
         />
-        {sponsorMode && (
-          <>
-            <label style={{ display: "block", marginBottom: 4 }}>
-              <Text>SponsoredFPC address (sponsor gas)</Text>
-            </label>
-            <p
-              style={{
-                margin: "0 0 8px",
-                fontSize: dfstyles.fontSizeS,
-                color: dfstyles.colors.subtext,
-              }}
-            >
-              Leave empty to use build default (
-              <code>VITE_SPONSORED_FPC_ADDRESS</code> or canonical salt-derived
-              instance). Save, then refresh the page so the wallet picks it up.
-            </p>
-            <TextInput
-              value={sponsoredFpcInput}
-              onChange={(e) =>
-                setSponsoredFpcInput((e.target as HTMLInputElement).value)
-              }
-              placeholder={
-                getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
-              }
-              style={{ width: "100%", marginBottom: 12 }}
-            />
-          </>
-        )}
+        <FeePaymentSection>
+          {sponsorMode && (
+            <FeePaymentToggle>
+              <FeePaymentCheckbox
+                type="checkbox"
+                checked={useSponsoredFpc}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setUseSponsoredFpc(e.target.checked)
+                }
+              />
+              <FeePaymentToggleCopy>
+                <FeePaymentTitle>Sponsored fees</FeePaymentTitle>
+                <FeePaymentSubtitle>
+                  Pay transaction fees with SponsoredFPC
+                </FeePaymentSubtitle>
+              </FeePaymentToggleCopy>
+            </FeePaymentToggle>
+          )}
+
+          {sponsorMode && useSponsoredFpc ? (
+            <FeePaymentDetails>
+              <FeePaymentStatus>SponsoredFPC selected</FeePaymentStatus>
+              <FeePaymentHelp>
+                If its FeeJuice balance is too low, entry stops instead of
+                charging your account.
+              </FeePaymentHelp>
+              <FeePaymentFieldLabel>SponsoredFPC address</FeePaymentFieldLabel>
+              <TextInput
+                value={sponsoredFpcInput}
+                onChange={(e) =>
+                  setSponsoredFpcInput((e.target as HTMLInputElement).value)
+                }
+                placeholder={
+                  getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
+                }
+                style={{ width: "100%", marginBottom: 7 }}
+              />
+              <FeePaymentHelp style={{ marginBottom: 0 }}>
+                Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code> or
+                the canonical instance. Address changes apply after refresh.
+              </FeePaymentHelp>
+            </FeePaymentDetails>
+          ) : (
+            <FeePaymentDetails>
+              <FeePaymentStatus>Account FeeJuice selected</FeePaymentStatus>
+              <FeePaymentHelp>
+                Your account pays transaction fees. Its FeeJuice balance is
+                checked after wallet selection.
+              </FeePaymentHelp>
+              <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
+                Open FeeJuice bridge
+              </Link>
+            </FeePaymentDetails>
+          )}
+        </FeePaymentSection>
         {saveMessage === "saved" && (
           <Text
             style={{
