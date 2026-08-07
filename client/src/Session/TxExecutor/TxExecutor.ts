@@ -90,77 +90,6 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 /**
- * True only for failures that cannot have left a transaction in flight.
- *
- * The dangerous case is a send that reached the sequencer while the response
- * was lost: rebuilding then replays the player's action under a new nonce.
- * So this allow-lists the reasons known to arise BEFORE broadcast — the
- * paymaster refusing to sponsor, and the allowance still syncing — rather than
- * trying to enumerate everything unsafe.
- */
-function isProvablyPreBroadcast(err: unknown): boolean {
-  if ((err as { name?: string })?.name === "QuotaUnavailableError") {
-    // Raised by our own pre-flight, before anything is built or sent.
-    return true;
-  }
-  const message = String((err as { message?: string })?.message ?? err ?? "");
-  // Rejections raised while proving or by the node's admission checks — in
-  // every one of these the transaction was refused, not accepted.
-  //
-  // `Existing nullifier` is deliberately NOT in this set, though it is tempting:
-  // it is raised by the node, not by proving, and precisely BECAUSE some other
-  // transaction got there first. That other transaction may be an earlier,
-  // ambiguous attempt at THIS move — from a reload, a second device, or another
-  // executor instance. A local send queue cannot rule any of that out, so the
-  // conflict is not evidence that this move was never broadcast, and self-paying
-  // after it could replay the move.
-  // `Invalid tx: …` is the node's own rejection, raised by `isValidTx` BEFORE
-  // the transaction reaches the pool — so it proves the transaction was never
-  // admitted. It covers the two failures players actually hit: the paymaster
-  // sitting below the sequencer's reserve, and gas settings the node refuses.
-  //
-  // This is only sound because the sponsored send goes through a NON-RETRYING
-  // client (see WalletManager.sendOnce). With retries, this same string could
-  // be the answer to a second attempt while the first sits accepted in the
-  // mempool, and falling back would replay the player's move.
-  if (/Invalid tx:/i.test(message)) {
-    // …except a nullifier conflict, which reports only "some nullifier
-    // exists", never which one. It may be someone else taking the same seat
-    // (safe) or this player's own move already in flight (not safe), and the
-    // message cannot tell them apart.
-    return !/Existing nullifier/i.test(message);
-  }
-
-  return (
-    /Gas settings exceed the sponsorship allowance/i.test(message) ||
-    /Invalid expiration timestamp/i.test(message) ||
-    /No sponsorship seats available/i.test(message) ||
-    /seat no longer within capacity/i.test(message) ||
-    /No sponsored transactions remaining/i.test(message) ||
-    /account class is not sponsored/i.test(message) ||
-    /non-allowlisted contract/i.test(message) ||
-    /Sponsorship covers up to/i.test(message)
-  );
-}
-
-/**
- * Whether re-attempting is both SAFE and USEFUL.
- *
- * Safety is `isProvablyPreBroadcast` — anything else may already be in flight,
- * and rebuilding would replay the player's move. Usefulness is narrower still:
- * only a wallet that was mid-sync has any prospect of succeeding second time.
- */
-function isRetryableBeforeBroadcast(err: unknown): boolean {
-  if (!isProvablyPreBroadcast(err)) return false;
-  if ((err as { name?: string })?.name === "QuotaUnavailableError") {
-    return Boolean((err as { retryable?: boolean }).retryable);
-  }
-  return /Invalid expiration timestamp/i.test(
-    String((err as { message?: string })?.message ?? err ?? "")
-  );
-}
-
-/**
  * Verbose sponsorship diagnostics, off unless VITE_QUOTA_DEBUG is set.
  *
  * Exists for capture sessions against a real network: the interesting facts —
@@ -414,14 +343,14 @@ export class TxExecutor {
         // Quota mode note: when a QuotaFpc paymaster is configured, sponsored
         // transactions do not go through this path at all — they are assembled
         // with the paymaster as the transaction origin so the game still sees
-        // the player as msg_sender (see @dfpunk/quota-fpc). That assembly lands
+        // the player as msg_sender (see @alejoamiras/quota-paymaster). That assembly lands
         // with the UI work; until then a configured paymaster is registered with
         // the wallet but transactions continue to use the paths below, so the
         // game behaves exactly as it does today.
         //
         // Sponsored path: when a paymaster is configured and the player still
         // has allowance, the transaction is assembled with the PAYMASTER as its
-        // origin (see @dfpunk/quota-fpc). Any failure here falls through to the
+        // origin (see @alejoamiras/quota-paymaster). Any failure here falls through to the
         // normal paths below rather than blocking the move — a player who can
         // pay their own way must never be stopped because sponsorship lapsed.
         let sponsoredSubmission: TxHash | undefined;
@@ -463,7 +392,11 @@ export class TxExecutor {
             // transaction with a fresh nonce — replaying the player's move and
             // burning a second allowance. Losing sponsorship is recoverable;
             // moving twice is not.
-            if (isRetryableBeforeBroadcast(err)) {
+            if (
+              this.walletManager
+                .getSendContext()
+                .isRetryableBeforeBroadcast(err)
+            ) {
               try {
                 sponsoredSubmission = await this.trySponsoredSend(
                   contract,
@@ -474,7 +407,11 @@ export class TxExecutor {
                 );
               } catch (retryErr) {
                 // The retry itself may now be ambiguous. Same rule applies.
-                if (!isProvablyPreBroadcast(retryErr)) {
+                if (
+                  !this.walletManager
+                    .getSendContext()
+                    .isProvablyPreBroadcast(retryErr)
+                ) {
                   throw new Error(
                     "Sponsored transaction status unknown — not retrying or " +
                       "self-paying, because it may already have been submitted. " +
@@ -484,7 +421,9 @@ export class TxExecutor {
                 }
                 await this.notifySponsorshipFallback(retryErr ?? err);
               }
-            } else if (!isProvablyPreBroadcast(err)) {
+            } else if (
+              !this.walletManager.getSendContext().isProvablyPreBroadcast(err)
+            ) {
               // Could not prove nothing was sent. Falling through to the
               // ordinary self-paid send would replay the move — sponsored
               // first, then paid for again. Failing loudly is the safe answer.
@@ -754,11 +693,15 @@ export class TxExecutor {
       const message = String(
         (err as { message?: string })?.message ?? err ?? ""
       );
-      const [{ reasonFromRevert, describeQuotaUnavailable }, NotificationMod] =
-        await Promise.all([
-          import("@dfpunk/quota-fpc"),
-          import("../../Frontend/Game/NotificationManager"),
-        ]);
+      const [
+        { reasonFromRevert },
+        { describeQuotaUnavailable },
+        NotificationMod,
+      ] = await Promise.all([
+        import("@alejoamiras/quota-paymaster"),
+        import("../quotaMessages"),
+        import("../../Frontend/Game/NotificationManager"),
+      ]);
       // NotificationType is a `const enum`: it is erased at compile time, so
       // it must come from the STATIC import above — reading it off the dynamic
       // module object yields undefined at runtime.
@@ -798,7 +741,7 @@ export class TxExecutor {
   ): Promise<TxHash | undefined> {
     const [{ buildSandwichPayload, generationAt, resolveFeeSource }, quotaFpc] =
       await Promise.all([
-        import("@dfpunk/quota-fpc"),
+        import("@alejoamiras/quota-paymaster"),
         this.walletManager.getQuotaFpcContract(),
       ]);
     if (!quotaFpc) return undefined;
@@ -819,6 +762,15 @@ export class TxExecutor {
     const source = await resolveFeeSource({
       state,
       chainTimestampSeconds: chainSeconds,
+      // PRODUCT DECISION, required by the SDK: while allowance evidence is
+      // still syncing, WAIT (blocked/sync-pending, retryable) rather than
+      // self-pay. Two reasons. The players this paymaster exists for have a
+      // zero balance, so self-pay would not rescue them — it would just fail
+      // differently; and a funded player mid-sync should not be silently
+      // charged for a transaction the paymaster would have covered a second
+      // later. This was always the intent: sync-pending has been the one
+      // retryable reason since the first cut-over.
+      onSyncing: "wait",
       findFreeSeat: () =>
         this.walletManager.findQuotaSeat(quotaFpc, generation),
       ownBalance: 0n,
@@ -841,7 +793,8 @@ export class TxExecutor {
       // skip the fallback notice entirely, so the very situation players hit
       // most often was the one that charged them without a word. Throw the
       // typed reason instead, so the caller can explain it.
-      const { QuotaUnavailableError } = await import("@dfpunk/quota-fpc");
+      const { QuotaUnavailableError } =
+        await import("@alejoamiras/quota-paymaster");
       // The reason lives on the `blocked` variant, not on `kind` — comparing
       // `kind` against reason names silently collapsed every cause into one
       // and meant a still-syncing wallet was never retried.
@@ -872,7 +825,49 @@ export class TxExecutor {
       quotaFpc as never
     );
 
-    return await this.walletManager.sendFromQuotaPaymaster(payload, player);
+    const txHash = await this.walletManager.sendFromQuotaPaymaster(
+      payload,
+      player
+    );
+
+    // Refresh the badge by waiting for the SPECIFIC transition this send
+    // implies, per the SDK's discipline: concluding "out for today"
+    // (expectedRemaining 0) requires positive prior evidence of the
+    // subscription note — `observedSubscribedBefore` — because absence alone
+    // is also what a lagging wallet reports forever. Fire-and-forget: the
+    // badge must never delay or fail the transaction.
+    if (source.kind === "sponsored" && state.subscribed) {
+      void (async () => {
+        try {
+          const { awaitAllowanceTransition } =
+            await import("@alejoamiras/quota-paymaster");
+          const observed = await awaitAllowanceTransition({
+            generation,
+            readState: async () => {
+              const s2 = await this.walletManager.readQuotaAllowance(
+                quotaFpc,
+                player,
+                generation
+              );
+              return { subscribed: s2.subscribed, remaining: s2.remaining };
+            },
+            expectedRemaining: Math.max(0, state.remaining - 1),
+            // This send was BUILT from the observed subscription note — the
+            // positive evidence the exhaustion conclusion requires.
+            observedSubscribedBefore: true,
+          });
+          const {
+            publishQuotaStatus: publish,
+            quotaStatusFromAllowance: from,
+          } = await import("../QuotaStatus");
+          publish(from(observed, BigInt(this.chainClock.nowSec())));
+        } catch {
+          /* badge refresh must never affect the transaction path */
+        }
+      })();
+    }
+
+    return txHash;
   }
 
   private nextId(): TransactionId {

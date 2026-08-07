@@ -7,6 +7,12 @@
  */
 
 import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
+import {
+  createSendOnceContext,
+  DARK_FOREST_REFERENCE_GAS_PROFILE,
+  type SendOnceContext,
+  sponsoredFeeFloorWei,
+} from "@alejoamiras/quota-paymaster";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { BlockNumber, Fq, Fr } from "@aztec/aztec.js/fields";
@@ -15,7 +21,6 @@ import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { makeFetch } from "@aztec/foundation/json-rpc/client";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { TxHash } from "@aztec/stdlib/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -72,14 +77,6 @@ import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/Playe
 import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
-import {
-  QUOTA_DA_GAS_LIMIT,
-  QUOTA_FEE_HEADROOM_MULTIPLIER,
-  QUOTA_L2_GAS_LIMIT,
-  QUOTA_TEARDOWN_DA_GAS_LIMIT,
-  QUOTA_TEARDOWN_L2_GAS_LIMIT,
-  sponsoredFeeFloorWei,
-} from "@dfpunk/quota-fpc";
 
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
 import { KeyStore } from "./KeyStore";
@@ -89,6 +86,15 @@ import type {
   WalletManagerConfig,
 } from "./types";
 import { acquireWalletSessionLock } from "./walletSessionLock";
+
+/**
+ * The gas envelope sponsored transactions run under. The package ships no
+ * default — budgets are a per-app measurement — and this reference profile IS
+ * our measurement: tuned on mainnet 2026-08-01 from real sponsored gameplay
+ * (a move uses ~65% of its L2 budget). Re-measure via the operator's
+ * measureSponsoredFee when the action mix changes.
+ */
+const QUOTA_GAS_PROFILE = DARK_FOREST_REFERENCE_GAS_PROFILE;
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
@@ -419,7 +425,7 @@ async function registerQuotaFpcWithWallet(
   }
 
   const { QuotaFpcContractArtifact } =
-    await import("@dfpunk/contracts/artifacts/QuotaFpc");
+    await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
   onRegisterProgress?.("Registering sponsored-transaction paymaster");
   // Class AND instance: the artifact is stored separately, keyed by class id,
   // and that is what the PXE looks up when syncing. It matters here because the
@@ -432,7 +438,7 @@ async function registerQuotaFpcWithWallet(
 }
 
 // Per-transaction gas ceilings for sponsored transactions now live in
-// @dfpunk/quota-fpc (imported at the top of this file). They are shared
+// @alejoamiras/quota-paymaster (imported at the top of this file). Shared
 // because the operator tooling must refuse to set a paymaster ceiling below
 // what this client actually spends, and two copies of those numbers is exactly
 // how that check silently stops matching reality.
@@ -693,7 +699,7 @@ export class WalletManager {
     if (config.quotaFpcAddress?.trim()) {
       try {
         const { QuotaFpcContractArtifact } =
-          await import("@dfpunk/contracts/artifacts/QuotaFpc");
+          await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
         await wallet.registerContractClass(QuotaFpcContractArtifact);
       } catch (err) {
         console.warn(
@@ -886,7 +892,7 @@ export class WalletManager {
     if (!this.quotaFpcAddress) return undefined;
     if (this.quotaFpcContract) return this.quotaFpcContract;
     const { QuotaFpcContract, QuotaFpcContractArtifact } =
-      await import("@dfpunk/contracts/artifacts/QuotaFpc");
+      await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
     try {
       const w = this.wallet as unknown as {
         registerContractClass(a: unknown): Promise<void>;
@@ -966,7 +972,7 @@ export class WalletManager {
       // send fails with "No sponsored transactions remaining", which is
       // already handled as a safe pre-broadcast failure and falls back to
       // self-pay. Guessing here buys nothing and can only be wrong.
-      const { hasSubscribed } = await import("@dfpunk/quota-fpc");
+      const { hasSubscribed } = await import("@alejoamiras/quota-paymaster");
       const alreadyClaimed = await hasSubscribed({
         node: this.node as never,
         fpcAddress: this.quotaFpcAddress!,
@@ -1005,7 +1011,7 @@ export class WalletManager {
     try {
       const quotaFpc = await this.getQuotaFpcContract();
       if (!quotaFpc) return false;
-      const { generationAt } = await import("@dfpunk/quota-fpc");
+      const { generationAt } = await import("@alejoamiras/quota-paymaster");
       const block = await this.node.getBlockData("latest");
       const generation = generationAt(
         BigInt(block!.header.globalVariables.timestamp)
@@ -1050,7 +1056,7 @@ export class WalletManager {
         from: this.activeAddress!,
       })) as { result?: { max_users: bigint } };
       const policy = (raw?.result ?? raw) as { max_users: bigint };
-      const { findFreeSeat } = await import("@dfpunk/quota-fpc");
+      const { findFreeSeat } = await import("@alejoamiras/quota-paymaster");
       return await findFreeSeat({
         node: this.node as never,
         fpcAddress: this.quotaFpcAddress,
@@ -1088,6 +1094,7 @@ export class WalletManager {
     if (!fpc) return;
     const fees = await this.node.getCurrentMinFees();
     const floor = sponsoredFeeFloorWei(
+      QUOTA_GAS_PROFILE,
       BigInt(fees.feePerDaGas),
       BigInt(fees.feePerL2Gas)
     );
@@ -1108,7 +1115,8 @@ export class WalletManager {
         (policy as (bigint | number)[])[0]
     );
     if (maxFee < floor) {
-      const { QuotaUnavailableError } = await import("@dfpunk/quota-fpc");
+      const { QuotaUnavailableError } =
+        await import("@alejoamiras/quota-paymaster");
       throw new QuotaUnavailableError(
         "fee-spike",
         `Sponsorship covers up to ${maxFee} wei per transaction, but this one needs ${floor}.`,
@@ -1145,16 +1153,19 @@ export class WalletManager {
     // Explicit limits are mandatory here: the wallet's default is the network
     // maximum, which no sane per-transaction ceiling would ever cover.
     const gasSettings = GasSettings.fallback({
-      gasLimits: new Gas(QUOTA_DA_GAS_LIMIT, QUOTA_L2_GAS_LIMIT),
+      gasLimits: new Gas(
+        QUOTA_GAS_PROFILE.daGasLimit,
+        QUOTA_GAS_PROFILE.l2GasLimit
+      ),
       teardownGasLimits: new Gas(
-        QUOTA_TEARDOWN_DA_GAS_LIMIT,
-        QUOTA_TEARDOWN_L2_GAS_LIMIT
+        QUOTA_GAS_PROFILE.teardownDaGasLimit,
+        QUOTA_GAS_PROFILE.teardownL2GasLimit
       ),
       // Padded: proving takes seconds, and a fee tick in that window would
       // otherwise make an already-proven transaction unaffordable. The
       // paymaster's own max_fee assertion still bounds what this can cost it.
       maxFeesPerGas: (await this.node.getCurrentMinFees()).mul(
-        QUOTA_FEE_HEADROOM_MULTIPLIER
+        QUOTA_GAS_PROFILE.feeHeadroomMultiplier
       ),
     });
 
@@ -1167,41 +1178,37 @@ export class WalletManager {
     const proven = await wallet.pxe.proveTx(txRequest, { scopes: [scope] });
     const tx = await proven.toTx();
 
-    // Sent through a NON-RETRYING client, deliberately.
-    //
-    // The shared node client retries at 1s/2s/3s, which is right for reads and
-    // wrong for this: if an attempt is accepted but its response is lost, a
-    // retry re-sends and the error finally surfaced belongs to the retry, not
-    // to the transaction's real fate. The caller would then see a rejection
-    // that looks conclusive ("Invalid tx: …") while the first attempt is in
-    // the mempool — and self-paying on the strength of it would submit the
-    // player's move twice.
-    //
-    // One attempt, one outcome, so a rejection response actually means what it
-    // says. Everything else stays unknown, and is treated as such.
-    await this.sendOnce().sendTx(tx as never);
+    // Broadcast over the package's non-retrying context: one attempt, one
+    // outcome, so a node rejection means what it says. `attemptSend` also
+    // BRANDS any error — the package classifiers answer only for branded
+    // errors, so a foreign error with a familiar message is never mistaken
+    // for proof that nothing was broadcast.
+    await this.getSendContext().attemptSend(() =>
+      this.getSendContext().node.sendTx(tx as never)
+    );
     return tx.getTxHash();
   }
 
   /**
-   * A node client that does not retry, for calls where a retry would change
-   * the meaning of the answer rather than just its latency.
+   * The package's non-retrying send path + capability-bound classifiers.
+   * Sponsored sends MUST run inside `attemptSend` for the classifiers'
+   * answers to mean anything; TxExecutor reads them from here so the branding
+   * context and the classifying context are the same object.
    */
-  private sendOnceClient?: AztecNode;
+  private sendCtx?: SendOnceContext;
 
-  private sendOnce(): AztecNode {
-    // Without a URL there is nothing to build a second client from, so fall
-    // back to the shared one. That is the retrying transport, so callers must
-    // keep treating ambiguous send failures as unknown — which they do.
-    if (!this.nodeUrl) return this.node;
-    if (!this.sendOnceClient) {
-      this.sendOnceClient = createAztecNodeClient(
-        this.nodeUrl,
-        {},
-        makeFetch([], false)
-      );
+  getSendContext(): SendOnceContext {
+    if (!this.sendCtx) {
+      if (!this.nodeUrl) {
+        // Config always provides a node URL in practice; failing loudly beats
+        // silently classifying against an unbranded transport.
+        throw new Error(
+          "[WalletManager] no node URL — cannot build the send-once context"
+        );
+      }
+      this.sendCtx = createSendOnceContext(this.nodeUrl);
     }
-    return this.sendOnceClient;
+    return this.sendCtx;
   }
 
   getActiveAddress(): AztecAddress | undefined {

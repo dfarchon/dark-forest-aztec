@@ -14,7 +14,6 @@
     "build": "pnpm build-contracts",
     "build-contracts": "pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts && pnpm check-artifacts",
     "bytecode-check": "pnpm exec tsx scripts/dev/bytecode-check.ts",
-    "calibrate-fpc-gas": "pnpm exec tsx scripts/operator/calibrate-gas.ts",
     "check-artifacts": "pnpm exec tsx scripts/dev/check-artifact-sync.ts",
     "circuit-info": "pnpm exec tsx scripts/dev/circuit-info.ts",
     "claim-fee-juice": "pnpm exec tsx scripts/operator/claim-fee-juice.ts",
@@ -47,14 +46,15 @@
     "test:env": "pnpm exec tsx scripts/test/test-env.ts",
     "test:fee-payment": "pnpm exec tsx scripts/test/test-fee-payment.ts",
     "test:moveProof": "pnpm exec tsx scripts/test/test-moveProof.ts",
+    "test:quota-paymaster": "pnpm exec tsx scripts/test/test-quota-paymaster.ts",
     "timestamp-ticker": "pnpm exec tsx scripts/dev/timestamp-ticker.ts",
     "update-config": "pnpm exec tsx scripts/dev/update-config.ts",
     "update-fpc-policy": "pnpm exec tsx scripts/operator/update-fpc-policy.ts",
     "verify-perms": "pnpm exec tsx scripts/deploy/verify-storage-permissions.ts"
   },
   "dependencies": {
+    "@alejoamiras/quota-paymaster": "5.0.1",
     "@dfpunk/hashing": "workspace:*",
-    "@dfpunk/quota-fpc": "workspace:*",
     "@dfpunk/utils": "workspace:*"
   },
   "devDependencies": {

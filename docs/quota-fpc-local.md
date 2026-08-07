@@ -1,5 +1,16 @@
 # Running the sponsored-transaction experience locally
 
+> **Migrated (2026-08-07):** the paymaster contract, SDK and operator logic now
+> live in the published package
+> [`@alejoamiras/quota-paymaster@5.0.1`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster)
+> (exact-pinned; lockstep with Aztec 5.0.1). This repo keeps only thin CLIs
+> (`contracts/scripts/{deploy,operator}`), the client integration, and the
+> config (`contracts/fpc/config/dark-forest.json`). The deployed mainnet
+> instance is unchanged — the package's `known-deployments.json` records it,
+> chain-verified. There is no local Noir crate anymore; the package's vendored,
+> lineage-gated copy is the maintained home.
+
+
 Everything below runs against a local Aztec network with fake money. Nothing
 here touches mainnet or spends anything real.
 
@@ -137,13 +148,17 @@ The paymaster starts empty and sponsors nothing until funded. On a local network
 the L1 faucet mints freely, so this costs nothing:
 
 ```bash
-QUOTA_FPC_ADDRESS=<address from step 3> \
-  pnpm --filter @dfpunk/quota-fpc run fund:local
+pnpm --filter contracts run bridge-fee-juice -- --to <address from step 3> --amount 50 --yes
+pnpm --filter contracts run claim-fee-juice -- --for <address from step 3> --yes
 ```
 
-Local networks only produce blocks when transactions arrive, so the funding
-helper pokes the chain while it waits for the L1→L2 message to mature. Expect
-roughly 15 seconds and a few pokes.
+Both are thin CLIs over `@alejoamiras/quota-paymaster/operator`. The bridge
+journals the claim secret (fsync'd, outside the repo) BEFORE touching L1, and
+the claim reads it back from the journal — the secret never travels through
+argv. Local networks only produce blocks when transactions arrive, so if the
+claim reports the L1→L2 message is not yet found, send any cheap transaction
+and retry; the integration test (`test:quota-paymaster`) automates exactly
+this loop.
 
 ## 5. Point the client at all of it
 
@@ -220,7 +235,7 @@ way after a few minutes of thinking time on an idle local chain.
 it. Run the heartbeat instead, which sends one cheap transaction a minute:
 
 ```bash
-AZTEC_NODE_URL=http://localhost:8590   pnpm --filter @dfpunk/quota-fpc run heartbeat
+AZTEC_NODE_URL=http://localhost:8590   pnpm --filter contracts run timestamp-ticker
 ```
 
 Leave it running for the whole session. Note the chain's clock may sit well ahead

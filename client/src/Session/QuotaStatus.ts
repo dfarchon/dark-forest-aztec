@@ -10,18 +10,20 @@
  * like one with nothing left, and telling an active player they are out of free
  * transactions sends them to a funding page they do not need.
  */
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import {
-  describeQuotaUnavailable,
-  describeSponsored,
-  flattenQuotaMessage,
   generationAt,
   millisUntilReset,
   resetLabel,
   resetsIn,
-} from "@dfpunk/quota-fpc";
+} from "@alejoamiras/quota-paymaster";
+import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
 import { externalLinks } from "../config/externalLinks";
+import {
+  describeQuotaUnavailable,
+  describeSponsored,
+  flattenQuotaMessage,
+} from "./quotaMessages";
 
 export type QuotaStatusKind =
   /** No paymaster configured for this build. */

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@alejoamiras/aztec-accelerator": "5.0.1",
+    "@alejoamiras/quota-paymaster": "5.0.1",
     "@aztec/aztec.js": "5.0.1",
     "@aztec/constants": "5.0.1",
     "@aztec/foundation": "5.0.1",
@@ -31,7 +32,6 @@
     "@dfpunk/hexgen": "workspace:*",
     "@dfpunk/indexer-core": "workspace:*",
     "@dfpunk/procedural": "workspace:*",
-    "@dfpunk/quota-fpc": "workspace:*",
     "@dfpunk/renderer": "workspace:*",
     "@dfpunk/serde": "workspace:*",
     "@dfpunk/types": "workspace:*",

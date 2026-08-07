@@ -20,6 +20,4 @@ members = [
     "system/artifact_valut",
     "system/core",
     "system/move",
-    "fpc/quota_fpc",
-    "fpc/fpc_test_target",
 ]

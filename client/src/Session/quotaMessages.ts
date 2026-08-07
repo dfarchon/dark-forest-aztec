@@ -1,17 +1,11 @@
 /**
- * Player-facing copy for sponsorship.
- *
- * Two rules shaped all of this:
- *
- * 1. **Never leave the player without a next step.** "You've used today's free
- *    transactions" is a wall. The same fact plus when it lifts and how to skip
- *    the wait is a choice.
- * 2. **Sponsoring, not paying.** "Dark Forest is paying your fees" invites the
- *    question "with whose money, and what do I owe?". Sponsoring is what is
- *    actually happening and reads as a gift rather than a transaction.
+ * Player-facing copy for sponsorship — DARK FOREST'S, deliberately not the
+ * SDK's. @alejoamiras/quota-paymaster ships typed reasons and no strings, so
+ * each app owns its own voice; this module is that ownership. Map reasons to
+ * copy here and nowhere else.
  */
-import { inAbout } from "./duration.js";
-import type { QuotaUnavailableReason } from "./errors.js";
+import type { QuotaUnavailableReason } from "@alejoamiras/quota-paymaster";
+import { inAbout } from "@alejoamiras/quota-paymaster";
 
 export interface QuotaAction {
   label: string;
@@ -41,7 +35,7 @@ function addGasAction(bridgeUrl?: string): QuotaAction {
 /** Copy for a player who cannot currently be sponsored. */
 export function describeQuotaUnavailable(
   reason: QuotaUnavailableReason,
-  context: QuotaCopyContext = {},
+  context: QuotaCopyContext = {}
 ): QuotaMessage {
   const { millisUntilReset, bridgeUrl } = context;
   // "they reset daily" carries the useful fact even when we cannot say when.
@@ -119,7 +113,7 @@ export function describeQuotaUnavailable(
 /** Copy for a player who IS being sponsored. */
 export function describeSponsored(
   remaining: number,
-  context: QuotaCopyContext = {},
+  context: QuotaCopyContext = {}
 ): QuotaMessage {
   const { millisUntilReset } = context;
   const whenBack =

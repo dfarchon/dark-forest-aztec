@@ -1,7 +1,0 @@
-[package]
-name = "fpc_test_target"
-type = "contract"
-authors = [""]
-
-[dependencies]
-aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v5.0.1", directory = "aztec" }
