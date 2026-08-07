@@ -1549,15 +1549,25 @@ export function GameLandingPage() {
             onRefreshPage: playRefreshPageTransition,
           });
         } else {
-          await runAccountFeeJuicePreflightGate({
+          // Quota paymaster first, same as every other entry path: a player
+          // the paymaster covers must never be stopped at the FeeJuice gate.
+          // (This Quick Join path arrived from upstream without the quota
+          // check, which walled sponsored players at "0 FJ".)
+          const { sponsored } = await runQuotaPreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            setTerminalVisible,
-            entryMode: "quick",
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
           });
+          if (!sponsored) {
+            await runAccountFeeJuicePreflightGate({
+              terminal: terminalHandle,
+              getWalletManager: () => walletManagerRef.current,
+              setConnectionSettingsOpen,
+              setTerminalVisible,
+              entryMode: "quick",
+              rebuildWalletAfterConnectionSave,
+              onRefreshPage: playRefreshPageTransition,
+            });
+          }
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 

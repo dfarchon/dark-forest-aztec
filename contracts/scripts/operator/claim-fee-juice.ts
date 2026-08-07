@@ -56,6 +56,12 @@ async function main() {
                 : findClaimInJournal(journal, {
                       recipient,
                       messageHash: opt(argv, '--message-hash'),
+                      // Only after verifying on-chain that no prior attempt
+                      // landed — a retry against a redeemed deposit burns gas.
+                      allowRetryAfterUnknownOutcome: flag(
+                          argv,
+                          '--allow-retry-after-unknown'
+                      ),
                   });
 
         const { balanceAfterWei } = await claimFeeJuice(
