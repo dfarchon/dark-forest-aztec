@@ -11,7 +11,7 @@
  * spent; and every state offers the bridge, because a wall without a door is
  * just a dead end.
  */
-import { resetsIn } from "@alejoamiras/quota-paymaster";
+import { humanizeDuration } from "@alejoamiras/quota-paymaster";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
@@ -85,8 +85,8 @@ export function FeeJuiceGate() {
         </Body>
         {spent && (
           <Reset>
-            ⏱ sponsored transactions return at {state.resetsAt} — in{" "}
-            {resetsIn(state.millisUntilReset)}
+            ⏱ Sponsored transactions will reset in approx.{" "}
+            {humanizeDuration(state.millisUntilReset)} ({state.resetsAt})
           </Reset>
         )}
         <Row $center>

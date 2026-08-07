@@ -136,6 +136,13 @@ export class TxExecutor {
   private readonly chainClock: ChainClock;
   /** Last pre-send allowance reading; display data for the fee gate only. */
   private lastQuotaRead?: { subscribed: boolean; chainSeconds: bigint };
+  /**
+   * Set SYNCHRONOUSLY when the empty-account gate decides to show the modal,
+   * cleared once it has published. The modal's data needs async reads, so
+   * without this flag the failure-path toast (which fires immediately) won the
+   * race and flashed for a moment before the modal replaced it.
+   */
+  private feeGateModalPending = false;
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -490,6 +497,7 @@ export class TxExecutor {
               // allowance gets the gauge and the reset time; a player it never
               // covered gets plain "you need fee juice". A player WITH balance
               // never reaches this branch, so they are never interrupted.
+              this.feeGateModalPending = true;
               void this.publishFeeGateForEmptyAccount();
               throw new Error(
                 `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
@@ -639,13 +647,15 @@ export class TxExecutor {
           String((e as { message?: string })?.message ?? e)
         )
       ) {
-        void import("../FeeGate").then(
-          ({ publishFeeGate, feeGateModalShownRecently }) => {
-            if (!feeGateModalShownRecently()) {
-              publishFeeGate({ kind: "send-failed" });
+        if (!this.feeGateModalPending) {
+          void import("../FeeGate").then(
+            ({ publishFeeGate, feeGateModalShownRecently }) => {
+              if (!feeGateModalShownRecently()) {
+                publishFeeGate({ kind: "send-failed" });
+              }
             }
-          }
-        );
+          );
+        }
       }
       error = e instanceof Error ? e : new Error(String(e));
 
@@ -930,6 +940,10 @@ export class TxExecutor {
       });
     } catch (err) {
       console.debug("[TxExecutor] fee gate publish failed:", err);
+    } finally {
+      // Published (or gave up): the recency check inside FeeGate takes over
+      // from here, and future unrelated failures may toast again.
+      this.feeGateModalPending = false;
     }
   }
 
