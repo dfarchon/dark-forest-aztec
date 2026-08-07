@@ -46,7 +46,6 @@
     "test:env": "pnpm exec tsx scripts/test/test-env.ts",
     "test:fee-payment": "pnpm exec tsx scripts/test/test-fee-payment.ts",
     "test:moveProof": "pnpm exec tsx scripts/test/test-moveProof.ts",
-    "test:quota-paymaster": "pnpm exec tsx scripts/test/test-quota-paymaster.ts",
     "timestamp-ticker": "pnpm exec tsx scripts/dev/timestamp-ticker.ts",
     "update-config": "pnpm exec tsx scripts/dev/update-config.ts",
     "update-fpc-policy": "pnpm exec tsx scripts/operator/update-fpc-policy.ts",

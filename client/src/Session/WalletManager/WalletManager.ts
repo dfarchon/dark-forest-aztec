@@ -955,23 +955,12 @@ export class WalletManager {
         };
       }
 
-      // `get_quota_info` collapses two different states into (false, 0): the
-      // player has no note, and the player has a note they cannot use. So a
-      // false here does NOT mean "out of transactions".
-      //
-      // The player nullifier tells us they started today, but it is read from
-      // the NODE while the note is read from the local PXE — and the PXE lags
-      // by seconds. Immediately after a player's first sponsored move the two
-      // disagree, and treating that disagreement as proof of exhaustion tells
-      // a player with four moves left that they have none. That is the exact
-      // wall this paymaster exists to remove, so it is the worst possible
-      // thing to get wrong.
-      //
-      // Report it as inconclusive instead. The contract is the authority on
-      // whether an allowance remains: if it really is spent, the sponsored
-      // send fails with "No sponsored transactions remaining", which is
-      // already handled as a safe pre-broadcast failure and falls back to
-      // self-pay. Guessing here buys nothing and can only be wrong.
+      // No usable note visible does NOT mean "out of transactions": the
+      // nullifier is read from the node (instant) while notes come from the
+      // local PXE (lags seconds), so this state also occurs right after a
+      // successful send. Report it as inconclusive; the contract is the
+      // authority, and a genuinely spent allowance fails the sponsored send
+      // with a safe, typed pre-broadcast error.
       const { hasSubscribed } = await import("@alejoamiras/quota-paymaster");
       const alreadyClaimed = await hasSubscribed({
         node: this.node as never,
@@ -995,17 +984,10 @@ export class WalletManager {
   }
 
   /**
-   * Whether THIS player can be sponsored right now.
-   *
-   * Two different questions, and asking only the second is a bug: a player who
-   * already holds a seat needs an allowance, not a free seat. Checking seats
-   * alone turns every returning player away as soon as the day fills up — and
-   * sends them to the funding flow they had already been spared, while they
-   * still hold unused sponsored transactions.
-   *
-   * So: allowance first, seats only for players who have not started today.
-   * Any read failure returns false (fall back to self-funding) rather than a
-   * promise that cannot be kept.
+   * Whether THIS player can be sponsored right now: their own allowance
+   * first, a free seat only if they have not started today. (Seats alone
+   * would turn away returning players who still hold transactions.) Read
+   * failures return false rather than a promise that cannot be kept.
    */
   async hasSponsorshipCapacity(): Promise<boolean> {
     try {
@@ -1025,9 +1007,7 @@ export class WalletManager {
           generation
         );
         if (allowance.remaining > 0) return true;
-        // Inconclusive (the PXE is still catching up) is not a refusal. The
-        // contract decides at send time; refusing here would be the same false
-        // negative one layer higher up.
+        // Inconclusive is not a refusal; the contract decides at send time.
         if (allowance.syncing) return true;
       }
 
@@ -1202,11 +1182,9 @@ export class WalletManager {
     const proven = await wallet.pxe.proveTx(txRequest, { scopes: [scope] });
     const tx = await proven.toTx();
 
-    // Broadcast over the package's non-retrying context: one attempt, one
-    // outcome, so a node rejection means what it says. `attemptSend` also
-    // BRANDS any error — the package classifiers answer only for branded
-    // errors, so a foreign error with a familiar message is never mistaken
-    // for proof that nothing was broadcast.
+    // Non-retrying context: one attempt, one outcome, so a node rejection
+    // means what it says. `attemptSend` brands errors so the classifiers
+    // never trust a foreign error with a familiar message.
     await this.getSendContext().attemptSend(() =>
       this.getSendContext().node.sendTx(tx as never)
     );
@@ -1214,10 +1192,9 @@ export class WalletManager {
   }
 
   /**
-   * The package's non-retrying send path + capability-bound classifiers.
-   * Sponsored sends MUST run inside `attemptSend` for the classifiers'
-   * answers to mean anything; TxExecutor reads them from here so the branding
-   * context and the classifying context are the same object.
+   * The package's non-retrying send path + classifiers. Sponsored sends must
+   * run inside `attemptSend`; TxExecutor reads the classifiers from here so
+   * branding and classification share one context.
    */
   private sendCtx?: SendOnceContext;
 

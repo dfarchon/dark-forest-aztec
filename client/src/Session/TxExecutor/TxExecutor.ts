@@ -137,10 +137,8 @@ export class TxExecutor {
   /** Last pre-send allowance reading; display data for the fee gate only. */
   private lastQuotaRead?: { subscribed: boolean; chainSeconds: bigint };
   /**
-   * Set SYNCHRONOUSLY when the empty-account gate decides to show the modal,
-   * cleared once it has published. The modal's data needs async reads, so
-   * without this flag the failure-path toast (which fires immediately) won the
-   * race and flashed for a moment before the modal replaced it.
+   * Set synchronously when the empty-account gate decides to show the modal
+   * (its publish is async); stops the failure-path toast racing it.
    */
   private feeGateModalPending = false;
   private readonly beforeQueued?: BeforeQueued;
@@ -491,12 +489,9 @@ export class TxExecutor {
             }
 
             if (bal < minAccountFj) {
-              // No sponsorship took this action and the account cannot pay:
-              // the ONE situation that warrants a wall. Which wall depends on
-              // whether sponsorship covered this player today — a spent
-              // allowance gets the gauge and the reset time; a player it never
-              // covered gets plain "you need fee juice". A player WITH balance
-              // never reaches this branch, so they are never interrupted.
+              // No sponsorship and no balance: the one situation that
+              // warrants a wall. A player WITH balance never reaches this
+              // branch, so they are never interrupted.
               this.feeGateModalPending = true;
               void this.publishFeeGateForEmptyAccount();
               throw new Error(
@@ -638,10 +633,8 @@ export class TxExecutor {
       // 9. Error handling — v0.6 lines 398-415
       console.error(e);
       tx.state = "Fail";
-      // A fee-shortage failure that arrives WITHOUT the pre-send modal having
-      // fired (some path skipped the gate) still deserves a visible, actionable
-      // notice — as a corner toast, because the action is already dead and a
-      // full-screen stop would punish the player twice for one shortage.
+      // Fee-shortage failure with no pre-send modal shown: surface a corner
+      // toast. Non-blocking on purpose — the action is already dead.
       if (
         /FeeJuice balance .* is below minimum|Insufficient fee payer balance/i.test(
           String((e as { message?: string })?.message ?? e)
@@ -798,14 +791,10 @@ export class TxExecutor {
     const source = await resolveFeeSource({
       state,
       chainTimestampSeconds: chainSeconds,
-      // PRODUCT DECISION, required by the SDK: while allowance evidence is
-      // still syncing, WAIT (blocked/sync-pending, retryable) rather than
-      // self-pay. Two reasons. The players this paymaster exists for have a
-      // zero balance, so self-pay would not rescue them — it would just fail
-      // differently; and a funded player mid-sync should not be silently
-      // charged for a transaction the paymaster would have covered a second
-      // later. This was always the intent: sync-pending has been the one
-      // retryable reason since the first cut-over.
+      // Product decision (the SDK requires one): while allowance evidence is
+      // syncing, WAIT rather than self-pay — the target players have no
+      // balance to fall back on, and a funded player mid-sync must not be
+      // silently charged for a transaction the paymaster would have covered.
       onSyncing: "wait",
       findFreeSeat: () =>
         this.walletManager.findQuotaSeat(quotaFpc, generation),
@@ -822,22 +811,16 @@ export class TxExecutor {
       state,
       decision: source.kind,
     });
-    // Remembered for the fee gate: if the self-pay path later finds an empty
-    // account, whether the player HAD sponsorship today decides which story
-    // the interruption tells.
+    // For the fee gate: whether the player HAD sponsorship today decides
+    // which story an empty-account interruption tells.
     this.lastQuotaRead = { subscribed: state.subscribed, chainSeconds };
 
     if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
-      // The COMMON case — allowance spent, no seats left, paymaster empty,
-      // mid-rollover, wallet still syncing. Returning undefined here used to
-      // skip the fallback notice entirely, so the very situation players hit
-      // most often was the one that charged them without a word. Throw the
-      // typed reason instead, so the caller can explain it.
+      // Sponsorship unavailable (spent, no seats, empty paymaster, rollover,
+      // or still syncing): throw the typed reason so the caller can explain
+      // the fallback instead of charging the player silently.
       const { QuotaUnavailableError } =
         await import("@alejoamiras/quota-paymaster");
-      // The reason lives on the `blocked` variant, not on `kind` — comparing
-      // `kind` against reason names silently collapsed every cause into one
-      // and meant a still-syncing wallet was never retried.
       const reason =
         source.kind === "blocked" ? source.reason : "paymaster-empty";
       throw new QuotaUnavailableError(
@@ -870,12 +853,11 @@ export class TxExecutor {
       player
     );
 
-    // Refresh the badge by waiting for the SPECIFIC transition this send
-    // implies, per the SDK's discipline: concluding "out for today"
-    // (expectedRemaining 0) requires positive prior evidence of the
-    // subscription note — `observedSubscribedBefore` — because absence alone
-    // is also what a lagging wallet reports forever. Fire-and-forget: the
-    // badge must never delay or fail the transaction.
+    // Refresh the badge by waiting for the specific transition this send
+    // implies. `observedSubscribedBefore: true` is the positive evidence the
+    // SDK requires before it will conclude "out for today" — absence alone is
+    // also what a lagging wallet reports. Fire-and-forget: the badge must
+    // never delay or fail the transaction.
     if (source.kind === "sponsored" && state.subscribed) {
       void (async () => {
         try {
