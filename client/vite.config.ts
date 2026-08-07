@@ -87,6 +87,21 @@ export default defineConfig({
       .split(",")
       .map((h) => h.trim())
       .filter(Boolean),
+    // Dev-only escape hatch for testing from an origin the hosted indexer's
+    // CORS allowlist doesn't know (a tunnel, a LAN hostname): set
+    // INDEXER_PROXY_TARGET to the indexer's URL and point
+    // VITE_INDEXER_BOOTSTRAP_URL at <this-origin>/indexer-api instead. The
+    // dev server forwards server-side, so the browser only ever talks to its
+    // own origin and CORS never enters the picture. No effect when unset.
+    proxy: process.env.INDEXER_PROXY_TARGET
+      ? {
+          "/indexer-api": {
+            target: process.env.INDEXER_PROXY_TARGET,
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/indexer-api/, ""),
+          },
+        }
+      : undefined,
   },
   build: {
     target: "esnext",
