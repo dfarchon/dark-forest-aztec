@@ -134,6 +134,8 @@ export class TxExecutor {
   private readonly stateResolver: StateResolver;
 
   private readonly chainClock: ChainClock;
+  /** Last pre-send allowance reading; display data for the fee gate only. */
+  private lastQuotaRead?: { subscribed: boolean; chainSeconds: bigint };
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -482,6 +484,13 @@ export class TxExecutor {
             }
 
             if (bal < minAccountFj) {
+              // No sponsorship took this action and the account cannot pay:
+              // the ONE situation that warrants a wall. Which wall depends on
+              // whether sponsorship covered this player today — a spent
+              // allowance gets the gauge and the reset time; a player it never
+              // covered gets plain "you need fee juice". A player WITH balance
+              // never reaches this branch, so they are never interrupted.
+              void this.publishFeeGateForEmptyAccount();
               throw new Error(
                 `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
               );
@@ -621,6 +630,23 @@ export class TxExecutor {
       // 9. Error handling — v0.6 lines 398-415
       console.error(e);
       tx.state = "Fail";
+      // A fee-shortage failure that arrives WITHOUT the pre-send modal having
+      // fired (some path skipped the gate) still deserves a visible, actionable
+      // notice — as a corner toast, because the action is already dead and a
+      // full-screen stop would punish the player twice for one shortage.
+      if (
+        /FeeJuice balance .* is below minimum|Insufficient fee payer balance/i.test(
+          String((e as { message?: string })?.message ?? e)
+        )
+      ) {
+        void import("../FeeGate").then(
+          ({ publishFeeGate, feeGateModalShownRecently }) => {
+            if (!feeGateModalShownRecently()) {
+              publishFeeGate({ kind: "send-failed" });
+            }
+          }
+        );
+      }
       error = e instanceof Error ? e : new Error(String(e));
 
       if (!time_submitted) {
@@ -786,6 +812,10 @@ export class TxExecutor {
       state,
       decision: source.kind,
     });
+    // Remembered for the fee gate: if the self-pay path later finds an empty
+    // account, whether the player HAD sponsorship today decides which story
+    // the interruption tells.
+    this.lastQuotaRead = { subscribed: state.subscribed, chainSeconds };
 
     if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
       // The COMMON case — allowance spent, no seats left, paymaster empty,
@@ -868,6 +898,39 @@ export class TxExecutor {
     }
 
     return txHash;
+  }
+
+  /**
+   * Chooses and publishes the fee-gate story for an empty account. Fire and
+   * forget; the interruption must never delay or change the throw that stops
+   * the transaction.
+   */
+  private async publishFeeGateForEmptyAccount(): Promise<void> {
+    try {
+      const [{ publishFeeGate }, { millisUntilReset, resetLabel }] =
+        await Promise.all([
+          import("../FeeGate"),
+          import("@alejoamiras/quota-paymaster"),
+        ]);
+      const hadSponsorship =
+        Boolean(this.walletManager.getQuotaFpcAddress()) &&
+        this.lastQuotaRead?.subscribed === true;
+      if (!hadSponsorship) {
+        publishFeeGate({ kind: "needs-fee-juice" });
+        return;
+      }
+      const allowancePerDay = (await this.walletManager.getQuotaMaxUses()) ?? 0;
+      const chainSeconds =
+        this.lastQuotaRead?.chainSeconds ?? BigInt(this.chainClock.nowSec());
+      publishFeeGate({
+        kind: "sponsorship-spent",
+        allowancePerDay,
+        resetsAt: resetLabel(),
+        millisUntilReset: millisUntilReset(chainSeconds),
+      });
+    } catch (err) {
+      console.debug("[TxExecutor] fee gate publish failed:", err);
+    }
   }
 
   private nextId(): TransactionId {

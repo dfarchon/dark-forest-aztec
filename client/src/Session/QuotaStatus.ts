@@ -30,7 +30,7 @@ export type QuotaStatusKind =
   | "off"
   /** Configured, but we could not read the allowance yet. */
   | "unknown"
-  /** Player has free transactions left today. */
+  /** Player has sponsored transactions left today. */
   | "available"
   /** Player has not used the paymaster yet today. */
   | "unused"
@@ -191,6 +191,16 @@ export function quotaStatusFromAllowance(
     millisUntilReset: millisUntilReset(chainTimestampSeconds),
   };
   if (allowance.syncing) {
+    // A player who claimed today but shows no usable allowance reads as
+    // syncing FOREVER once they are spent (the send path must never conclude
+    // exhaustion from absence, so the state machine leaves it inconclusive).
+    // For DISPLAY that produced a badge stuck on "checking sponsorship…".
+    // Showing "spent, resets at X" here is advisory and self-correcting: in
+    // the rare mid-day sync lag it is wrong for a few seconds and the next
+    // read replaces it, while the send path stays governed by the contract.
+    if (allowance.subscribed) {
+      return { kind: "spent", remaining: 0, ...shared };
+    }
     return { kind: "unknown", remaining: 0, ...shared };
   }
   if (allowance.remaining > 0) {

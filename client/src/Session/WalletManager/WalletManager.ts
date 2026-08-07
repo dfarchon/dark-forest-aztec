@@ -1039,6 +1039,30 @@ export class WalletManager {
     }
   }
 
+  /**
+   * The paymaster's transactions-per-player-per-day, for the fee-gate gauge.
+   * Advisory display data; a read failure just means the gauge shows no pips.
+   */
+  async getQuotaMaxUses(): Promise<number | undefined> {
+    try {
+      const quotaFpc = await this.getQuotaFpcContract();
+      if (!quotaFpc) return undefined;
+      const contract = quotaFpc as {
+        methods: Record<
+          string,
+          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
+        >;
+      };
+      const raw = (await contract.methods.get_policy().simulate({
+        from: this.activeAddress!,
+      })) as { result?: { max_uses: bigint } };
+      const policy = (raw?.result ?? raw) as { max_uses: bigint };
+      return Number(policy.max_uses);
+    } catch {
+      return undefined;
+    }
+  }
+
   /** A free seat for this generation, or null when today is fully claimed. */
   async findQuotaSeat(
     quotaFpc: unknown,
