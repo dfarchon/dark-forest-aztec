@@ -33,6 +33,7 @@ import type {
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
+import { getEffectiveUseSponsoredFpc } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
@@ -500,15 +501,24 @@ export class TxExecutor {
             }
           }
         }
-        const sponsoredFpcAddress = sponsoredSubmission
-          ? undefined
-          : this.walletManager.getSponsoredFpcAddress();
-        // A sponsored transaction is already broadcast and paid for by the
-        // paymaster; running the balance checks below would reject it for a
-        // balance it never needed, after it has already gone out.
+        // Legacy SponsoredFPC path — now user-toggleable via Connection
+        // settings (origin/main). Irrelevant when the quota paymaster already
+        // broadcast: that transaction is out and paid for, and the balance
+        // checks below would reject it for a balance it never needed.
+        const useSponsoredFpc = sponsoredSubmission
+          ? false
+          : getEffectiveUseSponsoredFpc();
+        const sponsoredFpcAddress = useSponsoredFpc
+          ? this.walletManager.getSponsoredFpcAddress()
+          : undefined;
         if (sponsoredSubmission) {
           // fall through to the shared submit/confirm handling
-        } else if (sponsoredFpcAddress) {
+        } else if (useSponsoredFpc) {
+          if (!sponsoredFpcAddress) {
+            throw new Error(
+              "[TxExecutor] SponsoredFPC payment is selected, but no SponsoredFPC is registered. Check Connection settings and refresh the page."
+            );
+          }
           const sponsorFjBal =
             await this.walletManager.getSponsoredFpcFeeJuiceBalance();
           const minWei = getSponsoredFpcMinBalanceFjWei();
@@ -539,12 +549,12 @@ export class TxExecutor {
             }
           }
         }
-        const sendOptsNoWait = sponsoredFpcAddress
+        const sendOptsNoWait = useSponsoredFpc
           ? ({
               from: this.walletManager.getActiveAddress()!,
               fee: {
                 paymentMethod: new SponsoredFeePaymentMethod(
-                  sponsoredFpcAddress
+                  sponsoredFpcAddress!
                 ),
               },
               wait: NO_WAIT,

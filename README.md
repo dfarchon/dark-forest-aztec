@@ -45,7 +45,7 @@ Dark Forest Aztec is a **DFArchon** port on Aztec Network.
 
 - [Onchain Reality Blog](https://onchainreality.xyz/blog)
 - [DFArchon on X](https://x.com/DFArchon)
-- [DFArchon Discord](https://discord.gg/WGrBje23)
+- [DFArchon Discord](https://discord.gg/XpBPEnsvgX)
 - [DFArchon on GitHub](https://github.com/dfarchon)
 
 ## License

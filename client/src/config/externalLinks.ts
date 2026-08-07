@@ -8,7 +8,7 @@ export const externalLinks = {
     email: "mailto:dfarchon@gmail.com",
     twitter: "https://x.com/DFArchon",
     blog: "https://onchainreality.xyz/blog",
-    discord: "https://discord.gg/WGrBje23",
+    discord: "https://discord.gg/XpBPEnsvgX",
     github: "https://github.com/dfarchon",
     wiki: "https://dfwiki.net/wiki/Main_Page",
     plugins: "https://dfares-plugins.netlify.app/",
@@ -16,7 +16,7 @@ export const externalLinks = {
 
   /** Upstream Dark Forest / zkga references (docs, legacy community). */
   darkForest: {
-    communityDiscord: "https://discord.gg/WGrBje23",
+    communityDiscord: "https://discord.gg/XpBPEnsvgX",
     valhalla: "https://valhalla.zkga.me",
     zkgaMe: "https://zkga.me",
     twitterIntentTweet: "https://twitter.com/intent/tweet",
