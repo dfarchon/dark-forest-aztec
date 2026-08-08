@@ -85,9 +85,14 @@ export function HatPane({
         </div>
 
         <EmSpacer height={1} />
-        <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
-          Get FeeJuice / {L2_TOKEN_SYMBOL}
-        </Link>
+        {externalLinks.aztecMainnet.feeJuiceBridges.map((bridge, index) => (
+          <React.Fragment key={bridge.url}>
+            <Link to={bridge.url}>Get FeeJuice via {bridge.name}</Link>
+            {index < externalLinks.aztecMainnet.feeJuiceBridges.length - 1 && (
+              <br />
+            )}
+          </React.Fragment>
+        ))}
         <EmSpacer height={0.5} />
 
         <Btn

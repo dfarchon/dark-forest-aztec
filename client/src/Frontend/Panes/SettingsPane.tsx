@@ -12,16 +12,18 @@ import {
 import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
+  getSponsoredFpcWarningBalanceFjWei,
   getSponsorMode,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { Btn } from "../Components/Btn";
-import { Link, Section, SectionHeader, Spacer } from "../Components/CoreUI";
+import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
 import { Checkbox, DarkForestCheckbox, TextInput } from "../Components/Input";
 import { Slider } from "../Components/Slider";
-import { Green, Red } from "../Components/Text";
+import { Gold, Green, Red } from "../Components/Text";
 import Viewport, { getDefaultScroll } from "../Game/Viewport";
+import dfstyles from "../Styles/dfstyles";
 import { useAccount, useUIManager } from "../Utils/AppHooks";
 import {
   BooleanSetting,
@@ -29,6 +31,7 @@ import {
   NumberSetting,
 } from "../Utils/SettingsHooks";
 import { ModalPane } from "../Views/ModalPane";
+import { SPONSORED_FPC_WARNING_PREVIEW_EVENT } from "../Views/SponsoredFpcBalanceWarning";
 
 const SCROLL_MIN = 0.0001 * 10000;
 const SCROLL_MAX = 0.01 * 10000;
@@ -55,6 +58,43 @@ const Row = styled.div`
   }
 `;
 
+const BridgeHeading = styled.div`
+  margin-bottom: 8px;
+  color: ${dfstyles.colors.text};
+  font-weight: bold;
+  text-decoration: underline;
+`;
+
+const BridgeList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const BridgeOption = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const BridgeMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+`;
+
+const BridgeDomain = styled.span`
+  color: ${dfstyles.colors.subtext};
+  font-family: monospace;
+  overflow-wrap: anywhere;
+`;
+
+const BridgeContact = styled.a`
+  color: ${dfstyles.colors.dfblue};
+  white-space: nowrap;
+`;
+
 export function SettingsPane({
   visible,
   onClose,
@@ -78,6 +118,7 @@ export function SettingsPane({
   const [useSponsoredFpc, setUseSponsoredFpc] = useState(
     getEffectiveUseSponsoredFpc()
   );
+  const [previewSponsorWarning, setPreviewSponsorWarning] = useState(false);
 
   useEffect(() => {
     if (!uiManager) return;
@@ -125,8 +166,13 @@ export function SettingsPane({
   }, [sponsorMode, useSponsoredFpc, visible, uiManager]);
 
   const sponsorFjMinWei = getSponsoredFpcMinBalanceFjWei();
-  const sponsorFjLow =
+  const sponsorFjWarningWei = getSponsoredFpcWarningBalanceFjWei();
+  const sponsorFjBlocked =
     sponsorFjWei !== undefined && sponsorFjWei < sponsorFjMinWei;
+  const sponsorFjWarning =
+    sponsorFjWei !== undefined &&
+    sponsorFjWei >= sponsorFjMinWei &&
+    sponsorFjWei < sponsorFjWarningWei;
   const accountFjMinWei = getAccountMinBalanceFjWei();
   const accountFjLow = accountFjWei < accountFjMinWei;
 
@@ -260,6 +306,27 @@ export function SettingsPane({
 
         <Section>
           <SectionHeader>Transaction fees</SectionHeader>
+          {isDevelopment && (
+            <>
+              <Btn
+                size="stretch"
+                onClick={() => {
+                  const visible = !previewSponsorWarning;
+                  setPreviewSponsorWarning(visible);
+                  window.dispatchEvent(
+                    new CustomEvent(SPONSORED_FPC_WARNING_PREVIEW_EVENT, {
+                      detail: visible,
+                    })
+                  );
+                }}
+              >
+                {previewSponsorWarning
+                  ? "Hide SponsoredFPC warning preview"
+                  : "Preview SponsoredFPC low-balance warning"}
+              </Btn>
+              <Spacer height={12} />
+            </>
+          )}
           {sponsorMode && (
             <>
               <Checkbox
@@ -317,7 +384,21 @@ export function SettingsPane({
                 <span>Minimum balance</span>
                 <span>{formatFeeJuiceWei(sponsorFjMinWei)}</span>
               </Row>
-              {sponsorFjLow && (
+              <Row>
+                <span>Low-balance warning</span>
+                <span>{formatFeeJuiceWei(sponsorFjWarningWei)}</span>
+              </Row>
+              {sponsorFjWarning && (
+                <>
+                  <Spacer height={8} />
+                  <Gold>
+                    SponsoredFPC balance is below the warning threshold.
+                    Transactions still work, but the payer should be funded
+                    soon.
+                  </Gold>
+                </>
+              )}
+              {sponsorFjBlocked && (
                 <>
                   <Spacer height={8} />
                   <Red>
@@ -371,10 +452,45 @@ export function SettingsPane({
                   </Red>
                 </>
               )}
+            </>
+          )}
+          {!useSponsoredFpc && (
+            <>
+              <Spacer height={16} />
+              <BridgeHeading>FeeJuice bridges</BridgeHeading>
+              <div>
+                Bridge gas to your account using any verified provider below. If
+                one is unavailable, try another.
+              </div>
               <Spacer height={8} />
-              <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
-                Open FeeJuice bridge
-              </Link>
+              <BridgeList>
+                {externalLinks.aztecMainnet.feeJuiceBridges.map((bridge) => (
+                  <BridgeOption key={bridge.url}>
+                    <Btn
+                      size="stretch"
+                      onClick={() =>
+                        window.open(bridge.url, "_blank", "noopener,noreferrer")
+                      }
+                    >
+                      Open {bridge.name}
+                    </Btn>
+                    <BridgeMeta>
+                      <BridgeDomain>
+                        {new URL(bridge.url).hostname}
+                      </BridgeDomain>
+                      <BridgeContact
+                        href={bridge.contactUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Contact: {bridge.contactName}
+                      </BridgeContact>
+                    </BridgeMeta>
+                  </BridgeOption>
+                ))}
+              </BridgeList>
+              <Spacer height={8} />
+              <Gold>Only use the verified bridge links listed here.</Gold>
             </>
           )}
         </Section>
