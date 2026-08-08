@@ -1,6 +1,7 @@
 import {
   DEFAULT_ACCOUNT_MIN_BALANCE_FJ,
   DEFAULT_SPONSORED_FPC_MIN_FJ,
+  DEFAULT_SPONSORED_FPC_WARNING_FJ,
   parseFjDecimalToWei,
 } from "../utils/feeJuiceUnits";
 
@@ -120,6 +121,20 @@ export function getSponsoredFpcMinBalanceFjWei(): bigint {
     if (parsed !== undefined && parsed > 0n) return parsed;
   }
   return parseFjDecimalToWei(DEFAULT_SPONSORED_FPC_MIN_FJ)!;
+}
+
+/**
+ * SponsoredFPC FeeJuice balance (in wei) below which players receive a warning.
+ * Env: `VITE_SPONSORED_FPC_WARNING_BALANCE_FJ` as a decimal FJ string.
+ * This is a soft warning only and does not affect transaction preflight.
+ */
+export function getSponsoredFpcWarningBalanceFjWei(): bigint {
+  const raw = getString("VITE_SPONSORED_FPC_WARNING_BALANCE_FJ");
+  if (raw !== undefined) {
+    const parsed = parseFjDecimalToWei(raw.trim());
+    if (parsed !== undefined && parsed > 0n) return parsed;
+  }
+  return parseFjDecimalToWei(DEFAULT_SPONSORED_FPC_WARNING_FJ)!;
 }
 
 /**

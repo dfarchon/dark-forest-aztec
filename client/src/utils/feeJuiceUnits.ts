@@ -7,6 +7,9 @@ const FJ_DECIMALS = 18n;
 /** Default minimum SponsoredFPC balance when env is unset (2 FJ). */
 export const DEFAULT_SPONSORED_FPC_MIN_FJ = "2";
 
+/** Default SponsoredFPC balance at which the client starts warning players. */
+export const DEFAULT_SPONSORED_FPC_WARNING_FJ = "20";
+
 /**
  * Default minimum active-account FeeJuice balance before entering the game when sponsor mode is off.
  * Override with `VITE_ACCOUNT_MIN_BALANCE_FJ`.

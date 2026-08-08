@@ -57,8 +57,21 @@ export const externalLinks = {
     },
   },
   aztecMainnet: {
-    /** Official Aztec mainnet Ethereum ↔ Aztec bridge (Shield). */
-    feeJuiceBridge: "https://df-aztec-bridge-api.vercel.app",
+    /** Curated FeeJuice providers shown in Settings. Add fallback bridges here. */
+    feeJuiceBridges: [
+      {
+        name: "DFArchon FeeJuice Bridge",
+        url: "https://df-aztec-bridge-api.vercel.app",
+        contactName: "DFArchon",
+        contactUrl: "https://x.com/DFArchon",
+      },
+      {
+        name: "DF Aztec Bridge Kit",
+        url: "https://aztec-dfarchon-kit.netlify.app/",
+        contactName: "DFArchon",
+        contactUrl: "https://x.com/DFArchon",
+      },
+    ],
   },
 } as const;
 

@@ -113,6 +113,13 @@ const FeePaymentHelp = styled.p`
   line-height: 1.45;
 `;
 
+const BridgeLinkList = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+`;
+
 const FeePaymentFieldLabel = styled.label`
   display: block;
   margin-bottom: 5px;
@@ -331,9 +338,13 @@ export function ConnectionSettingsModal({
                 Your account pays transaction fees. Its FeeJuice balance is
                 checked after wallet selection.
               </FeePaymentHelp>
-              <Link to={externalLinks.aztecMainnet.feeJuiceBridge}>
-                Open FeeJuice bridge
-              </Link>
+              <BridgeLinkList>
+                {externalLinks.aztecMainnet.feeJuiceBridges.map((bridge) => (
+                  <Link key={bridge.url} to={bridge.url}>
+                    Open {bridge.name}
+                  </Link>
+                ))}
+              </BridgeLinkList>
             </FeePaymentDetails>
           )}
         </FeePaymentSection>

@@ -38,6 +38,7 @@ import {
   getAccountMinBalanceFjWei,
   getProverEnabled,
   getSponsoredFpcMinBalanceFjWei,
+  getSponsoredFpcWarningBalanceFjWei,
   getSponsorMode,
   isProductionLike,
 } from "../../config/env";
@@ -287,6 +288,7 @@ async function printInitialSponsorStatus(
     const node = createAztecNodeClient(getEffectiveNodeUrl());
     const balanceWei = await getFeeJuiceBalance(sponsoredAddr, node);
     const minWei = getSponsoredFpcMinBalanceFjWei();
+    const warningWei = getSponsoredFpcWarningBalanceFjWei();
 
     terminal.current?.println(
       `SponsoredFPC address: ${sponsoredAddr.toString()}`,
@@ -304,6 +306,11 @@ async function printInitialSponsorStatus(
       terminal.current?.println(
         "SponsoredFPC balance is too low. Fund this contract or set a funded SponsoredFPC address in Connection settings before continuing.",
         TerminalTextStyle.Red
+      );
+    } else if (balanceWei < warningWei) {
+      terminal.current?.println(
+        `Warning: SponsoredFPC balance is below ${formatFeeJuiceWei(warningWei)}. Sponsored transactions may become unavailable soon; please notify the administrator.`,
+        TerminalTextStyle.Yellow
       );
     }
   } catch (err) {
@@ -448,7 +455,16 @@ async function runSponsorInfrastructurePreflightGate(params: {
 
     printSponsorFeeJuicePreflight(terminal, sponsoredAddr, pf);
 
-    if (pf.sufficient) return;
+    if (pf.sufficient) {
+      const warningWei = getSponsoredFpcWarningBalanceFjWei();
+      if (pf.balanceWei < warningWei) {
+        terminal.current?.println(
+          `Warning: SponsoredFPC balance is below ${formatFeeJuiceWei(warningWei)}. Sponsored transactions may become unavailable soon; please notify the administrator.`,
+          TerminalTextStyle.Yellow
+        );
+      }
+      return;
+    }
 
     terminal.current?.println(
       "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
@@ -667,20 +683,16 @@ async function runAccountFeeJuicePreflightGate(params: {
       "Tip: Import about 100 FJ — enough headroom for play (minimum is only a few FJ).",
       TerminalTextStyle.Subber
     );
-    let opened = false;
-    terminal.current?.printLink(
-      "↗ Open bridge",
-      () => {
-        if (!opened) opened = true;
-        window.open(
-          externalLinks.aztecMainnet.feeJuiceBridge,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      },
-      TerminalTextStyle.Blue
-    );
-    terminal.current?.newline();
+    for (const bridge of externalLinks.aztecMainnet.feeJuiceBridges) {
+      terminal.current?.printLink(
+        `↗ Open ${bridge.name}`,
+        () => {
+          window.open(bridge.url, "_blank", "noopener,noreferrer");
+        },
+        TerminalTextStyle.Blue
+      );
+      terminal.current?.newline();
+    }
     terminal.current?.newline();
     terminal.current?.println(
       "3. Return here and confirm your balance.",

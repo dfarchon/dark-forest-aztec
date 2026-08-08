@@ -38,6 +38,7 @@ import {
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { NotificationsPane } from "./Notifications";
 import { SidebarPane } from "./SidebarPane";
+import { SponsoredFpcBalanceWarning } from "./SponsoredFpcBalanceWarning";
 import { TopBar } from "./TopBar";
 
 export function GameWindowLayout({
@@ -178,6 +179,7 @@ export function GameWindowLayout({
           </BorderlessPane>
         </TopBarPaneContainer>
       )}
+      {showEdgeChrome && <SponsoredFpcBalanceWarning />}
 
       {/* all modals rendered into here */}
       <div ref={modalsContainerCB}>
