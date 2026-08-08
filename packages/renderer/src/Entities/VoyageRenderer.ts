@@ -77,14 +77,16 @@ export class VoyageRenderer implements VoyageRendererType {
       const shipMove = voyage.player === EMPTY_ADDRESS;
       const now = nowMs / 1000;
       const timeLeft = voyage.arrivalTime - now;
-      const radius = (timeLeft * fromPlanet.speed) / 100;
+      const radius = (Math.max(0, timeLeft) * fromPlanet.speed) / 100;
       const color = getVoyageColor(fromPlanet, toPlanet, myMove, shipMove);
 
       const text = shipMove ? "Ship" : `${Math.floor(voyage.energyArriving)}`;
+      const status =
+        timeLeft > 0 ? `in ${Math.floor(timeLeft)}s` : "Confirming...";
 
       cR.queueCircleWorld(toLoc.coords, radius, color, 0.7, 1, true);
       tR.queueTextWorld(
-        `${text} in ${Math.floor(timeLeft)}s`,
+        `${text} ${status}`,
         { x: toLoc.coords.x, y: toLoc.coords.y + radius },
         color,
         undefined,
@@ -107,7 +109,11 @@ export class VoyageRenderer implements VoyageRendererType {
         (1 - proportion) * fromLoc.coords.y + proportion * toLoc.coords.y;
       const shipsLocation = { x: shipsLocationX, y: shipsLocationY };
 
-      const timeLeftSeconds = Math.floor(voyage.arrivalTime - now);
+      const timeLeftSeconds = Math.max(0, Math.floor(voyage.arrivalTime - now));
+      const status =
+        now < voyage.arrivalTime
+          ? `${timeLeftSeconds.toString()}s`
+          : "Confirming...";
       const voyageColor = getVoyageColor(
         fromPlanet,
         toPlanet,
@@ -145,7 +151,7 @@ export class VoyageRenderer implements VoyageRendererType {
 
       // queue text
       tR.queueTextWorld(
-        `${timeLeftSeconds.toString()}s`,
+        status,
         {
           x: shipsLocationX,
           y: shipsLocationY - 0.5,
@@ -185,26 +191,23 @@ export class VoyageRenderer implements VoyageRendererType {
   }
 
   queueVoyages(): void {
-    const { context: gameUIManager, now } = this.renderer;
+    const { context: gameUIManager } = this.renderer;
     const voyages = gameUIManager.getAllVoyages();
     for (const voyage of voyages) {
-      const nowS = now / 1000;
-      if (nowS < voyage.arrivalTime) {
-        const isMyVoyage =
-          voyage.player === gameUIManager.getAccount() ||
-          gameUIManager.getArtifactWithId(voyage.artifactId)?.controller ===
-            gameUIManager.getPlayer()?.address;
-        const isShipVoyage = voyage.player === EMPTY_ADDRESS;
-        const sender = gameUIManager.getPlayer(voyage.player);
-        this.drawVoyagePath(
-          voyage.fromPlanet,
-          voyage.toPlanet,
-          true,
-          isMyVoyage,
-          isShipVoyage,
-        );
-        this.drawFleet(voyage, sender, isMyVoyage, isShipVoyage);
-      }
+      const isMyVoyage =
+        voyage.player === gameUIManager.getAccount() ||
+        gameUIManager.getArtifactWithId(voyage.artifactId)?.controller ===
+          gameUIManager.getPlayer()?.address;
+      const isShipVoyage = voyage.player === EMPTY_ADDRESS;
+      const sender = gameUIManager.getPlayer(voyage.player);
+      this.drawVoyagePath(
+        voyage.fromPlanet,
+        voyage.toPlanet,
+        true,
+        isMyVoyage,
+        isShipVoyage,
+      );
+      this.drawFleet(voyage, sender, isMyVoyage, isShipVoyage);
     }
 
     const unconfirmedDepartures = gameUIManager.getUnconfirmedMoves();
