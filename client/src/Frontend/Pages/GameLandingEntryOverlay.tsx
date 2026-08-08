@@ -6,26 +6,67 @@ import dfstyles from "../Styles/dfstyles";
 
 export type EntryModeChoice = "quick" | "standard" | "terminal";
 
+export type SponsorFpcEntryCheckState =
+  | { status: "checking" }
+  | { status: "ready" }
+  | { status: "switched"; balance: string; threshold: string }
+  | { status: "error"; message: string };
+
 type Props = {
   onSelect: (mode: EntryModeChoice) => void;
   onConfigureQuickJoin?: () => void;
+  sponsorFpcCheck: SponsorFpcEntryCheckState;
+  onRetrySponsorFpcCheck: () => void;
+  onOpenConnectionSettings: () => void;
 };
 
 export function GameLandingEntryOverlay({
   onSelect,
   onConfigureQuickJoin,
+  sponsorFpcCheck,
+  onRetrySponsorFpcCheck,
+  onOpenConnectionSettings,
 }: Props) {
+  const entryBlocked =
+    sponsorFpcCheck.status === "checking" || sponsorFpcCheck.status === "error";
+
   return (
     <Backdrop role="dialog" aria-modal aria-labelledby="entry-overlay-title">
       <Card>
         <Title id="entry-overlay-title">{GAME_NAME}</Title>
         <Subtitle>Choose how you want to sign in</Subtitle>
         <Hint>Pick one. You can refresh the page later to switch.</Hint>
+        {sponsorFpcCheck.status === "checking" && (
+          <SponsorStatus $variant="checking" role="status">
+            Checking SponsoredFPC FeeJuice balance...
+          </SponsorStatus>
+        )}
+        {sponsorFpcCheck.status === "switched" && (
+          <SponsorStatus $variant="switched" role="status">
+            SponsoredFPC has only {sponsorFpcCheck.balance} (required:{" "}
+            {sponsorFpcCheck.threshold}). Sponsored fees were disabled; you will
+            be guided to bridge FeeJuice to your account.
+          </SponsorStatus>
+        )}
+        {sponsorFpcCheck.status === "error" && (
+          <SponsorStatus $variant="error" role="alert">
+            <span>{sponsorFpcCheck.message}</span>
+            <StatusActions>
+              <SmallBtn type="button" onClick={onRetrySponsorFpcCheck}>
+                Retry check
+              </SmallBtn>
+              <SmallBtn type="button" onClick={onOpenConnectionSettings}>
+                Connection settings
+              </SmallBtn>
+            </StatusActions>
+          </SponsorStatus>
+        )}
         <ButtonCol>
           <PrimaryRow>
             <BigBtn
               type="button"
               $variant="primary"
+              disabled={entryBlocked}
               onClick={() => onSelect("quick")}
             >
               Quick join (auto)
@@ -55,14 +96,22 @@ export function GameLandingEntryOverlay({
           </PrimaryRow>
           <Desc>Fastest: auto-selects your default local wallet.</Desc>
 
-          <BigBtn type="button" onClick={() => onSelect("standard")}>
+          <BigBtn
+            type="button"
+            disabled={entryBlocked}
+            onClick={() => onSelect("standard")}
+          >
             Standard (buttons + prompts)
           </BigBtn>
           <Desc>
             Guided clicks for wallet choices; terminal still shows status.
           </Desc>
 
-          <BigBtn type="button" onClick={() => onSelect("terminal")}>
+          <BigBtn
+            type="button"
+            disabled={entryBlocked}
+            onClick={() => onSelect("terminal")}
+          >
             Terminal (advanced)
           </BigBtn>
           <Desc>
@@ -126,6 +175,51 @@ const ButtonCol = styled.div`
   gap: 12px;
 `;
 
+const SponsorStatus = styled.div<{
+  $variant: "checking" | "switched" | "error";
+}>`
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border: 1px solid
+    ${({ $variant }) =>
+      $variant === "error"
+        ? dfstyles.colors.dfred
+        : $variant === "switched"
+          ? dfstyles.colors.dfyellow
+          : dfstyles.colors.border};
+  border-radius: ${dfstyles.borderRadius};
+  color: ${({ $variant }) =>
+    $variant === "error"
+      ? dfstyles.colors.dfred
+      : $variant === "switched"
+        ? dfstyles.colors.dfyellow
+        : dfstyles.colors.subtext};
+  font-size: 0.82rem;
+  line-height: 1.45;
+`;
+
+const StatusActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+`;
+
+const SmallBtn = styled.button`
+  padding: 5px 9px;
+  border: 1px solid ${dfstyles.colors.border};
+  border-radius: 3px;
+  background: transparent;
+  color: ${dfstyles.colors.text};
+  cursor: pointer;
+  font: inherit;
+
+  &:hover {
+    border-color: ${dfstyles.colors.dfgreen};
+    color: ${dfstyles.colors.dfgreen};
+  }
+`;
+
 const primaryStyles = css`
   justify-content: center;
   text-align: center;
@@ -184,6 +278,14 @@ const BigBtn = styled.button<{ $variant?: "primary" | "default" }>`
   }
 
   ${({ $variant }) => $variant === "primary" && primaryStyles}
+
+  &:disabled {
+    color: ${dfstyles.colors.subbertext};
+    border-color: ${dfstyles.colors.borderDarkest};
+    background: transparent;
+    cursor: wait;
+    filter: none;
+  }
 `;
 
 const PrimaryRow = styled.div`
