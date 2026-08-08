@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --fix",
     "prettier": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "prettier:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test --experimental-transform-types tests/*.test.ts"
   },
   "dependencies": {
     "@alejoamiras/aztec-accelerator": "5.0.1",
