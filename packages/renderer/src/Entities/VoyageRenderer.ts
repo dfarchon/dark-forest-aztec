@@ -81,8 +81,7 @@ export class VoyageRenderer implements VoyageRendererType {
       const color = getVoyageColor(fromPlanet, toPlanet, myMove, shipMove);
 
       const text = shipMove ? "Ship" : `${Math.floor(voyage.energyArriving)}`;
-      const status =
-        timeLeft > 0 ? `in ${Math.floor(timeLeft)}s` : "Confirming...";
+      const status = timeLeft > 0 ? `in ${Math.floor(timeLeft)}s` : "sync…";
 
       cR.queueCircleWorld(toLoc.coords, radius, color, 0.7, 1, true);
       tR.queueTextWorld(
@@ -111,9 +110,7 @@ export class VoyageRenderer implements VoyageRendererType {
 
       const timeLeftSeconds = Math.max(0, Math.floor(voyage.arrivalTime - now));
       const status =
-        now < voyage.arrivalTime
-          ? `${timeLeftSeconds.toString()}s`
-          : "Confirming...";
+        now < voyage.arrivalTime ? `${timeLeftSeconds.toString()}s` : "sync…";
       const voyageColor = getVoyageColor(
         fromPlanet,
         toPlanet,
