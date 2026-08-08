@@ -33,6 +33,7 @@ import {
   getEffectiveProverUrl,
   getEffectiveSponsoredFpcAddressOverride,
   getEffectiveUseSponsoredFpc,
+  setConnectionOverrides,
 } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
@@ -100,6 +101,7 @@ import {
 import {
   type EntryModeChoice,
   GameLandingEntryOverlay,
+  type SponsorFpcEntryCheckState,
 } from "./GameLandingEntryOverlay";
 
 function formatFeeJuice(amount: bigint): string {
@@ -455,14 +457,18 @@ async function runSponsorInfrastructurePreflightGate(params: {
 
     printSponsorFeeJuicePreflight(terminal, sponsoredAddr, pf);
 
+    const sponsoredFpcThresholdWei = getSponsoredFpcWarningBalanceFjWei();
+    if (pf.balanceWei < sponsoredFpcThresholdWei) {
+      setConnectionOverrides({ useSponsoredFpc: false });
+      terminal.current?.println(
+        `SponsoredFPC balance is below ${formatFeeJuiceWei(sponsoredFpcThresholdWei)}. Sponsored fees were disabled; switching to your account FeeJuice flow.`,
+        TerminalTextStyle.Yellow
+      );
+      await runAccountFeeJuicePreflightGate(params);
+      return;
+    }
+
     if (pf.sufficient) {
-      const warningWei = getSponsoredFpcWarningBalanceFjWei();
-      if (pf.balanceWei < warningWei) {
-        terminal.current?.println(
-          `Warning: SponsoredFPC balance is below ${formatFeeJuiceWei(warningWei)}. Sponsored transactions may become unavailable soon; please notify the administrator.`,
-          TerminalTextStyle.Yellow
-        );
-      }
       return;
     }
 
@@ -1093,6 +1099,7 @@ export function GameLandingPage() {
   const quickEnterTimeoutRef = useRef<number | null>(null);
   const quickEnterFinalizeScheduledRef = useRef(false);
   const quickJoinBackupAttemptedRef = useRef(false);
+  const sponsorFpcEntryCheckGenerationRef = useRef(0);
   const [enterTransitionVisible, setEnterTransitionVisible] = useState(false);
   const [refreshTransitionVisible, setRefreshTransitionVisible] =
     useState(false);
@@ -1107,6 +1114,12 @@ export function GameLandingPage() {
   });
   const loadingPhaseStartedAtRef = useRef(Date.now());
   const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
+  const [sponsorFpcEntryCheck, setSponsorFpcEntryCheck] =
+    useState<SponsorFpcEntryCheckState>(() =>
+      getEffectiveUseSponsoredFpc()
+        ? { status: "checking" }
+        : { status: "ready" }
+    );
   const contractAddress = contract
     ? address(contract)
     : address(CORE_CONTRACT_ADDRESS);
@@ -1117,6 +1130,51 @@ export function GameLandingPage() {
   useEffect(() => {
     printGameLandingDebugConfig({ contractAddress, isLobby });
   }, [contractAddress, isLobby]);
+
+  const runSponsorFpcEntryCheck = useCallback(async () => {
+    const generation = ++sponsorFpcEntryCheckGenerationRef.current;
+
+    if (!getEffectiveUseSponsoredFpc()) {
+      setSponsorFpcEntryCheck({ status: "ready" });
+      return;
+    }
+
+    setSponsorFpcEntryCheck({ status: "checking" });
+    try {
+      const sponsoredAddress = await resolveInitialSponsoredFpcAddress();
+      const node = createAztecNodeClient(getEffectiveNodeUrl());
+      const balanceWei = await getFeeJuiceBalance(sponsoredAddress, node);
+      if (generation !== sponsorFpcEntryCheckGenerationRef.current) return;
+
+      const thresholdWei = getSponsoredFpcWarningBalanceFjWei();
+      if (balanceWei < thresholdWei) {
+        setConnectionOverrides({ useSponsoredFpc: false });
+        setSponsorFpcEntryCheck({
+          status: "switched",
+          balance: formatFeeJuiceWei(balanceWei),
+          threshold: formatFeeJuiceWei(thresholdWei),
+        });
+        return;
+      }
+
+      setSponsorFpcEntryCheck({ status: "ready" });
+    } catch (error) {
+      if (generation !== sponsorFpcEntryCheckGenerationRef.current) return;
+      console.error("SponsoredFPC entry check failed:", error);
+      setSponsorFpcEntryCheck({
+        status: "error",
+        message:
+          "SponsoredFPC balance could not be verified. Check the Aztec node and SponsoredFPC address before continuing.",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void runSponsorFpcEntryCheck();
+    return () => {
+      sponsorFpcEntryCheckGenerationRef.current += 1;
+    };
+  }, [runSponsorFpcEntryCheck]);
 
   useEffect(() => {
     loadingPhaseStartedAtRef.current = Date.now();
@@ -3459,14 +3517,24 @@ export function GameLandingPage() {
     }
   }, [terminalVisible]);
 
-  const handleEntryModeSelected = useCallback((choice: EntryModeChoice) => {
-    setEntryMode(choice);
-    if (choice === "quick") {
-      setTerminalVisible(false);
-    } else {
-      setTerminalVisible(true);
-    }
-  }, []);
+  const handleEntryModeSelected = useCallback(
+    (choice: EntryModeChoice) => {
+      if (
+        sponsorFpcEntryCheck.status === "checking" ||
+        sponsorFpcEntryCheck.status === "error"
+      ) {
+        return;
+      }
+
+      setEntryMode(choice);
+      if (choice === "quick") {
+        setTerminalVisible(false);
+      } else {
+        setTerminalVisible(true);
+      }
+    },
+    [sponsorFpcEntryCheck.status]
+  );
 
   useEffect(() => {
     if (entryMode === "pending") return;
@@ -3494,6 +3562,9 @@ export function GameLandingPage() {
         <GameLandingEntryOverlay
           onSelect={handleEntryModeSelected}
           onConfigureQuickJoin={() => setQuickJoinSettingsOpen(true)}
+          sponsorFpcCheck={sponsorFpcEntryCheck}
+          onRetrySponsorFpcCheck={() => void runSponsorFpcEntryCheck()}
+          onOpenConnectionSettings={() => setConnectionSettingsOpen(true)}
         />
       )}
       {enterTransitionVisible && <EnterTransition aria-hidden />}
