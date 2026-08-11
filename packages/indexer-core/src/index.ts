@@ -31,13 +31,16 @@ export type {
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
+  PublicEventBatchCounts,
+  PublicEventName,
+  PublicEventStats,
   TableId,
   TableName,
   TableRowType,
   TableStateMap,
   TableUpdate,
 } from "./types.ts";
-export { TABLE_NAMES } from "./types.ts";
+export { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
 
 export * from "./TableTypes/chain.ts";
 export * from "./TableTypes/enums.ts";

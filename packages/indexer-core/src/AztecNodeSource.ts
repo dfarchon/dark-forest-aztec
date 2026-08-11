@@ -30,7 +30,12 @@ import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage
 import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 
-import type { BlockUpdates, TableName } from "./types.ts";
+import type {
+  BlockUpdates,
+  PublicEventBatchCounts,
+  PublicEventName,
+  TableName,
+} from "./types.ts";
 
 /** Decoded storage event shape: id, optional block_number, state. */
 type DecodedUpdate = {
@@ -57,52 +62,62 @@ const DEFAULT_ADDRESSES: StorageContractAddresses = {
 const STORAGE_SPECS: Array<{
   contractKey: string;
   table: TableName;
+  eventName: PublicEventName;
   eventDef: EventMetadataDefinition;
 }> = [
   {
     contractKey: "WorldStorage",
     table: "world",
+    eventName: "WorldUpdate",
     eventDef: WorldStorageContract.events.WorldUpdate,
   },
   {
     contractKey: "PlayerStorage",
     table: "player",
+    eventName: "PlayerUpdate",
     eventDef: PlayerStorageContract.events.PlayerUpdate,
   },
   {
     contractKey: "PlanetStorage",
     table: "planet",
+    eventName: "PlanetUpdate",
     eventDef: PlanetStorageContract.events.PlanetUpdate,
   },
   {
     contractKey: "PlanetRevealedCoordsStorage",
     table: "planet_revealed_coords",
+    eventName: "PlanetRevealedCoordsUpdate",
     eventDef:
       PlanetRevealedCoordsStorageContract.events.PlanetRevealedCoordsUpdate,
   },
   {
     contractKey: "PlanetEventsStorage",
     table: "planet_events",
+    eventName: "PlanetEventsUpdate",
     eventDef: PlanetEventsStorageContract.events.PlanetEventsUpdate,
   },
   {
     contractKey: "PlanetArtifactsStorage",
     table: "planet_artifacts",
+    eventName: "PlanetArtifactsUpdate",
     eventDef: PlanetArtifactsStorageContract.events.PlanetArtifactsUpdate,
   },
   {
     contractKey: "ArrivalStorage",
     table: "arrival",
+    eventName: "ArrivalUpdate",
     eventDef: ArrivalStorageContract.events.ArrivalUpdate,
   },
   {
     contractKey: "ArtifactStorage",
     table: "artifact",
+    eventName: "ArtifactUpdate",
     eventDef: ArtifactStorageContract.events.ArtifactUpdate,
   },
   {
     contractKey: "ArtifactLocationStorage",
     table: "artifact_location",
+    eventName: "ArtifactLocationUpdate",
     eventDef: ArtifactLocationStorageContract.events.ArtifactLocationUpdate,
   },
 ];
@@ -225,12 +240,18 @@ export function createAztecNodeBlockSource(
     ): Promise<BlockUpdates> {
       const limit = Math.max(0, toBlock - fromBlock + 1);
       if (limit === 0) {
-        return { fromBlock, toBlock, updates: [] };
+        return { fromBlock, toBlock, updates: [], eventCounts: {} };
       }
 
       const updates: BlockUpdates["updates"] = [];
+      const eventCounts: PublicEventBatchCounts = {};
 
-      for (const { table, eventDef, address } of specsWithArtifacts) {
+      for (const {
+        table,
+        eventName,
+        eventDef,
+        address,
+      } of specsWithArtifacts) {
         let afterEvent: EventCursor | undefined;
         do {
           const page = await getPublicEvents(node, eventDef, {
@@ -239,6 +260,8 @@ export function createAztecNodeBlockSource(
             contractAddress: address,
             afterEvent,
           });
+          eventCounts[eventName] =
+            (eventCounts[eventName] ?? 0) + page.events.length;
           const events = page.events.map((e) => e.event) as DecodedUpdate[];
           for (const ev of events) {
             if (ev?.state == null) continue;
@@ -249,7 +272,7 @@ export function createAztecNodeBlockSource(
         } while (afterEvent);
       }
 
-      return { fromBlock, toBlock, updates };
+      return { fromBlock, toBlock, updates, eventCounts };
     },
   };
 }

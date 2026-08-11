@@ -1666,6 +1666,7 @@ export function GameLandingPage() {
       (window as any).dfDebug = {
         snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),
         snapshotJson: () => connection.getSnapshotAsJsonString(),
+        publicEventStats: () => connection.getPublicEventStats(),
         downloadSnapshot: () => {
           const json = connection.getSnapshotAsJsonString();
           const blob = new Blob([json], { type: "application/json" });
