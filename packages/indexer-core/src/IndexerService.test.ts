@@ -9,7 +9,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { IndexerService } from "./IndexerService.ts";
-import type { BlockUpdates, IBlockEventSource, TableUpdate } from "./types.ts";
+import type {
+  BlockUpdates,
+  IBlockEventSource,
+  PublicEventBatchCounts,
+  TableUpdate,
+} from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -50,6 +55,10 @@ interface MockSourceOptions {
   latestBlock: number;
   /** Returns updates for a chunk, or throws to simulate failure. */
   updatesFor?: (fromBlock: number, toBlock: number) => TableUpdate<Raw>[];
+  eventCountsFor?: (
+    fromBlock: number,
+    toBlock: number,
+  ) => PublicEventBatchCounts;
 }
 
 function createMockSource(options: MockSourceOptions): IBlockEventSource & {
@@ -65,7 +74,8 @@ function createMockSource(options: MockSourceOptions): IBlockEventSource & {
     ): Promise<BlockUpdates> => {
       calls.push({ fromBlock, toBlock });
       const updates = options.updatesFor?.(fromBlock, toBlock) ?? [];
-      return { fromBlock, toBlock, updates };
+      const eventCounts = options.eventCountsFor?.(fromBlock, toBlock);
+      return { fromBlock, toBlock, updates, eventCounts };
     },
   };
 }
@@ -192,5 +202,110 @@ test("start() rejects if getLatestBlockNumber fails", async () => {
 
   await assert.rejects(() => indexer.start(), /node unreachable/);
   assert.notEqual(indexer.getLifecycle(), "ready");
+  indexer.destroy();
+});
+
+test("public event stats count every event even when the same row id overwrites", async () => {
+  const source = createMockSource({
+    latestBlock: 2,
+    updatesFor: () => [
+      arrivalUpdate("0xsame", { pop_arriving: 1n }),
+      arrivalUpdate("0xsame", { pop_arriving: 2n }),
+    ],
+    eventCountsFor: () => ({ ArrivalUpdate: 2, PlanetUpdate: 3 }),
+  });
+  const indexer = new IndexerService({
+    source,
+    startBlock: 1,
+    maxBlocksPerRequest: 100,
+  });
+
+  await indexer.start();
+
+  assert.equal(indexer.getArrivalIds().length, 1);
+  assert.deepEqual(indexer.getPublicEventStats(), {
+    fromBlock: 1,
+    toBlock: 2,
+    counts: {
+      WorldUpdate: 0,
+      PlayerUpdate: 0,
+      PlanetUpdate: 3,
+      PlanetRevealedCoordsUpdate: 0,
+      PlanetEventsUpdate: 0,
+      PlanetArtifactsUpdate: 0,
+      ArrivalUpdate: 2,
+      ArtifactUpdate: 0,
+      ArtifactLocationUpdate: 0,
+    },
+    total: 5,
+    complete: true,
+  });
+  indexer.destroy();
+});
+
+test("event counts accumulate by chunk and a failed retry is not double-counted", async () => {
+  let failSecondChunk = true;
+  const source = createMockSource({
+    latestBlock: 250,
+    updatesFor: (fromBlock) => {
+      if (fromBlock === 101 && failSecondChunk) {
+        throw new Error("transient failure");
+      }
+      return [];
+    },
+    eventCountsFor: (fromBlock) => ({
+      PlanetUpdate: fromBlock === 1 ? 20 : fromBlock === 101 ? 7 : 1,
+    }),
+  });
+  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+
+  await assert.rejects(() => indexer.start(), /transient failure/);
+  assert.equal(indexer.getPublicEventStats().counts.PlanetUpdate, 20);
+  assert.equal(indexer.getPublicEventStats().toBlock, 100);
+
+  failSecondChunk = false;
+  await indexer.start();
+
+  const stats = indexer.getPublicEventStats();
+  assert.equal(stats.counts.PlanetUpdate, 28);
+  assert.equal(stats.total, 28);
+  assert.equal(stats.toBlock, 250);
+  indexer.destroy();
+});
+
+test("event stats are marked partial after loading a bootstrap snapshot", async () => {
+  const bootstrapSource: IBlockEventSource = {
+    getLatestBlockNumber: async () => 100,
+    getBlockUpdates: async (fromBlock, toBlock) => ({
+      fromBlock,
+      toBlock,
+      updates: [],
+    }),
+    getSnapshot: async () => ({
+      lastProcessedBlock: 100,
+      world: new Map(),
+      player: new Map(),
+      planet: new Map(),
+      planet_revealed_coords: new Map(),
+      planet_events: new Map(),
+      planet_artifacts: new Map(),
+      arrival: new Map(),
+      artifact: new Map(),
+      artifact_location: new Map(),
+    }),
+  };
+  const source = createMockSource({
+    latestBlock: 102,
+    eventCountsFor: () => ({ WorldUpdate: 2 }),
+  });
+  const indexer = new IndexerService({ source, bootstrapSource });
+
+  await indexer.start();
+
+  const stats = indexer.getPublicEventStats();
+  assert.equal(stats.complete, false);
+  assert.equal(stats.fromBlock, 101);
+  assert.equal(stats.toBlock, 102);
+  assert.equal(stats.total, 2);
   indexer.destroy();
 });
