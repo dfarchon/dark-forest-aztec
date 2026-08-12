@@ -10,6 +10,7 @@ import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
 import {
   createSendOnceContext,
   DARK_FOREST_REFERENCE_GAS_PROFILE,
+  maxFeePerGasWithHeadroom,
   type SendOnceContext,
   sponsoredFeeFloorWei,
 } from "@alejoamiras/quota-paymaster";
@@ -1165,12 +1166,19 @@ export class WalletManager {
         QUOTA_GAS_PROFILE.teardownDaGasLimit,
         QUOTA_GAS_PROFILE.teardownL2GasLimit
       ),
-      // Padded: proving takes seconds, and a fee tick in that window would
-      // otherwise make an already-proven transaction unaffordable. The
-      // paymaster's own max_fee assertion still bounds what this can cost it.
-      maxFeesPerGas: (await this.node.getCurrentMinFees()).mul(
-        QUOTA_GAS_PROFILE.feeHeadroomMultiplier
-      ),
+      // Padded via the package's own headroom arithmetic, per dimension. The
+      // contract bills gas_limits x max_fees_per_gas and the policy's fee
+      // floor budgets for exactly that product — a client that rounds
+      // headroom differently can pass the policy check and still be rejected
+      // on-chain, so the one rounding that exists is the package's.
+      maxFeesPerGas: await (async () => {
+        const fees = await this.node.getCurrentMinFees();
+        const { GasFees } = await import("@aztec/stdlib/gas");
+        return new GasFees(
+          maxFeePerGasWithHeadroom(QUOTA_GAS_PROFILE, BigInt(fees.feePerDaGas)),
+          maxFeePerGasWithHeadroom(QUOTA_GAS_PROFILE, BigInt(fees.feePerL2Gas))
+        );
+      })(),
     });
 
     const txRequest = await new DefaultEntrypoint().createTxExecutionRequest(

@@ -22,28 +22,35 @@ VITE_QUOTA_DEBUG=true           # optional: [quota] console diagnostics
 
 ## Operate one
 
-All commands are thin CLIs over the package's operator library. State-changing
-commands print a digest-confirmed plan and require `--yes`; without it every
-run is a dry run.
+The package ships the CLI (`bin/quota-paymaster`); this repo keeps only a
+config module (`contracts/quota-paymaster.config.ts`) that builds the signer
+from the layered env files — the CLI never touches key material. Every
+state-changing command prints a digest-confirmed plan and does nothing without
+`--yes`; run everything without `--yes` first, it is a real dry run.
 
 ```bash
-# deploy from config (refuses worst-case > accepted loss; verifies class ids)
-pnpm --filter contracts run deploy-fpc -- --config fpc/config/dark-forest.json --yes
+cd contracts
+CFG=./quota-paymaster.config.ts
 
 # live + pending policy, balance vs the sequencer reserve
-pnpm --filter contracts run update-fpc-policy -- --fpc 0x… --show
+pnpm run fpc -- policy --fpc 0x… --config-module $CFG --show
 
-# retune (12h delay, CAS-protected; one pending slot)
-pnpm --filter contracts run update-fpc-policy -- --fpc 0x… --max-uses 10 --yes
+# retune (12h delay, CAS-protected; edits need an explicit loss bound)
+pnpm run fpc -- policy --fpc 0x… --config-module $CFG --max-uses 10 --max-loss-wei N --yes
 
-# fund: bridge on L1, then claim on L2 (the claim secret is journaled to
-# ~/.quota-paymaster BEFORE L1 is touched and never passes through argv)
-pnpm --filter contracts run bridge-fee-juice -- --to 0x… --amount 50 --yes
-pnpm --filter contracts run claim-fee-juice -- --for 0x… --yes
+# deploy a new instance from config
+pnpm run fpc -- deploy --config fpc/config/dark-forest.json --config-module $CFG --yes
 
-# re-measure real per-action costs after fee moves or gas-profile changes
-pnpm --filter contracts run measure-sponsored-fee -- --fpc 0x… --target 0x… --artifact Core
+# fund: bridge on L1, then claim on L2 (claim secret journaled, never in argv)
+pnpm run fpc -- bridge --to 0x… --amount 50 --config-module $CFG --yes
+pnpm run fpc -- claim  --for 0x… --config-module $CFG --yes
+
+# re-measure real per-action costs (spends juice + daily allowance)
+pnpm run fpc -- measure --fpc 0x… --target 0x… --artifact ./target/core-Core.json --method myFn --config-module $CFG --yes
 ```
+
+Exit codes: `0` success · `2` refused (nothing happened) · `1` operational
+failure (something may have — read the output before retrying).
 
 ## Three things operators must know
 

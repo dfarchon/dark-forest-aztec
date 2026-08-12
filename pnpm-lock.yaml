@@ -116,8 +116,8 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(typescript@5.9.3)(zod@4.3.6)
       '@alejoamiras/quota-paymaster':
-        specifier: 5.0.1
-        version: 5.0.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))
+        specifier: 5.0.1-revision.1
+        version: 5.0.1-revision.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))(@aztec/wallets@5.0.1(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
       '@aztec/aztec.js':
         specifier: 5.0.1
         version: 5.0.1(typescript@5.9.3)
@@ -327,8 +327,8 @@ importers:
   contracts:
     dependencies:
       '@alejoamiras/quota-paymaster':
-        specifier: 5.0.1
-        version: 5.0.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))
+        specifier: 5.0.1-revision.1
+        version: 5.0.1-revision.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))(@aztec/wallets@5.0.1(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
       '@dfpunk/hashing':
         specifier: workspace:*
         version: link:../packages/hashing
@@ -656,9 +656,10 @@ packages:
   '@alejoamiras/aztec-accelerator@5.0.1':
     resolution: {integrity: sha512-qWnITjJizcfyhmlwqyZ4VBoPtbssgNuSFEuVGP33e+OTdf1tAWZ72mfDO09yGmvBvJ9MuaZcfeIO99eb3Dj5tg==}
 
-  '@alejoamiras/quota-paymaster@5.0.1':
-    resolution: {integrity: sha512-Sd1rBIDroSsoWmtuFCvNCTUV7TNg98za7mUu3+QyZS2prfJcwEdisGbF7Ht5XDSIluontqjwduF/FU7OSG7wjA==}
+  '@alejoamiras/quota-paymaster@5.0.1-revision.1':
+    resolution: {integrity: sha512-L9umWsqFUjquyu0wlch98Dtxi2ghfv28SC/0UrYwiENWKQ3OSgq6YlFApfVHYVlIuhrv/jkdc/OQmcZRl/kuXQ==}
     engines: {node: '>=22.0.0'}
+    hasBin: true
     peerDependencies:
       '@aztec/accounts': 5.0.1
       '@aztec/aztec.js': 5.0.1
@@ -667,6 +668,13 @@ packages:
       '@aztec/foundation': 5.0.1
       '@aztec/l1-artifacts': 5.0.1
       '@aztec/stdlib': 5.0.1
+      '@aztec/wallets': 5.0.1
+      tsx: ^4.19.0
+    peerDependenciesMeta:
+      '@aztec/wallets':
+        optional: true
+      tsx:
+        optional: true
 
   '@aws-crypto/crc32@5.2.0':
     resolution: {integrity: sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg==}
@@ -8079,7 +8087,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@alejoamiras/quota-paymaster@5.0.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))':
+  '@alejoamiras/quota-paymaster@5.0.1-revision.1(@aztec/accounts@5.0.1(typescript@5.9.3))(@aztec/aztec.js@5.0.1(typescript@5.9.3))(@aztec/entrypoints@5.0.1(typescript@5.9.3))(@aztec/ethereum@5.0.1(typescript@5.9.3))(@aztec/foundation@5.0.1)(@aztec/l1-artifacts@5.0.1)(@aztec/stdlib@5.0.1(typescript@5.9.3))(@aztec/wallets@5.0.1(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)':
     dependencies:
       '@aztec/accounts': 5.0.1(typescript@5.9.3)
       '@aztec/aztec.js': 5.0.1(typescript@5.9.3)
@@ -8088,6 +8096,9 @@ snapshots:
       '@aztec/foundation': 5.0.1
       '@aztec/l1-artifacts': 5.0.1
       '@aztec/stdlib': 5.0.1(typescript@5.9.3)
+    optionalDependencies:
+      '@aztec/wallets': 5.0.1(typescript@5.9.3)(zod@4.3.6)
+      tsx: 4.21.0
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
