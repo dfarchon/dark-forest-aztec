@@ -45,7 +45,7 @@ function emitSqliteRuntimeAssets(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   worker: {
     format: "es",
   },
@@ -93,15 +93,24 @@ export default defineConfig({
     // VITE_INDEXER_BOOTSTRAP_URL at <this-origin>/indexer-api instead. The
     // dev server forwards server-side, so the browser only ever talks to its
     // own origin and CORS never enters the picture. No effect when unset.
-    proxy: process.env.INDEXER_PROXY_TARGET
-      ? {
-          "/indexer-api": {
-            target: process.env.INDEXER_PROXY_TARGET,
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/indexer-api/, ""),
-          },
-        }
-      : undefined,
+    // `serve` only: vite preview inherits server.proxy, and a preview build is
+    // not a dev sandbox. Path must be exactly /indexer-api/… (a bare prefix
+    // also matches /indexer-apiX), and any traversal segment is refused rather
+    // than forwarded — a target with a base path could otherwise be escaped.
+    proxy:
+      command === "serve" && process.env.INDEXER_PROXY_TARGET
+        ? {
+            "^/indexer-api(/|$)": {
+              target: process.env.INDEXER_PROXY_TARGET,
+              changeOrigin: true,
+              rewrite: (path: string) => {
+                const rest = path.replace(/^\/indexer-api/, "");
+                if (rest.split("/").includes("..")) return "/";
+                return rest || "/";
+              },
+            },
+          }
+        : undefined,
   },
   build: {
     target: "esnext",
@@ -130,4 +139,4 @@ export default defineConfig({
       "@aztec/kv-store/sqlite-opfs",
     ],
   },
-});
+}));

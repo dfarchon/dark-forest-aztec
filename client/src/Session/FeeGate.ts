@@ -32,19 +32,61 @@ export type FeeGateEvent =
 
 export type FeeGateState = FeeGateEvent | { kind: "closed" };
 
+/** Identity for the currently displayed event, so a dismiss can only close
+ *  the thing the player actually clicked away. */
+export type FeeGateId = number;
+
 let current: FeeGateState = { kind: "closed" };
+let currentId: FeeGateId = 0;
 let lastModalShownAt = 0;
+/** Outstanding modal claims (see claimModalSlot). Counted, not boolean: two
+ *  publishers racing must not have the first's completion release the second. */
+let pendingModals = 0;
 const listeners = new Set<(state: FeeGateState) => void>();
 
-export function publishFeeGate(event: FeeGateEvent): void {
+export function publishFeeGate(event: FeeGateEvent): FeeGateId {
   if (event.kind !== "send-failed") lastModalShownAt = Date.now();
   current = event;
+  currentId = currentId + 1;
+  for (const listener of listeners) listener(current);
+  return currentId;
+}
+
+/** Current event's id; pass it to dismissFeeGate to close only that event. */
+export function currentFeeGateId(): FeeGateId {
+  return currentId;
+}
+
+export function dismissFeeGate(id?: FeeGateId): void {
+  // A newer event arrived after this modal rendered: the click belongs to the
+  // old one, so leave the new one standing.
+  if (id !== undefined && id !== currentId) return;
+  if (current.kind === "closed") return;
+  current = { kind: "closed" };
+  currentId = currentId + 1;
   for (const listener of listeners) listener(current);
 }
 
-export function dismissFeeGate(): void {
-  current = { kind: "closed" };
-  for (const listener of listeners) listener(current);
+/**
+ * Claims a modal slot before an async publish. The release MUST run in a
+ * finally — a claim that is never released would suppress every later notice.
+ * A watchdog releases it anyway, because "no interruption at all" is a worse
+ * failure than "one duplicate".
+ */
+export function claimModalSlot(watchdogMs = 8_000): () => void {
+  pendingModals += 1;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    pendingModals = Math.max(0, pendingModals - 1);
+  };
+  setTimeout(release, watchdogMs);
+  return release;
+}
+
+export function modalSlotClaimed(): boolean {
+  return pendingModals > 0;
 }
 
 export function getFeeGateState(): FeeGateState {
@@ -64,6 +106,8 @@ export function subscribeToFeeGate(
  * send-failure toast would just repeat it. The gate throw and the transaction
  * failure it causes arrive within the same second; one interruption is enough.
  */
-export function feeGateModalShownRecently(withinMs = 10_000): boolean {
+export function feeGateModalShownRecently(withinMs = 3_000): boolean {
+  // Narrow on purpose: this exists to swallow the toast that trails its OWN
+  // modal by milliseconds, not to mute an unrelated failure seconds later.
   return Date.now() - lastModalShownAt < withinMs;
 }

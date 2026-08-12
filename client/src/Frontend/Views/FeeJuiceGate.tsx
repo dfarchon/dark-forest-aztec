@@ -17,7 +17,9 @@ import styled from "styled-components";
 
 import { externalLinks } from "../../config/externalLinks";
 import {
+  currentFeeGateId,
   dismissFeeGate,
+  type FeeGateId,
   type FeeGateState,
   subscribeToFeeGate,
 } from "../../Session/FeeGate";
@@ -27,8 +29,20 @@ const BRIDGE_URL = externalLinks.aztecMainnet.feeJuiceBridge;
 
 export function FeeJuiceGate() {
   const [state, setState] = useState<FeeGateState>({ kind: "closed" });
+  // Bind dismissal to the event actually on screen: a newer event arriving
+  // between render and click must not be closed by that click.
+  const [id, setId] = useState<FeeGateId>(0);
 
-  useEffect(() => subscribeToFeeGate(setState), []);
+  useEffect(
+    () =>
+      subscribeToFeeGate((next) => {
+        setState(next);
+        setId(currentFeeGateId());
+      }),
+    []
+  );
+
+  const dismiss = () => dismissFeeGate(id);
 
   if (state.kind === "closed") return <></>;
 
@@ -44,7 +58,7 @@ export function FeeJuiceGate() {
           <Primary href={BRIDGE_URL} target="_blank" rel="noreferrer">
             Bridge ↗
           </Primary>
-          <Ghost as="button" onClick={dismissFeeGate}>
+          <Ghost as="button" onClick={dismiss}>
             OK
           </Ghost>
         </Row>
@@ -93,7 +107,7 @@ export function FeeJuiceGate() {
           <Primary href={BRIDGE_URL} target="_blank" rel="noreferrer">
             Bridge fee juice ↗
           </Primary>
-          <Ghost as="button" onClick={dismissFeeGate}>
+          <Ghost as="button" onClick={dismiss}>
             {spent ? "I'll wait" : "Not now"}
           </Ghost>
         </Row>

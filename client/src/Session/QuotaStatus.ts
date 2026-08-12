@@ -164,7 +164,21 @@ export function quotaActionLink(status: QuotaStatus): string | undefined {
 let currentStatus: QuotaStatus = QUOTA_STATUS_OFF;
 const listeners = new Set<(status: QuotaStatus) => void>();
 
-export function publishQuotaStatus(status: QuotaStatus): void {
+/**
+ * Monotonic publish counter. Publishers (load-time refresh,every send) race:
+ * a slow load read could otherwise land after a fresher send result and
+ * overwrite it. Callers pass the token they took BEFORE reading; a publish
+ * whose token is stale is dropped.
+ */
+let publishSeq = 0;
+
+/** Take before starting an async read; pass to publishQuotaStatus after. */
+export function beginQuotaRead(): number {
+  return ++publishSeq;
+}
+
+export function publishQuotaStatus(status: QuotaStatus, token?: number): void {
+  if (token !== undefined && token < publishSeq) return; // a fresher read won
   currentStatus = status;
   for (const listener of listeners) listener(status);
 }
@@ -191,13 +205,11 @@ export function quotaStatusFromAllowance(
     millisUntilReset: millisUntilReset(chainTimestampSeconds),
   };
   if (allowance.syncing) {
-    // A spent player reads as syncing forever (the send path never concludes
-    // exhaustion from absence), which left the badge stuck on "checking".
-    // Displaying "spent, resets at X" is advisory and self-correcting; sends
-    // stay governed by the contract.
-    if (allowance.subscribed) {
-      return { kind: "spent", remaining: 0, ...shared };
-    }
+    // Inconclusive is inconclusive. `syncing + subscribed` is byte-identical
+    // for a genuinely spent player and for one who just sent and whose note
+    // has not synced, so rendering it as "spent" tells the second group they
+    // are out when they are not — and it sticks until the next publish. The
+    // badge says "checking" and the caller decides when it knows better.
     return { kind: "unknown", remaining: 0, ...shared };
   }
   if (allowance.remaining > 0) {

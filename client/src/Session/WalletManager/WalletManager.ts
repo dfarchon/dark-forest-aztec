@@ -1033,6 +1033,8 @@ export class WalletManager {
       if (!this.quotaFpcAddress || !this.activeAddress) return;
       const quotaFpc = await this.getQuotaFpcContract();
       if (!quotaFpc) return;
+      const { beginQuotaRead } = await import("../QuotaStatus");
+      const token = beginQuotaRead();
       const [{ generationAt }, block] = await Promise.all([
         import("@alejoamiras/quota-paymaster"),
         this.node.getBlockData("latest"),
@@ -1046,7 +1048,7 @@ export class WalletManager {
       );
       const { publishQuotaStatus, quotaStatusFromAllowance } =
         await import("../QuotaStatus");
-      publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds));
+      publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds), token);
     } catch (err) {
       console.debug("[WalletManager] quota status refresh failed:", err);
     }
@@ -1066,9 +1068,14 @@ export class WalletManager {
           (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
         >;
       };
-      const raw = (await contract.methods.get_policy().simulate({
-        from: this.activeAddress!,
-      })) as { result?: { max_uses: bigint } };
+      // Bounded: this feeds a modal. A hung simulation must not hold the
+      // fee-gate's pending flag open, which would suppress every later notice.
+      const raw = (await Promise.race([
+        contract.methods.get_policy().simulate({ from: this.activeAddress! }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("get_policy timed out")), 5_000)
+        ),
+      ])) as { result?: { max_uses: bigint } };
       const policy = (raw?.result ?? raw) as { max_uses: bigint };
       return Number(policy.max_uses);
     } catch {
@@ -1126,10 +1133,16 @@ export class WalletManager {
    * must fall back deliberately and visibly, rather than a proof failing deep
    * in the stack and the player quietly paying.
    */
-  private async assertSponsorshipAffordable(): Promise<void> {
+  private async assertSponsorshipAffordable(fees?: {
+    feePerDaGas: bigint | number;
+    feePerL2Gas: bigint | number;
+  }): Promise<void> {
     const fpc = await this.getQuotaFpcContract();
     if (!fpc) return;
-    const fees = await this.node.getCurrentMinFees();
+    // Caller-supplied when the same sample must also build maxFeesPerGas:
+    // sampling twice lets a fee rise between reads pass the old floor and then
+    // declare a higher ceiling on-chain — floor-pass, ceiling-fail.
+    fees ??= await this.node.getCurrentMinFees();
     const floor = sponsoredFeeFloorWei(
       QUOTA_GAS_PROFILE,
       BigInt(fees.feePerDaGas),
@@ -1185,7 +1198,10 @@ export class WalletManager {
     // the two can drift apart at any time; proving first and discovering it in
     // a revert wastes the player's time and (without this) silently charges
     // them. Failing here is loud and instant.
-    await this.assertSponsorshipAffordable();
+    // ONE fee sample for both the affordability floor and the declared
+    // ceiling below, so the two cannot disagree.
+    const feeSample = await this.node.getCurrentMinFees();
+    await this.assertSponsorshipAffordable(feeSample);
 
     // Explicit limits are mandatory here: the wallet's default is the network
     // maximum, which no sane per-transaction ceiling would ever cover.
@@ -1204,11 +1220,16 @@ export class WalletManager {
       // headroom differently can pass the policy check and still be rejected
       // on-chain, so the one rounding that exists is the package's.
       maxFeesPerGas: await (async () => {
-        const fees = await this.node.getCurrentMinFees();
         const { GasFees } = await import("@aztec/stdlib/gas");
         return new GasFees(
-          maxFeePerGasWithHeadroom(QUOTA_GAS_PROFILE, BigInt(fees.feePerDaGas)),
-          maxFeePerGasWithHeadroom(QUOTA_GAS_PROFILE, BigInt(fees.feePerL2Gas))
+          maxFeePerGasWithHeadroom(
+            QUOTA_GAS_PROFILE,
+            BigInt(feeSample.feePerDaGas)
+          ),
+          maxFeePerGasWithHeadroom(
+            QUOTA_GAS_PROFILE,
+            BigInt(feeSample.feePerL2Gas)
+          )
         );
       })(),
     });

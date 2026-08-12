@@ -135,12 +135,13 @@ export class TxExecutor {
 
   private readonly chainClock: ChainClock;
   /** Last pre-send allowance reading; display data for the fee gate only. */
-  private lastQuotaRead?: { subscribed: boolean; chainSeconds: bigint };
-  /**
-   * Set synchronously when the empty-account gate decides to show the modal
-   * (its publish is async); stops the failure-path toast racing it.
-   */
-  private feeGateModalPending = false;
+  private lastQuotaRead?: {
+    player: string;
+    subscribed: boolean;
+    remaining: number;
+    reason?: string;
+    chainSeconds: bigint;
+  };
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -492,7 +493,8 @@ export class TxExecutor {
               // No sponsorship and no balance: the one situation that
               // warrants a wall. A player WITH balance never reaches this
               // branch, so they are never interrupted.
-              this.feeGateModalPending = true;
+              // Slot claimed inside; the failure path checks it before
+              // toasting, so one shortage yields one interruption.
               void this.publishFeeGateForEmptyAccount();
               throw new Error(
                 `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
@@ -640,15 +642,13 @@ export class TxExecutor {
           String((e as { message?: string })?.message ?? e)
         )
       ) {
-        if (!this.feeGateModalPending) {
-          void import("../FeeGate").then(
-            ({ publishFeeGate, feeGateModalShownRecently }) => {
-              if (!feeGateModalShownRecently()) {
-                publishFeeGate({ kind: "send-failed" });
-              }
-            }
-          );
-        }
+        void import("../FeeGate").then(
+          ({ publishFeeGate, feeGateModalShownRecently, modalSlotClaimed }) => {
+            // A modal is in flight or just fired for this same shortage.
+            if (modalSlotClaimed() || feeGateModalShownRecently()) return;
+            publishFeeGate({ kind: "send-failed" });
+          }
+        );
       }
       error = e instanceof Error ? e : new Error(String(e));
 
@@ -813,7 +813,13 @@ export class TxExecutor {
     });
     // For the fee gate: whether the player HAD sponsorship today decides
     // which story an empty-account interruption tells.
-    this.lastQuotaRead = { subscribed: state.subscribed, chainSeconds };
+    this.lastQuotaRead = {
+      player: String(player),
+      subscribed: state.subscribed,
+      remaining: state.remaining,
+      reason: source.kind === "blocked" ? source.reason : undefined,
+      chainSeconds,
+    };
 
     if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
       // Sponsorship unavailable (spent, no seats, empty paymaster, rollover,
@@ -898,34 +904,49 @@ export class TxExecutor {
    * the transaction.
    */
   private async publishFeeGateForEmptyAccount(): Promise<void> {
+    // Claimed synchronously by the caller; released here whatever happens.
+    const { claimModalSlot, publishFeeGate } = await import("../FeeGate");
+    const release = claimModalSlot();
     try {
-      const [{ publishFeeGate }, { millisUntilReset, resetLabel }] =
-        await Promise.all([
-          import("../FeeGate"),
-          import("@alejoamiras/quota-paymaster"),
-        ]);
-      const hadSponsorship =
+      const { millisUntilReset, resetLabel } =
+        await import("@alejoamiras/quota-paymaster");
+      const read = this.lastQuotaRead;
+      const player = String(this.walletManager.getActiveAddress() ?? "");
+      // The read must belong to THIS player and THIS attempt. A stale read
+      // (previous account, or an attempt that failed before it was taken)
+      // would otherwise tell a player they spent an allowance they never had.
+      const fresh = read && read.player === player ? read : undefined;
+      // "Spent" is only true when sponsorship was actually exhausted. A
+      // still-syncing wallet, an empty paymaster or a fee spike are not
+      // exhaustion — they get the generic story, which is honest for all of
+      // them: this account cannot pay right now.
+      const exhausted =
         Boolean(this.walletManager.getQuotaFpcAddress()) &&
-        this.lastQuotaRead?.subscribed === true;
-      if (!hadSponsorship) {
+        fresh?.subscribed === true &&
+        fresh.remaining === 0 &&
+        (fresh.reason === undefined || fresh.reason === "exhausted");
+
+      if (!exhausted) {
         publishFeeGate({ kind: "needs-fee-juice" });
         return;
       }
       const allowancePerDay = (await this.walletManager.getQuotaMaxUses()) ?? 0;
-      const chainSeconds =
-        this.lastQuotaRead?.chainSeconds ?? BigInt(this.chainClock.nowSec());
       publishFeeGate({
         kind: "sponsorship-spent",
         allowancePerDay,
         resetsAt: resetLabel(),
-        millisUntilReset: millisUntilReset(chainSeconds),
+        millisUntilReset: millisUntilReset(fresh.chainSeconds),
       });
     } catch (err) {
       console.debug("[TxExecutor] fee gate publish failed:", err);
+      // Never leave the player with no explanation at all.
+      try {
+        publishFeeGate({ kind: "needs-fee-juice" });
+      } catch {
+        /* nothing more we can do */
+      }
     } finally {
-      // Published (or gave up): the recency check inside FeeGate takes over
-      // from here, and future unrelated failures may toast again.
-      this.feeGateModalPending = false;
+      release();
     }
   }
 
