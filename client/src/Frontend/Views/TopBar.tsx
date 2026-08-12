@@ -287,10 +287,25 @@ export function TopBar({
  */
 function QuotaBadge() {
   const [status, setStatus] = useState<QuotaStatus>(QUOTA_STATUS_OFF);
+  const uiManager = useUIManager();
 
   // The transaction path publishes allowance state as it reads it, so the badge
   // reflects what the last transaction actually saw rather than polling.
   useEffect(() => subscribeToQuotaStatus(setStatus), []);
+
+  // One read on load, so sponsorship is visible BEFORE the first transaction —
+  // otherwise the badge stayed empty until something was sent.
+  useEffect(() => {
+    try {
+      void uiManager
+        .getGameManager()
+        .getContractAPI()
+        .getWalletManager()
+        .refreshQuotaStatus();
+    } catch {
+      /* advisory only; the send path will publish regardless */
+    }
+  }, [uiManager]);
 
   const label = formatQuotaBadge(status);
   if (!label) return null;

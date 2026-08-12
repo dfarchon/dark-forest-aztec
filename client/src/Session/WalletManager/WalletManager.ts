@@ -1021,6 +1021,38 @@ export class WalletManager {
   }
 
   /**
+   * Reads the active player's allowance and publishes it to the quota badge.
+   *
+   * The transaction path publishes as a side effect of sending, which means a
+   * player who has not yet sent anything sees no sponsorship state at all —
+   * the top bar only lit up AFTER the first move. Called on game load (and
+   * harmless any other time); fire-and-forget, advisory only.
+   */
+  async refreshQuotaStatus(): Promise<void> {
+    try {
+      if (!this.quotaFpcAddress || !this.activeAddress) return;
+      const quotaFpc = await this.getQuotaFpcContract();
+      if (!quotaFpc) return;
+      const [{ generationAt }, block] = await Promise.all([
+        import("@alejoamiras/quota-paymaster"),
+        this.node.getBlockData("latest"),
+      ]);
+      const chainSeconds = BigInt(block!.header.globalVariables.timestamp);
+      const generation = generationAt(chainSeconds);
+      const state = await this.readQuotaAllowance(
+        quotaFpc,
+        this.activeAddress,
+        generation
+      );
+      const { publishQuotaStatus, quotaStatusFromAllowance } =
+        await import("../QuotaStatus");
+      publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds));
+    } catch (err) {
+      console.debug("[WalletManager] quota status refresh failed:", err);
+    }
+  }
+
+  /**
    * The paymaster's transactions-per-player-per-day, for the fee-gate gauge.
    * Advisory display data; a read failure just means the gauge shows no pips.
    */
