@@ -293,18 +293,48 @@ function QuotaBadge() {
   // reflects what the last transaction actually saw rather than polling.
   useEffect(() => subscribeToQuotaStatus(setStatus), []);
 
-  // One read on load, so sponsorship is visible BEFORE the first transaction —
-  // otherwise the badge stayed empty until something was sent.
+  // One read on load (so sponsorship is visible BEFORE the first transaction),
+  // then one more just after each UTC rollover — a tab left open overnight
+  // would otherwise keep showing yesterday's spent allowance until the next
+  // send. The timer re-arms off whatever state each refresh publishes, so it
+  // follows CHAIN time (millisUntilReset is computed from the block timestamp,
+  // not the local clock, which can disagree by hours on some networks).
   useEffect(() => {
-    try {
-      void uiManager
-        .getGameManager()
-        .getContractAPI()
-        .getWalletManager()
-        .refreshQuotaStatus();
-    } catch {
-      /* advisory only; the send path will publish regardless */
-    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const refresh = () => {
+      try {
+        void uiManager
+          .getGameManager()
+          .getContractAPI()
+          .getWalletManager()
+          .refreshQuotaStatus();
+      } catch {
+        /* advisory only; the send path will publish regardless */
+      }
+    };
+
+    // Re-arm from published state rather than scheduling ahead of time: every
+    // publisher (this refresh, and every transaction) carries a fresh
+    // millisUntilReset, so the timer self-corrects instead of drifting.
+    const unsubscribe = subscribeToQuotaStatus((status) => {
+      if (cancelled) return;
+      clearTimeout(timer);
+      if (status.kind === "off" || status.millisUntilReset <= 0) return;
+      // +5s past the boundary so the on-chain generation has actually rolled
+      // by the time we read; clamp below so a stale near-zero value cannot
+      // spin-loop refreshes.
+      const delay = Math.max(status.millisUntilReset + 5_000, 30_000);
+      timer = setTimeout(refresh, delay);
+    });
+
+    refresh();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [uiManager]);
 
   const label = formatQuotaBadge(status);
