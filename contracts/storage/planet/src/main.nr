@@ -52,9 +52,10 @@ pub contract PlanetStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -63,9 +64,17 @@ pub contract PlanetStorage {
     fn set(id: Field, planet: Planet) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(planet.serialize());
+        let fields = planet.serialize();
+        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
+            quote { PlanetUpdate }.as_type(),
+            quote { id },
+            quote { block_number },
+            quote { fields },
+        ));
         self.storage.state_roots.at(id).write(root);
-        self.emit(PlanetUpdate { id: id, block_number: block_number, state: planet });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     // ================== ADMIN ==================
