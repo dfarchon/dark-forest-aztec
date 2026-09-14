@@ -1,8 +1,6 @@
 // Storage contract for arrivals (voyage id, player, from/to planet, pop, silver, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract ArrivalStorage {
     use ::aztec::{
         macros::{

@@ -1,40 +1,25 @@
-use aztec::context::PublicContext;
-
 pub trait WriteState<Key, State> {
     unconstrained fn write(self, id: Key, state: State);
 }
 
 pub trait VerifyHash<Key> {
-    unconstrained fn verify_hash_canonical(
-        self,
-        context: PublicContext,
-        id: Key,
-        hash: Field,
-        canonical: bool,
-    ) -> bool;
+    unconstrained fn verify_hash_static(self, id: Key, hash: Field) -> bool;
 }
 
 pub trait IsInitialized<Key> {
-    unconstrained fn is_initialized_canonical(
-        self,
-        context: PublicContext,
-        id: Key,
-        canonical: bool,
-    ) -> bool;
+    unconstrained fn is_initialized_static(self, id: Key) -> bool;
 }
 
 pub trait VerifyHashesBatch {
-    unconstrained fn verify_hashes_batch_canonical(
+    unconstrained fn verify_hashes_batch_static(
         self,
-        context: PublicContext,
         ids: [Field; 20],
         hashes: [Field; 20],
         count: u32,
-        canonical: bool,
     ) -> bool;
 }
 
-// Construct the original SDK call only when direct verification cannot be used.
+// Encode calls at compile time while retaining the original selectors and callee checks.
 #[storage_views]
 mod implementations {}
 
@@ -96,9 +81,12 @@ comptime fn storage_views(_module: Module) -> Quoted {
                 unconstrained fn write(self, id: $key, state: $state) { $write }
             }
             impl crate::storage::VerifyHash<$key> for $interface {
-                unconstrained fn verify_hash_canonical(self, context: ::aztec::context::PublicContext, id: $key, hash: Field, canonical: bool) -> bool {
-                    ::types::storage::state::verify_hash(canonical, self.target_contract, id, hash,
-                        || self.verify_hash(id, hash).view(context))
+                unconstrained fn verify_hash_static(self, id: $key, hash: Field) -> bool {
+                    let selector = comptime {
+                        let call: ::aztec::context::calls::PublicStaticCall<11, 2, bool> = $interface::at(::aztec::protocol::address::AztecAddress::zero()).verify_hash(std::mem::zeroed(), 0);
+                        ::aztec::protocol::traits::ToField::to_field(call.selector)
+                    };
+                    ::types::storage::state::static_bool(self.target_contract, [selector, ::aztec::protocol::traits::ToField::to_field(id), hash])
                 }
             }
         };
@@ -106,20 +94,35 @@ comptime fn storage_views(_module: Module) -> Quoted {
             implementations = quote {
                 $implementations
                 impl crate::storage::IsInitialized<$key> for $interface {
-                    unconstrained fn is_initialized_canonical(self, context: ::aztec::context::PublicContext, id: $key, canonical: bool) -> bool {
-                        ::types::storage::state::is_initialized(canonical, self.target_contract, id,
-                            || self.is_initialized(id).view(context))
+                    unconstrained fn is_initialized_static(self, id: $key) -> bool {
+                        let selector = comptime {
+                            let call: ::aztec::context::calls::PublicStaticCall<14, 1, bool> = $interface::at(::aztec::protocol::address::AztecAddress::zero()).is_initialized(std::mem::zeroed());
+                            ::aztec::protocol::traits::ToField::to_field(call.selector)
+                        };
+                        ::types::storage::state::static_bool(self.target_contract, [selector, ::aztec::protocol::traits::ToField::to_field(id)])
                     }
                 }
             };
         }
         if batch {
+            let mut words: [Quoted] = @[quote { selector }];
+            for i in 0..20 {
+                words = words.push_back(quote { ids[$i] });
+            }
+            for i in 0..20 {
+                words = words.push_back(quote { hashes[$i] });
+            }
+            words = words.push_back(quote { count as Field });
+            let words = words.join(quote { , });
             implementations = quote {
                 $implementations
                 impl crate::storage::VerifyHashesBatch for $interface {
-                    unconstrained fn verify_hashes_batch_canonical(self, context: ::aztec::context::PublicContext, ids: [Field; 20], hashes: [Field; 20], count: u32, canonical: bool) -> bool {
-                        ::types::storage::state::verify_hashes_batch(canonical, self.target_contract, ids, hashes, count,
-                            || self.verify_hashes_batch(ids, hashes, count).view(context))
+                    unconstrained fn verify_hashes_batch_static(self, ids: [Field; 20], hashes: [Field; 20], count: u32) -> bool {
+                        let selector = comptime {
+                            let call: ::aztec::context::calls::PublicStaticCall<19, 41, bool> = $interface::at(::aztec::protocol::address::AztecAddress::zero()).verify_hashes_batch([0; 20], [0; 20], 0);
+                            ::aztec::protocol::traits::ToField::to_field(call.selector)
+                        };
+                        ::types::storage::state::static_bool(self.target_contract, [$words])
                     }
                 }
             };
