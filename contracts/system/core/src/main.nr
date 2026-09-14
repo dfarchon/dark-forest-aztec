@@ -9,9 +9,6 @@ contract Core {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
     use ::aztec::state_vars::{Map, PublicMutable};
-    use ::libs::storage::{
-        IsInitialized, VerifyHash, VerifyHashesBatch, WriteArrivalLocations, WriteState,
-    };
 
     use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
@@ -319,51 +316,51 @@ contract Core {
             ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location, planet_state_hash),
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
             "Planet state hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location, planet_artifacts_state_hash)),
             "Planet artifacts state hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)),
             "Planet events state hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Arrival hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_location_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact location hash mismatch",
         );
 
-        planet_storage.write(location, new_planet);
-        planet_artifacts_storage.write(location, new_planet_artifacts_state);
-        planet_events_storage.write(location, new_planet_events_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
+        self.call(planet_events_storage.set(location, new_planet_events_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             arrival_artifact_ids,
             new_arrival_artifact_locations,
             original_arrivals_count,
-        );
+        ));
     }
 
     #[external("private")]
@@ -516,40 +513,40 @@ contract Core {
             ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location, planet_state_hash),
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
             "Planet state hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location, planet_artifacts_state_hash)),
             "Planet artifacts state hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)),
             "Planet events state hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Arrival hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_location_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact location hash mismatch",
         );
 
@@ -567,17 +564,17 @@ contract Core {
             "Upgrade hash mismatch",
         );
 
-        assert(world_storage.verify_hash_static(0, world_hash), "World state hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
         assert(new_planet.owner == sender, "Planet owner mismatch");
-        planet_storage.write(location, new_planet);
-        planet_events_storage.write(location, new_planet_events_state);
-        planet_artifacts_storage.write(location, new_planet_artifacts_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_events_storage.set(location, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             arrival_artifact_ids,
             new_arrival_artifact_locations,
             original_arrivals_count,
-        );
+        ));
     }
 
     #[external("private")]
@@ -742,59 +739,59 @@ contract Core {
         );
 
         assert(
-            planet_storage.verify_hash_static(location, planet_state_hash),
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
             "Planet state hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location, planet_artifacts_state_hash)),
             "Planet artifacts state hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location, planet_events_state_hash)),
             "Planet events state hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Arrival hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_location_hashes,
                 original_arrivals_count,
-            ),
+            )),
             "Artifact location hash mismatch",
         );
 
         assert(
-            player_storage.verify_hash_static(sender, player_state_hash),
+            self.view(player_storage.verify_hash(sender, player_state_hash)),
             "Player state hash mismatch",
         );
 
-        assert(world_storage.verify_hash_static(0, world_hash), "World state hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
-        planet_storage.write(location, new_planet);
-        planet_events_storage.write(location, new_planet_events_state);
-        planet_artifacts_storage.write(location, new_planet_artifacts_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_events_storage.set(location, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location, new_planet_artifacts_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             arrival_artifact_ids,
             new_arrival_artifact_locations,
             original_arrivals_count,
-        );
-        player_storage.write(sender, new_player);
+        ));
+        self.call(player_storage.set(sender, new_player));
     }
 
     /// Noir port of Solidity `DFCoreFacet.revealLocation`.
@@ -987,28 +984,28 @@ contract Core {
 
         if planet_state_hash != 0 {
             assert(
-                planet_storage.verify_hash_static(location, planet_state_hash),
+                self.view(planet_storage.verify_hash(location, planet_state_hash)),
                 "Planet state hash mismatch",
             );
         }
 
         assert(
-            !planet_revealed_coords_storage.is_initialized_static(location),
+            !self.view(planet_revealed_coords_storage.is_initialized(location)),
             "Planet already revealed",
         );
 
         assert(player_state_hash != 0, "Player state must be initialized");
         assert(
-            player_storage.verify_hash_static(sender, player_state_hash),
+            self.view(player_storage.verify_hash(sender, player_state_hash)),
             "Player state hash mismatch",
         );
 
         assert(world_hash != 0, "World state must be initialized");
-        assert(world_storage.verify_hash_static(0, world_hash), "World state hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
-        planet_storage.write(location, new_planet);
-        planet_revealed_coords_storage.write(location, new_planet_revealed_coords);
-        player_storage.write(sender, new_player_state);
+        self.call(planet_storage.set(location, new_planet));
+        self.call(planet_revealed_coords_storage.set(location, new_planet_revealed_coords));
+        self.call(player_storage.set(sender, new_player_state));
     }
 
     /// Noir port of Solidity `DFCoreFacet.initializePlayer`.
@@ -1276,16 +1273,16 @@ contract Core {
         );
 
         // Verify player not yet initialized
-        assert(!player_storage.is_initialized_static(sender), "Player already initialized");
+        assert(!self.view(player_storage.is_initialized(sender)), "Player already initialized");
 
         // Verify world state
         assert(world_hash != 0, "World state must be initialized");
-        assert(world_storage.verify_hash_static(0, world_hash), "World state hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
         // Planet: verify hashes and write states
         if planet_state_hash == 0 {
             // New planet - just write it
-            planet_storage.write(location_id, new_planet);
+            self.call(planet_storage.set(location_id, new_planet));
         } else {
             // Existing planet - verify all hashes then write refreshed states
             let planet_artifacts_storage =
@@ -1299,56 +1296,56 @@ contract Core {
                 ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
 
             assert(
-                planet_storage.verify_hash_static(location_id, planet_state_hash),
+                self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
                 "Planet state hash mismatch",
             );
             assert(
-                planet_artifacts_storage.verify_hash_static(
+                self.view(planet_artifacts_storage.verify_hash(
                     location_id,
                     planet_artifacts_state_hash,
-                ),
+                )),
                 "Planet artifacts state hash mismatch",
             );
             assert(
-                planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
+                self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
                 "Planet events state hash mismatch",
             );
             assert(
-                arrival_storage.verify_hashes_batch_static(
+                self.view(arrival_storage.verify_hashes_batch(
                     arrival_ids,
                     arrival_hashes,
                     original_arrivals_count,
-                ),
+                )),
                 "Arrival hash mismatch",
             );
             assert(
-                artifact_storage.verify_hashes_batch_static(
+                self.view(artifact_storage.verify_hashes_batch(
                     arrival_artifact_ids,
                     arrival_artifact_hashes,
                     original_arrivals_count,
-                ),
+                )),
                 "Artifact hash mismatch",
             );
             assert(
-                artifact_location_storage.verify_hashes_batch_static(
+                self.view(artifact_location_storage.verify_hashes_batch(
                     arrival_artifact_ids,
                     arrival_artifact_location_hashes,
                     original_arrivals_count,
-                ),
+                )),
                 "Artifact location hash mismatch",
             );
 
-            planet_storage.write(location_id, new_planet);
-            planet_events_storage.write(location_id, new_planet_events_state);
-            planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
-            artifact_location_storage.write_arrival_locations(
+            self.call(planet_storage.set(location_id, new_planet));
+            self.call(planet_events_storage.set(location_id, new_planet_events_state));
+            self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+            self.call(artifact_location_storage.set_arrival_locations_max20(
                 arrival_artifact_ids,
                 new_arrival_artifact_locations,
                 original_arrivals_count,
-            );
+            ));
         }
 
         // Write new player
-        player_storage.write(sender, new_player);
+        self.call(player_storage.set(sender, new_player));
     }
 }

@@ -1,8 +1,7 @@
 // Storage contract for planet artifacts (artifacts list + count per planet).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract PlanetArtifactsStorage {
     use ::aztec::{
         macros::{

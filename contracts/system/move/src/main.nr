@@ -9,7 +9,6 @@ contract Move {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
     use ::aztec::state_vars::{Map, PublicMutable};
-    use ::libs::storage::{VerifyHash, VerifyHashesBatch, WriteArrivalLocations, WriteState};
 
     use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
@@ -932,116 +931,116 @@ contract Move {
 
         // Verify source planet state hashes
         assert(
-            planet_storage.verify_hash_static(source_loc, source_planet_hash),
+            self.view(planet_storage.verify_hash(source_loc, source_planet_hash)),
             "Source planet hash mismatch",
         );
 
         assert(
-            planet_artifacts_storage.verify_hash_static(
+            self.view(planet_artifacts_storage.verify_hash(
                 source_loc,
                 source_planet_artifacts_state_hash,
-            ),
+            )),
             "Source planet artifacts hash mismatch",
         );
 
         assert(
-            planet_events_storage.verify_hash_static(source_loc, source_planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(source_loc, source_planet_events_state_hash)),
             "Source planet events hash mismatch",
         );
 
         assert(
-            arrivals_storage.verify_hashes_batch_static(
+            self.view(arrivals_storage.verify_hashes_batch(
                 source_arrival_ids,
                 source_arrival_hashes,
                 original_source_arrivals_count,
-            ),
+            )),
             "Source arrival hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 source_arrival_artifact_ids,
                 source_arrival_artifact_hashes,
                 original_source_arrivals_count,
-            ),
+            )),
             "Source artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 source_arrival_artifact_ids,
                 source_arrival_artifact_location_hashes,
                 original_source_arrivals_count,
-            ),
+            )),
             "Source artifact location hash mismatch",
         );
 
         // Verify target planet state hashes
         assert(
-            planet_storage.verify_hash_static(target_loc, target_planet_hash),
+            self.view(planet_storage.verify_hash(target_loc, target_planet_hash)),
             "Target planet hash mismatch",
         );
 
         assert(
-            planet_artifacts_storage.verify_hash_static(
+            self.view(planet_artifacts_storage.verify_hash(
                 target_loc,
                 target_planet_artifacts_state_hash,
-            ),
+            )),
             "Target planet artifacts hash mismatch",
         );
 
         assert(
-            planet_events_storage.verify_hash_static(target_loc, target_planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(target_loc, target_planet_events_state_hash)),
             "Target planet events hash mismatch",
         );
 
         // Batch verify target arrivals, artifacts, artifact_locations (3 calls instead of 60)
         assert(
-            arrivals_storage.verify_hashes_batch_static(
+            self.view(arrivals_storage.verify_hashes_batch(
                 target_arrival_ids,
                 target_arrival_hashes,
                 original_target_arrivals_count,
-            ),
+            )),
             "Target arrival hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 target_arrival_artifact_ids,
                 target_arrival_artifact_hashes,
                 original_target_arrivals_count,
-            ),
+            )),
             "Target artifact hash mismatch",
         );
 
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 target_arrival_artifact_ids,
                 target_arrival_artifact_location_hashes,
                 original_target_arrivals_count,
-            ),
+            )),
             "Target artifact location hash mismatch",
         );
 
         // Verify world, moved artifact, and activated artifact hashes
-        assert(world_storage.verify_hash_static(0, world_hash), "World hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "World hash mismatch");
 
         assert(
-            artifact_storage.verify_hash_static(moved_artifact_id, moved_artifact_hash),
+            self.view(artifact_storage.verify_hash(moved_artifact_id, moved_artifact_hash)),
             "Moved artifact hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hash_static(
+            self.view(artifact_storage.verify_hash(
                 source_activated_artifact_id,
                 source_activated_artifact_hash,
-            ),
+            )),
             "Activated artifact hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hash_static(
+            self.view(artifact_storage.verify_hash(
                 target_activated_artifact_id,
                 target_activated_artifact_hash,
-            ),
+            )),
             "Target activated artifact hash mismatch",
         );
 
@@ -1060,40 +1059,40 @@ contract Move {
         }
 
         // Write new states to storage
-        planet_storage.write(source_loc, new_source_planet);
-        planet_artifacts_storage.write(source_loc, new_source_planet_artifacts_state);
-        planet_events_storage.write(source_loc, new_source_planet_events_state);
+        self.call(planet_storage.set(source_loc, new_source_planet));
+        self.call(planet_artifacts_storage.set(source_loc, new_source_planet_artifacts_state));
+        self.call(planet_events_storage.set(source_loc, new_source_planet_events_state));
 
         // Batch write source arrival artifact locations (1 call instead of up to 20)
-        artifact_location_storage.write_arrival_locations(
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             source_arrival_artifact_ids,
             new_source_arrival_artifact_locations,
             original_source_arrivals_count,
-        );
+        ));
 
-        planet_storage.write(target_loc, new_target_planet);
-        planet_artifacts_storage.write(target_loc, new_target_planet_artifacts_state);
-        planet_events_storage.write(target_loc, new_target_planet_events_state);
+        self.call(planet_storage.set(target_loc, new_target_planet));
+        self.call(planet_artifacts_storage.set(target_loc, new_target_planet_artifacts_state));
+        self.call(planet_events_storage.set(target_loc, new_target_planet_events_state));
 
         // Batch write target arrival artifact locations (1 call instead of up to 20)
-        artifact_location_storage.write_arrival_locations(
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             target_arrival_artifact_ids,
             new_target_arrival_artifact_locations,
             original_target_arrivals_count,
-        );
+        ));
 
-        arrivals_storage.write(new_arrival.id, new_arrival);
+        self.call(arrivals_storage.set(new_arrival.id, new_arrival));
 
         if moved_artifact_id != 0 {
-            artifact_location_storage.write(moved_artifact_id, new_moved_artifact_location);
+            self.call(artifact_location_storage.set(moved_artifact_id, new_moved_artifact_location));
         }
 
         // Write back deactivated/burned source activated artifact
         if source_activated_artifact_id != 0 {
-            artifact_storage.write(
+            self.call(artifact_storage.set(
                 source_activated_artifact_id,
                 new_source_activated_artifact,
-            );
+            ));
 
             // PhotoidCannon and PlanetaryShield are burned on deactivation
             let is_burn_type = (
@@ -1104,10 +1103,10 @@ contract Move {
             let was_deactivated = new_source_activated_artifact.last_deactivated
                 >= new_source_activated_artifact.last_activated;
             if is_burn_type & was_deactivated {
-                artifact_location_storage.write(
+                self.call(artifact_location_storage.set(
                     source_activated_artifact_id,
                     new_source_activated_artifact_location,
-                );
+                ));
             }
         }
     }

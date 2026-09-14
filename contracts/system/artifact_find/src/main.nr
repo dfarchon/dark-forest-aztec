@@ -6,7 +6,6 @@ contract ArtifactFind {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
     };
     use ::aztec::state_vars::PublicMutable;
-    use ::libs::storage::{VerifyHash, VerifyHashesBatch, WriteArrivalLocations, WriteState};
 
     use ::types::args::DFPFindArtifactArgs;
     use ::types::storage::{
@@ -483,61 +482,61 @@ contract ArtifactFind {
         let config = Config::at(self.storage.config_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location_id, planet_hash),
+            self.view(planet_storage.verify_hash(location_id, planet_hash)),
             "planet hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
             "planet_events hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),
             "planet_artifacts hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 origin_arrivals_count,
-            ),
+            )),
             "arrivals hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_hashes,
                 origin_arrivals_count,
-            ),
+            )),
             "arrival artifacts hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 arrival_artifact_ids,
                 arrival_artifact_location_hashes,
                 origin_arrivals_count,
-            ),
+            )),
             "arrival artifact locations hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 owned_artifact_ids,
                 owned_artifact_hashes,
                 owned_artifact_count,
-            ),
+            )),
             "owned artifact hashes mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 owned_artifact_ids,
                 owned_artifact_location_hashes,
                 owned_artifact_count,
-            ),
+            )),
             "owned artifact locations hash mismatch",
         );
 
-        assert(world_storage.verify_hash_static(0, world_hash), "world hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "world hash mismatch");
 
         assert(
             self.view(config.verify_snark_config_hash(snark_config_hash)),
@@ -557,22 +556,22 @@ contract ArtifactFind {
         );
 
         let sender = new_planet.owner;
-        assert(player_storage.verify_hash_static(sender, player_hash), "player hash mismatch");
+        assert(self.view(player_storage.verify_hash(sender, player_hash)), "player hash mismatch");
 
-        planet_storage.write(location_id, new_planet);
-        planet_events_storage.write(location_id, new_planet_events_state);
-        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
+        self.call(planet_storage.set(location_id, new_planet));
+        self.call(planet_events_storage.set(location_id, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
 
-        artifact_location_storage.write_arrival_locations(
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             change_artifact_location_ids,
             change_artifact_locations,
             change_artifact_location_count,
-        );
+        ));
 
-        artifact_storage.write(artifact_id, new_artifact);
-        artifact_location_storage.write(artifact_id, new_artifact_location);
+        self.call(artifact_storage.set(artifact_id, new_artifact));
+        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
 
-        player_storage.write(sender, new_player);
+        self.call(player_storage.set(sender, new_player));
     }
 
 }

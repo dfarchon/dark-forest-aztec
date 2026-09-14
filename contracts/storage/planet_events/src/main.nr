@@ -1,8 +1,7 @@
 // Storage contract for planet events (events list + count per planet).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract PlanetEventsStorage {
     use ::aztec::{
         macros::{

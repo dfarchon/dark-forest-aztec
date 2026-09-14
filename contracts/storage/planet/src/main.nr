@@ -1,8 +1,7 @@
 // Storage contract for planet state (meta, owner, caps, resources, mods, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract PlanetStorage {
     use ::aztec::{
         macros::{

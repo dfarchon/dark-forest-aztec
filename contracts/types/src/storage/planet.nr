@@ -121,8 +121,7 @@ impl PlanetEventMetadata {
     }
 }
 
-#[derive(Eq, Serialize, Packable)]
-#[crate::storage::state::array_deserialize]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetEvents {
     pub events: [PlanetEventMetadata; 20],
     pub count: u32,
@@ -135,8 +134,7 @@ impl PlanetEvents {
     }
 }
 
-#[derive(Eq, Serialize, Packable)]
-#[crate::storage::state::array_deserialize]
+#[derive(Eq, Serialize, Deserialize, Packable)]
 pub struct PlanetArtifacts {
     pub ids: [Field; 20],
     pub count: u32,

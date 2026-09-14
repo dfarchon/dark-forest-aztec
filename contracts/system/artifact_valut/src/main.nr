@@ -5,7 +5,6 @@ contract ArtifactValut {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
     use ::aztec::state_vars::PublicMutable;
-    use ::libs::storage::{VerifyHash, VerifyHashesBatch, WriteArrivalLocations, WriteState};
 
     use ::types::args::DFTCreateArtifactArgs;
     use ::types::config::{artifacts::ArtifactsConfig, spaceships::SpaceshipsConfig};
@@ -413,65 +412,65 @@ contract ArtifactValut {
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location_id, planet_hash),
+            self.view(planet_storage.verify_hash(location_id, planet_hash)),
             "planet hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),
             "planet_artifacts hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
             "planet_events hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "arrivals hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifacts hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_location_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifact locations hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hash_static(artifact_id, artifact_hash),
+            self.view(artifact_storage.verify_hash(artifact_id, artifact_hash)),
             "artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hash_static(artifact_id, artifact_location_hash),
+            self.view(artifact_location_storage.verify_hash(artifact_id, artifact_location_hash)),
             "artifact location hash mismatch",
         );
 
-        assert(world_storage.verify_hash_static(0, world_hash), "world hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "world hash mismatch");
 
-        planet_storage.write(location_id, new_planet);
-        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
-        planet_events_storage.write(location_id, new_planet_events_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location_id, new_planet));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        self.call(planet_events_storage.set(location_id, new_planet_events_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             artifact_ids,
             new_artifact_locations,
             origin_arrivals_count as u32,
-        );
+        ));
 
-        artifact_storage.write(artifact_id, new_artifact);
-        artifact_location_storage.write(artifact_id, new_artifact_location);
+        self.call(artifact_storage.set(artifact_id, new_artifact));
+        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
     }
 
     /// Noir port of Solidity `DFArtifactFacet.withdrawArtifact`.
@@ -658,65 +657,65 @@ contract ArtifactValut {
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location_id, planet_hash),
+            self.view(planet_storage.verify_hash(location_id, planet_hash)),
             "planet hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),
             "planet_artifacts hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
             "planet_events hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "arrivals hash mismatch",
         );
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifacts hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_location_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifact locations hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hash_static(artifact_id, artifact_hash),
+            self.view(artifact_storage.verify_hash(artifact_id, artifact_hash)),
             "artifact hash mismatch",
         );
         assert(
-            artifact_location_storage.verify_hash_static(artifact_id, artifact_location_hash),
+            self.view(artifact_location_storage.verify_hash(artifact_id, artifact_location_hash)),
             "artifact location hash mismatch",
         );
 
-        assert(world_storage.verify_hash_static(0, world_hash), "world hash mismatch");
+        assert(self.view(world_storage.verify_hash(0, world_hash)), "world hash mismatch");
 
-        planet_storage.write(location_id, new_planet);
-        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
-        planet_events_storage.write(location_id, new_planet_events_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location_id, new_planet));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        self.call(planet_events_storage.set(location_id, new_planet_events_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             artifact_ids,
             new_artifact_locations,
             origin_arrivals_count as u32,
-        );
+        ));
 
-        artifact_storage.write(artifact_id, new_artifact);
-        artifact_location_storage.write(artifact_id, new_artifact_location);
+        self.call(artifact_storage.set(artifact_id, new_artifact));
+        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
     }
 
     /// Noir port of Solidity `DFArtifactFacet.giveSpaceShips`
@@ -927,56 +926,56 @@ contract ArtifactValut {
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
 
         assert(
-            planet_storage.verify_hash_static(location_id, planet_hash),
+            self.view(planet_storage.verify_hash(location_id, planet_hash)),
             "planet hash mismatch",
         );
         assert(
-            planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
+            self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),
             "planet_artifacts hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
+            self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
             "planet_events hash mismatch",
         );
 
         assert(
-            arrival_storage.verify_hashes_batch_static(
+            self.view(arrival_storage.verify_hashes_batch(
                 arrival_ids,
                 arrival_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "arrivals hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hashes_batch_static(
+            self.view(artifact_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifacts hash mismatch",
         );
+
         assert(
-            artifact_location_storage.verify_hashes_batch_static(
+            self.view(artifact_location_storage.verify_hashes_batch(
                 artifact_ids,
                 artifact_location_hashes,
                 origin_arrivals_count as u32,
-            ),
+            )),
             "artifact locations hash mismatch",
         );
 
-        assert(player_storage.verify_hash_static(sender, player_hash), "player hash mismatch");
+        assert(self.view(player_storage.verify_hash(sender, player_hash)), "player hash mismatch");
 
-        planet_storage.write(location_id, new_planet);
-        planet_events_storage.write(location_id, new_planet_events_state);
-        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
-        artifact_location_storage.write_arrival_locations(
+        self.call(planet_storage.set(location_id, new_planet));
+        self.call(planet_events_storage.set(location_id, new_planet_events_state));
+        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        self.call(artifact_location_storage.set_arrival_locations_max20(
             artifact_ids,
             new_artifact_locations,
             origin_arrivals_count as u32,
-        );
-
-        player_storage.write(sender, new_player);
+        ));
+        self.call(player_storage.set(sender, new_player));
 
         self.call(artifact_storage.set_spaceships_max5(spaceships_ids, spaceships, 5));
 
