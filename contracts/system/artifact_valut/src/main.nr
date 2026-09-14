@@ -412,7 +412,10 @@ contract ArtifactValut {
             PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
-        assert(planet_storage.verify_hash_static(location_id, planet_hash), "planet hash mismatch");
+        assert(
+            planet_storage.verify_hash_static(location_id, planet_hash),
+            "planet hash mismatch",
+        );
         assert(
             planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
             "planet_artifacts hash mismatch",
@@ -654,7 +657,10 @@ contract ArtifactValut {
             PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
-        assert(planet_storage.verify_hash_static(location_id, planet_hash), "planet hash mismatch");
+        assert(
+            planet_storage.verify_hash_static(location_id, planet_hash),
+            "planet hash mismatch",
+        );
         assert(
             planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
             "planet_artifacts hash mismatch",
@@ -920,7 +926,10 @@ contract ArtifactValut {
             PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
 
-        assert(planet_storage.verify_hash_static(location_id, planet_hash), "planet hash mismatch");
+        assert(
+            planet_storage.verify_hash_static(location_id, planet_hash),
+            "planet hash mismatch",
+        );
         assert(
             planet_artifacts_storage.verify_hash_static(location_id, planet_artifacts_state_hash),
             "planet_artifacts hash mismatch",

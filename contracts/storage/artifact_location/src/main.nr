@@ -28,6 +28,7 @@ pub contract ArtifactLocationStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArtifactLocationUpdate {
         id: Field,
         block_number: u32,
@@ -63,13 +64,7 @@ pub contract ArtifactLocationStorage {
     fn set(id: Field, state: ArtifactLocation) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let fields = state.serialize();
-        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
-            quote { ArtifactLocationUpdate }.as_type(),
-            quote { id },
-            quote { block_number },
-            quote { fields },
-        ));
+        let (root, log) = ArtifactLocationUpdate::encode_update(id, block_number, state);
         if self.storage.state_roots.at(id).read() != root {
             self.storage.state_roots.at(id).write(root);
         }
@@ -85,13 +80,7 @@ pub contract ArtifactLocationStorage {
         let block_number = self.context.block_number();
         for i in 0..20 {
             if (i < count) & (ids[i] != 0) {
-                let fields = states[i].serialize();
-                let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
-                    quote { ArtifactLocationUpdate }.as_type(),
-                    quote { ids[i] },
-                    quote { block_number },
-                    quote { fields },
-                ));
+                let (root, log) = ArtifactLocationUpdate::encode_update(ids[i], block_number, states[i]);
                 self.storage.state_roots.at(ids[i]).write(root);
                 unsafe {
                     aztec::oracle::avm::emit_public_log(log.as_vector());

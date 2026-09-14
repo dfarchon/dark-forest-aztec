@@ -935,6 +935,7 @@ contract Move {
             planet_storage.verify_hash_static(source_loc, source_planet_hash),
             "Source planet hash mismatch",
         );
+
         assert(
             planet_artifacts_storage.verify_hash_static(
                 source_loc,
@@ -942,10 +943,12 @@ contract Move {
             ),
             "Source planet artifacts hash mismatch",
         );
+
         assert(
             planet_events_storage.verify_hash_static(source_loc, source_planet_events_state_hash),
             "Source planet events hash mismatch",
         );
+
         assert(
             arrivals_storage.verify_hashes_batch_static(
                 source_arrival_ids,
@@ -1087,7 +1090,10 @@ contract Move {
 
         // Write back deactivated/burned source activated artifact
         if source_activated_artifact_id != 0 {
-            artifact_storage.write(source_activated_artifact_id, new_source_activated_artifact);
+            artifact_storage.write(
+                source_activated_artifact_id,
+                new_source_activated_artifact,
+            );
 
             // PhotoidCannon and PlanetaryShield are burned on deactivation
             let is_burn_type = (

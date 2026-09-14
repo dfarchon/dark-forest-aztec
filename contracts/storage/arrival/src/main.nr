@@ -35,6 +35,7 @@ pub contract ArrivalStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArrivalUpdate {
         id: Field,
         block_number: u32,
@@ -73,16 +74,7 @@ pub contract ArrivalStorage {
         self.internal.assert_authorized();
         assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
-        let fields = std::meta::unquote!(::types::storage::state::serialize_state(
-            quote { Arrival }.as_type(),
-            quote { state },
-        ));
-        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
-            quote { ArrivalUpdate }.as_type(),
-            quote { id },
-            quote { block_number },
-            quote { fields },
-        ));
+        let (root, log) = ArrivalUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
         let packed = packed::pack_arrival(state);
         let slot = self.storage.stored_arrivals.at(id).get_storage_slot();

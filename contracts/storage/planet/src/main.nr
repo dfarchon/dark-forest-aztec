@@ -29,6 +29,7 @@ pub contract PlanetStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct PlanetUpdate {
         id: Field,
         block_number: u32,
@@ -64,16 +65,7 @@ pub contract PlanetStorage {
     fn set(id: Field, planet: Planet) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let fields = std::meta::unquote!(::types::storage::state::serialize_state(
-            quote { Planet }.as_type(),
-            quote { planet },
-        ));
-        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
-            quote { PlanetUpdate }.as_type(),
-            quote { id },
-            quote { block_number },
-            quote { fields },
-        ));
+        let (root, log) = PlanetUpdate::encode_update(id, block_number, planet);
         self.storage.state_roots.at(id).write(root);
         unsafe {
             aztec::oracle::avm::emit_public_log(log.as_vector());

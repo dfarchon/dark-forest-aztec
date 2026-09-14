@@ -483,7 +483,10 @@ contract ArtifactAction {
         let config = Config::at(self.storage.config_storage_address.read());
 
         // Verify planet state hashes
-        assert(planet_storage.verify_hash_static(location_id, planet_hash), "planet hash mismatch");
+        assert(
+            planet_storage.verify_hash_static(location_id, planet_hash),
+            "planet hash mismatch",
+        );
         assert(
             planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
             "planet_events hash mismatch",
@@ -770,7 +773,10 @@ contract ArtifactAction {
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
-        assert(planet_storage.verify_hash_static(location_id, planet_hash), "planet hash mismatch");
+        assert(
+            planet_storage.verify_hash_static(location_id, planet_hash),
+            "planet hash mismatch",
+        );
         assert(
             planet_events_storage.verify_hash_static(location_id, planet_events_state_hash),
             "planet_events hash mismatch",

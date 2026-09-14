@@ -27,6 +27,7 @@ pub contract ArtifactStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArtifactUpdate {
         id: Field,
         block_number: u32,
@@ -62,13 +63,7 @@ pub contract ArtifactStorage {
     fn set(id: Field, state: Artifact) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let fields = state.serialize();
-        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
-            quote { ArtifactUpdate }.as_type(),
-            quote { id },
-            quote { block_number },
-            quote { fields },
-        ));
+        let (root, log) = ArtifactUpdate::encode_update(id, block_number, state);
         if self.storage.state_roots.at(id).read() != root {
             self.storage.state_roots.at(id).write(root);
         }

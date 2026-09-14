@@ -25,17 +25,28 @@ pub comptime fn fixed_state_hash(fields: Quoted, width: u32) -> Quoted {
     quote { { $body state[0] } }
 }
 
-pub comptime fn state_update(event: Type, id: Quoted, block: Quoted, fields: Quoted) -> Quoted {
-    let encoded = quote { [Field; <$event as aztec::protocol::traits::Serialize>::N] }.as_type();
+pub comptime fn state_update(event: TypeDefinition) -> Quoted {
+    let name = event.name();
+    let (_, state, _) = event.fields(@[])[2];
+    let encoded = quote { [Field; <$state as aztec::protocol::traits::Serialize>::N] }.as_type();
     let width = encoded.as_array().unwrap().1.as_constant().unwrap();
-    let tag = quote { comptime { aztec::protocol::hash::compute_log_tag(aztec::protocol::traits::ToField::to_field(<$event as aztec::event::event_interface::EventInterface>::get_event_type_id()), aztec::protocol::constants::DOM_SEP__EVENT_LOG_TAG) } };
-    let mut words: [Quoted] = @[tag, id, quote { $block as Field }];
-    for i in 0..(width - 2) {
-        words = words.push_back(quote { $fields[$i] });
+    let tag = quote { comptime { aztec::protocol::hash::compute_log_tag(aztec::protocol::traits::ToField::to_field(<$name as aztec::event::event_interface::EventInterface>::get_event_type_id()), aztec::protocol::constants::DOM_SEP__EVENT_LOG_TAG) } };
+    let mut words: [Quoted] = @[tag, quote { id }, quote { block_number as Field }];
+    for i in 0..width {
+        words = words.push_back(quote { fields[$i] });
     }
     let words = words.join(quote { , });
-    let root = fixed_state_hash(fields, width - 2);
-    quote { ($root, [$words]) }
+    let root = fixed_state_hash(quote { fields }, width);
+    let fields = serialize_state(state, quote { state });
+    quote {
+        impl $name {
+            #[inline_always]
+            unconstrained fn encode_update(id: Field, block_number: u32, state: $state) -> (Field, [Field; $width + 3]) {
+                let fields = $fields;
+                ($root, [$words])
+            }
+        }
+    }
 }
 
 pub comptime fn serialize_state(typ: Type, value: Quoted) -> Quoted {

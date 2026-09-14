@@ -794,7 +794,6 @@ contract Core {
             new_arrival_artifact_locations,
             original_arrivals_count,
         );
-
         player_storage.write(sender, new_player);
     }
 
