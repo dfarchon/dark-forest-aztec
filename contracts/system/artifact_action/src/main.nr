@@ -1,6 +1,4 @@
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 contract ArtifactAction {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
@@ -8,7 +6,8 @@ contract ArtifactAction {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
     };
     use ::aztec::state_vars::PublicMutable;
-    use ::types::storage::state::{self, RootView};
+    use ::libs::storage::{VerifyHash, VerifyHashesBatch, WriteArrivalLocations, WriteState};
+    use ::types::storage::state;
 
     use ::types::args::DFPFindArtifactArgs;
     use ::types::storage::{
@@ -64,14 +63,14 @@ contract ArtifactAction {
     #[storage]
     struct Storage<Context> {
         admin: PublicMutable<AztecAddress, Context>,
-        config_storage_address: state::CanonicalAddress<0, Context>,
+        config_storage_address: PublicMutable<AztecAddress, Context>,
         arrivals_storage_address: state::CanonicalAddress<7, Context>,
         artifact_storage_address: state::CanonicalAddress<8, Context>,
         artifact_location_storage_address: state::CanonicalAddress<9, Context>,
         planet_storage_address: state::CanonicalAddress<3, Context>,
         planet_artifacts_storage_address: state::CanonicalAddress<6, Context>,
         planet_events_storage_address: state::CanonicalAddress<5, Context>,
-        player_storage_address: state::CanonicalAddress<2, Context>,
+        player_storage_address: PublicMutable<AztecAddress, Context>,
         world_storage_address: state::CanonicalAddress<1, Context>,
     }
 
@@ -486,82 +485,94 @@ contract ArtifactAction {
 
         // Verify planet state hashes
         assert(
-            planet_storage.verify_hash(location_id, planet_hash).view_canonical(
+            planet_storage.verify_hash_canonical(
                 self.context,
+                location_id,
+                planet_hash,
                 state::is_canonical(planet_storage.target_contract, 3),
             ),
             "planet hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash(location_id, planet_events_state_hash).view_canonical(
+            planet_events_storage.verify_hash_canonical(
                 self.context,
+                location_id,
+                planet_events_state_hash,
                 state::is_canonical(planet_events_storage.target_contract, 5),
             ),
             "planet_events hash mismatch",
         );
         assert(
-            planet_artifacts_storage
-                .verify_hash(location_id, planet_artifacts_state_hash)
-                .view_canonical(
-                    self.context,
-                    state::is_canonical(planet_artifacts_storage.target_contract, 6),
-                ),
+            planet_artifacts_storage.verify_hash_canonical(
+                self.context,
+                location_id,
+                planet_artifacts_state_hash,
+                state::is_canonical(planet_artifacts_storage.target_contract, 6),
+            ),
             "planet_artifacts hash mismatch",
         );
 
         // Batch verify arrival hashes
         assert(
-            arrival_storage
-                .verify_hashes_batch(arrival_ids, arrival_hashes, origin_arrivals_count)
-                .view_canonical(
-                    self.context,
-                    state::is_canonical(arrival_storage.target_contract, 7),
-                ),
+            arrival_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_ids,
+                arrival_hashes,
+                origin_arrivals_count,
+                state::is_canonical(arrival_storage.target_contract, 7),
+            ),
             "arrivals hash mismatch",
         );
         let canonical_artifact = state::is_canonical(artifact_storage.target_contract, 8);
         assert(
-            artifact_storage
-                .verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_hashes,
-                    origin_arrivals_count,
-                )
-                .view_canonical(self.context, canonical_artifact),
+            artifact_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_artifact_ids,
+                arrival_artifact_hashes,
+                origin_arrivals_count,
+                canonical_artifact,
+            ),
             "arrival artifacts hash mismatch",
         );
         let canonical_artifact_location =
             state::is_canonical(artifact_location_storage.target_contract, 9);
         assert(
-            artifact_location_storage
-                .verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_location_hashes,
-                    origin_arrivals_count,
-                )
-                .view_canonical(self.context, canonical_artifact_location),
+            artifact_location_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_artifact_ids,
+                arrival_artifact_location_hashes,
+                origin_arrivals_count,
+                canonical_artifact_location,
+            ),
             "arrival artifact locations hash mismatch",
         );
 
         // Verify the artifact being activated
         assert(
-            artifact_storage.verify_hash(artifact_id, artifact_hash).view_canonical(
+            artifact_storage.verify_hash_canonical(
                 self.context,
+                artifact_id,
+                artifact_hash,
                 canonical_artifact,
             ),
             "artifact hash mismatch",
         );
         assert(
-            artifact_location_storage
-                .verify_hash(artifact_id, artifact_location_hash)
-                .view_canonical(self.context, canonical_artifact_location),
+            artifact_location_storage.verify_hash_canonical(
+                self.context,
+                artifact_id,
+                artifact_location_hash,
+                canonical_artifact_location,
+            ),
             "artifact_location hash mismatch",
         );
 
         // Verify world hash
         assert(
-            world_storage.verify_hash(0, world_hash).view_canonical(
+            world_storage.verify_hash_canonical(
                 self.context,
+                0,
+                world_hash,
                 state::is_canonical(world_storage.target_contract, 1),
             ),
             "world hash mismatch",
@@ -581,9 +592,9 @@ contract ArtifactAction {
         );
 
         // Write refreshed planet state
-        self.call(planet_storage.set(location_id, new_planet));
-        self.call(planet_events_storage.set(location_id, new_planet_events_state));
-        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        planet_storage.write(location_id, new_planet);
+        planet_events_storage.write(location_id, new_planet_events_state);
+        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
 
         // Batch write changed artifact locations from refresh
         if state::must_call_location_batch(
@@ -593,16 +604,16 @@ contract ArtifactAction {
             change_artifact_location_ids,
             change_artifact_location_count,
         ) {
-            self.call(artifact_location_storage.set_arrival_locations_max20(
+            artifact_location_storage.write_arrival_locations(
                 change_artifact_location_ids,
                 change_artifact_locations,
                 change_artifact_location_count,
-            ));
+            );
         }
 
         // Write the activated artifact and its location
-        self.call(artifact_storage.set(artifact_id, new_artifact));
-        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
+        artifact_storage.write(artifact_id, new_artifact);
+        artifact_location_storage.write(artifact_id, new_artifact_location);
     }
 
     /// Noir port of Solidity `DFArtifactFacet.deactivateArtifact`.
@@ -814,87 +825,99 @@ contract ArtifactAction {
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
         assert(
-            planet_storage.verify_hash(location_id, planet_hash).view_canonical(
+            planet_storage.verify_hash_canonical(
                 self.context,
+                location_id,
+                planet_hash,
                 state::is_canonical(planet_storage.target_contract, 3),
             ),
             "planet hash mismatch",
         );
         assert(
-            planet_events_storage.verify_hash(location_id, planet_events_state_hash).view_canonical(
+            planet_events_storage.verify_hash_canonical(
                 self.context,
+                location_id,
+                planet_events_state_hash,
                 state::is_canonical(planet_events_storage.target_contract, 5),
             ),
             "planet_events hash mismatch",
         );
         assert(
-            planet_artifacts_storage
-                .verify_hash(location_id, planet_artifacts_state_hash)
-                .view_canonical(
-                    self.context,
-                    state::is_canonical(planet_artifacts_storage.target_contract, 6),
-                ),
+            planet_artifacts_storage.verify_hash_canonical(
+                self.context,
+                location_id,
+                planet_artifacts_state_hash,
+                state::is_canonical(planet_artifacts_storage.target_contract, 6),
+            ),
             "planet_artifacts hash mismatch",
         );
 
         assert(
-            arrival_storage
-                .verify_hashes_batch(arrival_ids, arrival_hashes, origin_arrivals_count)
-                .view_canonical(
-                    self.context,
-                    state::is_canonical(arrival_storage.target_contract, 7),
-                ),
+            arrival_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_ids,
+                arrival_hashes,
+                origin_arrivals_count,
+                state::is_canonical(arrival_storage.target_contract, 7),
+            ),
             "arrivals hash mismatch",
         );
         let canonical_artifact = state::is_canonical(artifact_storage.target_contract, 8);
         assert(
-            artifact_storage
-                .verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_hashes,
-                    origin_arrivals_count,
-                )
-                .view_canonical(self.context, canonical_artifact),
+            artifact_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_artifact_ids,
+                arrival_artifact_hashes,
+                origin_arrivals_count,
+                canonical_artifact,
+            ),
             "arrival artifacts hash mismatch",
         );
         let canonical_artifact_location =
             state::is_canonical(artifact_location_storage.target_contract, 9);
         assert(
-            artifact_location_storage
-                .verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_location_hashes,
-                    origin_arrivals_count,
-                )
-                .view_canonical(self.context, canonical_artifact_location),
+            artifact_location_storage.verify_hashes_batch_canonical(
+                self.context,
+                arrival_artifact_ids,
+                arrival_artifact_location_hashes,
+                origin_arrivals_count,
+                canonical_artifact_location,
+            ),
             "arrival artifact locations hash mismatch",
         );
 
         assert(
-            artifact_storage.verify_hash(artifact_id, artifact_hash).view_canonical(
+            artifact_storage.verify_hash_canonical(
                 self.context,
+                artifact_id,
+                artifact_hash,
                 canonical_artifact,
             ),
             "artifact hash mismatch",
         );
         assert(
-            artifact_location_storage
-                .verify_hash(artifact_id, artifact_location_hash)
-                .view_canonical(self.context, canonical_artifact_location),
+            artifact_location_storage.verify_hash_canonical(
+                self.context,
+                artifact_id,
+                artifact_location_hash,
+                canonical_artifact_location,
+            ),
             "artifact_location hash mismatch",
         );
 
         assert(
-            world_storage.verify_hash(0, world_hash).view_canonical(
+            world_storage.verify_hash_canonical(
                 self.context,
+                0,
+                world_hash,
                 state::is_canonical(world_storage.target_contract, 1),
             ),
             "world hash mismatch",
         );
 
-        self.call(planet_storage.set(location_id, new_planet));
-        self.call(planet_events_storage.set(location_id, new_planet_events_state));
-        self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
+        planet_storage.write(location_id, new_planet);
+        planet_events_storage.write(location_id, new_planet_events_state);
+        planet_artifacts_storage.write(location_id, new_planet_artifacts_state);
 
         if state::must_call_location_batch(
             self.context,
@@ -903,14 +926,14 @@ contract ArtifactAction {
             change_artifact_location_ids,
             change_artifact_location_count,
         ) {
-            self.call(artifact_location_storage.set_arrival_locations_max20(
+            artifact_location_storage.write_arrival_locations(
                 change_artifact_location_ids,
                 change_artifact_locations,
                 change_artifact_location_count,
-            ));
+            );
         }
 
-        self.call(artifact_storage.set(artifact_id, new_artifact));
-        self.call(artifact_location_storage.set(artifact_id, new_artifact_location));
+        artifact_storage.write(artifact_id, new_artifact);
+        artifact_location_storage.write(artifact_id, new_artifact_location);
     }
 }

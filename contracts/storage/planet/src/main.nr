@@ -64,7 +64,10 @@ pub contract PlanetStorage {
     fn set(id: Field, planet: Planet) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let fields = planet.serialize();
+        let fields = std::meta::unquote!(::types::storage::state::serialize_state(
+            quote { Planet }.as_type(),
+            quote { planet },
+        ));
         let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
             quote { PlanetUpdate }.as_type(),
             quote { id },

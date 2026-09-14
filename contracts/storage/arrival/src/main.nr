@@ -75,7 +75,10 @@ pub contract ArrivalStorage {
         self.internal.assert_authorized();
         assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
-        let fields = state.serialize();
+        let fields = std::meta::unquote!(::types::storage::state::serialize_state(
+            quote { Arrival }.as_type(),
+            quote { state },
+        ));
         let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
             quote { ArrivalUpdate }.as_type(),
             quote { id },

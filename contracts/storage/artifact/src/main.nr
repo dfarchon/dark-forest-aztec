@@ -1,8 +1,6 @@
 // Storage contract for artifacts (id, discoverer, type, location, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract ArtifactStorage {
     use ::aztec::{
         macros::{
@@ -64,11 +62,19 @@ pub contract ArtifactStorage {
     fn set(id: Field, state: Artifact) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
+        let fields = state.serialize();
+        let (root, log) = std::meta::unquote!(::types::storage::state::state_update(
+            quote { ArtifactUpdate }.as_type(),
+            quote { id },
+            quote { block_number },
+            quote { fields },
+        ));
         if self.storage.state_roots.at(id).read() != root {
             self.storage.state_roots.at(id).write(root);
         }
-        self.emit(ArtifactUpdate { id: id, block_number: block_number, state: state });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     #[external("public")]

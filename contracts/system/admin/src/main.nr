@@ -7,7 +7,6 @@ contract Admin {
         protocol::address::AztecAddress,
     };
     use ::aztec::state_vars::PublicMutable;
-    use types::storage::state::{self, RootView};
 
     use ::types::args::{AdminCreatePlanetArgs, DFPInitPlanetArgs};
 
@@ -41,10 +40,10 @@ contract Admin {
     #[storage]
     struct Storage<Context> {
         admin: PublicMutable<AztecAddress, Context>,
-        config_storage_address: state::CanonicalAddress<0, Context>,
-        world_storage_address: state::CanonicalAddress<1, Context>,
-        player_storage_address: state::CanonicalAddress<2, Context>,
-        planet_storage_address: state::CanonicalAddress<3, Context>,
+        config_storage_address: PublicMutable<AztecAddress, Context>,
+        world_storage_address: PublicMutable<AztecAddress, Context>,
+        player_storage_address: PublicMutable<AztecAddress, Context>,
+        planet_storage_address: PublicMutable<AztecAddress, Context>,
     }
 
     #[external("public")]
@@ -121,12 +120,7 @@ contract Admin {
         self.internal.assert_admin();
 
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
-        let world_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(world_storage.target_contract, 1),
-            world_storage.verify(0, world),
-            world == World::zero(),
-        );
+        let world_valid: bool = self.view(world_storage.verify(0, world));
 
         assert(world_valid, "World state is not valid");
         assert(!world.paused, "Game is already paused");
@@ -141,12 +135,7 @@ contract Admin {
         self.internal.assert_admin();
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
 
-        let world_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(world_storage.target_contract, 1),
-            world_storage.verify(0, world),
-            world == World::zero(),
-        );
+        let world_valid: bool = self.view(world_storage.verify(0, world));
         assert(world_valid, "World state is not valid");
         assert(world.paused == true, "Game is already unpaused");
 
@@ -160,12 +149,7 @@ contract Admin {
         self.internal.assert_admin();
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
 
-        let planet_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(planet_storage.target_contract, 3),
-            planet_storage.verify(planet_id, planet_state),
-            planet_state == Planet::zero(),
-        );
+        let planet_valid: bool = self.view(planet_storage.verify(planet_id, planet_state));
         assert(planet_valid, "Planet state is not valid");
 
         let mut new_planet_state = planet_state;
@@ -179,12 +163,7 @@ contract Admin {
 
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
 
-        let player_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(player_storage.target_contract, 2),
-            player_storage.verify(player_address, player_state),
-            player_state == Player::zero(),
-        );
+        let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
 
         let current_timestamp = self.context.timestamp();
@@ -206,12 +185,7 @@ contract Admin {
 
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
 
-        let player_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(player_storage.target_contract, 2),
-            player_storage.verify(player_address, player_state),
-            player_state == Player::zero(),
-        );
+        let player_valid: bool = self.view(player_storage.verify(player_address, player_state));
         assert(player_valid, "Player is not valid");
 
         let current_timestamp = self.context.timestamp();
@@ -381,18 +355,12 @@ contract Admin {
         );
 
         assert(
-            world_storage.verify_hash(0, world_state_hash).view_canonical(
-                self.context,
-                state::is_canonical(world_storage.target_contract, 1),
-            ),
+            self.view(world_storage.verify_hash(0, world_state_hash)),
             "World state hash mismatch",
         );
 
         assert(
-            planet_storage.verify_hash(location_id, planet_state_hash).view_canonical(
-                self.context,
-                state::is_canonical(planet_storage.target_contract, 3),
-            ),
+            self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
             "Planet state hash mismatch",
         );
 
@@ -404,12 +372,7 @@ contract Admin {
         self.internal.assert_admin();
         assert(new_radius > 0, "Radius must be positive");
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
-        let world_valid: bool = state::verify_state(
-            self.context,
-            state::is_canonical(world_storage.target_contract, 1),
-            world_storage.verify(0, world),
-            world == World::zero(),
-        );
+        let world_valid: bool = self.view(world_storage.verify(0, world));
         assert(world_valid, "World state is not valid");
         let mut new_world = world;
         new_world.radius = new_radius;

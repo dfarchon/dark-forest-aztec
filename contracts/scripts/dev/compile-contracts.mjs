@@ -35,37 +35,6 @@ function copyNoir(from, to) {
   }
 }
 copyNoir(contracts, staged);
-let sdk = process.env.DF_AZTEC_NR ?? path.join(os.homedir(), `nargo/github.com/AztecProtocol/aztec-nr/v${version}/aztec`);
-if (!fs.existsSync(sdk)) {
-  const checkout = path.join(work, 'aztec-nr');
-  run('git', ['clone', '--depth', '1', '--branch', `v${version}`, 'https://github.com/AztecProtocol/aztec-nr', checkout], work);
-  sdk = path.join(checkout, 'aztec');
-}
-copyNoir(sdk, path.join(work, 'aztec'));
-const protocolPath = 'noir-projects/noir-protocol-circuits/crates';
-let protocol = process.env.DF_PROTOCOL_CRATES ?? path.join(os.homedir(), `nargo/github.com/AztecProtocol/aztec-packages/v${version}`, protocolPath);
-if (!fs.existsSync(path.join(protocol, 'serde/Nargo.toml'))) {
-  const checkout = path.join(work, 'aztec-packages');
-  run('git', ['clone', '--depth', '1', '--branch', `v${version}`, 'https://github.com/AztecProtocol/aztec-packages', checkout], work);
-  protocol = path.join(checkout, protocolPath);
-}
-for (const name of ['types', 'serde']) copyNoir(path.join(protocol, name), path.join(work, 'protocol', name));
-const sdkManifest = path.join(work, 'aztec/Nargo.toml');
-const sdkSource = fs.readFileSync(sdkManifest, 'utf8');
-assert(/^protocol_types\s*=.*tag\s*=\s*"v5\.0\.1"/m.test(sdkSource), 'Unexpected protocol dependency');
-fs.writeFileSync(sdkManifest, sdkSource.replace(/^protocol_types\s*=.*$/m, 'protocol_types = { path = "../protocol/types" }'));
-run('git', ['apply', '--check', path.join(scripts, 'dispatch.patch')], work);
-run('git', ['apply', path.join(scripts, 'dispatch.patch')], work);
-for (const name of fs.readdirSync(staged, {recursive: true})) {
-  if (!name.endsWith('Nargo.toml')) continue;
-  const file = path.join(staged, name), text = fs.readFileSync(file, 'utf8');
-  const dependency = /^aztec\s*=\s*\{[^\n]+\}/m;
-  if (dependency.test(text)) {
-    assert(text.match(dependency)[0].includes(`v${version}`), `Unexpected SDK version: ${file}`);
-    const relative = path.relative(path.dirname(file), path.join(work, 'aztec')).split(path.sep).join('/');
-    fs.writeFileSync(file, text.replace(dependency, `aztec = { path = "${relative}" }`));
-  }
-}
 function checkVersion(command, expected) {
   const result = spawnSync(command, ['--version'], {encoding: 'utf8'});
   assert(result.status === 0 && result.stdout.split(/\r?\n/).includes(expected), `Aztec ${version} requires ${command}: ${expected}`);
@@ -90,6 +59,18 @@ function assertImmutableClass(artifact) {
   const instructions = decodeFromBytecode(Buffer.from(dispatch.bytecode, 'base64'));
   assert(!instructions.some(op => op instanceof Call || op instanceof StaticCall), `${artifact.name}: canonical cache forbids external calls`);
 }
+// Direct reads in types/storage/state.nr must match the recognized contract layout.
+function assertStorageLayout(artifact) {
+  const expected = artifact.name === 'Config' ? {
+    world_config_hash: 286, snark_config_hash: 287, game_config_core_hash: 288,
+    planet_level_thresholds_hash: 289, planet_type_weights_tier_0_hash: 290,
+    planet_type_weights_tier_1_hash: 291, planet_type_weights_tier_2_hash: 292,
+    planet_type_weights_tier_3_hash: 293, artifacts_config_hash: 294,
+    space_junk_config_hash: 296, planet_default_stats_hash: 299,
+  } : {admin: 1, authorized_map: 2, state_roots: 6};
+  for (const [field, slot] of Object.entries(expected))
+    assert.equal(Number(artifact.storageLayout[field]?.slot), slot, `${artifact.name}.${field}: direct-read storage slot changed`);
+}
 const systems = ['admin:Admin', 'core:Core', 'move:Move', 'artifact_action:ArtifactAction',
   'artifact_find:ArtifactFind', 'artifact_prospect:ArtifactProspect', 'artifact_valut:ArtifactValut'];
 const classes = new Map(), output = path.join(work, 'final');
@@ -110,7 +91,9 @@ async function compile(entry) {
   assert(bytes > 0 && bytes <= MAX_PUBLIC_BYTECODE_SIZE_IN_BYTES, `${entry}: public bytecode too large`);
   assert(1 + Math.ceil(bytes / 31) <= MAX_PACKED_PUBLIC_BYTECODE_SIZE_IN_FIELDS, `${entry}: packed bytecode too large`);
   if (canonical) assertImmutableClass(artifact);
-  const id = (await getContractClassFromArtifact(loadContractArtifact(artifact))).id.toString();
+  const loaded = loadContractArtifact(artifact);
+  if (canonical) assertStorageLayout(loaded);
+  const id = (await getContractClassFromArtifact(loaded)).id.toString();
   if (classes.has(entry)) assert.equal(id, classes.get(entry), `${entry}: class changed after binding`);
   else classes.set(entry, id);
   fs.writeFileSync(path.join(output, name), JSON.stringify(artifact));
