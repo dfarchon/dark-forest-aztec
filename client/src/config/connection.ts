@@ -9,6 +9,7 @@ import {
   getNodeUrl,
   getProverUrl,
   getSponsoredFpcAddressFromEnv,
+  getSponsorMode,
 } from "./env";
 
 const STORAGE_KEY_NODE_URL = "dfpunk:connection:nodeUrl";
@@ -17,6 +18,7 @@ const STORAGE_KEY_INDEXER_BOOTSTRAP_URL =
 const STORAGE_KEY_PROVER_URL = "dfpunk:connection:proverUrl";
 const STORAGE_KEY_SPONSORED_FPC_ADDRESS =
   "dfpunk:connection:sponsoredFpcAddress";
+const STORAGE_KEY_USE_SPONSORED_FPC = "dfpunk:connection:useSponsoredFpc";
 
 export interface ConnectionOverrides {
   nodeUrl?: string;
@@ -28,6 +30,11 @@ export interface ConnectionOverrides {
    * Empty string clears local override (falls back to env / default derivation).
    */
   sponsoredFpcAddress?: string | null;
+  /**
+   * Whether the player wants SponsoredFPC to pay transaction fees.
+   * null clears the preference and restores the build default.
+   */
+  useSponsoredFpc?: boolean | null;
 }
 
 /**
@@ -67,6 +74,18 @@ export function getEffectiveSponsoredFpcAddressOverride(): string | undefined {
   const stored = localStorage.getItem(STORAGE_KEY_SPONSORED_FPC_ADDRESS);
   if (stored !== null && stored.trim().length > 0) return stored.trim();
   return getSponsoredFpcAddressFromEnv();
+}
+
+/**
+ * Whether transactions should use SponsoredFPC. Sponsor payment is unavailable
+ * when the build disables sponsor mode. Sponsor-enabled builds default to using
+ * SponsoredFPC until the player explicitly opts out.
+ */
+export function getEffectiveUseSponsoredFpc(): boolean {
+  if (!getSponsorMode()) return false;
+  const stored = localStorage.getItem(STORAGE_KEY_USE_SPONSORED_FPC);
+  if (stored === "false") return false;
+  return true;
 }
 
 /**
@@ -115,6 +134,16 @@ export function setConnectionOverrides(overrides: ConnectionOverrides): void {
       );
     }
   }
+  if (overrides.useSponsoredFpc !== undefined) {
+    if (overrides.useSponsoredFpc === null) {
+      localStorage.removeItem(STORAGE_KEY_USE_SPONSORED_FPC);
+    } else {
+      localStorage.setItem(
+        STORAGE_KEY_USE_SPONSORED_FPC,
+        String(overrides.useSponsoredFpc)
+      );
+    }
+  }
 }
 
 /**
@@ -128,6 +157,9 @@ export function getConnectionOverrides(): ConnectionOverrides {
   const sponsoredStored = localStorage.getItem(
     STORAGE_KEY_SPONSORED_FPC_ADDRESS
   );
+  const useSponsoredFpcStored = localStorage.getItem(
+    STORAGE_KEY_USE_SPONSORED_FPC
+  );
   return {
     nodeUrl: nodeStored !== null ? nodeStored : undefined,
     indexerBootstrapUrl:
@@ -138,5 +170,9 @@ export function getConnectionOverrides(): ConnectionOverrides {
           : null,
     proverUrl: proverStored !== null ? proverStored : undefined,
     sponsoredFpcAddress: sponsoredStored !== null ? sponsoredStored : undefined,
+    useSponsoredFpc:
+      useSponsoredFpcStored === null
+        ? undefined
+        : useSponsoredFpcStored !== "false",
   };
 }

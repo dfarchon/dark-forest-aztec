@@ -10,7 +10,7 @@ function createTestConfig(): ServerRuntimeConfig {
   return {
     adminToken: "",
     aztecNodeUrl: "https://canonical.testnet.rpc.aztec-labs.com",
-    aztecNodeUrlBackup: "",
+    aztecNodeUrlBackups: [],
     corsOrigins: ["http://localhost:5173"],
     indexerStartBlock: 32202,
     nodeKind: "remote",
