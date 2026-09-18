@@ -1,0 +1,51 @@
+{
+  "name": "dark-forest-mainnet",
+  "description": "Sponsors Dark Forest gameplay on Aztec mainnet: a per-player daily allowance of free transactions, restricted to the game's player-facing contracts. Admin and Config contracts are deliberately excluded.",
+  "policy": {
+    "_comment_maxFeeWei": "MEASURED ON MAINNET 2026-08-01, not guessed. getCurrentMinFees reported feePerL2Gas=1686254293252, feePerDaGas=0 (stable across reads at block 22469). At the client's gas limits (50k DA / 6M L2) a transaction costs 10.12 FJ, and the client applies a 2x fee headroom, so max_fee must be at least 20.24 FJ or every sponsored transaction fails to prove. 25 FJ leaves ~23% margin for fee movement. The previous value (0.0000228 FJ) came from a local sandbox and was ~888,000x too small \u2014 it would have sponsored nothing.",
+    "maxFeeWei": "25000000000000000000",
+    "maxUsesPerDay": 5,
+    "maxUsersPerDay": 2
+  },
+  "_comment_maxLossWei": "A DEPLOY-TIME sanity ceiling on the initial policy, NOT the amount funded and NOT enforced afterwards. NOTE: with Phase 9 the admin can schedule a larger policy after deploy, so this is a deploy-time sanity check, not an enforced bound. The paymaster's balance is the only real cap.",
+  "maxLossWei": "800000000000000000000",
+  "_comment_allowedTargets": "Player-facing gameplay contracts only. Addresses may be literals or 'env:VAR_NAME'. Deliberately absent: ADMIN and CONFIG (admin operations must not be sponsored) and all storage contracts (players never call them directly).",
+  "allowedTargets": [
+    {
+      "name": "Core",
+      "address": "0x1682cd593daddec05d1cb5440bd67af7d1fb7bfb27711ee94ad08c6fc277ece1"
+    },
+    {
+      "name": "Move",
+      "address": "0x04718c618d1fc945518b541a8a03f8a3ae304b474dbf52ce6c0f42803e3dca82"
+    },
+    {
+      "name": "ArtifactProspect",
+      "address": "0x1227e1bdfa062cc1d7dda74cd63e652bd992bb1bb9610f0215577783bd4c736d"
+    },
+    {
+      "name": "ArtifactFind",
+      "address": "0x07a7c22fea16b23cd261c8e51d18af02f3b458c2278eaee9b41f30b0297878fb"
+    },
+    {
+      "name": "ArtifactAction",
+      "address": "0x20adad8637158e257d74b1c811b45036cf1622caad4e21e4a90b9541ab2bab2f"
+    },
+    {
+      "name": "ArtifactVault",
+      "address": "0x2d6014c26d5c6a4a94430f963c188ce8246cbd39a85274a9d8ebc18f8bcedf66"
+    }
+  ],
+  "_comment_allowedAccountClasses": "ONLY the initializerless Schnorr class from @aztec/accounts 5.0.1 \u2014 what the embedded wallet actually uses. The plain SchnorrAccount class is deliberately EXCLUDED: it is published on deploy, and a published account can call ContractInstanceRegistry::update to upgrade itself to hostile code, which would be sponsored (the paymaster can only see the ORIGINAL class). Initializerless accounts send no deploy tx, so they are unpublished and cannot upgrade \u2014 see requireUnpublishedAccounts. Class ids hash the artifact (version-pinned, network-independent); the deploy script recomputes them from the installed packages and refuses to deploy on a mismatch. Bumping @aztec/accounts changes these ids and requires an FPC redeploy for players on the new version.",
+  "allowedAccountClasses": [
+    {
+      "name": "SchnorrInitializerlessAccount",
+      "classId": "0x28c2905b5e44745a50b78c9d3084443216b6b369a3c2ecf06640605bf630706f"
+    }
+  ],
+  "_comment_requireUnpublishedAccounts": "Keep true. This is what makes the class allowlist bind the code that will actually execute rather than merely the class the account was created with.",
+  "requireUnpublishedAccounts": true,
+  "_comment_adminAddress": "REQUIRED, no default. The account that can reschedule the policy and the sponsored-contract list (12h delay). Immutable, no transfer: whoever this is holds it permanently. Decision 2026-07-31: the homelab deployer account; set QUOTA_FPC_ADMIN_ADDRESS to its address before deploying. It cannot withdraw funds, shorten the delay, or touch the account-class rules.",
+  "adminAddress": "env:QUOTA_FPC_ADMIN_ADDRESS",
+  "_comment_policy_size": "Sized to the funded tranche, NOT to demand. Worst case is maxFee x uses x users x 3 generations = 750 FJ against 800 FJ funded. Real spend is far lower \u2014 the ceiling is charged on gas LIMITS while the fee paid follows gas USED \u2014 but the ceiling is what bounds liability. Scaling to something like 100 players x 30 transactions would need ~60,700 FJ per generation, roughly 76x this budget."
+}

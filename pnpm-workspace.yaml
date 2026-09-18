@@ -16,6 +16,7 @@ packages:
   - packages/procedural
   - packages/renderer
   - packages/ui
+  - packages/quota-fpc
 
 # ignoredBuiltDependencies:
 #   - esbuild

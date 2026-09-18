@@ -7,6 +7,7 @@
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import type { FeePaymentMethod } from '@aztec/aztec.js/fee';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import { Fr } from '@aztec/aztec.js/fields';
 import type { AztecNode } from '@aztec/aztec.js/node';
@@ -49,6 +50,15 @@ export type FeePaymentContext = {
     mode: FeePaymentMode;
     /** Present only when `mode === 'sponsored'`. */
     sponsoredFpc?: SponsoredFpcInstance;
+    /**
+     * Present when the account has a bridged claim it has not yet redeemed. A
+     * freshly bridged account holds a claim, not a balance, so it cannot pay
+     * for the transaction that would redeem it — the claim rides along with
+     * its first real transaction instead. Takes precedence over every other
+     * mode: an unredeemed claim is the only thing such an account can pay
+     * with.
+     */
+    claimPaymentMethod?: FeePaymentMethod;
 };
 
 /**
@@ -98,10 +108,39 @@ export function getAccountMinBalanceFjWei(): bigint {
  * Always prints the active fee payment mode.
  */
 export async function prepareFeePayment(
-    wallet: EmbeddedWallet
+    wallet: EmbeddedWallet,
+    /** The account that will send — required to redeem a bridged claim. */
+    from?: AztecAddress
 ): Promise<FeePaymentContext> {
     const mode = getFeePaymentMode();
     console.log(`💳 FEE_PAYMENT_MODE=${mode}`);
+
+    // If a bridged-but-unredeemed claim is configured, it takes precedence:
+    // it is the only thing that can pay when the account balance is still zero.
+    const claimAmount = getOptionalEnv('QUOTA_FPC_CLAIM_AMOUNT');
+    const claimSecret = getOptionalEnv('QUOTA_FPC_CLAIM_SECRET');
+    const claimLeafIndex = getOptionalEnv('QUOTA_FPC_CLAIM_LEAF_INDEX');
+    if (claimAmount && claimSecret && claimLeafIndex && from) {
+        const { FeeJuicePaymentMethodWithClaim } =
+            await import('@aztec/aztec.js/fee');
+        console.log(
+            '🎟️  Redeeming a bridged fee-juice claim with this transaction.'
+        );
+        console.log(
+            '    Clear QUOTA_FPC_CLAIM_* from the env once it has been redeemed —'
+        );
+        console.log(
+            '    a claim is single-use and reusing it will fail the next transaction.'
+        );
+        return {
+            mode,
+            claimPaymentMethod: new FeeJuicePaymentMethodWithClaim(from!, {
+                claimAmount: Fr.fromString(claimAmount),
+                claimSecret: Fr.fromString(claimSecret),
+                messageLeafIndex: BigInt(claimLeafIndex),
+            } as never),
+        };
+    }
 
     if (mode === 'sponsored') {
         console.log('📝 Registering SponsoredFPC contract...');
@@ -125,9 +164,14 @@ export async function prepareFeePayment(
  */
 export function buildFeeSendFields(
     ctx: FeePaymentContext
-):
-    | { fee: { paymentMethod: SponsoredFeePaymentMethod } }
-    | Record<string, never> {
+): { fee: { paymentMethod: FeePaymentMethod } } | Record<string, never> {
+    // A freshly bridged account holds a CLAIM, not a balance — it literally
+    // cannot pay for the transaction that would redeem it. This method bundles
+    // the claim into the transaction it pays for, which is the only way a new
+    // account gets started on a network where SponsoredFPC is unfunded.
+    if (ctx.claimPaymentMethod) {
+        return { fee: { paymentMethod: ctx.claimPaymentMethod } };
+    }
     if (ctx.mode === 'sponsored') {
         if (!ctx.sponsoredFpc) {
             throw new Error(
@@ -151,7 +195,7 @@ export function buildSendOpts(
     ctx: FeePaymentContext
 ): {
     from: AztecAddress;
-    fee?: { paymentMethod: SponsoredFeePaymentMethod };
+    fee?: { paymentMethod: FeePaymentMethod };
 } {
     return { from, ...buildFeeSendFields(ctx) };
 }

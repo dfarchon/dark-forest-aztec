@@ -36,6 +36,7 @@ import {
   TOGGLE_UNIVERSE_VIEW,
 } from "../Utils/ShortcutConstants";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
+import { FeeJuiceGate } from "./FeeJuiceGate";
 import { NotificationsPane } from "./Notifications";
 import { SidebarPane } from "./SidebarPane";
 import { TopBar } from "./TopBar";
@@ -260,6 +261,10 @@ export function GameWindowLayout({
 
           {showEdgeChrome && <NotificationsPane />}
           {showEdgeChrome && <CoordsPane />}
+          {/* Deliberately outside showEdgeChrome: a fee wall must be visible
+              even with the HUD hidden, or a blocked action looks like a
+              silent failure. */}
+          <FeeJuiceGate />
           <HiddenEdgeChrome $hidden={!showEdgeChrome}>
             <ExplorePane />
           </HiddenEdgeChrome>

@@ -115,8 +115,18 @@ export class IndexerService {
     this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
     this.onBlockProcessed = options.onBlockProcessed;
 
+    // Background (poll/push) syncs are fire-and-forget: log failures here so
+    // rethrown sync errors never become unhandled rejections. The next poll
+    // cycle retries from lastProcessedBlock + 1.
     const debouncedProcess = debounce(
-      this.processNewBlocks.bind(this),
+      () => {
+        this.processNewBlocks().catch((err) => {
+          console.warn(
+            "[IndexerService] background sync failed (will retry on next poll):",
+            err,
+          );
+        });
+      },
       this.debounceMs,
       true,
       true,
@@ -184,15 +194,11 @@ export class IndexerService {
         });
         fromBlock = chunkEnd + 1;
       }
-    } catch (err) {
-      console.warn("[IndexerService] processNewBlocks error:", err);
     } finally {
+      // Errors propagate to the caller: start() rejects during initial sync,
+      // background syncs log via the debounce catch boundary. Fully committed
+      // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
       this.isSyncing = false;
-      this.notifyListeners({
-        tables: [],
-        fromBlock: this.snapshot.lastProcessedBlock,
-        toBlock: this.snapshot.lastProcessedBlock,
-      });
     }
   }
 
@@ -230,20 +236,34 @@ export class IndexerService {
     return out;
   }
 
-  /** Apply a single BlockUpdates to current snapshot. */
+  /**
+   * Apply a single BlockUpdates to current snapshot atomically: convert every
+   * row first (phase 1, no mutation), then commit all rows (phase 2). A bad
+   * row therefore cannot leave the snapshot partially updated across tables
+   * (e.g. planet_events written while its arrival row is missing).
+   */
   private applyUpdates(updates: BlockUpdates): void {
+    const pending: Array<{ table: TableName; id: TableId; state: unknown }> =
+      [];
     for (const u of updates.updates) {
       const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
       const rawState = (u as TableUpdate<Raw>).state as Raw;
-      const state = rawToState(u.table, rawState);
-      const tableMap = this.snapshot[u.table] as Map<TableId, unknown>;
+      pending.push({
+        table: u.table,
+        id,
+        state: rawToState(u.table, rawState),
+      });
+    }
 
-      if (u.table === "artifact") {
-        const oldState = tableMap.get(id) as ArtifactState | undefined;
-        this.updateArtifactIndexes(id, oldState, state as ArtifactState);
+    for (const p of pending) {
+      const tableMap = this.snapshot[p.table] as Map<TableId, unknown>;
+
+      if (p.table === "artifact") {
+        const oldState = tableMap.get(p.id) as ArtifactState | undefined;
+        this.updateArtifactIndexes(p.id, oldState, p.state as ArtifactState);
       }
 
-      tableMap.set(id, state);
+      tableMap.set(p.id, p.state);
     }
   }
 
@@ -368,6 +388,13 @@ export class IndexerService {
     this.latestKnownBlock = latest;
     await this.processNewBlocks();
 
+    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+      throw new Error(
+        `[IndexerService] initial sync incomplete: processed up to block ` +
+          `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}`,
+      );
+    }
+
     const syncedToBlock = this.snapshot.lastProcessedBlock;
 
     this.lifecycle = "ready";
@@ -395,8 +422,8 @@ export class IndexerService {
       try {
         const next = await this.source.getLatestBlockNumber();
         this.onLatestBlock(next);
-      } catch {
-        // ignore poll errors
+      } catch (err) {
+        console.warn("[IndexerService] poll getLatestBlockNumber failed:", err);
       }
     }, this.pollIntervalMs);
   }

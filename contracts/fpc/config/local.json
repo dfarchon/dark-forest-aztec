@@ -1,0 +1,49 @@
+{
+  "name": "dark-forest-local",
+  "description": "Local sandbox deployment for testing the sponsored-transaction experience end to end. Addresses are read from the environment written by `sync-env-and-artifacts`, so this file never needs editing after a redeploy.",
+  "policy": {
+    "_comment_maxFeeWei": "Deliberately generous for local testing \u2014 fake fee juice, and a low ceiling here would just produce confusing failures unrelated to the UX being tested.",
+    "maxFeeWei": "1000000000000000",
+    "maxUsesPerDay": 5,
+    "maxUsersPerDay": 20
+  },
+  "_comment_maxUses": "Only 5 per day on purpose: exhausting the allowance is one of the states worth actually looking at, and 30 would make that tedious to reach by hand.",
+  "maxLossWei": "1000000000000000000000",
+  "_comment_allowedTargets": "Resolved from the deploy environment. Same six player-facing contracts as mainnet; Admin and Config stay excluded so the local run exercises the real allowlist rather than a permissive one.",
+  "allowedTargets": [
+    {
+      "name": "Core",
+      "address": "env:CORE_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "Move",
+      "address": "env:MOVE_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactProspect",
+      "address": "env:ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactFind",
+      "address": "env:ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactAction",
+      "address": "env:ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactVault",
+      "address": "env:ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS"
+    }
+  ],
+  "_comment_allowedAccountClasses": "Mirrors mainnet: only the initializerless Schnorr class the embedded wallet uses. The plain (published) SchnorrAccount is excluded because a published account can upgrade itself via ContractInstanceRegistry::update \u2014 see requireUnpublishedAccounts. Ids are recomputed from the installed artifacts at deploy time.",
+  "allowedAccountClasses": [
+    {
+      "name": "SchnorrInitializerlessAccount",
+      "classId": "0x28c2905b5e44745a50b78c9d3084443216b6b369a3c2ecf06640605bf630706f"
+    }
+  ],
+  "requireUnpublishedAccounts": true,
+  "_comment_adminAddress": "Set QUOTA_FPC_ADMIN_ADDRESS to the local deployer's address (printed by deploy scripts / stored in contracts/.env).",
+  "adminAddress": "env:QUOTA_FPC_ADMIN_ADDRESS"
+}
