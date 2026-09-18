@@ -58,7 +58,7 @@ export const externalLinks = {
   },
   aztecMainnet: {
     /** Official Aztec mainnet Ethereum ↔ Aztec bridge (Shield). */
-    feeJuiceBridge: "https://df-aztec-bridge-api.vercel.app",
+    feeJuiceBridge: "https://aztec-dfarchon-kit.netlify.app/",
   },
 } as const;
 
