@@ -1,8 +1,6 @@
 // Storage contract for artifacts (id, discoverer, type, location, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract ArtifactStorage {
     use ::aztec::{
         macros::{
@@ -29,6 +27,7 @@ pub contract ArtifactStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArtifactUpdate {
         id: Field,
         block_number: u32,
@@ -52,9 +51,10 @@ pub contract ArtifactStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -63,9 +63,13 @@ pub contract ArtifactStorage {
     fn set(id: Field, state: Artifact) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
-        self.storage.state_roots.at(id).write(root);
-        self.emit(ArtifactUpdate { id: id, block_number: block_number, state: state });
+        let (root, log) = ArtifactUpdate::encode_update(id, block_number, state);
+        if self.storage.state_roots.at(id).read() != root {
+            self.storage.state_roots.at(id).write(root);
+        }
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     #[external("public")]

@@ -1,8 +1,7 @@
 // Storage contract for planet events (events list + count per planet).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract PlanetEventsStorage {
     use ::aztec::{
         macros::{
@@ -29,6 +28,7 @@ pub contract PlanetEventsStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct PlanetEventsUpdate {
         id: Field,
         block_number: u32,
@@ -52,9 +52,10 @@ pub contract PlanetEventsStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -63,9 +64,11 @@ pub contract PlanetEventsStorage {
     fn set(id: Field, state: PlanetEvents) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
+        let (root, log) = PlanetEventsUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
-        self.emit(PlanetEventsUpdate { id: id, block_number: block_number, state: state });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     // ================== ADMIN ==================

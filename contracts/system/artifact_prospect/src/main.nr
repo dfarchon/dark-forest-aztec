@@ -1,6 +1,4 @@
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 contract ArtifactProspect {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
