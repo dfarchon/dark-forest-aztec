@@ -1,6 +1,4 @@
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 contract Core {
     use ::aztec::{
         macros::{

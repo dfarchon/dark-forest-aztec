@@ -1,8 +1,7 @@
 // Storage contract for artifact location (artifact_id, planet_id, voyage_id).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract ArtifactLocationStorage {
     use ::aztec::{
         macros::{
@@ -29,6 +28,7 @@ pub contract ArtifactLocationStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArtifactLocationUpdate {
         id: Field,
         block_number: u32,
@@ -52,9 +52,10 @@ pub contract ArtifactLocationStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -63,9 +64,13 @@ pub contract ArtifactLocationStorage {
     fn set(id: Field, state: ArtifactLocation) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
-        self.storage.state_roots.at(id).write(root);
-        self.emit(ArtifactLocationUpdate { id: id, block_number: block_number, state: state });
+        let (root, log) = ArtifactLocationUpdate::encode_update(id, block_number, state);
+        if self.storage.state_roots.at(id).read() != root {
+            self.storage.state_roots.at(id).write(root);
+        }
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     #[external("public")]
@@ -75,15 +80,11 @@ pub contract ArtifactLocationStorage {
         let block_number = self.context.block_number();
         for i in 0..20 {
             if (i < count) & (ids[i] != 0) {
-                let root = poseidon2_hash(states[i].serialize());
+                let (root, log) = ArtifactLocationUpdate::encode_update(ids[i], block_number, states[i]);
                 self.storage.state_roots.at(ids[i]).write(root);
-                self.emit(
-                    ArtifactLocationUpdate {
-                        id: ids[i],
-                        block_number: block_number,
-                        state: states[i],
-                    },
-                );
+                unsafe {
+                    aztec::oracle::avm::emit_public_log(log.as_vector());
+                }
             }
         }
     }

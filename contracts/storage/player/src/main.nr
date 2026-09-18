@@ -1,8 +1,7 @@
 // Storage contract for players (address, home planet, score, space junk, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
 
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract PlayerStorage {
     use ::aztec::{
         macros::{

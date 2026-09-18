@@ -1,8 +1,6 @@
 // Storage contract for arrivals (voyage id, player, from/to planet, pop, silver, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::types::storage::state::game_contract]
 pub contract ArrivalStorage {
     use ::aztec::{
         macros::{
@@ -13,8 +11,8 @@ pub contract ArrivalStorage {
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
     };
 
-    use ::aztec::state_vars::{Map, PublicMutable};
-    use ::types::storage::arrival::Arrival;
+    use ::aztec::state_vars::{Map, PublicMutable, StateVariable};
+    use ::types::storage::arrival::{Arrival, packed};
 
     #[storage]
     struct Storage<Context> {
@@ -27,7 +25,7 @@ pub contract ArrivalStorage {
         // arrival id (as Field) -> poseidon2 hash of Arrival
         state_roots: Map<Field, PublicMutable<Field, Context>, Context>,
         // arrival id (as Field) -> full Arrival data (for on-chain storage and off-chain read)
-        stored_arrivals: Map<Field, PublicMutable<Arrival, Context>, Context>,
+        stored_arrivals: Map<Field, PublicMutable<[Field; 7], Context>, Context>,
         // Atomic counter for generating unique event/arrival IDs.
         // Value is the *next* id to allocate; initialized to 1 so the
         // first allocated id is 1 (0 reserved / unused).
@@ -37,6 +35,7 @@ pub contract ArrivalStorage {
     }
 
     #[event]
+    #[::types::storage::state::state_update]
     struct ArrivalUpdate {
         id: Field,
         block_number: u32,
@@ -62,9 +61,10 @@ pub contract ArrivalStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -74,10 +74,23 @@ pub contract ArrivalStorage {
         self.internal.assert_authorized();
         assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
+        let (root, log) = ArrivalUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
-        self.storage.stored_arrivals.at(id).write(state);
-        self.emit(ArrivalUpdate { id: id, block_number: block_number, state: state });
+        let packed = packed::pack_arrival(state);
+        let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
+        for i in 0..7 {
+            if packed[i] != 0 {
+                self.context.raw_storage_write(slot + i as Field, [packed[i]]);
+            } else {
+                let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
+                if previous[0] != 0 {
+                    self.context.raw_storage_write(slot + i as Field, [0]);
+                }
+            }
+        }
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     /// Atomically increment the event ID counter and return the new value.
@@ -178,7 +191,7 @@ pub contract ArrivalStorage {
     #[external("public")]
     #[view]
     fn get_arrival(id: Field) -> Arrival {
-        self.storage.stored_arrivals.at(id).read()
+        packed::unpack_arrival(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("public")]
@@ -279,7 +292,7 @@ pub contract ArrivalStorage {
 
     #[external("utility")]
     unconstrained fn get_arrival_unconstrained(id: Field) -> Arrival {
-        self.storage.stored_arrivals.at(id).read()
+        packed::unpack_arrival(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("utility")]
