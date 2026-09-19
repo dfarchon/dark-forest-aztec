@@ -1,5 +1,5 @@
 #[::types::storage::state::game_contract]
-contract Move {
+pub contract Move {
     use ::aztec::{
         macros::{
             events::event,
@@ -248,6 +248,8 @@ contract Move {
         source_activated_artifact: Artifact,
         target_activated_artifact: Artifact,
     ) {
+        assert(source_loc != target_loc, "Source and target planets must differ");
+
         if !snark_config.disable_zk_checks {
             // Verify move proof: coords (x1,y1)->(x2,y2) produce source_loc, target_loc, target_perlin
             let r = world.radius as Field;
@@ -895,6 +897,8 @@ contract Move {
         new_source_activated_artifact: Artifact,
         new_source_activated_artifact_location: ArtifactLocation,
     ) {
+        assert(source_loc != target_loc, "Source and target planets must differ");
+
         let mut new_target_planet_events_state = new_target_planet_events_state_input;
         let mut new_arrival = new_arrival_input;
         let mut new_moved_artifact_location = new_moved_artifact_location_input;

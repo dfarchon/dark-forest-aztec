@@ -1,0 +1,20 @@
+[package]
+name = "security_tests"
+type = "lib"
+authors = [""]
+
+[dependencies]
+aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v5.0.1", directory = "aztec" }
+types = { path = "../types" }
+libs = { path = "../libs" }
+config = { path = "../config" }
+core = { path = "../system/core" }
+move_system = { path = "../system/move" }
+artifact_action = { path = "../system/artifact_action" }
+artifact_find = { path = "../system/artifact_find" }
+artifact_prospect = { path = "../system/artifact_prospect" }
+artifact_valut = { path = "../system/artifact_valut" }
+planet_storage = { path = "../storage/planet" }
+player_storage = { path = "../storage/player" }
+world_storage = { path = "../storage/world" }
+planet_revealed_coords_storage = { path = "../storage/planet_revealed_coords" }
