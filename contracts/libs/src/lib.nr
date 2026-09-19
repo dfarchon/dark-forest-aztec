@@ -3,3 +3,6 @@ pub mod batch_utils;
 pub mod game_utils;
 pub mod lazy_update;
 pub mod planet;
+
+mod superboost_reference;
+mod superboost_tests;
