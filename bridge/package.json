@@ -10,6 +10,7 @@
     "generate:accounts": "tsx src/generate-accounts.ts",
     "lint": "pnpm run typecheck",
     "quote": "tsx src/index.ts quote",
+    "recover": "tsx src/index.ts recover",
     "status": "tsx src/index.ts status",
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit"

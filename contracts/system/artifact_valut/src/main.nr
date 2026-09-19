@@ -1,5 +1,5 @@
 #[::types::storage::state::game_contract]
-contract ArtifactValut {
+pub contract ArtifactValut {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
@@ -865,6 +865,7 @@ contract ArtifactValut {
             sender,
             location_id,
             timestamp,
+            poseidon2_hash(spaceships_config.serialize()),
             planet_hash,
             planet_artifacts_state_hash,
             planet_events_state_hash,
@@ -892,6 +893,7 @@ contract ArtifactValut {
         sender: AztecAddress,
         location_id: Field,
         timestamp: u64,
+        spaceships_config_hash: Field,
         planet_hash: Field,
         planet_artifacts_state_hash: Field,
         planet_events_state_hash: Field,
@@ -913,6 +915,12 @@ contract ArtifactValut {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
+
+        let config = Config::at(self.storage.config_storage_address.read());
+        assert(
+            self.view(config.verify_spaceships_config_hash(spaceships_config_hash)),
+            "Spaceships config hash mismatch",
+        );
 
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());

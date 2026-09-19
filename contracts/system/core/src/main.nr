@@ -1,5 +1,5 @@
 #[::types::storage::state::game_contract]
-contract Core {
+pub contract Core {
     use ::aztec::{
         macros::{
             events::event,
@@ -872,7 +872,7 @@ contract Core {
         assert(!planet_revealed_coords_is_initialized, "Planet revealed coords");
         assert(world_is_initialized, "World is not valid");
 
-        let mut new_planet = if !planet_state_is_initialized {
+        let new_planet = if !planet_state_is_initialized {
             initialize_planet_with_defaults(
                 location,
                 perlin,
@@ -896,10 +896,9 @@ contract Core {
                 "Timestamp must be >= planet's last_updated",
             );
 
-            let mut new_planet_state = planet_state;
-            new_planet_state.last_updated = timestamp;
-
-            new_planet_state
+            // Revealing coordinates must not advance the simulation clock without
+            // settling pending arrivals. Existing planet state is left unchanged.
+            planet_state
         };
 
         if !is_admin {
@@ -919,7 +918,6 @@ contract Core {
         new_planet_revealed_coords.y = y;
         new_planet_revealed_coords.revealer = sender;
 
-        new_planet.last_updated = timestamp;
         new_player_state.last_updated = timestamp;
 
         // Enqueue public function call with all hashes and new states
@@ -982,12 +980,11 @@ contract Core {
             "Config hash mismatch",
         );
 
-        if planet_state_hash != 0 {
-            assert(
-                self.view(planet_storage.verify_hash(location, planet_state_hash)),
-                "Planet state hash mismatch",
-            );
-        }
+        // A zero witness must also match storage: zero is not proof of absence.
+        assert(
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
+            "Planet state hash mismatch",
+        );
 
         assert(
             !self.view(planet_revealed_coords_storage.is_initialized(location)),
@@ -1003,7 +1000,9 @@ contract Core {
         assert(world_hash != 0, "World state must be initialized");
         assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
-        self.call(planet_storage.set(location, new_planet));
+        if planet_state_hash == 0 {
+            self.call(planet_storage.set(location, new_planet));
+        }
         self.call(planet_revealed_coords_storage.set(location, new_planet_revealed_coords));
         self.call(player_storage.set(sender, new_player_state));
     }
@@ -1281,7 +1280,10 @@ contract Core {
 
         // Planet: verify hashes and write states
         if planet_state_hash == 0 {
-            // New planet - just write it
+            assert(
+                self.view(planet_storage.verify_hash(location_id, 0)),
+                "Planet already initialized",
+            );
             self.call(planet_storage.set(location_id, new_planet));
         } else {
             // Existing planet - verify all hashes then write refreshed states
