@@ -171,9 +171,10 @@ pub fn apply_pending_events(
     mut planet: Planet,
     planet_events: PlanetEvents,
     arrivals: [Arrival; 20],
-) -> (Planet, PlanetEvents, PlanetArtifacts) {
+) -> (Planet, PlanetEvents, PlanetArtifacts, [u32; 20]) {
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
     let mut artifacts_to_add: PlanetArtifacts = PlanetArtifacts::zero();
+    let mut artifact_arrival_indices: [u32; 20] = [0; 20];
     // The event and arrival arrays share the same slot. Keep that slot state
     // locally instead of repeatedly searching the growing removal list by id.
     // This also makes equal-time arrivals deterministic: the first slot wins.
@@ -228,6 +229,7 @@ pub fn apply_pending_events(
                     if new_artifact_id != 0 {
                         // if the arrival is carrying an artifact
                         artifacts_to_add.ids[artifacts_to_add.count] = new_artifact_id;
+                        artifact_arrival_indices[artifacts_to_add.count] = earliest_event_index;
                         artifacts_to_add.count = artifacts_to_add.count + 1;
                     }
                 } else {
@@ -238,5 +240,5 @@ pub fn apply_pending_events(
             }
         }
     }
-    (planet, events_to_remove, artifacts_to_add)
+    (planet, events_to_remove, artifacts_to_add, artifact_arrival_indices)
 }
