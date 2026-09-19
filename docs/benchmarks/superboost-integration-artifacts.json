@@ -1,0 +1,3778 @@
+{
+  "schemaVersion": 1,
+  "commit": "e7a82d3d14a91630ea57750fc971355d9147d31b",
+  "dirty": false,
+  "aztecVersion": "5.0.1",
+  "nodeVersion": "v24.12.0",
+  "measurement": "compiled-artifact-inventory-only",
+  "artifacts": [
+    {
+      "file": "admin-Admin.json",
+      "sha256": "4107b3c8b76e4c0051fe8a1e11ef73e25be823451db2dce99e2dc72c79874bc5",
+      "functions": [
+        {
+          "name": "add_score",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1609
+        },
+        {
+          "name": "admin_initialize_planet",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 12149
+        },
+        {
+          "name": "admin_set_world_radius",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1436
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "create_planet",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 7947
+        },
+        {
+          "name": "deduct_score",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1650
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 4340
+        },
+        {
+          "name": "pause",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1417
+        },
+        {
+          "name": "safe_set_owner",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 89517
+        },
+        {
+          "name": "safe_set_owner_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 3833
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 637
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_owner",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 4097
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "unpause",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1412
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 32036
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "arrival-ArrivalStorage.json",
+      "sha256": "9f9fe9b60335262695e1328109f3ecc10d018602e7e1540e55b39043606b7b4c",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "allocate_event_id",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 849
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1377
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2540
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1138
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_arrival",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2507
+        },
+        {
+          "name": "get_arrival_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 4462
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2014
+        },
+        {
+          "name": "get_event_id_counter_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2816
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 3297
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1563
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_hashes_batch",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1040
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3593
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 16360
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact-ArtifactStorage.json",
+      "sha256": "9fbb5a842e0af1d35fd1ee286928012d63118c0b12206edce92589a965e0be8f",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1570
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2822
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2031
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2133
+        },
+        {
+          "name": "set_spaceships_max5",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2981
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1756
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_hashes_batch",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1040
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3834
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 16583
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact_action-ArtifactAction.json",
+      "sha256": "538834d48d08398e592bfe42e5268e316a26e5d3dc76a1bbbe5932e36f7ffdd0",
+      "functions": [
+        {
+          "name": "activate_artifact",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1150790
+        },
+        {
+          "name": "activate_artifact_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 12366
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "deactivate_artifact",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1141360
+        },
+        {
+          "name": "deactivate_artifact_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 11657
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 6842
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 712
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 35716
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact_find-ArtifactFind.json",
+      "sha256": "f8a9c2139513d0edc5f6f3e166c0534b1bfd208d979c6442d59d9ec0edd89542",
+      "functions": [
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "find_artifact",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 907407
+        },
+        {
+          "name": "find_artifact_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 15512
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 6842
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 712
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 22434
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact_location-ArtifactLocationStorage.json",
+      "sha256": "d01ee4c46401c78bc6b1b374c24328fe51f816b67fbfdbdd755c47db8654d1ec",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 651
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2092
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 1901
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1327
+        },
+        {
+          "name": "set_arrival_locations_max20",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1723
+        },
+        {
+          "name": "set_spaceship_locations_max5",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1697
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 837
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_hashes_batch",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1040
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3109
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 15086
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact_prospect-ArtifactProspect.json",
+      "sha256": "125ab9704b89b12ba38bb8d3b995043eb0864c3edd0519c877437189451a25dd",
+      "functions": [
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 6842
+        },
+        {
+          "name": "prospect_planet",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 838140
+        },
+        {
+          "name": "prospect_planet_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 12170
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 712
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 18589
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "artifact_valut-ArtifactValut.json",
+      "sha256": "56c0b83b0009d6d6994a765ec4541fcbda71db8c8df54649c3522cda6ae5734d",
+      "functions": [
+        {
+          "name": "admin_give_artifact",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 4272
+        },
+        {
+          "name": "admin_give_spaceship",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 7114
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "create_artifact",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1433
+        },
+        {
+          "name": "deposit_artifact",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1122372
+        },
+        {
+          "name": "deposit_artifact_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 11415
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 6842
+        },
+        {
+          "name": "give_spaceships",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 34295
+        },
+        {
+          "name": "give_spaceships_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 15582
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 712
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "update_artifact",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 3098
+        },
+        {
+          "name": "withdraw_artifact",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1125971
+        },
+        {
+          "name": "withdraw_artifact_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 11415
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 55359
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "config-Config.json",
+      "sha256": "2c92ce4760129b59dd4f69bd539335eeb36d7ae637a6c341f2e826a9f5070b27",
+      "functions": [
+        {
+          "name": "admin_address_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2799
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_all_config_hashes_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 8862
+        },
+        {
+          "name": "get_all_planet_default_stats_hashes",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1156
+        },
+        {
+          "name": "get_all_planet_default_stats_hashes_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 7794
+        },
+        {
+          "name": "get_artifact_point_values_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3115
+        },
+        {
+          "name": "get_artifacts_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 908
+        },
+        {
+          "name": "get_artifacts_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_artifacts_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2838
+        },
+        {
+          "name": "get_artifacts_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3194
+        },
+        {
+          "name": "get_capture_zones_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1524
+        },
+        {
+          "name": "get_capture_zones_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_capture_zones_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2841
+        },
+        {
+          "name": "get_capture_zones_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3676
+        },
+        {
+          "name": "get_cumulative_rarity",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 676
+        },
+        {
+          "name": "get_cumulative_rarity_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2960
+        },
+        {
+          "name": "get_default_stats_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 10395
+        },
+        {
+          "name": "get_full_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 35288
+        },
+        {
+          "name": "get_game_config_core",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 856
+        },
+        {
+          "name": "get_game_config_core_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_game_config_core_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2839
+        },
+        {
+          "name": "get_game_config_core_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3163
+        },
+        {
+          "name": "get_planet_default_stats",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1002
+        },
+        {
+          "name": "get_planet_default_stats_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 661
+        },
+        {
+          "name": "get_planet_default_stats_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2951
+        },
+        {
+          "name": "get_planet_default_stats_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3240
+        },
+        {
+          "name": "get_planet_init_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 13506
+        },
+        {
+          "name": "get_planet_level_thresholds",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1249
+        },
+        {
+          "name": "get_planet_level_thresholds_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_planet_level_thresholds_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2844
+        },
+        {
+          "name": "get_planet_level_thresholds_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3251
+        },
+        {
+          "name": "get_planet_type_weights_tier",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 9579
+        },
+        {
+          "name": "get_planet_type_weights_tier_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 738
+        },
+        {
+          "name": "get_planet_type_weights_tier_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3976
+        },
+        {
+          "name": "get_planet_type_weights_tier_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5845
+        },
+        {
+          "name": "get_reveal_cooldown_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2983
+        },
+        {
+          "name": "get_snark_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 814
+        },
+        {
+          "name": "get_snark_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_snark_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2836
+        },
+        {
+          "name": "get_snark_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3108
+        },
+        {
+          "name": "get_space_junk_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1467
+        },
+        {
+          "name": "get_space_junk_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_space_junk_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2841
+        },
+        {
+          "name": "get_space_junk_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3622
+        },
+        {
+          "name": "get_spaceships_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 754
+        },
+        {
+          "name": "get_spaceships_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_spaceships_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2839
+        },
+        {
+          "name": "get_spaceships_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3056
+        },
+        {
+          "name": "get_type_weights_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 7147
+        },
+        {
+          "name": "get_upgrade",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 860
+        },
+        {
+          "name": "get_upgrade_by_branch_level",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 961
+        },
+        {
+          "name": "get_upgrade_by_branch_level_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3251
+        },
+        {
+          "name": "get_upgrade_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 719
+        },
+        {
+          "name": "get_upgrade_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_upgrade_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2837
+        },
+        {
+          "name": "get_upgrade_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3031
+        },
+        {
+          "name": "get_upgrade_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 661
+        },
+        {
+          "name": "get_upgrade_hash_by_branch_level",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 762
+        },
+        {
+          "name": "get_upgrade_hash_by_branch_level_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3091
+        },
+        {
+          "name": "get_upgrade_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2940
+        },
+        {
+          "name": "get_upgrade_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3106
+        },
+        {
+          "name": "get_upgrades_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 8526
+        },
+        {
+          "name": "get_world_config",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 909
+        },
+        {
+          "name": "get_world_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 489
+        },
+        {
+          "name": "get_world_config_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2835
+        },
+        {
+          "name": "get_world_config_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3229
+        },
+        {
+          "name": "initialize_cumulative_rarities",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1834
+        },
+        {
+          "name": "initialize_upgrades_defense",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1666
+        },
+        {
+          "name": "initialize_upgrades_range",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1671
+        },
+        {
+          "name": "initialize_upgrades_speed",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1671
+        },
+        {
+          "name": "set_artifacts_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1488
+        },
+        {
+          "name": "set_capture_zones_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2459
+        },
+        {
+          "name": "set_default_configs_batch_1",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1638
+        },
+        {
+          "name": "set_default_configs_batch_2",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1178
+        },
+        {
+          "name": "set_default_game_config_planet_type_weights_tier",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 6500
+        },
+        {
+          "name": "set_default_upgrade_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 735
+        },
+        {
+          "name": "set_game_config_core",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1456
+        },
+        {
+          "name": "set_planet_default_stats",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1624
+        },
+        {
+          "name": "set_planet_default_stats_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2212
+        },
+        {
+          "name": "set_planet_level_thresholds",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2253
+        },
+        {
+          "name": "set_planet_type_weights_tier",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 5658
+        },
+        {
+          "name": "set_snark_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1233
+        },
+        {
+          "name": "set_space_junk_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2553
+        },
+        {
+          "name": "set_spaceships_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1061
+        },
+        {
+          "name": "set_upgrade",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1371
+        },
+        {
+          "name": "set_upgrade_by_branch_level",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1472
+        },
+        {
+          "name": "set_upgrade_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1144
+        },
+        {
+          "name": "set_world_config",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1365
+        },
+        {
+          "name": "verify_all_planet_default_stats_hashes",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1694
+        },
+        {
+          "name": "verify_artifacts_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_capture_zones_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_config_hashes",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1166
+        },
+        {
+          "name": "verify_game_config_core_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_planet_default_stats_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 666
+        },
+        {
+          "name": "verify_planet_level_thresholds_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_planet_type_weights_tier_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 743
+        },
+        {
+          "name": "verify_snark_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_space_junk_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_spaceships_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_upgrade_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "verify_upgrade_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 666
+        },
+        {
+          "name": "verify_upgrade_hash_by_branch_level",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 767
+        },
+        {
+          "name": "verify_world_config_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 498
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 69381
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "core-Core.json",
+      "sha256": "3bc70a0a7cc9c4246e519036274e29d51885b5fabf8cddfb3c0729a5a24deaf9",
+      "functions": [
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 7350
+        },
+        {
+          "name": "initialize_player",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1192826
+        },
+        {
+          "name": "initialize_player_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 11577
+        },
+        {
+          "name": "refresh_planet",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1119225
+        },
+        {
+          "name": "refresh_planet_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 9458
+        },
+        {
+          "name": "reveal_location",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 90786
+        },
+        {
+          "name": "reveal_location_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 4477
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 727
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_revealed_coords_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "upgrade_planet",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1121776
+        },
+        {
+          "name": "upgrade_planet_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 10603
+        },
+        {
+          "name": "withdraw_silver",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 1121888
+        },
+        {
+          "name": "withdraw_silver_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 11031
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 50706
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "move-Move.json",
+      "sha256": "201b7dc09ea7a33bc4b52ab8be82f4b454ff313d1703b5bc00d49b3945bf4305",
+      "functions": [
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1116
+        },
+        {
+          "name": "get_all_storage_addresses_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 6842
+        },
+        {
+          "name": "move",
+          "attributes": [
+            "abi_private"
+          ],
+          "bytecodeBytes": 2377647
+        },
+        {
+          "name": "move_public",
+          "attributes": [
+            "abi_public",
+            "abi_only_self"
+          ],
+          "bytecodeBytes": 23048
+        },
+        {
+          "name": "set_all_storage_addresses",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 712
+        },
+        {
+          "name": "set_arrivals_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_location_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_artifact_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_config_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_artifacts_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_events_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_planet_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_player_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "set_world_storage_address",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 592
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 32564
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "planet-PlanetStorage.json",
+      "sha256": "13f83264bc8a38b6d5e3a35b91a6d7d145ab9081020dd912139e840d778e2997",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2254
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3518
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_planet_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2277
+        },
+        {
+          "name": "get_split_roots",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1257
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 6722
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2440
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_split_roots",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1290
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 4484
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 20212
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "planet_artifacts-PlanetArtifactsStorage.json",
+      "sha256": "7e6242fdf08d6e1d16980c4d36d0e14e1f8ee31895b8b0a8a35c83472491a947",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2206
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3179
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2066
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2848
+        },
+        {
+          "name": "set_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 5414
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2379
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 4107
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 27736
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "planet_events-PlanetEventsStorage.json",
+      "sha256": "1b196c5c2817874108af72e3a6214667a495f70d418c7d1c89f5a51f0f7e8154",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2206
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3179
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2066
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 2848
+        },
+        {
+          "name": "set_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 5414
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 2379
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 4107
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 27736
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "planet_revealed_coords-PlanetRevealedCoordsStorage.json",
+      "sha256": "7e671ae1de541f5b1fdb5b181cf4349505f4bab82700e6a899c73b30675570bd",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 837
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2146
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 1909
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1515
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1023
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3143
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 9886
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "player-PlayerStorage.json",
+      "sha256": "3a152840cf97639c5b9f82cab73b30492a1f7a3fabeb9b316ec45de06c68f42a",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1181
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2470
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1127
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 1981
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 658
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1897
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1367
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3443
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 10761
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    },
+    {
+      "file": "world-WorldStorage.json",
+      "sha256": "8b8d98a052bad81b486c6974ee81f6821061f27541c726085e51476e28eca166",
+      "functions": [
+        {
+          "name": "add_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1225
+        },
+        {
+          "name": "add_authorized_contracts_batch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1502
+        },
+        {
+          "name": "compute_state_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 893
+        },
+        {
+          "name": "compute_state_hash_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2219
+        },
+        {
+          "name": "constructor",
+          "attributes": [
+            "abi_public",
+            "abi_initializer"
+          ],
+          "bytecodeBytes": 1438
+        },
+        {
+          "name": "get_admin_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2798
+        },
+        {
+          "name": "get_authorized_contract",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 659
+        },
+        {
+          "name": "get_authorized_contract_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "get_authorized_count",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 502
+        },
+        {
+          "name": "get_authorized_count_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2847
+        },
+        {
+          "name": "get_default_state_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 1941
+        },
+        {
+          "name": "get_state_root",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 649
+        },
+        {
+          "name": "get_state_root_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2914
+        },
+        {
+          "name": "is_authorized",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 723
+        },
+        {
+          "name": "is_authorized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3543
+        },
+        {
+          "name": "is_initialized_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 2939
+        },
+        {
+          "name": "remove_authorized_contract",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1644
+        },
+        {
+          "name": "set",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 1575
+        },
+        {
+          "name": "transfer_admin",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 587
+        },
+        {
+          "name": "verify",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 1079
+        },
+        {
+          "name": "verify_hash",
+          "attributes": [
+            "abi_public",
+            "abi_view"
+          ],
+          "bytecodeBytes": 654
+        },
+        {
+          "name": "verify_unconstrained",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 3261
+        },
+        {
+          "name": "offchain_receive",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 5580
+        },
+        {
+          "name": "public_dispatch",
+          "attributes": [
+            "abi_public"
+          ],
+          "bytecodeBytes": 9969
+        },
+        {
+          "name": "sync_state",
+          "attributes": [
+            "abi_utility"
+          ],
+          "bytecodeBytes": 50885
+        }
+      ]
+    }
+  ]
+}
