@@ -75,21 +75,23 @@ pub contract ArrivalStorage {
         assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
         let (root, log) = ArrivalUpdate::encode_update(id, block_number, state);
-        self.storage.state_roots.at(id).write(root);
-        let packed = packed::pack_arrival(state);
-        let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
-        for i in 0..7 {
-            if packed[i] != 0 {
-                self.context.raw_storage_write(slot + i as Field, [packed[i]]);
-            } else {
-                let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
-                if previous[0] != 0 {
-                    self.context.raw_storage_write(slot + i as Field, [0]);
+        if self.storage.state_roots.at(id).read() != root {
+            self.storage.state_roots.at(id).write(root);
+            let packed = packed::pack_arrival(state);
+            let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
+            for i in 0..7 {
+                if packed[i] != 0 {
+                    self.context.raw_storage_write(slot + i as Field, [packed[i]]);
+                } else {
+                    let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
+                    if previous[0] != 0 {
+                        self.context.raw_storage_write(slot + i as Field, [0]);
+                    }
                 }
             }
-        }
-        unsafe {
-            aztec::oracle::avm::emit_public_log(log.as_vector());
+            unsafe {
+                aztec::oracle::avm::emit_public_log(log.as_vector());
+            }
         }
     }
 
