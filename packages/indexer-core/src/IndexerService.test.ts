@@ -60,6 +60,8 @@ test("planet conversion preserves split roots and accepts legacy events", () => 
   };
   const migrated = rawToPlanetState({ split_roots: roots });
   assert.deepEqual(migrated.split_roots, roots);
+  const eventState = rawToPlanetState({ state: roots });
+  assert.deepEqual(eventState.split_roots, roots);
 });
 
 interface MockSourceOptions {

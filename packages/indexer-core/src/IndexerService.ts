@@ -258,6 +258,20 @@ export class IndexerService {
     for (const p of pending) {
       const tableMap = this.snapshot[p.table] as Map<TableId, unknown>;
 
+      // PlanetSplitRootsUpdate is emitted alongside the legacy full Planet
+      // event. Merge its authenticated roots into the existing reconstructed
+      // planet instead of replacing the full state with a roots-only payload.
+      if (p.table === "planet") {
+        const incoming = p.state as PlanetState;
+        if (incoming.split_roots) {
+          const previous = tableMap.get(p.id) as PlanetState | undefined;
+          if (previous) {
+            tableMap.set(p.id, { ...previous, split_roots: incoming.split_roots });
+            continue;
+          }
+        }
+      }
+
       if (p.table === "artifact") {
         const oldState = tableMap.get(p.id) as ArtifactState | undefined;
         this.updateArtifactIndexes(p.id, oldState, p.state as ArtifactState);

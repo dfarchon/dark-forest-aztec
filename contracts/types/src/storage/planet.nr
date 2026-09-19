@@ -94,6 +94,28 @@ pub struct PlanetModifiers {
     pub prospected_block_number: u32,
 }
 
+/// Roots emitted alongside the legacy full Planet update during migration.
+#[derive(Eq, Serialize, Deserialize, Packable)]
+pub struct PlanetSplitRoots {
+    pub static_root: Field,
+    pub dynamic_root: Field,
+    pub stats_root: Field,
+    pub modifier_root: Field,
+    pub composed_root: Field,
+}
+
+impl PlanetSplitRoots {
+    pub fn zero() -> Self {
+        PlanetSplitRoots {
+            static_root: 0,
+            dynamic_root: 0,
+            stats_root: 0,
+            modifier_root: 0,
+            composed_root: 0,
+        }
+    }
+}
+
 impl PlanetStatic {
     pub fn zero() -> Self {
         PlanetStatic {

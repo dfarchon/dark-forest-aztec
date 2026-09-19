@@ -13,7 +13,7 @@ pub contract PlanetStorage {
     };
 
     use ::aztec::state_vars::{Map, PublicMutable};
-    use ::types::storage::planet::Planet;
+    use ::types::storage::planet::{Planet, PlanetSplitRoots};
 
     #[storage]
     struct Storage<Context> {
@@ -40,6 +40,14 @@ pub contract PlanetStorage {
         id: Field,
         block_number: u32,
         state: Planet,
+    }
+
+    #[event]
+    #[::types::storage::state::state_update]
+    struct PlanetSplitRootsUpdate {
+        id: Field,
+        block_number: u32,
+        state: PlanetSplitRoots,
     }
 
     #[external("public")]
@@ -73,12 +81,8 @@ pub contract PlanetStorage {
         let block_number = self.context.block_number();
         let (root, log) = PlanetUpdate::encode_update(id, block_number, planet);
         self.storage.state_roots.at(id).write(root);
-        if planet == Planet::zero() {
-            self.storage.static_roots.at(id).write(0);
-            self.storage.dynamic_roots.at(id).write(0);
-            self.storage.stats_roots.at(id).write(0);
-            self.storage.modifier_roots.at(id).write(0);
-            self.storage.composed_roots.at(id).write(0);
+        let split_roots = if planet == Planet::zero() {
+            PlanetSplitRoots::zero()
         } else {
             let static_root = poseidon2_hash(planet.split_static().serialize());
             let dynamic_root = poseidon2_hash(planet.split_dynamic().serialize());
@@ -90,15 +94,17 @@ pub contract PlanetStorage {
                 stats_root,
                 modifier_root,
             ]);
-            self.storage.static_roots.at(id).write(static_root);
-            self.storage.dynamic_roots.at(id).write(dynamic_root);
-            self.storage.stats_roots.at(id).write(stats_root);
-            self.storage.modifier_roots.at(id).write(modifier_root);
-            self.storage.composed_roots.at(id).write(composed_root);
-        }
+            PlanetSplitRoots { static_root, dynamic_root, stats_root, modifier_root, composed_root }
+        };
+        self.storage.static_roots.at(id).write(split_roots.static_root);
+        self.storage.dynamic_roots.at(id).write(split_roots.dynamic_root);
+        self.storage.stats_roots.at(id).write(split_roots.stats_root);
+        self.storage.modifier_roots.at(id).write(split_roots.modifier_root);
+        self.storage.composed_roots.at(id).write(split_roots.composed_root);
         unsafe {
             aztec::oracle::avm::emit_public_log(log.as_vector());
         }
+        self.emit(PlanetSplitRootsUpdate { id, block_number, state: split_roots });
     }
 
     // ================== ADMIN ==================

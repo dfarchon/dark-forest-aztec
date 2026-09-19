@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "commit": "5961903927cb8381535dc916ae0dd45f62870907",
-  "dirty": false,
+  "commit": "5a9277772f5d2222a8fbae86a1960d9b758c7135",
+  "dirty": true,
   "aztecVersion": "5.0.1",
   "nodeVersion": "v24.12.0",
   "measurement": "compiled-artifact-inventory-only",
@@ -2572,7 +2572,7 @@
     },
     {
       "file": "planet-PlanetStorage.json",
-      "sha256": "13f83264bc8a38b6d5e3a35b91a6d7d145ab9081020dd912139e840d778e2997",
+      "sha256": "5c1a370e56e5529aa58f07bffb411abb7a40f3b30c944cbabfe3301fced61eba",
       "functions": [
         {
           "name": "add_authorized_contract",
@@ -2720,7 +2720,7 @@
           "attributes": [
             "abi_public"
           ],
-          "bytecodeBytes": 6722
+          "bytecodeBytes": 6614
         },
         {
           "name": "transfer_admin",
@@ -2772,7 +2772,7 @@
           "attributes": [
             "abi_public"
           ],
-          "bytecodeBytes": 20212
+          "bytecodeBytes": 20099
         },
         {
           "name": "sync_state",

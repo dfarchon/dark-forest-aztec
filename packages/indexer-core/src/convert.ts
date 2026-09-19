@@ -139,7 +139,7 @@ export function rawToPlanetState(r: Raw): PlanetState {
   // New split-root events can carry roots alongside the legacy full state.
   // Historical events omit this field and remain valid through the legacy
   // Planet hash path.
-  const roots = r.split_roots;
+  const roots = r.split_roots ?? r.state ?? r;
   if (roots && typeof roots === "object") {
     const rawRoots = roots as Record<string, unknown>;
     const splitRoots: PlanetSplitRoots = {

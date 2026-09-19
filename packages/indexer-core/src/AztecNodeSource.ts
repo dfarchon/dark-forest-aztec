@@ -75,6 +75,11 @@ const STORAGE_SPECS: Array<{
     eventDef: PlanetStorageContract.events.PlanetUpdate,
   },
   {
+    contractKey: "PlanetStorage",
+    table: "planet",
+    eventDef: PlanetStorageContract.events.PlanetSplitRootsUpdate,
+  },
+  {
     contractKey: "PlanetRevealedCoordsStorage",
     table: "planet_revealed_coords",
     eventDef:
