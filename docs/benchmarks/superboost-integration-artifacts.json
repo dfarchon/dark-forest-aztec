@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "commit": "5a9277772f5d2222a8fbae86a1960d9b758c7135",
-  "dirty": true,
+  "commit": "7049f1b76a0ff5527b7dbcbb65c2ecc9db3a7b0e",
+  "dirty": false,
   "aztecVersion": "5.0.1",
   "nodeVersion": "v24.12.0",
   "measurement": "compiled-artifact-inventory-only",
@@ -2438,7 +2438,7 @@
     },
     {
       "file": "move-Move.json",
-      "sha256": "201b7dc09ea7a33bc4b52ab8be82f4b454ff313d1703b5bc00d49b3945bf4305",
+      "sha256": "e106003ac65bb88ac8cd8102f5dcb73e96474a7c69017d18a367e6da95aed72c",
       "functions": [
         {
           "name": "constructor",
@@ -2460,7 +2460,7 @@
           "attributes": [
             "abi_private"
           ],
-          "bytecodeBytes": 2377647
+          "bytecodeBytes": 1479776
         },
         {
           "name": "move_public",
