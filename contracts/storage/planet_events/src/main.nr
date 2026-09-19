@@ -71,6 +71,28 @@ pub contract PlanetEventsStorage {
         }
     }
 
+    /// Update several event queues in one public call. Empty tail entries are
+    /// ignored, while each changed slot retains its own state-update log.
+    #[external("public")]
+    fn set_batch(ids: [Field; 20], states: [PlanetEvents; 20], count: u32) {
+        self.internal.assert_authorized();
+        assert(count <= 20, "count exceeds batch size");
+        for i in 0..20 {
+            if i < count {
+                let id = ids[i];
+                let state = states[i];
+                let block_number = self.context.block_number();
+                let (root, log) = PlanetEventsUpdate::encode_update(id, block_number, state);
+                if self.storage.state_roots.at(id).read() != root {
+                    self.storage.state_roots.at(id).write(root);
+                    unsafe {
+                        aztec::oracle::avm::emit_public_log(log.as_vector());
+                    }
+                }
+            }
+        }
+    }
+
     // ================== ADMIN ==================
 
     #[external("public")]
