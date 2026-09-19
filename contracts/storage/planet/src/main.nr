@@ -25,6 +25,13 @@ pub contract PlanetStorage {
         authorized_count: PublicMutable<u32, Context>,
         // id (e.g. location_id) -> poseidon2 hash of Planet
         state_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+        // Versioned split roots. The legacy root above remains authoritative
+        // for historical events while new writes dual-publish these roots.
+        static_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+        dynamic_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+        stats_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+        modifier_roots: Map<Field, PublicMutable<Field, Context>, Context>,
+        composed_roots: Map<Field, PublicMutable<Field, Context>, Context>,
     }
 
     #[event]
@@ -66,6 +73,29 @@ pub contract PlanetStorage {
         let block_number = self.context.block_number();
         let (root, log) = PlanetUpdate::encode_update(id, block_number, planet);
         self.storage.state_roots.at(id).write(root);
+        if planet == Planet::zero() {
+            self.storage.static_roots.at(id).write(0);
+            self.storage.dynamic_roots.at(id).write(0);
+            self.storage.stats_roots.at(id).write(0);
+            self.storage.modifier_roots.at(id).write(0);
+            self.storage.composed_roots.at(id).write(0);
+        } else {
+            let static_root = poseidon2_hash(planet.split_static().serialize());
+            let dynamic_root = poseidon2_hash(planet.split_dynamic().serialize());
+            let stats_root = poseidon2_hash(planet.split_stats().serialize());
+            let modifier_root = poseidon2_hash(planet.split_modifiers().serialize());
+            let composed_root = poseidon2_hash([
+                static_root,
+                dynamic_root,
+                stats_root,
+                modifier_root,
+            ]);
+            self.storage.static_roots.at(id).write(static_root);
+            self.storage.dynamic_roots.at(id).write(dynamic_root);
+            self.storage.stats_roots.at(id).write(stats_root);
+            self.storage.modifier_roots.at(id).write(modifier_root);
+            self.storage.composed_roots.at(id).write(composed_root);
+        }
         unsafe {
             aztec::oracle::avm::emit_public_log(log.as_vector());
         }
@@ -165,6 +195,35 @@ pub contract PlanetStorage {
     #[view]
     fn get_state_root(id: Field) -> Field {
         self.storage.state_roots.at(id).read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_split_roots(id: Field) -> (Field, Field, Field, Field, Field) {
+        (
+            self.storage.static_roots.at(id).read(),
+            self.storage.dynamic_roots.at(id).read(),
+            self.storage.stats_roots.at(id).read(),
+            self.storage.modifier_roots.at(id).read(),
+            self.storage.composed_roots.at(id).read(),
+        )
+    }
+
+    #[external("public")]
+    #[view]
+    fn verify_split_roots(
+        id: Field,
+        static_root: Field,
+        dynamic_root: Field,
+        stats_root: Field,
+        modifier_root: Field,
+        composed_root: Field,
+    ) -> bool {
+        (self.storage.static_roots.at(id).read() == static_root)
+            & (self.storage.dynamic_roots.at(id).read() == dynamic_root)
+            & (self.storage.stats_roots.at(id).read() == stats_root)
+            & (self.storage.modifier_roots.at(id).read() == modifier_root)
+            & (self.storage.composed_roots.at(id).read() == composed_root)
     }
 
     #[external("public")]
