@@ -174,6 +174,10 @@ pub fn apply_pending_events(
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
     let mut artifacts_to_add: PlanetArtifacts = PlanetArtifacts::zero();
+    // The event and arrival arrays share the same slot. Keep that slot state
+    // locally instead of repeatedly searching the growing removal list by id.
+    // This also makes equal-time arrivals deterministic: the first slot wins.
+    let mut processed: [bool; 20] = [false; 20];
 
     let mut earliest_event_time: u64 = 0;
     let mut earliest_event_index: u32 = 0;
@@ -194,22 +198,11 @@ pub fn apply_pending_events(
             // loops through the array and find the earliest event time that hasn't already been applied
             // PlanetEventMetadata only has id; use arrivals[i].arrival_time for ordering (index-aligned)
             for i in 0..20 {
-                if i < planet_events.count {
+                if (i < planet_events.count) & !processed[i] {
                     let arrival_time: u64 = arrivals[i].arrival_time;
                     if arrival_time < earliest_event_time {
-                        let mut should_apply: bool = true;
-                        for already_removed_idx in 0..20 {
-                            if already_removed_idx < events_to_remove.count {
-                                if events_to_remove.events[already_removed_idx].id
-                                    == planet_events.events[i].id {
-                                    should_apply = false;
-                                }
-                            }
-                        }
-                        if should_apply {
-                            earliest_event_time = arrival_time;
-                            earliest_event_index = i;
-                        }
+                        earliest_event_time = arrival_time;
+                        earliest_event_index = i;
                     }
                 }
             }
@@ -224,6 +217,7 @@ pub fn apply_pending_events(
                     let arrival_id = planet_events.events[earliest_event_index].id;
                     events_to_remove.events[events_to_remove.count].id = arrival_id;
                     events_to_remove.count = events_to_remove.count + 1;
+                    processed[earliest_event_index] = true;
 
                     let arrival_data: Arrival = arrivals[earliest_event_index];
 
