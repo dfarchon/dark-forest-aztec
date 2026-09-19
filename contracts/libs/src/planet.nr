@@ -378,15 +378,24 @@ pub fn refresh_planet_v1(
 ) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactLocation; 20]) {
     // assert(planet.is_initialized, "Planet is not initialized");
 
-    let result = get_refreshed_planet(
-        location_id,
-        timestamp,
-        planet,
-        planet_events_state,
-        arrivals,
-        artifacts,
-        planet_artifacts_state,
-    );
+    let result = if planet_events_state.count == 0 {
+        (
+            update_planet(timestamp, planet),
+            PlanetEvents::zero(),
+            PlanetArtifacts::zero(),
+            [0; 20],
+        )
+    } else {
+        get_refreshed_planet(
+            location_id,
+            timestamp,
+            planet,
+            planet_events_state,
+            arrivals,
+            artifacts,
+            planet_artifacts_state,
+        )
+    };
 
     planet = result.0;
     let events_to_remove = result.1;
@@ -449,15 +458,24 @@ pub fn refresh_planet_v2(
     let mut new_planet_events_state = planet_events_state;
     let mut new_planet_artifacts_state = planet_artifacts_state;
 
-    let result = get_refreshed_planet(
-        location_id,
-        timestamp,
-        new_planet,
-        new_planet_events_state,
-        arrivals,
-        arrival_artifacts,
-        new_planet_artifacts_state,
-    );
+    let result = if new_planet_events_state.count == 0 {
+        (
+            update_planet(timestamp, new_planet),
+            PlanetEvents::zero(),
+            PlanetArtifacts::zero(),
+            [0; 20],
+        )
+    } else {
+        get_refreshed_planet(
+            location_id,
+            timestamp,
+            new_planet,
+            new_planet_events_state,
+            arrivals,
+            arrival_artifacts,
+            new_planet_artifacts_state,
+        )
+    };
 
     new_planet = result.0;
     let events_to_remove = result.1;
