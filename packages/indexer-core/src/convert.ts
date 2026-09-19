@@ -13,6 +13,7 @@ import type {
   PlanetArtifactsState,
   PlanetEventsState,
   PlanetRevealedCoordsState,
+  PlanetSplitRoots,
   PlanetState,
   PlayerState,
   WorldState,
@@ -101,7 +102,7 @@ export function rawToPlayerState(r: Raw): PlayerState {
 }
 
 export function rawToPlanetState(r: Raw): PlanetState {
-  return {
+  const state: PlanetState = {
     perlin: toSafeNum(r.perlin),
     created_at: toBigInt(r.created_at),
     owner: toStr(r.owner),
@@ -135,6 +136,24 @@ export function rawToPlanetState(r: Raw): PlanetState {
     has_tried_finding_artifact: toBool(r.has_tried_finding_artifact),
     prospected_block_number: toSafeNum(r.prospected_block_number),
   };
+  // New split-root events can carry roots alongside the legacy full state.
+  // Historical events omit this field and remain valid through the legacy
+  // Planet hash path.
+  const roots = r.split_roots;
+  if (roots && typeof roots === "object") {
+    const rawRoots = roots as Record<string, unknown>;
+    const splitRoots: PlanetSplitRoots = {
+      static_root: toStr(rawRoots.static_root),
+      dynamic_root: toStr(rawRoots.dynamic_root),
+      stats_root: toStr(rawRoots.stats_root),
+      modifier_root: toStr(rawRoots.modifier_root),
+      composed_root: toStr(rawRoots.composed_root),
+    };
+    if (Object.values(splitRoots).every((root) => root.length > 0)) {
+      state.split_roots = splitRoots;
+    }
+  }
+  return state;
 }
 
 /** Convert raw planet_revealed_coords state. */

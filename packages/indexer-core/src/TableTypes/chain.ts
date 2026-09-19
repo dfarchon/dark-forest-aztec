@@ -39,6 +39,15 @@ export interface PlayerState {
 // Planet
 // ---------------------------------------------------------------------------
 
+/** Versioned roots emitted by the split Planet storage migration. */
+export interface PlanetSplitRoots {
+  static_root: string;
+  dynamic_root: string;
+  stats_root: string;
+  modifier_root: string;
+  composed_root: string;
+}
+
 export interface PlanetState {
   perlin: number;
   created_at: bigint;
@@ -72,6 +81,8 @@ export interface PlanetState {
   space_junk: bigint;
   has_tried_finding_artifact: boolean;
   prospected_block_number: number;
+  /** Undefined for historical full-Planet events. */
+  split_roots?: PlanetSplitRoots;
 }
 
 // ---------------------------------------------------------------------------

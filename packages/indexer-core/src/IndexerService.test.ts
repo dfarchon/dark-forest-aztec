@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { IndexerService } from "./IndexerService.ts";
+import { rawToPlanetState } from "./convert.ts";
 import type { BlockUpdates, IBlockEventSource, TableUpdate } from "./types.ts";
 
 type Raw = Record<string, unknown>;
@@ -45,6 +46,21 @@ function arrivalUpdate(id: string, overrides: Raw = {}): TableUpdate<Raw> {
     },
   };
 }
+
+test("planet conversion preserves split roots and accepts legacy events", () => {
+  const legacy = rawToPlanetState({});
+  assert.equal(legacy.split_roots, undefined);
+
+  const roots = {
+    static_root: "0x1",
+    dynamic_root: "0x2",
+    stats_root: "0x3",
+    modifier_root: "0x4",
+    composed_root: "0x5",
+  };
+  const migrated = rawToPlanetState({ split_roots: roots });
+  assert.deepEqual(migrated.split_roots, roots);
+});
 
 interface MockSourceOptions {
   latestBlock: number;
