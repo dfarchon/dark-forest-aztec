@@ -167,6 +167,25 @@ export class ClaimStore {
     });
   }
 
+  // Archive, never delete: the secret stays on disk in case the deposit is
+  // later found on L1 after all.
+  discardDeposit(deposit: PreparedDeposit): void {
+    this.locked(deposit.recipient, () => {
+      const current = this.loadDeposit(deposit.recipient);
+      if (!current || current.claimSecret !== deposit.claimSecret) {
+        throw new Error("Prepared deposit changed; refusing to discard it.");
+      }
+      const id = createHash("sha256")
+        .update(current.claimSecretHash)
+        .digest("hex");
+      renameSync(
+        this.file(deposit.recipient, ".deposit.json"),
+        this.file(deposit.recipient, `.${id}.discarded.json`),
+      );
+      this.syncDirectory();
+    });
+  }
+
   markClaimed(claim: PendingClaim): void {
     this.locked(claim.recipient, () => {
       const current = this.loadClaim(claim.recipient);

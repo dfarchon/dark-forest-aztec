@@ -85,10 +85,22 @@ successful receipt from the saved wallet with exactly one deposit event matching
 the saved portal, recipient, amount and secret hash. Recovery also handles a
 crash after writing the claim but before removing the prepared record.
 
-If no deposit was sent, or it reverted, retain a backup of the prepared record
-and verify the L1 wallet's transaction history, including pending transactions,
-before manually moving that record out of `claims/` to retry. Never delete it
-merely because the RPC timed out. A process killed during a local file update
+The CLI archives the prepared record automatically as
+`<recipient>.<id>.discarded.json` when the approval or deposit simulation fails
+before the deposit is broadcast, or when the deposit transaction is mined and
+reverted. You can then deposit again.
+
+For any other failure, first check the L1 wallet's transaction history,
+including pending transactions. If the deposit was never mined, archive the
+record and retry:
+
+```bash
+pnpm abandon --confirm-not-mined --recipient 0x...
+```
+
+Never abandon a record merely because the RPC timed out. Archived records keep
+their secrets, so a deposit found later can still be recovered by restoring the
+file to `<recipient>.deposit.json` and running `pnpm recover`. A process killed during a local file update
 can also leave `<recipient>.lock`; remove that lock only after confirming no
 bridge process is still using the recipient. Do not remove the secret files.
 

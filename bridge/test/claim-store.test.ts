@@ -14,7 +14,11 @@ import { FeeJuicePortalAbi } from "@aztec/l1-artifacts/FeeJuicePortalAbi";
 import { encodeAbiParameters, encodeEventTopics, type Hex } from "viem";
 
 import { ClaimStore, type PreparedDeposit } from "../src/claim-store.js";
-import { claimFromReceipt, executeDeposit } from "../src/deposit.js";
+import {
+  claimFromReceipt,
+  DepositNotSentError,
+  executeDeposit,
+} from "../src/deposit.js";
 
 const field = (n: number) => `0x${n.toString(16).padStart(64, "0")}` as Hex;
 const address = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Hex;
@@ -34,6 +38,7 @@ function receipt(deposit = draft) {
     status: "success",
     transactionHash: field(6),
     from: deposit.l1Address,
+    to: deposit.portalAddress as string | null,
     logs: [
       {
         address: deposit.portalAddress,
@@ -235,4 +240,67 @@ test("does not submit a transaction when the secret cannot be persisted", async 
     }),
   );
   assert.equal(sent, false);
+});
+
+test("archives the secret and allows a retry when the deposit was never sent", async (t) => {
+  const { store, dir } = fixture(t);
+  await assert.rejects(
+    executeDeposit(store, draft, async () => {
+      throw new DepositNotSentError(new Error("approve reverted"));
+    }),
+    /Deposit was not sent: approve reverted/,
+  );
+  assert.equal(store.loadDeposit(draft.recipient), undefined);
+  const archive = readdirSync(dir).find((name) =>
+    name.endsWith(".discarded.json"),
+  );
+  assert(archive);
+  assert.equal(
+    JSON.parse(readFileSync(path.join(dir, archive), "utf8")).claimSecret,
+    draft.claimSecret,
+  );
+  await executeDeposit(store, draft, async () => receipt());
+  assert.equal(store.loadClaim(draft.recipient).claimSecret, draft.claimSecret);
+});
+
+test("archives the secret when the deposit transaction itself reverted", async (t) => {
+  const { store } = fixture(t);
+  await assert.rejects(
+    executeDeposit(store, draft, async () => ({
+      ...receipt(),
+      status: "reverted",
+      logs: [],
+    })),
+    /reverted/,
+  );
+  assert.equal(store.loadDeposit(draft.recipient), undefined);
+});
+
+test("keeps the secret for reverted receipts that are not the prepared deposit", async (t) => {
+  for (const unrelated of [
+    { to: address(99) },
+    { to: null },
+    { from: address(99) },
+  ]) {
+    const { store } = fixture(t);
+    await assert.rejects(
+      executeDeposit(store, draft, async () => ({
+        ...receipt(),
+        ...unrelated,
+        status: "reverted",
+        logs: [],
+      })),
+    );
+    assert.deepEqual(store.loadDeposit(draft.recipient), draft);
+  }
+});
+
+test("refuses to discard a prepared deposit with a different secret", (t) => {
+  const { store } = fixture(t);
+  store.prepareDeposit(draft);
+  assert.throws(
+    () => store.discardDeposit({ ...draft, claimSecret: field(99) }),
+    /changed/,
+  );
+  assert.deepEqual(store.loadDeposit(draft.recipient), draft);
 });

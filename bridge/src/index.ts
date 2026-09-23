@@ -19,7 +19,11 @@ import path from "node:path";
 
 import { ClaimStore } from "./claim-store.js";
 import { claimsDir, loadConfig, pxeDataDir } from "./config.js";
-import { claimFromReceipt, executeDeposit } from "./deposit.js";
+import {
+  claimFromReceipt,
+  DepositNotSentError,
+  executeDeposit,
+} from "./deposit.js";
 import {
   assertSufficientFunding,
   printFundingQuote,
@@ -35,6 +39,7 @@ function usage(): never {
   pnpm quote --amount <decimal> [--recipient <aztec-address>]
   pnpm deposit --amount <decimal> [--recipient <aztec-address>]
   pnpm recover --tx-hash <l1-deposit-tx> [--recipient <aztec-address>]
+  pnpm abandon --confirm-not-mined [--recipient <aztec-address>]
   pnpm status [--recipient <aztec-address>]
   pnpm claim [--recipient <aztec-address>]`);
   process.exit(1);
@@ -101,29 +106,34 @@ async function deposit(): Promise<void> {
     },
     async () => {
       console.log("Claim secret saved. Submitting L1 Fee Juice deposit.");
-      if (quote.approvalNeeded) {
-        await txUtils.sendAndMonitorTransaction({
-          to: quote.tokenAddress,
-          abi: TestERC20Abi,
-          data: encodeFunctionData({
-            abi: TestERC20Abi,
-            functionName: "approve",
-            args: [quote.portalAddress, quote.amount],
-          }),
-        });
-      }
       const args = [
         recipient.toString(),
         quote.amount,
         claimSecretHash.toString(),
       ] as const;
-      await wallet.publicClient.simulateContract({
-        account: wallet.address,
-        address: quote.portalAddress,
-        abi: FeeJuicePortalAbi,
-        functionName: "depositToAztecPublic",
-        args,
-      });
+      try {
+        if (quote.approvalNeeded) {
+          await txUtils.sendAndMonitorTransaction({
+            to: quote.tokenAddress,
+            abi: TestERC20Abi,
+            data: encodeFunctionData({
+              abi: TestERC20Abi,
+              functionName: "approve",
+              args: [quote.portalAddress, quote.amount],
+            }),
+          });
+        }
+        await wallet.publicClient.simulateContract({
+          account: wallet.address,
+          address: quote.portalAddress,
+          abi: FeeJuicePortalAbi,
+          functionName: "depositToAztecPublic",
+          args,
+        });
+      } catch (error) {
+        // The deposit itself has not been broadcast yet, so its secret is unused.
+        throw new DepositNotSentError(error);
+      }
       const { receipt } = await txUtils.sendAndMonitorTransaction(
         {
           to: quote.portalAddress,
@@ -170,11 +180,22 @@ async function recover(): Promise<void> {
   console.log("Deposit recovered. Run `pnpm status` and then `pnpm claim`.");
 }
 
+async function abandon(): Promise<void> {
+  const recipient = parseRecipient().toString();
+  if (!process.argv.includes("--confirm-not-mined")) usage();
+  const deposit = claimStore.loadDeposit(recipient);
+  if (!deposit) throw new Error("No unresolved deposit to abandon.");
+  claimStore.discardDeposit(deposit);
+  console.log(
+    "Prepared deposit archived in claims/ as *.discarded.json. You can deposit again.",
+  );
+}
+
 async function status(): Promise<void> {
   const recipient = parseRecipient();
   if (claimStore.loadDeposit(recipient.toString())) {
     console.log(
-      "An unresolved deposit is saved locally. Recover it with `pnpm recover --tx-hash <l1-deposit-tx>`. Do not deposit again.",
+      "An unresolved deposit is saved locally. Recover it with `pnpm recover --tx-hash <l1-deposit-tx>`, or run `pnpm abandon --confirm-not-mined` only after confirming it was never mined.",
     );
     return;
   }
@@ -305,6 +326,7 @@ async function main(): Promise<void> {
   if (command === "quote") return quote();
   if (command === "deposit") return deposit();
   if (command === "recover") return recover();
+  if (command === "abandon") return abandon();
   if (command === "status") return status();
   if (command === "claim") return claim();
   usage();
