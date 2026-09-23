@@ -1,6 +1,6 @@
 # Aztec Mainnet Fee Juice Bridge
 
-This CLI bridges existing L1 `$AZTEC` to an Aztec account as public Fee Juice. It uses viem to create or reuse a local Ethereum hot wallet and Aztec's `L1FeeJuicePortalManager` for the deposit.
+This CLI bridges existing L1 `$AZTEC` to an Aztec account as public Fee Juice. It uses viem to create or reuse a local Ethereum hot wallet and Aztec's L1 transaction utilities for the deposit. The claim secret is saved before submitting any transaction.
 
 `$AZTEC` is the asset being bridged. Ethereum ETH is required separately to pay L1 approval and deposit gas.
 
@@ -59,6 +59,50 @@ To reuse an existing Aztec account instead, set `AZTEC_ACCOUNT_SALT`, `AZTEC_ACC
    ```
 
 The claim state includes a secret. Back up `bridge/claims/<recipient>.json` securely until the claim has succeeded; anyone with the secret and relevant account authorization material may be able to act on the deposit.
+
+Only one unresolved or unclaimed deposit per recipient is allowed. Complete the
+claim before depositing again. Existing claim JSON files remain supported, and
+completed claims are archived before a new receipt replaces the active file.
+
+### Recover an interrupted deposit
+
+Before sending an approval or deposit, the CLI flushes the secret, amount,
+recipient, L1 chain, wallet and portal to
+`bridge/claims/<recipient>.deposit.json`. Back up this file securely too.
+An RPC error does not prove that the transaction failed; the CLI retains this
+record and refuses another deposit rather than replacing its secret.
+
+If the deposit was mined, recover from its L1 transaction hash:
+
+```bash
+pnpm recover --tx-hash 0x... --recipient 0x...
+pnpm status --recipient 0x...
+pnpm claim --recipient 0x...
+```
+
+Recovery sends no transaction. It checks the saved L1 chain and requires a
+successful receipt from the saved wallet with exactly one deposit event matching
+the saved portal, recipient, amount and secret hash. Recovery also handles a
+crash after writing the claim but before removing the prepared record.
+
+The CLI archives the prepared record automatically as
+`<recipient>.<id>.discarded.json` when the approval or deposit simulation fails
+before the deposit is broadcast, or when the deposit transaction is mined and
+reverted. You can then deposit again.
+
+For any other failure, first check the L1 wallet's transaction history,
+including pending transactions. If the deposit was never mined, archive the
+record and retry:
+
+```bash
+pnpm abandon --confirm-not-mined --recipient 0x...
+```
+
+Never abandon a record merely because the RPC timed out. Archived records keep
+their secrets, so a deposit found later can still be recovered by restoring the
+file to `<recipient>.deposit.json` and running `pnpm recover`. A process killed during a local file update
+can also leave `<recipient>.lock`; remove that lock only after confirming no
+bridge process is still using the recipient. Do not remove the secret files.
 
 ## Check an Aztec account balance
 

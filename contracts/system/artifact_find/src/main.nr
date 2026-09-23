@@ -1,5 +1,5 @@
 #[::types::storage::state::game_contract]
-contract ArtifactFind {
+pub contract ArtifactFind {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         oracle::block_header::get_block_header_at,
@@ -258,6 +258,7 @@ contract ArtifactFind {
         let game_config_core_hash = poseidon2_hash(game_config_core.serialize());
         let world_config_hash: Field = poseidon2_hash(world_config.serialize());
         let artifacts_config_hash: Field = poseidon2_hash(artifacts_config.serialize());
+        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
         let player_hash = poseidon2_hash(player.serialize());
 
         let planet_hash = planet_hashes_result.1;
@@ -392,6 +393,7 @@ contract ArtifactFind {
             game_config_core_hash,
             world_config_hash,
             artifacts_config_hash,
+            spaceships_config_hash,
             player_hash,
             planet_hash,
             planet_events_state_hash,
@@ -429,6 +431,7 @@ contract ArtifactFind {
         game_config_core_hash: Field,
         world_config_hash: Field,
         artifacts_config_hash: Field,
+        spaceships_config_hash: Field,
         player_hash: Field,
         planet_hash: Field,
         planet_events_state_hash: Field,
@@ -480,6 +483,11 @@ contract ArtifactFind {
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
         let config = Config::at(self.storage.config_storage_address.read());
+
+        assert(
+            self.view(config.verify_spaceships_config_hash(spaceships_config_hash)),
+            "Spaceships config hash mismatch",
+        );
 
         assert(
             self.view(planet_storage.verify_hash(location_id, planet_hash)),
