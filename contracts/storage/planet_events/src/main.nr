@@ -1,7 +1,7 @@
 // Storage contract for planet events (events list + count per planet).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
 
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 pub contract PlanetEventsStorage {
     use ::aztec::{
         macros::{
@@ -28,7 +28,7 @@ pub contract PlanetEventsStorage {
     }
 
     #[event]
-    #[::types::storage::state::state_update]
+    #[::macros::state_update]
     struct PlanetEventsUpdate {
         id: Field,
         block_number: u32,

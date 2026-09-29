@@ -1,6 +1,6 @@
 // Storage contract for arrivals (voyage id, player, from/to planet, pop, silver, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 pub contract ArrivalStorage {
     use ::aztec::{
         macros::{
@@ -12,7 +12,8 @@ pub contract ArrivalStorage {
     };
 
     use ::aztec::state_vars::{Map, PublicMutable, StateVariable};
-    use ::types::storage::arrival::{Arrival, packed};
+    use ::libs::arrival::arrival_encoding;
+    use ::types::storage::arrival::Arrival;
 
     #[storage]
     struct Storage<Context> {
@@ -35,7 +36,7 @@ pub contract ArrivalStorage {
     }
 
     #[event]
-    #[::types::storage::state::state_update]
+    #[::macros::state_update]
     struct ArrivalUpdate {
         id: Field,
         block_number: u32,
@@ -76,11 +77,11 @@ pub contract ArrivalStorage {
         let block_number = self.context.block_number();
         let (root, log) = ArrivalUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
-        let packed = packed::pack_arrival(state);
+        let slots = arrival_encoding::pack(state);
         let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
         for i in 0..7 {
-            if packed[i] != 0 {
-                self.context.raw_storage_write(slot + i as Field, [packed[i]]);
+            if slots[i] != 0 {
+                self.context.raw_storage_write(slot + i as Field, [slots[i]]);
             } else {
                 let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
                 if previous[0] != 0 {
@@ -191,7 +192,7 @@ pub contract ArrivalStorage {
     #[external("public")]
     #[view]
     fn get_arrival(id: Field) -> Arrival {
-        packed::unpack_arrival(id, self.storage.stored_arrivals.at(id).read())
+        arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("public")]
@@ -292,7 +293,7 @@ pub contract ArrivalStorage {
 
     #[external("utility")]
     unconstrained fn get_arrival_unconstrained(id: Field) -> Arrival {
-        packed::unpack_arrival(id, self.storage.stored_arrivals.at(id).read())
+        arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("utility")]

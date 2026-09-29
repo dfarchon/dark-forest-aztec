@@ -1,7 +1,7 @@
 // Storage contract for planet revealed coordinates (location_id, x, y, revealer).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
 
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 pub contract PlanetRevealedCoordsStorage {
     use ::aztec::{
         macros::{

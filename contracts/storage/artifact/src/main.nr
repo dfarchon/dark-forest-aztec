@@ -1,6 +1,6 @@
 // Storage contract for artifacts (id, discoverer, type, location, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 pub contract ArtifactStorage {
     use ::aztec::{
         macros::{
@@ -27,7 +27,7 @@ pub contract ArtifactStorage {
     }
 
     #[event]
-    #[::types::storage::state::state_update]
+    #[::macros::state_update]
     struct ArtifactUpdate {
         id: Field,
         block_number: u32,
