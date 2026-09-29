@@ -15,7 +15,7 @@ Dark Forest Aztec is a monorepo with three application layers and a set of share
 | ZK toolchain         | Circom + snarkjs (offchain proving)  | Native Aztec circuits (proving in PXE)            |
 | Hash function        | MiMC                                 | Poseidon2                                         |
 | Onchain state        | Full entity fields per planet/player | **Hash of entity state**; full state lives offchain |
-| Private state        | Coordinate hashes only               | First-class private notes (home coords, fleet)    |
+| Private state        | Coordinate hashes only               | Same hash model. Private functions prove `(x, y) → location_id`; `(x, y)` stay offchain. Home planet ids and arrivals are public |
 | Indexing             | TheGraph subgraph                    | Aztec public-log indexer (server + client)        |
 | Account model        | EOA + relayer signatures             | Aztec account contracts / burner accounts         |
 

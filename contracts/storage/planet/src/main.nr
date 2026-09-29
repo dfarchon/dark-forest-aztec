@@ -1,7 +1,7 @@
 // Storage contract for planet state (meta, owner, caps, resources, mods, etc.).
 // Only admin or authorized contracts can write; anyone can verify state by hash.
 
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 pub contract PlanetStorage {
     use ::aztec::{
         macros::{
@@ -28,7 +28,7 @@ pub contract PlanetStorage {
     }
 
     #[event]
-    #[::types::storage::state::state_update]
+    #[::macros::state_update]
     struct PlanetUpdate {
         id: Field,
         block_number: u32,

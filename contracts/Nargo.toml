@@ -3,6 +3,7 @@ members = [
     "circuits",
     "config",
     "libs",
+    "macros",
     "types",
     "storage/arrival",
     "storage/artifact",

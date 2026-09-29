@@ -5,4 +5,5 @@ authors = [""]
 
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v5.0.1", directory = "aztec" }
+macros = { path = "../macros" }
 types = { path = "../types" }

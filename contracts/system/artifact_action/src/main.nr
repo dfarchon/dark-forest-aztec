@@ -1,4 +1,4 @@
-#[::types::storage::state::game_contract]
+#[::macros::world_contract]
 contract ArtifactAction {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
