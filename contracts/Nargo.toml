@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "security_tests",
     "circuits",
     "config",
     "libs",

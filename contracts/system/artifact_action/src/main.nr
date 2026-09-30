@@ -1,5 +1,5 @@
 #[::macros::world_contract]
-contract ArtifactAction {
+pub contract ArtifactAction {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         oracle::block_header::get_block_header_at,
@@ -42,7 +42,7 @@ contract ArtifactAction {
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
         _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
-        artifact_rarity_from_planet_level, is_artifact_on_planet,
+        artifact_rarity_from_planet_level, is_activated, is_artifact_on_planet,
     };
     use ::libs::planet::{refresh_planet_v1, refresh_planet_v2};
 
@@ -326,6 +326,8 @@ contract ArtifactAction {
             }
         } else {
             // activateNonSpaceshipArtifact
+            // Activating twice applies the buff twice, but deactivating removes it only once.
+            assert(!is_activated(new_artifact), "Artifact already activated");
             assert(
                 new_planet.owner == sender,
                 "you must own the planet you are activating an artifact on",
