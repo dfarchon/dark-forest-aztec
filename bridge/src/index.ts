@@ -1,5 +1,5 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { L1FeeJuicePortalManager } from "@aztec/aztec.js/ethereum";
+import { generateClaimSecret } from "@aztec/aztec.js/ethereum";
 import { FeeJuicePaymentMethodWithClaim } from "@aztec/aztec.js/fee";
 import { Fq, Fr } from "@aztec/aztec.js/fields";
 import { createLogger } from "@aztec/aztec.js/log";
@@ -7,11 +7,23 @@ import { isL1ToL2MessageReady } from "@aztec/aztec.js/messaging";
 import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { ExecutionPayload, mergeExecutionPayloads } from "@aztec/aztec.js/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import {
+  createL1TxUtils,
+  getL1TxUtilsConfigEnvVars,
+} from "@aztec/ethereum/l1-tx-utils";
+import { FeeJuicePortalAbi } from "@aztec/l1-artifacts/FeeJuicePortalAbi";
+import { TestERC20Abi } from "@aztec/l1-artifacts/TestERC20Abi";
+import { encodeFunctionData, type Hex } from "viem";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { loadClaim, markClaimed, saveClaim } from "./claim-store.js";
-import { loadConfig, pxeDataDir } from "./config.js";
+import { ClaimStore } from "./claim-store.js";
+import { claimsDir, loadConfig, pxeDataDir } from "./config.js";
+import {
+  claimFromReceipt,
+  DepositNotSentError,
+  executeDeposit,
+} from "./deposit.js";
 import {
   assertSufficientFunding,
   printFundingQuote,
@@ -20,10 +32,14 @@ import {
 import { getOrCreateL1Wallet } from "./l1-wallet.js";
 import { getOrCreateL2Account } from "./l2-wallet.js";
 
+const claimStore = new ClaimStore(claimsDir);
+
 function usage(): never {
   console.error(`Usage:
   pnpm quote --amount <decimal> [--recipient <aztec-address>]
   pnpm deposit --amount <decimal> [--recipient <aztec-address>]
+  pnpm recover --tx-hash <l1-deposit-tx> [--recipient <aztec-address>]
+  pnpm abandon --confirm-not-mined [--recipient <aztec-address>]
   pnpm status [--recipient <aztec-address>]
   pnpm claim [--recipient <aztec-address>]`);
   process.exit(1);
@@ -65,30 +81,80 @@ async function deposit(): Promise<void> {
   const quote = await quoteFunding(recipient.toString(), amountText);
   assertSufficientFunding(quote);
 
-  const config = loadConfig({ requireL1Key: true });
-  const node = createAztecNodeClient(config.aztecNodeUrl);
+  loadConfig({ requireL1Key: true });
   const wallet = getOrCreateL1Wallet();
-  const manager = await L1FeeJuicePortalManager.new(
-    node,
+  const txConfig = getL1TxUtilsConfigEnvVars();
+  const txUtils = createL1TxUtils(
     wallet.extendedClient,
-    createLogger("fee-juice-bridge"),
+    {
+      logger: createLogger("fee-juice-bridge"),
+    },
+    txConfig,
   );
-  console.log(
-    "Submitting L1 Fee Juice deposit. This sends approve only if the allowance is insufficient.",
+  const [claimSecret, claimSecretHash] = await generateClaimSecret();
+  await executeDeposit(
+    claimStore,
+    {
+      recipient: recipient.toString(),
+      claimAmount: quote.amount.toString(),
+      claimSecret: claimSecret.toString(),
+      claimSecretHash: claimSecretHash.toString(),
+      l1ChainId: 1,
+      portalAddress: quote.portalAddress,
+      l1Address: wallet.address,
+      preparedAt: new Date().toISOString(),
+    },
+    async () => {
+      console.log("Claim secret saved. Submitting L1 Fee Juice deposit.");
+      const args = [
+        recipient.toString(),
+        quote.amount,
+        claimSecretHash.toString(),
+      ] as const;
+      try {
+        if (quote.approvalNeeded) {
+          await txUtils.sendAndMonitorTransaction({
+            to: quote.tokenAddress,
+            abi: TestERC20Abi,
+            data: encodeFunctionData({
+              abi: TestERC20Abi,
+              functionName: "approve",
+              args: [quote.portalAddress, quote.amount],
+            }),
+          });
+        }
+        await wallet.publicClient.simulateContract({
+          account: wallet.address,
+          address: quote.portalAddress,
+          abi: FeeJuicePortalAbi,
+          functionName: "depositToAztecPublic",
+          args,
+        });
+      } catch (error) {
+        // The deposit itself has not been broadcast yet, so its secret is unused.
+        throw new DepositNotSentError(error);
+      }
+      const { receipt } = await txUtils.sendAndMonitorTransaction(
+        {
+          to: quote.portalAddress,
+          abi: FeeJuicePortalAbi,
+          data: encodeFunctionData({
+            abi: FeeJuicePortalAbi,
+            functionName: "depositToAztecPublic",
+            args,
+          }),
+        },
+        {
+          // Match the SDK's buffer floor for variable-cost Inbox tree insertion.
+          gasLimitBufferPercentage: Math.max(
+            100,
+            txConfig.gasLimitBufferPercentage ?? 0,
+          ),
+        },
+      );
+      return receipt;
+    },
   );
-  const claim = await manager.bridgeTokensPublic(
-    recipient,
-    quote.amount,
-    false,
-  );
-  saveClaim({
-    recipient: recipient.toString(),
-    claimAmount: claim.claimAmount.toString(),
-    claimSecret: claim.claimSecret.toString(),
-    messageLeafIndex: claim.messageLeafIndex.toString(),
-    messageHash: claim.messageHash.toString(),
-    depositedAt: new Date().toISOString(),
-  });
   console.log(
     `Deposit confirmed. The pending claim is stored locally for ${recipient.toString()}.`,
   );
@@ -97,10 +163,44 @@ async function deposit(): Promise<void> {
   );
 }
 
+async function recover(): Promise<void> {
+  const recipient = parseRecipient().toString();
+  const txHash = option("--tx-hash");
+  if (!txHash || !/^0x[0-9a-f]{64}$/i.test(txHash)) usage();
+  const deposit = claimStore.loadDeposit(recipient);
+  if (!deposit) throw new Error("No unresolved deposit to recover.");
+  const wallet = getOrCreateL1Wallet();
+  if ((await wallet.publicClient.getChainId()) !== deposit.l1ChainId) {
+    throw new Error("Recovery RPC chain does not match the prepared deposit.");
+  }
+  const receipt = await wallet.publicClient.getTransactionReceipt({
+    hash: txHash as Hex,
+  });
+  claimStore.completeDeposit(claimFromReceipt(deposit, receipt));
+  console.log("Deposit recovered. Run `pnpm status` and then `pnpm claim`.");
+}
+
+async function abandon(): Promise<void> {
+  const recipient = parseRecipient().toString();
+  if (!process.argv.includes("--confirm-not-mined")) usage();
+  const deposit = claimStore.loadDeposit(recipient);
+  if (!deposit) throw new Error("No unresolved deposit to abandon.");
+  claimStore.discardDeposit(deposit);
+  console.log(
+    "Prepared deposit archived in claims/ as *.discarded.json. You can deposit again.",
+  );
+}
+
 async function status(): Promise<void> {
   const recipient = parseRecipient();
+  if (claimStore.loadDeposit(recipient.toString())) {
+    console.log(
+      "An unresolved deposit is saved locally. Recover it with `pnpm recover --tx-hash <l1-deposit-tx>`, or run `pnpm abandon --confirm-not-mined` only after confirming it was never mined.",
+    );
+    return;
+  }
   const config = loadConfig();
-  const claim = loadClaim(recipient.toString());
+  const claim = claimStore.loadClaim(recipient.toString());
   const node = createAztecNodeClient(config.aztecNodeUrl);
   const ready = await isL1ToL2MessageReady(
     node,
@@ -153,10 +253,13 @@ function tolerateMissingContracts(node: AztecNode): AztecNode {
 
 async function claim(): Promise<void> {
   const recipient = parseRecipient();
+  if (claimStore.loadDeposit(recipient.toString())) {
+    throw new Error("Recover the unresolved deposit before claiming.");
+  }
   const config = loadConfig({ requireAztecAccount: true });
   const accountConfig = config.aztecAccount!;
   const node = createAztecNodeClient(config.aztecNodeUrl);
-  const claimData = loadClaim(recipient.toString());
+  const claimData = claimStore.loadClaim(recipient.toString());
   if (claimData.claimedAt)
     throw new Error(
       `Claim for ${recipient.toString()} is already marked as completed.`,
@@ -212,7 +315,7 @@ async function claim(): Promise<void> {
   if (!result.receipt.hasExecutionSucceeded()) {
     throw new Error(`Claim transaction failed: ${result.receipt.toString()}`);
   }
-  markClaimed(claimData);
+  claimStore.markClaimed(claimData);
   console.log(
     `Fee Juice claim succeeded in L2 transaction ${result.receipt.txHash.toString()}.`,
   );
@@ -222,6 +325,8 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === "quote") return quote();
   if (command === "deposit") return deposit();
+  if (command === "recover") return recover();
+  if (command === "abandon") return abandon();
   if (command === "status") return status();
   if (command === "claim") return claim();
   usage();
