@@ -158,6 +158,8 @@ export interface RendererGameContext extends DiagnosticUpdater {
   getArtifactSending(planetId: LocationId): Artifact | undefined;
   getAbandonRangeChangePercent(): number;
   getChainTimeMs(): number;
+  /** Continuously advancing chain-adjusted time for display-only animation. */
+  getDisplayTimeMs(): number;
   /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
   getNaturalTimeMs(): number;
   // getCaptureZones(): Iterable<CaptureZone>;
@@ -177,7 +179,7 @@ export class Renderer {
   context: RendererGameContext;
 
   frameCount: number;
-  now: number; // chain time; computed once per frame for voyages / game-synced visuals
+  now: number; // display time; computed once per frame for voyages
   naturalNow: number; // wall-clock ms; computed once per frame for cosmetic animations
 
   // render engines
@@ -244,8 +246,8 @@ export class Renderer {
     this.viewport = viewport;
 
     this.frameCount = 0;
-    const chainMs = this.context.getChainTimeMs();
-    this.now = chainMs > 0 ? chainMs : Date.now();
+    const displayMs = this.context.getDisplayTimeMs();
+    this.now = displayMs > 0 ? displayMs : Date.now();
     this.naturalNow = this.context.getNaturalTimeMs();
     this.config = config;
     autoBind(this);
@@ -333,8 +335,8 @@ export class Renderer {
 
   private loop() {
     this.frameCount++;
-    const chainMs = this.context.getChainTimeMs();
-    this.now = chainMs > 0 ? chainMs : Date.now();
+    const displayMs = this.context.getDisplayTimeMs();
+    this.now = displayMs > 0 ? displayMs : Date.now();
     this.naturalNow = this.context.getNaturalTimeMs();
     this.draw();
     this.recordRender(Date.now());

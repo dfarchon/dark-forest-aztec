@@ -1460,6 +1460,11 @@ class GameManager extends EventEmitter {
     return this.chainClock.now();
   }
 
+  /** Continuously advancing chain-adjusted time for display-only animation. */
+  public getDisplayTimeMs(): number {
+    return this.chainClock.displayNow();
+  }
+
   /** Wall-clock time in milliseconds for cosmetic animations (e.g. artifact orbit). */
   public getNaturalTimeMs(): number {
     return Date.now();
