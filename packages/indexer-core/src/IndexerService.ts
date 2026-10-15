@@ -27,12 +27,14 @@ import type {
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
+  PublicEventName,
+  PublicEventStats,
   TableId,
   TableName,
   TableRowType,
   TableUpdate,
 } from "./types.ts";
-import { TABLE_NAMES } from "./types.ts";
+import { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -49,6 +51,12 @@ function emptySnapshot(): IndexerSnapshot {
     artifact: new Map(),
     artifact_location: new Map(),
   };
+}
+
+function emptyPublicEventCounts(): Record<PublicEventName, number> {
+  return Object.fromEntries(
+    PUBLIC_EVENT_NAMES.map((eventName) => [eventName, 0]),
+  ) as Record<PublicEventName, number>;
 }
 
 export interface IndexerServiceOptions {
@@ -97,6 +105,10 @@ export class IndexerService {
   private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private lifecycle: IndexerLifecycle = "idle";
+  private eventStatsFromBlock: number;
+  private eventStatsToBlock: number;
+  private eventCounts = emptyPublicEventCounts();
+  private eventStatsComplete = true;
 
   /** Secondary index: artifact owner -> set of artifact ids. */
   private ownerArtifactIndex = new Map<string, Set<string>>();
@@ -114,6 +126,8 @@ export class IndexerService {
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
     this.onBlockProcessed = options.onBlockProcessed;
+    this.eventStatsFromBlock = Math.max(1, this.startBlock);
+    this.eventStatsToBlock = this.eventStatsFromBlock - 1;
 
     // Background (poll/push) syncs are fire-and-forget: log failures here so
     // rethrown sync errors never become unhandled rejections. The next poll
@@ -180,6 +194,7 @@ export class IndexerService {
         );
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
         this.applyUpdates(updates);
+        this.applyEventCounts(updates, chunkEnd);
         this.snapshot.lastProcessedBlock = chunkEnd;
         this.onBlockProcessed?.(fromBlock, chunkEnd);
         const tables = [
@@ -267,6 +282,14 @@ export class IndexerService {
     }
   }
 
+  /** Commit event counts only after every row in the range converted successfully. */
+  private applyEventCounts(updates: BlockUpdates, toBlock: number): void {
+    for (const eventName of PUBLIC_EVENT_NAMES) {
+      this.eventCounts[eventName] += updates.eventCounts?.[eventName] ?? 0;
+    }
+    this.eventStatsToBlock = toBlock;
+  }
+
   /**
    * Maintain ownerArtifactIndex and controllerArtifactIndex when an artifact
    * row is inserted or updated. Handles removal from old owner/controller sets
@@ -338,6 +361,10 @@ export class IndexerService {
     this.snapshot = snapshot;
     this.rebuildArtifactIndexes();
     const block = snapshot.lastProcessedBlock;
+    this.eventCounts = emptyPublicEventCounts();
+    this.eventStatsFromBlock = block + 1;
+    this.eventStatsToBlock = block;
+    this.eventStatsComplete = false;
     this.notifyListeners({
       tables: [...TABLE_NAMES],
       fromBlock: block,
@@ -373,6 +400,10 @@ export class IndexerService {
           this.snapshot = snap;
           this.rebuildArtifactIndexes();
           this.latestKnownBlock = snap.lastProcessedBlock;
+          this.eventCounts = emptyPublicEventCounts();
+          this.eventStatsFromBlock = snap.lastProcessedBlock + 1;
+          this.eventStatsToBlock = snap.lastProcessedBlock;
+          this.eventStatsComplete = false;
           snapshotLoaded = true;
         }
       } catch (err) {
@@ -381,6 +412,10 @@ export class IndexerService {
     }
     if (!snapshotLoaded && this.startBlock > 0) {
       this.snapshot.lastProcessedBlock = this.startBlock - 1;
+    }
+    if (!snapshotLoaded && this.snapshot.lastProcessedBlock === 0) {
+      this.eventStatsFromBlock = Math.max(1, this.startBlock);
+      this.eventStatsComplete = true;
     }
 
     this.lifecycle = "syncing";
@@ -478,6 +513,21 @@ export class IndexerService {
 
   getLatestKnownBlock(): number {
     return this.latestKnownBlock;
+  }
+
+  /** Public events fetched from the node, counted before same-id rows overwrite. */
+  getPublicEventStats(): PublicEventStats {
+    const counts = { ...this.eventCounts };
+    return {
+      fromBlock: this.eventStatsFromBlock,
+      toBlock: this.eventStatsToBlock,
+      counts,
+      total: PUBLIC_EVENT_NAMES.reduce(
+        (sum, eventName) => sum + counts[eventName],
+        0,
+      ),
+      complete: this.eventStatsComplete,
+    };
   }
 
   getWorld(): WorldState | undefined {

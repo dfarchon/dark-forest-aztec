@@ -33,6 +33,7 @@ import type {
   PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
+  PublicEventStats,
   StorageContractAddresses,
   TableId,
   WorldState,
@@ -296,6 +297,11 @@ export class IndexerConnection {
     return this.indexer.getProcessedBlockNumber();
   }
 
+  /** Cumulative public event counts for the block range read from the node. */
+  public getPublicEventStats(): PublicEventStats {
+    return this.indexer.getPublicEventStats();
+  }
+
   // -------------------------------------------------------------------------
   // Read API (replaces ContractsAPI getter methods)
   // These read from the in-memory snapshot — synchronous, no network calls.
@@ -507,14 +513,60 @@ export async function createIndexerConnection(
   };
 
   const indexer = new IndexerService(serviceOpts);
-
-  if (config.onBlockSyncProgress) {
-    const cb = config.onBlockSyncProgress;
-    indexer.setOnBlockProcessed((from, to) => {
-      cb(from, to, indexer.getLatestKnownBlock());
-    });
-  }
+  const statsStorageKey = getPublicEventStatsStorageKey(config);
+  let initializing = true;
+  indexer.setOnBlockProcessed((from, to) => {
+    config.onBlockSyncProgress?.(from, to, indexer.getLatestKnownBlock());
+    const stats = indexer.getPublicEventStats();
+    persistPublicEventStats(statsStorageKey, stats);
+    if (!initializing) logPublicEventStats(statsStorageKey, stats);
+  });
   const connection = new IndexerConnection(indexer);
   const { syncedToBlock } = await connection.initialize();
+  initializing = false;
+  const stats = connection.getPublicEventStats();
+  persistPublicEventStats(statsStorageKey, stats);
+  logPublicEventStats(statsStorageKey, stats);
   return { connection, syncedToBlock };
+}
+
+const PUBLIC_EVENT_STATS_STORAGE_PREFIX = "dfpunk:public-event-stats";
+
+function getPublicEventStatsStorageKey(
+  config: IndexerConnectionConfig
+): string {
+  const contractAddresses = Object.entries(config.contractAddresses ?? {}).sort(
+    ([a], [b]) => a.localeCompare(b)
+  );
+  const identity = JSON.stringify({
+    nodeUrl: config.nodeUrl,
+    contractAddresses:
+      contractAddresses.length > 0 ? contractAddresses : "default",
+    startBlock: config.startBlock ?? 0,
+  });
+  return `${PUBLIC_EVENT_STATS_STORAGE_PREFIX}:${encodeURIComponent(identity)}`;
+}
+
+function persistPublicEventStats(
+  storageKey: string,
+  stats: PublicEventStats
+): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(stats));
+  } catch (err) {
+    console.warn("[PublicEventStats] Failed to persist event counts:", err);
+  }
+}
+
+function logPublicEventStats(
+  storageKey: string,
+  stats: PublicEventStats
+): void {
+  const qualifier = stats.complete ? "complete" : "partial";
+  console.info(
+    `[PublicEventStats] ${qualifier} blocks ${stats.fromBlock}-${stats.toBlock}, total=${stats.total}`,
+    stats.counts,
+    { storageKey }
+  );
 }
