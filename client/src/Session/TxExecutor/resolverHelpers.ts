@@ -12,11 +12,28 @@ import { artifactLocationZero, artifactZero } from "./stateZeros";
 /**
  * Shared dependencies passed from StateResolver to each resolve function.
  */
+export interface PlanetBundlePreflight {
+  locationId: bigint;
+  label?: string;
+  planet: Record<string, unknown>;
+  planetEvents: Record<string, unknown>;
+  planetArtifacts?: Record<string, unknown>;
+  arrivals?: Record<string, unknown>[];
+}
+
 export interface ResolverDeps {
   indexer: IndexerConnection;
   configCache: ConfigCache;
   chainClock: ChainClock;
   getPlayerAddress: () => string;
+  verifyPlanetBundle?: (bundle: PlanetBundlePreflight) => Promise<void>;
+}
+
+export async function preflightPlanetBundle(
+  deps: ResolverDeps,
+  bundle: PlanetBundlePreflight
+): Promise<void> {
+  await deps.verifyPlanetBundle?.(bundle);
 }
 
 /** Convert a hex LocationId string (no 0x prefix) to bigint for Fr encoding. */

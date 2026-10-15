@@ -73,7 +73,7 @@ import { resolveDepositArtifact } from "./resolveDepositArtifact";
 import { resolveFindArtifact } from "./resolveFindArtifact";
 import { resolveGiveSpaceships } from "./resolveGiveSpaceships";
 import { resolveProspectPlanet } from "./resolveProspectPlanet";
-import type { ResolverDeps } from "./resolverHelpers";
+import type { PlanetBundlePreflight, ResolverDeps } from "./resolverHelpers";
 import { resolveWithdrawArtifact } from "./resolveWithdrawArtifact";
 import {
   arrivalToContract,
@@ -180,9 +180,9 @@ function computePlanetLevelFromLocationId(
 // ---------------------------------------------------------------------------
 
 export interface StateResolverOptions {
-  /** When true, every resolve*() call computes local Poseidon2 hashes and
-   *  compares them against on-chain state roots before submitting.
-   *  Useful for debugging indexer staleness. Defaults to false. */
+  /** When true, resolve*() computes local Poseidon2 hashes and compares them
+   *  against on-chain state roots before submitting. Defaults to true so a
+   *  stale indexer snapshot cannot send a transaction that will revert. */
   enableHashPreflight?: boolean;
 }
 
@@ -218,7 +218,7 @@ export class StateResolver {
     this.configCache = configCache;
     this.chainClock = chainClock;
     this.getPlayerAddress = getPlayerAddress;
-    this.enableHashPreflight = options?.enableHashPreflight ?? false;
+    this.enableHashPreflight = options?.enableHashPreflight ?? true;
 
     this.planetStorage = PlanetStorageContract.at(
       AztecAddress.fromStringUnsafe(PLANET_STORAGE_CONTRACT_ADDRESS),
@@ -272,6 +272,7 @@ export class StateResolver {
       configCache: this.configCache,
       chainClock: this.chainClock,
       getPlayerAddress: this.getPlayerAddress,
+      verifyPlanetBundle: (bundle) => this.verifyPlanetBundleHashes(bundle),
     };
   }
 
@@ -1103,6 +1104,15 @@ export class StateResolver {
       }
     }
 
+    await this.verifyPlanetBundleHashes({
+      locationId: location,
+      label: "upgrade",
+      planet,
+      planetEvents,
+      planetArtifacts,
+      arrivals: arrivalData.arrivals,
+    });
+
     return [
       location,
       branch,
@@ -1178,6 +1188,15 @@ export class StateResolver {
         timestamp = maxEntityTime;
       }
     }
+
+    await this.verifyPlanetBundleHashes({
+      locationId: location,
+      label: "withdrawSilver",
+      planet,
+      planetEvents,
+      planetArtifacts,
+      arrivals: arrivalData.arrivals,
+    });
 
     return [
       location,
@@ -1636,9 +1655,7 @@ export class StateResolver {
     }
 
     if (mismatches.length > 0) {
-      const msg = `[StateResolver] Hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
-      console.error(msg);
-      throw new Error(msg);
+      throwStaleIndexerError("Move", mismatches);
     }
   }
 
@@ -1697,9 +1714,7 @@ export class StateResolver {
     );
 
     if (mismatches.length > 0) {
-      const msg = `[StateResolver] Reveal hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
-      console.error(msg);
-      throw new Error(msg);
+      throwStaleIndexerError("Reveal", mismatches);
     }
   }
 
@@ -1749,9 +1764,86 @@ export class StateResolver {
     );
 
     if (mismatches.length > 0) {
-      const msg = `[StateResolver] Init hash preflight failed — indexer state is stale:\n${mismatches.join("\n")}`;
-      console.error(msg);
-      throw new Error(msg);
+      throwStaleIndexerError("Init", mismatches);
     }
   }
+
+  /**
+   * Hash preflight for a single planet plus its events, artifacts, and arrivals.
+   */
+  private async verifyPlanetBundleHashes(
+    bundle: PlanetBundlePreflight
+  ): Promise<void> {
+    if (!this.enableHashPreflight) return;
+
+    const from = AztecAddress.fromStringUnsafe(this.getPlayerAddress());
+    const mismatches: string[] = [];
+    const prefix = bundle.label ? `${bundle.label} ` : "";
+
+    const check = async (
+      label: string,
+      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      loadOnChainHash: () => Promise<unknown>
+    ) => {
+      const localHash = await localHashPromise;
+      const rawOnChain = await loadOnChainHash();
+      const onChainHash = unwrapSimulateResult(rawOnChain);
+      const localBigInt = localHash.toBigInt();
+      const onChainBigInt = BigInt(String(onChainHash));
+      if (localBigInt !== onChainBigInt) {
+        mismatches.push(
+          `${label}: local=${localBigInt} onchain=${onChainBigInt}`
+        );
+      }
+    };
+
+    await check(`${prefix}planet`, computePlanetHash(bundle.planet), () =>
+      this.planetStorage.methods
+        .get_state_root_unconstrained(bundle.locationId)
+        .simulate({ from })
+    );
+    await check(
+      `${prefix}planet_events`,
+      computePlanetEventsHash(bundle.planetEvents),
+      () =>
+        this.planetEventsStorage.methods
+          .get_state_root_unconstrained(bundle.locationId)
+          .simulate({ from })
+    );
+    if (bundle.planetArtifacts) {
+      await check(
+        `${prefix}planet_artifacts`,
+        computePlanetArtifactsHash(bundle.planetArtifacts),
+        () =>
+          this.planetArtifactsStorage.methods
+            .get_state_root_unconstrained(bundle.locationId)
+            .simulate({ from })
+      );
+    }
+    if (bundle.arrivals) {
+      for (let i = 0; i < bundle.arrivals.length; i++) {
+        const arrival = bundle.arrivals[i];
+        const arrId = BigInt(Number(arrival["id"] ?? 0));
+        if (arrId === 0n) continue;
+        await check(`${prefix}arrival[${i}]`, computeArrivalHash(arrival), () =>
+          this.arrivalStorage.methods
+            .get_state_root_unconstrained(arrId)
+            .simulate({ from })
+        );
+      }
+    }
+
+    if (mismatches.length > 0) {
+      throwStaleIndexerError(bundle.label ?? "Planet", mismatches);
+    }
+  }
+}
+
+const STALE_SNAPSHOT_HINT =
+  "Do not submit this transaction. Rebuild the indexer snapshot (`pnpm --filter server reindex`) or enter without the indexer bootstrap URL so the client replays from the chain.";
+
+function throwStaleIndexerError(scope: string, mismatches: string[]): never {
+  const msg = `[StateResolver] ${scope} hash preflight failed — indexer snapshot does not match on-chain state roots:\n${mismatches.join("\n")}\n${STALE_SNAPSHOT_HINT}`;
+  console.error(msg);
+  throw new Error(msg);
 }

@@ -24,6 +24,7 @@ import {
   computeTimestamp,
   hexIdToField,
   loadArtifactsForPlanet,
+  preflightPlanetBundle,
 } from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
 import {
@@ -191,6 +192,15 @@ export async function resolveFindArtifact(
       playerRaw
     )
   );
+
+  await preflightPlanetBundle(deps, {
+    locationId,
+    label: "findArtifact",
+    planet,
+    planetEvents: planetEventsState,
+    planetArtifacts: planetArtifactsState,
+    arrivals: arrivalData.arrivals,
+  });
 
   return [
     locationId,

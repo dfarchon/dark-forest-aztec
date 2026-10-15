@@ -28,6 +28,7 @@
     "mock:snapshot": "node scripts/mock-big-snapshot-stream-server.mjs",
     "prepare:contracts": "node scripts/prepare-contract-artifacts.mjs",
     "prepare:contracts:build": "node scripts/prepare-contract-artifacts.mjs --build-if-missing",
+    "reindex": "bash scripts/reindex.sh",
     "serve": "bash scripts/serve.sh",
     "start": "tsx src/index.ts",
     "test:build:image": "node --test scripts/build-server-image.test.mjs",

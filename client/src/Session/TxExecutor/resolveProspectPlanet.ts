@@ -15,6 +15,7 @@ import {
   collectEntityTimes,
   computeTimestamp,
   loadArtifactsForPlanet,
+  preflightPlanetBundle,
 } from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
 import {
@@ -73,6 +74,15 @@ export async function resolveProspectPlanet(
     BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
+
+  await preflightPlanetBundle(deps, {
+    locationId,
+    label: "prospectPlanet",
+    planet,
+    planetEvents: planetEventsState,
+    planetArtifacts: planetArtifactsState,
+    arrivals: arrivalData.arrivals,
+  });
 
   return [
     locationId,

@@ -22,7 +22,10 @@ export type { DebouncedFn } from "./debounce.ts";
 export { debounce } from "./debounce.ts";
 
 export type { IndexerServiceOptions } from "./IndexerService.ts";
-export { IndexerService } from "./IndexerService.ts";
+export {
+  DEFAULT_CONFIRMATION_DEPTH,
+  IndexerService,
+} from "./IndexerService.ts";
 
 export type {
   BlockUpdates,

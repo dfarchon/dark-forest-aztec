@@ -78,9 +78,17 @@ export interface IndexerServiceOptions {
    * huge request (e.g. 1 to 50000). Default 100; tune to match node/RPC limits (e.g. 50–200).
    */
   maxBlocksPerRequest?: number;
+  /**
+   * Keep lastProcessedBlock this many blocks behind the node tip and re-read
+   * that window on every sync so late public logs can overwrite rows.
+   * Default 2. Set 0 to mark the tip processed immediately.
+   */
+  confirmationDepth?: number;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 }
+
+export const DEFAULT_CONFIRMATION_DEPTH = 2;
 
 export class IndexerService {
   private readonly bootstrapSource: IBlockEventSource | undefined;
@@ -89,6 +97,7 @@ export class IndexerService {
   private readonly debounceMs: number;
   private readonly pollIntervalMs: number;
   private readonly maxBlocksPerRequest: number;
+  private readonly confirmationDepth: number;
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
   private snapshot: IndexerSnapshot = emptySnapshot();
@@ -113,6 +122,10 @@ export class IndexerService {
     this.debounceMs = options.debounceMs ?? 1000;
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
+    this.confirmationDepth = Math.max(
+      0,
+      options.confirmationDepth ?? DEFAULT_CONFIRMATION_DEPTH,
+    );
     this.onBlockProcessed = options.onBlockProcessed;
 
     // Background (poll/push) syncs are fire-and-forget: log failures here so
@@ -147,8 +160,36 @@ export class IndexerService {
   }
 
   /**
-   * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
-   * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
+   * First block the service will ever request (inclusive).
+   * startBlock 0 means process from block 1; otherwise process from startBlock.
+   */
+  private firstProcessableBlock(): number {
+    return this.startBlock > 0 ? this.startBlock : 1;
+  }
+
+  /** Cursor floor: lastProcessedBlock starts here before any events are applied. */
+  private cursorFloor(): number {
+    return this.firstProcessableBlock() - 1;
+  }
+
+  /** Highest block that is safe to mark processed: tip minus confirmation depth. */
+  private safeTip(latest = this.latestKnownBlock): number {
+    return Math.max(this.cursorFloor(), latest - this.confirmationDepth);
+  }
+
+  /**
+   * Inclusive start of the next fetch. Rewinds confirmationDepth blocks so
+   * late public logs overwrite rows already written for that window.
+   */
+  private replayFrom(lastProcessed: number): number {
+    const first = this.firstProcessableBlock();
+    if (lastProcessed < first) return first;
+    return Math.max(first, lastProcessed - this.confirmationDepth + 1);
+  }
+
+  /**
+   * Process blocks from the confirmation rewind window up to the safe tip
+   * in chunks of at most maxBlocksPerRequest.
    */
   private async processNewBlocks(): Promise<void> {
     if (this.syncPromise) {
@@ -167,38 +208,50 @@ export class IndexerService {
   }
 
   private async processPendingBlocks(): Promise<void> {
-    let fromBlock = this.snapshot.lastProcessedBlock + 1;
-    const toBlock = this.latestKnownBlock;
+    const toBlock = this.safeTip();
+    const fromBlock = this.replayFrom(this.snapshot.lastProcessedBlock);
     if (fromBlock > toBlock) return;
 
     this.isSyncing = true;
     try {
-      while (fromBlock <= toBlock) {
-        const chunkEnd = Math.min(
-          fromBlock + this.maxBlocksPerRequest - 1,
-          toBlock,
-        );
-        const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
-        this.applyUpdates(updates);
-        this.snapshot.lastProcessedBlock = chunkEnd;
-        this.onBlockProcessed?.(fromBlock, chunkEnd);
-        const tables = [
-          ...new Set(updates.updates.map((u) => u.table)),
-        ] as TableName[];
-        const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
-        this.notifyListeners({
-          tables,
-          fromBlock,
-          toBlock: chunkEnd,
-          updatedIdsByTable,
-        });
-        fromBlock = chunkEnd + 1;
-      }
+      await this.applyBlockRange(fromBlock, toBlock, { advanceCursor: true });
     } finally {
       // Errors propagate to the caller: start() rejects during initial sync,
       // background syncs log via the debounce catch boundary. Fully committed
       // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
       this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Fetch and apply [fromBlock, toBlock]. When advanceCursor is true, move
+   * lastProcessedBlock with each committed chunk (never past the safe tip).
+   */
+  private async applyBlockRange(
+    fromBlock: number,
+    toBlock: number,
+    options: { advanceCursor: boolean },
+  ): Promise<void> {
+    let from = fromBlock;
+    while (from <= toBlock) {
+      const chunkEnd = Math.min(from + this.maxBlocksPerRequest - 1, toBlock);
+      const updates = await this.source.getBlockUpdates(from, chunkEnd);
+      this.applyUpdates(updates);
+      if (options.advanceCursor) {
+        this.snapshot.lastProcessedBlock = Math.min(chunkEnd, this.safeTip());
+      }
+      this.onBlockProcessed?.(from, chunkEnd);
+      const tables = [
+        ...new Set(updates.updates.map((u) => u.table)),
+      ] as TableName[];
+      const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
+      this.notifyListeners({
+        tables,
+        fromBlock: from,
+        toBlock: chunkEnd,
+        updatedIdsByTable,
+      });
+      from = chunkEnd + 1;
     }
   }
 
@@ -210,7 +263,7 @@ export class IndexerService {
     const latest = await this.source.getLatestBlockNumber();
     this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
     await this.processNewBlocks();
-    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+    if (this.snapshot.lastProcessedBlock < this.safeTip()) {
       await this.processNewBlocks();
     }
   }
@@ -388,10 +441,12 @@ export class IndexerService {
     this.latestKnownBlock = latest;
     await this.processNewBlocks();
 
-    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+    const expected = this.safeTip(this.latestKnownBlock);
+    if (this.snapshot.lastProcessedBlock < expected) {
       throw new Error(
         `[IndexerService] initial sync incomplete: processed up to block ` +
-          `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}`,
+          `${this.snapshot.lastProcessedBlock}, expected ${expected}` +
+          ` (tip ${this.latestKnownBlock}, confirmationDepth ${this.confirmationDepth})`,
       );
     }
 
@@ -611,49 +666,81 @@ export class IndexerService {
     );
   }
 
+  getConfirmationDepth(): number {
+    return this.confirmationDepth;
+  }
+
   /**
    * Returns a promise that resolves when the indexer has processed
-   * at least up to the given block number.
+   * at least up to the given block number. Blocks still inside the
+   * confirmation window are applied into memory without advancing
+   * lastProcessedBlock past the safe tip.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
     console.log(
       `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
     );
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
-      return;
-    }
 
-    try {
-      await this.syncToLatest();
-    } catch (err) {
-      console.warn("[IndexerService] immediate sync failed:", err);
-    }
+    const tryReach = async (): Promise<boolean> => {
+      try {
+        await this.syncToLatest();
+      } catch (err) {
+        console.warn("[IndexerService] immediate sync failed:", err);
+      }
+      if (this.snapshot.lastProcessedBlock >= blockNumber) {
+        return true;
+      }
+      if (this.latestKnownBlock >= blockNumber) {
+        const from = Math.max(
+          this.firstProcessableBlock(),
+          this.snapshot.lastProcessedBlock + 1,
+        );
+        if (from <= blockNumber) {
+          await this.applyBlockRange(from, blockNumber, {
+            advanceCursor: false,
+          });
+        }
+        return true;
+      }
+      return false;
+    };
 
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] immediate sync reached ${blockNumber}`);
+    if (await tryReach()) {
+      console.log(`[DEBUG waitForBlock] reached ${blockNumber}`);
       return;
     }
 
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         unsub();
-        reject(
-          new Error(
-            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`,
+        fn();
+      };
+      const timer = setTimeout(() => {
+        finish(() =>
+          reject(
+            new Error(
+              `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`,
+            ),
           ),
         );
       }, timeoutMs);
 
       const unsub = this.subscribe(() => {
-        if (this.snapshot.lastProcessedBlock >= blockNumber) {
-          console.log(
-            `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
-          );
-          clearTimeout(timer);
-          unsub();
-          resolve();
-        }
+        void tryReach()
+          .then((reached) => {
+            if (!reached) return;
+            console.log(
+              `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
+            );
+            finish(() => resolve());
+          })
+          .catch((err: unknown) => {
+            finish(() => reject(err));
+          });
       });
     });
   }

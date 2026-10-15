@@ -90,6 +90,9 @@ async function main(): Promise<void> {
     console.log(`[Server] Aztec node backup: ${config.aztecNodeUrlBackup}`);
   }
   console.log(`[Server] Start block: ${config.indexerStartBlock}`);
+  console.log(
+    `[Server] Confirmation depth: ${config.indexerConfirmationDepth}`,
+  );
   console.log(`[Server] Contracts start block: ${contracts.startBlock}`);
   console.log(`[Server] Core contract: ${contracts.addresses.core}`);
   console.log(`[Server] SQLite path: ${config.sqlitePath}`);
@@ -132,6 +135,7 @@ async function main(): Promise<void> {
     debounceMs: 1000,
     pollIntervalMs: 2000,
     maxBlocksPerRequest: 100,
+    confirmationDepth: config.indexerConfirmationDepth,
   });
 
   const cache = new SnapshotCache(indexer);

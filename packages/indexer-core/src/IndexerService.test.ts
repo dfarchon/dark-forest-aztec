@@ -78,7 +78,11 @@ test("start() syncs fully and transitions to ready", async () => {
         ? [planetEventsUpdate("0xplanet", "0xarr"), arrivalUpdate("0xarr")]
         : [],
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 0,
+  });
 
   const { syncedToBlock } = await indexer.start();
 
@@ -102,7 +106,11 @@ test("start() rejects when initial getBlockUpdates fails and does not become rea
       throw new Error("rpc timeout");
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 0,
+  });
 
   await assert.rejects(() => indexer.start(), /rpc timeout/);
   assert.notEqual(indexer.getLifecycle(), "ready");
@@ -119,7 +127,11 @@ test("mid-sync chunk failure keeps only fully committed chunks", async () => {
       throw new Error("network flake");
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 0,
+  });
 
   await assert.rejects(() => indexer.start(), /network flake/);
   // First chunk committed; failed chunk left no trace.
@@ -140,7 +152,11 @@ test("applyUpdates is atomic: a bad row prevents all rows of the chunk from bein
       arrivalUpdate("0xarr", { arrival_type: 2n ** 64n }),
     ],
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 0,
+  });
 
   await assert.rejects(() => indexer.start(), /overflow/);
   assert.equal(indexer.getPlanetEvents("0xplanet"), undefined);
@@ -162,7 +178,11 @@ test("a failed sync resumes from the last committed chunk and recovers", async (
       return [];
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 0,
+  });
 
   await assert.rejects(() => indexer.start(), /transient failure/);
   assert.equal(indexer.getProcessedBlockNumber(), 100);
@@ -188,9 +208,104 @@ test("start() rejects if getLatestBlockNumber fails", async () => {
   source.getLatestBlockNumber = async () => {
     throw new Error("node unreachable");
   };
-  const indexer = new IndexerService({ source });
+  const indexer = new IndexerService({ source, confirmationDepth: 0 });
 
   await assert.rejects(() => indexer.start(), /node unreachable/);
   assert.notEqual(indexer.getLifecycle(), "ready");
+  indexer.destroy();
+});
+
+test("start() leaves lastProcessedBlock confirmationDepth behind the tip", async () => {
+  const source = createMockSource({
+    latestBlock: 250,
+    updatesFor: (fromBlock) =>
+      fromBlock === 1
+        ? [planetEventsUpdate("0xplanet", "0xarr"), arrivalUpdate("0xarr")]
+        : [],
+  });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 2,
+  });
+
+  const { syncedToBlock } = await indexer.start();
+
+  assert.equal(syncedToBlock, 248);
+  assert.equal(indexer.getProcessedBlockNumber(), 248);
+  assert.equal(indexer.getLatestKnownBlock(), 250);
+  assert.equal(indexer.getConfirmationDepth(), 2);
+  assert.deepEqual(source.calls, [
+    { fromBlock: 1, toBlock: 100 },
+    { fromBlock: 101, toBlock: 200 },
+    { fromBlock: 201, toBlock: 248 },
+  ]);
+  indexer.destroy();
+});
+
+test("live sync re-reads the confirmation window and overwrites rows", async () => {
+  let planetVersion = "old";
+  const source = createMockSource({
+    latestBlock: 10,
+    updatesFor: (fromBlock, toBlock) => {
+      if (fromBlock <= 8 && toBlock >= 8) {
+        return [
+          {
+            table: "planet_events",
+            id: "0xplanet",
+            state: {
+              events: [{ id: "0xarr" }],
+              count: 1,
+              last_updated: planetVersion === "old" ? 1n : 99n,
+            },
+          },
+        ];
+      }
+      return [];
+    },
+  });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 2,
+  });
+
+  await indexer.start();
+  assert.equal(indexer.getProcessedBlockNumber(), 8);
+  assert.equal(indexer.getPlanetEvents("0xplanet")?.last_updated, 1n);
+
+  planetVersion = "new";
+  source.getLatestBlockNumber = async () => 12;
+  source.calls.length = 0;
+  await indexer.waitForBlock(10);
+
+  assert.equal(indexer.getProcessedBlockNumber(), 10);
+  assert.equal(indexer.getPlanetEvents("0xplanet")?.last_updated, 99n);
+  assert.ok(
+    source.calls.some((call) => call.fromBlock <= 8 && call.toBlock >= 8),
+  );
+  indexer.destroy();
+});
+
+test("waitForBlock applies tip blocks without advancing past the safe tip", async () => {
+  const source = createMockSource({
+    latestBlock: 10,
+    updatesFor: (fromBlock, toBlock) =>
+      fromBlock <= 10 && toBlock >= 10 ? [arrivalUpdate("0xtip")] : [],
+  });
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    confirmationDepth: 2,
+  });
+
+  await indexer.start();
+  assert.equal(indexer.getProcessedBlockNumber(), 8);
+  assert.equal(indexer.getArrival("0xtip"), undefined);
+
+  await indexer.waitForBlock(10);
+
+  assert.equal(indexer.getProcessedBlockNumber(), 8);
+  assert.ok(indexer.getArrival("0xtip"));
   indexer.destroy();
 });

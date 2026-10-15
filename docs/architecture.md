@@ -106,7 +106,7 @@ The client indexer has two layers:
 Startup guarantee:
 
 1. Load an optional offchain snapshot.
-2. Catch up to latest known chain block.
+2. Catch up to the node tip minus confirmation depth, re-reading that window so late public logs can overwrite rows.
 3. Return a consistent `syncedToBlock`.
 4. Notify subscribers only for blocks after that boundary.
 

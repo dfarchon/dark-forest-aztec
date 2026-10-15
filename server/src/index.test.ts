@@ -15,6 +15,7 @@ function createTestConfig(): ServerRuntimeConfig {
     indexerStartBlock: 32202,
     nodeKind: "remote",
     persistMinIntervalSec: 10,
+    indexerConfirmationDepth: 2,
     port: 3001,
     snapshotSchemaVersion: 1,
     sqlitePath: "/tmp/indexer.db",

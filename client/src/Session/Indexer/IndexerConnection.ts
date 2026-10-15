@@ -76,6 +76,11 @@ export interface IndexerConnectionConfig {
   pollIntervalMs?: number;
   /** Max blocks per getBlockUpdates call. Default 100. */
   maxBlocksPerRequest?: number;
+  /**
+   * Keep lastProcessedBlock this many blocks behind the node tip and re-read
+   * that window on every sync. Default 2.
+   */
+  confirmationDepth?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +509,7 @@ export async function createIndexerConnection(
     debounceMs: config.debounceMs,
     pollIntervalMs: config.pollIntervalMs,
     maxBlocksPerRequest: config.maxBlocksPerRequest,
+    confirmationDepth: config.confirmationDepth,
   };
 
   const indexer = new IndexerService(serviceOpts);

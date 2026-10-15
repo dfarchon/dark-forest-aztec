@@ -109,9 +109,10 @@ Env file references: `.env.example` (generic), `env.local.example` (local testne
 | `SQLITE_PATH`              | `./data/indexer.db`                  |                                                                                                        |
 | `SNAPSHOT_SCHEMA_VERSION`  | `1`                                  | Mismatch resets persisted snapshot                                                                     |
 | `PERSIST_MIN_INTERVAL_SEC` | `10`                                 | Throttles SQLite writes during live sync (see below).                                                  |
+| `INDEXER_CONFIRMATION_DEPTH` | `2`                                | Keep `lastProcessedBlock` this many blocks behind the node tip and re-read that window every poll.     |
 | `ADMIN_TOKEN`              | (empty)                              | Empty = backup endpoint disabled                                                                       |
 
-IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`.
+IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`. `confirmationDepth` comes from `INDEXER_CONFIRMATION_DEPTH`.
 
 **Timing:** Chosen for **public testnet** (seconds-scale blocks): poll only queries latest block height every 2s; `getBlockUpdates` runs when there is backlog. Debounce (1s) and `PERSIST_MIN_INTERVAL_SEC` cut redundant work. Hardcoded in `src/index.ts` (no env override).
 
@@ -128,6 +129,7 @@ Run via `pnpm --filter server <script>`:
 | `docker:publish:testnet`                                                        | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`)  |
 | `e2e:up` / `e2e:down` / `e2e:runtime` / `e2e:status` / `e2e:logs` / `e2e:reset` | Local stack + E2E helpers via `scripts/test-env.sh`               |
 | `prepare:contracts` / `prepare:contracts:build`                                 | Sync contract artifacts for indexing                              |
+| `reindex`                                                                       | Delete SQLite snapshot (`SQLITE_PATH` or `./data/indexer.db`) so the next start replays from `START_BLOCK` |
 | `mock:snapshot`                                                                 | Mock big-snapshot stream server for testing                       |
 | `format` / `format:check`                                                       | Prettier formatting                                               |
 | `test:build:image` / `test:prepare:contracts`                                   | Node native test runner tests                                     |
@@ -218,6 +220,17 @@ pnpm --filter server run e2e:down     # stop everything
 ```
 
 `e2e:reset` deletes: `contracts/.store`, `contracts/wallet_data_*`, `contracts/scripts/.test-accounts.json`, `server/data/indexer.db`.
+
+## Recovering a stale snapshot
+
+If clients that bootstrap from this server submit planet txs that fail state-root checks, the persisted snapshot is missing updates that it already marked as processed. Stop the indexer, delete the SQLite file, then start again after the Aztec node public logs have caught up:
+
+```bash
+pnpm --filter server reindex
+pnpm --filter server start
+```
+
+`reindex` honors `SQLITE_PATH` (env or `server/.env`) and also removes `-wal` / `-shm` sidecars. A new process replays from `START_BLOCK` (or `INDEXER_START_BLOCK`) and only then serves `/snapshot`.
 
 ## Docker
 

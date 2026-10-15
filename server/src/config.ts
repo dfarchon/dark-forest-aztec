@@ -1,6 +1,7 @@
 import { START_BLOCK } from "@dfpunk/contracts";
 
-export const DEFAULT_AZTEC_NODE_URL = "https://canonical.testnet.rpc.aztec-labs.com";
+export const DEFAULT_AZTEC_NODE_URL =
+  "https://canonical.testnet.rpc.aztec-labs.com";
 
 export const DEFAULT_CORS_ORIGINS = [
   "http://localhost:5173",
@@ -21,6 +22,7 @@ export interface ServerRuntimeConfig {
   adminToken: string;
   corsOrigins: string[];
   indexerStartBlock: number;
+  indexerConfirmationDepth: number;
 }
 
 function parseIntEnv(
@@ -98,6 +100,11 @@ export function parseServerConfig(
       env.INDEXER_START_BLOCK,
       START_BLOCK,
       "INDEXER_START_BLOCK",
+    ),
+    indexerConfirmationDepth: parseIntEnv(
+      env.INDEXER_CONFIRMATION_DEPTH,
+      2,
+      "INDEXER_CONFIRMATION_DEPTH",
     ),
   };
 }

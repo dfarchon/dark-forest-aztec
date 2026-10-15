@@ -8,10 +8,14 @@ import { parseServerConfig } from "./config.ts";
 test("parseServerConfig defaults to testnet and known frontend origins", () => {
   const config = parseServerConfig({});
 
-  assert.equal(config.aztecNodeUrl, "https://canonical.testnet.rpc.aztec-labs.com");
+  assert.equal(
+    config.aztecNodeUrl,
+    "https://canonical.testnet.rpc.aztec-labs.com",
+  );
   assert.equal(config.aztecNodeUrlBackup, "");
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.snapshotSchemaVersion, 1);
+  assert.equal(config.indexerConfirmationDepth, 2);
   assert.deepEqual(config.corsOrigins, [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -39,6 +43,7 @@ test("parseServerConfig prefers INDEXER_START_BLOCK override", () => {
     SQLITE_PATH: "./data/test.db",
     SNAPSHOT_SCHEMA_VERSION: "3",
     PERSIST_MIN_INTERVAL_SEC: "5",
+    INDEXER_CONFIRMATION_DEPTH: "3",
     CORS_ORIGINS: "https://game.example",
   });
 
@@ -47,6 +52,7 @@ test("parseServerConfig prefers INDEXER_START_BLOCK override", () => {
   assert.equal(config.nodeKind, "remote");
   assert.equal(config.port, 3100);
   assert.equal(config.snapshotSchemaVersion, 3);
+  assert.equal(config.indexerConfirmationDepth, 3);
 });
 
 test("parseServerConfig falls back to workspace START_BLOCK", () => {

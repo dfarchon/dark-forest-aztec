@@ -211,6 +211,7 @@ const indexer = new IndexerService({
   source,
   startBlock: 1,
   maxBlocksPerRequest: 100,
+  confirmationDepth: 2,
 });
 const { syncedToBlock } = await indexer.start();
 ```

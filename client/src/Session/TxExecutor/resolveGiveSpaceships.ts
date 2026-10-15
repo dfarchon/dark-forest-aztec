@@ -11,7 +11,11 @@
 import type { UnconfirmedGetShips } from "@dfpunk/types";
 
 import type { ResolverDeps } from "./resolverHelpers";
-import { collectEntityTimes, computeTimestamp } from "./resolverHelpers";
+import {
+  collectEntityTimes,
+  computeTimestamp,
+  preflightPlanetBundle,
+} from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
 import {
   planetArtifactsToContract,
@@ -72,6 +76,15 @@ export async function resolveGiveSpaceships(
       playerRaw
     )
   );
+
+  await preflightPlanetBundle(deps, {
+    locationId,
+    label: "giveSpaceships",
+    planet,
+    planetEvents: planetEventsState,
+    planetArtifacts: planetArtifactsState,
+    arrivals: arrivalData.arrivals,
+  });
 
   return [
     locationId,

@@ -11,7 +11,11 @@
 import type { UnconfirmedDepositArtifact } from "@dfpunk/types";
 
 import type { ResolverDeps } from "./resolverHelpers";
-import { collectEntityTimes, computeTimestamp } from "./resolverHelpers";
+import {
+  collectEntityTimes,
+  computeTimestamp,
+  preflightPlanetBundle,
+} from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
 import {
   artifactLocationToContract,
@@ -80,6 +84,15 @@ export async function resolveDepositArtifact(
     BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
     collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
   );
+
+  await preflightPlanetBundle(deps, {
+    locationId,
+    label: "depositArtifact",
+    planet,
+    planetEvents: planetEventsState,
+    planetArtifacts: planetArtifactsState,
+    arrivals: arrivalData.arrivals,
+  });
 
   return [
     locationId,
