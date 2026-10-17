@@ -1,5 +1,5 @@
 # Local stack launcher (requires global `mprocs`: https://github.com/pvolok/mprocs)
-# Order: Anvil (L1) → Aztec local-network → compile/deploy contracts → client
+# Order: Aztec local-network (including Anvil L1) → compile/deploy contracts → client
 # Every process starts with the stack, including the Aztec explorer
 # indexer, API, and frontend.
 #
@@ -13,16 +13,10 @@ proc_list_title: dfpunk local
 scrollback: 8000
 
 procs:
-  anvil:
-    cwd: <CONFIG_DIR>
-    # Mine only when a transaction arrives. No interval blocks.
-    shell: anvil --host 127.0.0.1 --port 8545
-
   aztec:
     cwd: <CONFIG_DIR>
     shell: bash scripts/dev/mprocs-aztec.sh
     env:
-      ETHEREUM_HOSTS: http://127.0.0.1:8545
       SEQ_MIN_TX_PER_BLOCK: "1"
       SEQ_BLOCK_DURATION_MS: "6000"
 

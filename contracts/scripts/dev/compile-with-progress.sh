@@ -15,23 +15,41 @@ package_count="$(
 echo "[aztec-compile] ${package_count} workspace packages, RAYON_NUM_THREADS=${RAYON_NUM_THREADS}"
 echo "[aztec-compile] nargo stays silent until a package finishes; heartbeat every 20s"
 
-aztec compile "$@" &
+log_file="$(mktemp "${TMPDIR:-/tmp}/df-aztec-compile.XXXXXX")"
+cleanup() {
+  rm -f "${log_file}"
+}
+trap cleanup EXIT
+
+# Keep the noisy compiler output out of mprocs while it runs, but retain it so
+# a failure reports the actual Nargo/Aztec diagnostic instead of only exit 1.
+aztec compile "$@" >"${log_file}" 2>&1 &
 pid=$!
 started=$(date +%s)
 
 while kill -0 "${pid}" 2>/dev/null; do
-  sleep 20
+  # A fast compiler failure can interrupt sleep with SIGCHLD. Do not let
+  # `set -e` exit before we can wait for the child and print its diagnostics.
+  sleep 20 || true
   if ! kill -0 "${pid}" 2>/dev/null; then
     break
   fi
   elapsed=$(( $(date +%s) - started ))
   json_count="$(find target -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
-  latest="$(
-    find target -maxdepth 1 -name '*.json' -printf '%T@ %f\n' 2>/dev/null \
-      | sort -n | tail -1 | cut -d' ' -f2-
-  )"
+  latest=""
+  for artifact in target/*.json; do
+    [[ -e "${artifact}" ]] || continue
+    if [[ -z "${latest}" || "${artifact}" -nt "${latest}" ]]; then
+      latest="${artifact}"
+    fi
+  done
+  latest="${latest##*/}"
   echo "[aztec-compile] ${elapsed}s still running, json artifacts=${json_count}, latest=${latest:-none}"
 done
 
-wait "${pid}"
+if ! wait "${pid}"; then
+  echo "[aztec-compile] failed; compiler output follows" >&2
+  cat "${log_file}" >&2
+  exit 1
+fi
 echo "[aztec-compile] finished in $(( $(date +%s) - started ))s"
