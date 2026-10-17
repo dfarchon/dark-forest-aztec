@@ -6,7 +6,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import readline from 'readline';
 import { fileURLToPath } from 'url';
 
 import { getContractsEnvFilePath, loadContractsEnv } from '../utils/env.ts';
@@ -193,30 +192,12 @@ function syncEnvToIndexTs(): void {
     );
 }
 
-function askConfirm(question: string): Promise<boolean> {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-    return new Promise((resolve) => {
-        rl.question(question, (answer) => {
-            rl.close();
-            resolve(answer.trim().toLowerCase() === 'y');
-        });
-    });
-}
-
-async function copyArtifacts(): Promise<void> {
+function copyArtifacts(): void {
     if (!fs.existsSync(ARTIFACTS_SRC)) {
         throw new Error(`Artifacts dir not found: ${ARTIFACTS_SRC}`);
     }
     if (fs.existsSync(ARTIFACTS_DEST)) {
-        console.log(`Destination already exists: ${ARTIFACTS_DEST}`);
-        const ok = await askConfirm('Overwrite? (y/N): ');
-        if (!ok) {
-            console.log('Skipped copying artifacts.');
-            return;
-        }
+        console.log(`Replacing existing artifacts: ${ARTIFACTS_DEST}`);
         fs.rmSync(ARTIFACTS_DEST, { recursive: true });
     }
     fs.cpSync(ARTIFACTS_SRC, ARTIFACTS_DEST, { recursive: true });
@@ -226,7 +207,7 @@ async function copyArtifacts(): Promise<void> {
 
 async function main(): Promise<void> {
     syncEnvToIndexTs();
-    await copyArtifacts();
+    copyArtifacts();
 }
 
 main();
