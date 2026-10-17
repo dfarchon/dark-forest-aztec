@@ -4,6 +4,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Markers describe the ephemeral local chain. Remove a marker left by the
+# previous run before any dependent process can treat it as current.
+rm -f "${ROOT}/.mprocs/contracts.ok"
+
 cd "${ROOT}"
 # Build an L2 block only when a transaction is waiting.
 export SEQ_MIN_TX_PER_BLOCK="${SEQ_MIN_TX_PER_BLOCK:-1}"
