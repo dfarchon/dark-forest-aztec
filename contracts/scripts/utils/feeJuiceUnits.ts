@@ -1,6 +1,5 @@
 /**
  * FeeJuice uses 18 decimals (ERC20-like). Helpers for human-readable FJ strings vs wei.
- * Kept local to contracts/scripts (mirrors client/src/utils/feeJuiceUnits.ts).
  */
 
 const FJ_DECIMALS = 18n;

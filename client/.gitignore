@@ -1,0 +1,15 @@
+# Local brand draft assets
+public/octopus-logos/
+
+# Generated / local artifact assets
+artifacts/
+
+# Vite / React
+dist/
+.vite/
+vite.config.ts.timestamp-*
+
+# Environment variables
+.env
+.env.*
+!.env.example

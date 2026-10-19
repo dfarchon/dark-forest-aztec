@@ -90,7 +90,7 @@ Healthy expectations:
 
 ### Contract Updates
 
-- [ ] Contract artifacts regenerated (`contracts/scripts/deploy/sync-env-and-artifacts.ts`)
+- [ ] Contract deployment published (`pnpm --filter contracts deploy:publish`)
 - [ ] `@dfpunk/contracts` exports consistent (`CORE_CONTRACT_ADDRESS`, `START_BLOCK`, etc.)
 - [ ] `INDEXER_START_BLOCK` matches if overriding default
 - [ ] If state shape changed: bump `SNAPSHOT_SCHEMA_VERSION` (resets persisted snapshot)
@@ -114,7 +114,7 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 
 **`ERR_MODULE_NOT_FOUND` in Docker (extensionless imports)** — The Docker entrypoint uses `node --experimental-transform-types`, which requires explicit `.ts` extensions on relative imports. `tsx`/Vite tolerate extensionless imports but Node does not. All relative imports in `packages/indexer-core/src/**` must end with `.ts`.
 
-**Aztec SDK upgrade breaks contract artifacts** — When `@aztec/*` is upgraded (e.g. 4.x → 5.0.1), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build-contracts` then `pnpm --filter server run prepare:contracts` before building the image.
+**Aztec SDK upgrade breaks contract artifacts** — When `@aztec/*` is upgraded (e.g. 4.x → 5.0.1), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build:contracts` then `pnpm --filter server run prepare:contracts` before building the image.
 
 **RPC unreachable / TLS handshake failures** — `canonical.testnet.rpc.aztec-labs.com` is the canonical Aztec testnet RPC (confirmed via Aztec v5.0.1 release; the older `rpc.testnet.aztec-labs.com` endpoint had TLS failures). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 canonical.testnet.rpc.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
 

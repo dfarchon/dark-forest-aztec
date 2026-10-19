@@ -1,8 +1,8 @@
 /**
- * Shared fee payment helpers for contracts scripts.
+ * Fee payment helpers for scripts.
  *
- * Modes (`FEE_PAYMENT_MODE`):
- * - `sponsored` (default): pay via canonical SponsoredFPC (`SponsoredFeePaymentMethod`).
+ * Modes (`FEE_PAYMENT_MODE` in networks/<AZTEC_NETWORK>.env):
+ * - `sponsored`: pay via canonical SponsoredFPC (`SponsoredFeePaymentMethod`).
  * - `account`: omit `fee.paymentMethod`; SDK charges FeeJuice from the sender account.
  */
 import { AztecAddress } from '@aztec/aztec.js/addresses';
@@ -16,12 +16,7 @@ import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/Sponsored
 import type { EmbeddedWallet } from '@aztec/wallets/embedded';
 import path from 'path';
 
-import {
-    getAztecNetwork,
-    getAztecNodeUrl,
-    getContractsEnvFilePath,
-    getOptionalEnv,
-} from './env.ts';
+import { getNetworkValue, loadNetworkEnv } from '../runtime/env.ts';
 import {
     DEFAULT_ACCOUNT_MIN_BALANCE_FJ,
     FEE_JUICE_BRIDGE_URL,
@@ -68,12 +63,12 @@ export async function getSponsoredPFCContract() {
  * Accepts only `sponsored` | `account` (case-insensitive).
  */
 export function getFeePaymentMode(): FeePaymentMode {
-    const raw = getOptionalEnv('FEE_PAYMENT_MODE')?.toLowerCase().trim();
-    if (raw === undefined || raw === '' || raw === 'sponsored') {
-        return 'sponsored';
-    }
-    if (raw === 'account') {
-        return 'account';
+    const raw = getNetworkValue('FEE_PAYMENT_MODE')?.toLowerCase().trim();
+    if (raw === 'sponsored' || raw === 'account') return raw;
+    if (!raw) {
+        throw new Error(
+            'Missing FEE_PAYMENT_MODE in the active networks/*.env file.'
+        );
     }
     throw new Error(
         `Invalid FEE_PAYMENT_MODE="${raw}". Expected "sponsored" or "account".`
@@ -81,11 +76,12 @@ export function getFeePaymentMode(): FeePaymentMode {
 }
 
 /**
- * Minimum FeeJuice (wei) required for account-mode scripts.
- * Env: `ACCOUNT_MIN_BALANCE_FJ` as a decimal FJ string (e.g. "5").
+ * Minimum FeeJuice (wei) on the fee payer before write scripts send txs.
+ * Account mode: deployer. Sponsored mode: canonical SponsoredFPC.
+ * Network file: `ACCOUNT_MIN_BALANCE_FJ` as a decimal FJ string (e.g. "5").
  */
 export function getAccountMinBalanceFjWei(): bigint {
-    const raw = getOptionalEnv('ACCOUNT_MIN_BALANCE_FJ');
+    const raw = getNetworkValue('ACCOUNT_MIN_BALANCE_FJ');
     if (raw !== undefined) {
         const parsed = parseFjDecimalToWei(raw);
         if (parsed !== undefined && parsed > 0n) return parsed;
@@ -161,8 +157,22 @@ function banner(title: string): string {
     return `\n${line}\n  ${title}\n${line}`;
 }
 
-function relativeEnvPath(): string {
-    return path.relative(process.cwd(), getContractsEnvFilePath());
+function networkLabel(): string {
+    return loadNetworkEnv().network;
+}
+
+function nodeUrl(): string {
+    const url = getNetworkValue('AZTEC_NODE_URL');
+    if (!url) {
+        throw new Error(
+            'Missing AZTEC_NODE_URL in the active networks/*.env file.'
+        );
+    }
+    return url;
+}
+
+function relativeNetworkFile(): string {
+    return path.relative(process.cwd(), loadNetworkEnv().networkFilePath);
 }
 
 /**
@@ -187,9 +197,9 @@ export function stopForAccountFunding(params: {
     } = params;
 
     const addr = accountAddress.toString();
-    const network = getAztecNetwork() ?? '(unset)';
-    const nodeUrl = getAztecNodeUrl();
-    const envFile = relativeEnvPath();
+    const network = networkLabel();
+    const aztecNodeUrl = nodeUrl();
+    const envFile = relativeNetworkFile();
     const lines: string[] = [];
 
     if (reason === 'keys_created') {
@@ -207,7 +217,7 @@ export function stopForAccountFunding(params: {
             '',
             `  Written to env file: ${envFile}`,
             `  Network label:       ${network}`,
-            `  Aztec node:          ${nodeUrl}`,
+            `  Aztec node:          ${aztecNodeUrl}`,
             `  Minimum FeeJuice:    ${formatFeeJuiceWei(minWei)}`,
             '',
             '  Next steps:',
@@ -227,7 +237,7 @@ export function stopForAccountFunding(params: {
             `  FEE_PAYMENT_MODE=account`,
             `  Account address:  ${addr}`,
             `  Network label:    ${network}`,
-            `  Aztec node:       ${nodeUrl}`,
+            `  Aztec node:       ${aztecNodeUrl}`,
             `  Env file:         ${envFile}`,
             `  Error:            ${queryError ?? 'unknown'}`,
             '',
@@ -251,7 +261,7 @@ export function stopForAccountFunding(params: {
             `  Minimum required: ${formatFeeJuiceWei(minWei)}`,
             `  Shortfall:        ${formatFeeJuiceWei(shortfall)}`,
             `  Network label:    ${network}`,
-            `  Aztec node:       ${nodeUrl}`,
+            `  Aztec node:       ${aztecNodeUrl}`,
             `  Env file:         ${envFile}`,
             '',
             '  Next steps:',
@@ -270,62 +280,205 @@ export function stopForAccountFunding(params: {
     throw new AccountFundingRequiredError(message.trim(), addr);
 }
 
-/**
- * Account-mode preflight: print status, then stop if FeeJuice is insufficient.
- * Sponsored mode is a no-op.
- */
-export async function assertAccountFeeJuiceReady(params: {
-    feeCtx: FeePaymentContext;
-    aztecNode: AztecNode;
-    accountAddress: AztecAddress;
+function stopForSponsoredFpcFunding(params: {
+    reason: 'insufficient_balance' | 'balance_query_failed';
+    fpcAddress: AztecAddress;
     commandHint: string;
+    balanceWei?: bigint;
+    minWei?: bigint;
+    queryError?: string;
+}): never {
+    const {
+        reason,
+        fpcAddress,
+        commandHint,
+        balanceWei,
+        minWei = getAccountMinBalanceFjWei(),
+        queryError,
+    } = params;
+
+    const addr = fpcAddress.toString();
+    const network = networkLabel();
+    const aztecNodeUrl = nodeUrl();
+    const envFile = relativeNetworkFile();
+    const lines: string[] = [];
+
+    if (reason === 'balance_query_failed') {
+        lines.push(
+            banner('SPONSORED FEE MODE — COULD NOT READ SPONSORED FPC BALANCE'),
+            '',
+            `  FEE_PAYMENT_MODE=sponsored`,
+            `  SponsoredFPC:     ${addr}`,
+            `  Network label:    ${network}`,
+            `  Aztec node:       ${aztecNodeUrl}`,
+            `  Env file:         ${envFile}`,
+            `  Error:            ${queryError ?? 'unknown'}`,
+            '',
+            '  Fix the node URL / connectivity, then re-run:',
+            `    ${commandHint}`,
+            ''
+        );
+    } else {
+        const bal = balanceWei ?? 0n;
+        const shortfall = minWei > bal ? minWei - bal : 0n;
+        lines.push(
+            banner(
+                'SPONSORED FEE MODE — INSUFFICIENT FEEJUICE ON SPONSORED FPC'
+            ),
+            '',
+            '  Refusing to send any transaction until the SponsoredFPC has enough FeeJuice.',
+            '  Fees are paid by this protocol contract, not the deployer account.',
+            '',
+            `  FEE_PAYMENT_MODE=sponsored`,
+            `  SponsoredFPC:     ${addr}`,
+            `  Current balance:  ${formatFeeJuiceWei(bal)}`,
+            `  Minimum required: ${formatFeeJuiceWei(minWei)}`,
+            `  Shortfall:        ${formatFeeJuiceWei(shortfall)}`,
+            `  Network label:    ${network}`,
+            `  Aztec node:       ${aztecNodeUrl}`,
+            `  Env file:         ${envFile}`,
+            '',
+            '  This address is the canonical SponsoredFPC. Local sandbox usually',
+            '  pre-funds it; a public node may not.',
+            '',
+            '  Next steps:',
+            '    1. Use a node whose SponsoredFPC is funded, or',
+            '    2. Set FEE_PAYMENT_MODE=account and fund ACCOUNT_ADDRESS instead.',
+            `    3. Re-run: ${commandHint}`,
+            '',
+            '  Tip: override the minimum with ACCOUNT_MIN_BALANCE_FJ (decimal FJ, e.g. "5").',
+            ''
+        );
+    }
+
+    const message = lines.filter((l) => l !== undefined).join('\n');
+    console.error(message);
+    throw new AccountFundingRequiredError(message.trim(), addr);
+}
+
+async function assertPayerFeeJuiceReady(params: {
+    title: string;
+    mode: FeePaymentMode;
+    payerLabel: string;
+    extraLines: string[];
+    payer: AztecAddress;
+    aztecNode: AztecNode;
+    commandHint: string;
+    onQueryFailed: (queryError: string, minWei: bigint) => never;
+    onInsufficient: (balanceWei: bigint, minWei: bigint) => never;
 }): Promise<void> {
-    const { feeCtx, aztecNode, accountAddress, commandHint } = params;
-    if (feeCtx.mode !== 'account') return;
-
     const minWei = getAccountMinBalanceFjWei();
-    const network = getAztecNetwork() ?? '(unset)';
-    const nodeUrl = getAztecNodeUrl();
-
-    console.log(banner('ACCOUNT FEE MODE — PREFLIGHT'));
-    console.log(`  FEE_PAYMENT_MODE=account`);
-    console.log(`  Network label:    ${network}`);
-    console.log(`  Aztec node:       ${nodeUrl}`);
-    console.log(`  Account address:  ${accountAddress.toString()}`);
-    console.log(`  Account type:     Schnorr initializerless (no deploy tx)`);
+    console.log(banner(params.title));
+    console.log(`  FEE_PAYMENT_MODE=${params.mode}`);
+    console.log(`  Network label:    ${networkLabel()}`);
+    console.log(`  Aztec node:       ${nodeUrl()}`);
+    console.log(`  ${params.payerLabel}${params.payer.toString()}`);
+    for (const line of params.extraLines) console.log(line);
     console.log(`  Minimum FeeJuice: ${formatFeeJuiceWei(minWei)}`);
 
     const balanceWei = await getFeeJuiceBalance(
-        accountAddress,
-        aztecNode
+        params.payer,
+        params.aztecNode
     ).catch((err: unknown) => {
         const queryError = err instanceof Error ? err.message : String(err);
         console.log(`  Current balance:  (query failed)`);
-        stopForAccountFunding({
-            reason: 'balance_query_failed',
-            accountAddress,
-            commandHint,
-            minWei,
-            queryError,
-        });
+        params.onQueryFailed(queryError, minWei);
     });
 
     console.log(`  Current balance:  ${formatFeeJuiceWei(balanceWei)}`);
 
     if (balanceWei < minWei) {
-        stopForAccountFunding({
-            reason: 'insufficient_balance',
-            accountAddress,
-            commandHint,
-            balanceWei,
-            minWei,
-        });
+        params.onInsufficient(balanceWei, minWei);
     }
 
     console.log(
         `  Status:            OK (${formatFeeJuiceWei(balanceWei)} ≥ ${formatFeeJuiceWei(minWei)})`
     );
     console.log('='.repeat(72) + '\n');
+}
+
+/**
+ * Fee preflight: stop if the payer (deployer account or SponsoredFPC) is short of FeeJuice.
+ */
+export async function assertFeePaymentReady(params: {
+    feeCtx: FeePaymentContext;
+    aztecNode: AztecNode;
+    accountAddress: AztecAddress;
+    commandHint: string;
+}): Promise<void> {
+    const { feeCtx, aztecNode, accountAddress, commandHint } = params;
+
+    if (feeCtx.mode === 'sponsored') {
+        if (!feeCtx.sponsoredFpc) {
+            throw new Error(
+                'Sponsored fee mode requires a registered SponsoredFPC instance'
+            );
+        }
+        const fpcAddress = feeCtx.sponsoredFpc.address;
+        await assertPayerFeeJuiceReady({
+            title: 'SPONSORED FEE MODE — PREFLIGHT',
+            mode: 'sponsored',
+            payerLabel: 'SponsoredFPC:     ',
+            extraLines: [
+                '  Fee payer:        canonical SponsoredFPC (not the deployer)',
+            ],
+            payer: fpcAddress,
+            aztecNode,
+            commandHint,
+            onQueryFailed: (queryError, minWei) =>
+                stopForSponsoredFpcFunding({
+                    reason: 'balance_query_failed',
+                    fpcAddress,
+                    commandHint,
+                    minWei,
+                    queryError,
+                }),
+            onInsufficient: (balanceWei, minWei) =>
+                stopForSponsoredFpcFunding({
+                    reason: 'insufficient_balance',
+                    fpcAddress,
+                    commandHint,
+                    balanceWei,
+                    minWei,
+                }),
+        });
+        return;
+    }
+
+    await assertPayerFeeJuiceReady({
+        title: 'ACCOUNT FEE MODE — PREFLIGHT',
+        mode: 'account',
+        payerLabel: 'Account address:  ',
+        extraLines: [
+            '  Account type:     Schnorr initializerless (no deploy tx)',
+        ],
+        payer: accountAddress,
+        aztecNode,
+        commandHint,
+        onQueryFailed: (queryError, minWei) =>
+            stopForAccountFunding({
+                reason: 'balance_query_failed',
+                accountAddress,
+                commandHint,
+                minWei,
+                queryError,
+            }),
+        onInsufficient: (balanceWei, minWei) =>
+            stopForAccountFunding({
+                reason: 'insufficient_balance',
+                accountAddress,
+                commandHint,
+                balanceWei,
+                minWei,
+            }),
+    });
+}
+
+/** @deprecated Use {@link assertFeePaymentReady}. */
+export async function assertAccountFeeJuiceReady(
+    params: Parameters<typeof assertFeePaymentReady>[0]
+): Promise<void> {
+    return assertFeePaymentReady(params);
 }
 
 /** Exit helper for script entrypoints that catch {@link AccountFundingRequiredError}. */

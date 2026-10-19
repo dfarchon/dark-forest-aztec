@@ -1,0 +1,44 @@
+# Noir / Aztec build outputs
+target/
+build/
+codegenCache.json
+artifacts/
+scripts/artifacts/
+noir-*.json
+
+# Typechain / codegen
+typechain/
+typechain-types/
+
+# Per-run deploy journals (contracts/deployments/<network>/<id>/)
+deployments/
+
+# PXE, wallet, and local network state
+# `.store/` covers per-network dirs from PXE_STORE_DIR (e.g. .store/local).
+.aztec/
+.pxe/
+.sandbox/
+.aztec-sandbox/
+.store/
+pxe_data_*/
+wallet_data_*/
+scripts/pxe_data_*/
+scripts/wallet_data_*/
+
+# Retired local scripts. Kept on disk, not tracked.
+scripts-legacy/
+
+# Test account credentials
+scripts/.test-accounts.json
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Per-network operator config (keys live here). Templates stay tracked.
+networks/*.env
+!networks/*.env.example
+
+# Old env files kept locally for reference. Do not commit.
+scripts-env-backups/

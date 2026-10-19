@@ -1,0 +1,9 @@
+.store/
+.store.backup/
+claims/
+accounts/
+
+# Environment variables
+.env
+.env.*
+!.env.example

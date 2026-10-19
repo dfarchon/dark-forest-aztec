@@ -177,7 +177,7 @@ Contracts:
 
 * Copy `contracts/.env.example` to `contracts/.env`.
 * Use network specific files such as `contracts/.env.testnet` with `AZTEC_NETWORK=testnet`.
-* Contract scripts should use `contracts/scripts/utils/env.ts`.
+* Contract scripts should use `contracts/scripts/runtime/env.ts`.
 
 Client:
 

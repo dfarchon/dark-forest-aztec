@@ -151,7 +151,7 @@ async function clearStaleIndexedDBs(currentPrefix?: string): Promise<void> {
 
 /**
  * Register game contracts (system + storage) with the wallet's PXE so simulate() and send() can run.
- * Requires deployer + salt from @dfpunk/contracts (run sync-env-and-artifacts after deploy).
+ * Requires deployer + salt from @dfpunk/contracts (run deploy:sync after deploy).
  * Optionally reports progress per contract via onRegisterProgress(currentStep, contractName).
  */
 async function registerGameContractsWithPxe(

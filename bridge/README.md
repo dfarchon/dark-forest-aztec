@@ -10,8 +10,8 @@ Generate an Ethereum EOA and an Aztec Schnorr initializerless account without
 sending a transaction:
 
 ```bash
-pnpm generate:accounts -- --network mainnet
-pnpm generate:accounts -- --network testnet
+pnpm generate:accounts --network mainnet
+pnpm generate:accounts --network testnet
 ```
 
 Address derivation is fully offline and does not require an Aztec RPC. Generated
@@ -67,8 +67,8 @@ Query the account's public Fee Juice balance. The address defaults to
 
 ```bash
 pnpm balance
-pnpm balance -- --address 0x...
-pnpm balance -- --address 0x... --json
+pnpm balance --address 0x...
+pnpm balance --address 0x... --json
 ```
 
 This command is read-only and only requires `AZTEC_NODE_URL` plus an account

@@ -46,7 +46,7 @@ Good contract tasks:
 - regenerate TypeScript bindings after contract changes;
 - update deploy/configure scripts when contract addresses or initialization flows change.
 
-Contract scripts load environment variables through `contracts/scripts/utils/env.ts`. Prefer those helpers over reading `process.env` directly in new deploy/config scripts.
+Contract scripts load environment variables through `contracts/scripts/runtime/env.ts`. Prefer those helpers over reading `process.env` directly in new deploy/config scripts.
 
 ### Server
 

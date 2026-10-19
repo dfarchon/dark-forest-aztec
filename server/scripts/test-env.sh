@@ -247,10 +247,10 @@ run_contracts_start() {
   fi
   local path_prepend="${node_bin:+${node_bin}:}/opt/homebrew/bin"
 
-  echo "[contracts] clean-store"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; pnpm --filter contracts run clean-store"
-  echo "[contracts] start"
-  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; printf 'y\n' | pnpm --filter contracts run start"
+  echo "[contracts] clean:runtime"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; pnpm --filter contracts run clean:runtime"
+  echo "[contracts] deploy:start"
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; export PATH='${path_prepend}':\$PATH; printf 'y\n' | pnpm --filter contracts run deploy:start"
 }
 
 stop_e2e() {
@@ -299,8 +299,7 @@ reset_cache() {
   lsof -tiTCP:8545 -sTCP:LISTEN | xargs -r kill >/dev/null 2>&1 || true
 
   rm -f "${REPO_ROOT}/contracts/scripts/.test-accounts.json"
-  rm -rf "${REPO_ROOT}/contracts/.store"
-  rm -rf "${REPO_ROOT}"/contracts/wallet_data_*
+  bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.12.0 >/dev/null 2>&1 || true; pnpm --filter contracts run clean:runtime" || true
   rm -f "${SERVER_DIR}/data/indexer.db"
 
   mkdir -p "${SERVER_DIR}/data"

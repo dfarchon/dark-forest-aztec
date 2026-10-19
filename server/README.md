@@ -217,7 +217,7 @@ pnpm --filter server run e2e:logs     # tail logs
 pnpm --filter server run e2e:down     # stop everything
 ```
 
-`e2e:reset` deletes: `contracts/.store`, `contracts/wallet_data_*`, `contracts/scripts/.test-accounts.json`, `server/data/indexer.db`.
+`e2e:reset` deletes: the current network PXE store (`pnpm --filter contracts run clean:runtime`), `contracts/scripts/.test-accounts.json`, and `server/data/indexer.db`.
 
 ## Docker
 

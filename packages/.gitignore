@@ -1,0 +1,9 @@
+# Workspace package build outputs
+*/dist/
+*/build/
+
+# Generated Aztec artifacts (copied from contracts/scripts/artifacts)
+contracts/src/artifacts/
+
+# Local / unused package
+network/

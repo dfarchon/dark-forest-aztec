@@ -27,73 +27,6 @@ coverage/
 *.tsbuildinfo
 
 ############################################
-# Vite / React
-############################################
-client/dist/
-client/.vite/
-vite.config.ts.timestamp-*
-
-############################################
-# Aztec Noir (IMPORTANT)
-############################################
-# Noir compilation outputs
-**/target/
-**/build/
-**/noir-*.json
-
-# Aztec PXE / Sandbox runtime data
-.aztec/
-.pxe/
-.sandbox/
-.aztec-sandbox/
-.store/
-
-# Aztec local state & cache (nested)
-**/.aztec/
-**/.pxe/
-**/.sandbox/
-**/.store/
-bridge/.store/
-bridge/.store.backup/
-
-# Aztec PXE & wallet data (contracts folder)
-contracts/pxe_data_*/
-contracts/wallet_data_*/
-contracts/scripts/pxe_data_*/
-contracts/scripts/wallet_data_*/
-
-############################################
-# Smart contract generated files
-############################################
-contracts/artifacts/
-contracts/target/
-contracts/build/
-**/artifacts/
-contracts/codegenCache.json
-
-# Typechain / codegen outputs
-**/typechain/
-**/typechain-types/
-
-############################################
-# Workspace packages build outputs
-############################################
-packages/*/dist/
-packages/*/build/
-
-############################################
-# Environment variables
-############################################
-.env
-.env.*
-!.env.example
-bridge/claims/
-bridge/accounts/
-
-# Test account credentials (do not commit)
-contracts/scripts/.test-accounts.json
-
-############################################
 # Editor / IDE / AI tools
 ############################################
 .claude/
@@ -124,18 +57,10 @@ temp/
 local-docs/
 
 ############################################
-# Local brand draft assets (not committed)
-############################################
-client/public/octopus-logos/
-
-############################################
 # Others
 ############################################
 darkforest-v0.6/
 log
 contracts-v1/
 contracts-v2/
-packages/network/
 df-gaia/
-
-wallet_data*
