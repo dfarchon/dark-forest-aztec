@@ -520,20 +520,34 @@ export function estimatePopArriving(params: {
   // _buff_planet: apply temporary range upgrade
   const buffedRange = (params.sourcePlanetRange * rangeMultiplier) / 100n;
 
-  // Piecewise linear decay (contract lines 690-707)
-  const percent = (params.popMoved * 100n) / params.sourcePlanetPopulationCap;
-  const dMaxPercent =
-    percent <= 25n
-      ? percent * 2n
-      : percent <= 50n
-        ? 25n + percent
-        : (100n + percent) / 2n;
+  return decayedPopArriving(
+    params.popMoved,
+    params.sourcePlanetPopulationCap,
+    buffedRange,
+    effectiveDistTimesHundred
+  );
+}
 
-  const dFactor = buffedRange * 432n * dMaxPercent;
-  const distScaled = effectiveDistTimesHundred * 100n;
+/**
+ * Same integer curve as `libs::move_decay::decayed_pop_arriving`.
+ * (0%, 0), (25%, 0.5L), (50%, 0.75L), (100%, L), L = range * 4.32.
+ */
+export function decayedPopArriving(
+  popMoved: bigint,
+  populationCap: bigint,
+  range: bigint,
+  effectiveDistTimesHundred: bigint
+): bigint {
+  if (popMoved === 0n || populationCap === 0n || range === 0n) return 0n;
 
-  if (distScaled >= dFactor || dFactor === 0n) {
-    return 0n;
-  }
-  return (params.popMoved * (dFactor - distScaled)) / dFactor;
+  const distScaled = effectiveDistTimesHundred * 100n * populationCap;
+  const dFactor =
+    popMoved * 4n <= populationCap
+      ? range * 86400n * popMoved
+      : popMoved * 2n <= populationCap
+        ? range * 10800n * (populationCap + popMoved * 4n)
+        : range * 21600n * (populationCap + popMoved);
+
+  if (dFactor === 0n || distScaled >= dFactor) return 0n;
+  return (popMoved * (dFactor - distScaled)) / dFactor;
 }

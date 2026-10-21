@@ -48,6 +48,7 @@ contract Move {
         assert_public_timestamp, compute_artifact_and_location_hashes, compute_artifact_hash,
         compute_config_hashes, compute_planet_hashes, compute_world_hash,
     };
+    use ::libs::move_decay::decayed_pop_arriving;
     use ::libs::planet::{
         apply_spaceship_depart, check_player_init, initialize_planet_with_defaults,
         refresh_planet_v1, refresh_planet_v2,
@@ -697,30 +698,17 @@ contract Move {
 
         // _createArrival - Enter the arrival data for event id
 
-        // Piecewise linear decay: max reachable distance D_max depends on energy percentage.
-        // Constraint points: (0%,0L) (25%,0.5L) (50%,0.75L) (100%,L) where L = range * 432/100.
-        // Within D_max, arriving pop decays linearly: popMoved * (D_max - dist) / D_max.
+        // Piecewise linear decay: (0%, 0) (25%, 0.5L) (50%, 0.75L) (100%, L),
+        // L = range * 432/100. The share pop/cap is not rounded to an integer percent.
         let pop_arriving = if is_spaceship_move {
             0
         } else {
-            let percent = pop_moved * 100 / new_source_planet.population_cap;
-
-            let d_max_percent = if percent <= 25 {
-                percent * 2
-            } else if percent <= 50 {
-                25 + percent
-            } else {
-                (100 + percent) / 2
-            };
-
-            let d_factor = new_source_planet.range * 432 * d_max_percent;
-            let dist_scaled = effectiveDistTimesHundred * 100;
-
-            if (dist_scaled >= d_factor) | (d_factor == 0) {
-                0
-            } else {
-                pop_moved * (d_factor - dist_scaled) / d_factor
-            }
+            decayed_pop_arriving(
+                pop_moved,
+                new_source_planet.population_cap,
+                new_source_planet.range,
+                effectiveDistTimesHundred,
+            )
         };
 
         // Spaceship moves must be 0 energy moves
