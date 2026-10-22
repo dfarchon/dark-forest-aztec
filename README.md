@@ -2,7 +2,7 @@
 
 > These violent delights have violent ends.
 
-[![Node](https://img.shields.io/badge/node-24.12.0-43853d)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-24.22.1-43853d)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-10.28.0-f69220)](https://pnpm.io)
 [![Aztec](https://img.shields.io/badge/aztec-noir-6d28d9)](https://aztec.network)
 [![Status](https://img.shields.io/badge/status-testnet-orange)]()

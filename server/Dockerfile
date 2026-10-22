@@ -1,4 +1,4 @@
-FROM node:24.12.0-slim AS base
+FROM node:24.22.1-slim AS base
 
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 RUN apt-get update \
