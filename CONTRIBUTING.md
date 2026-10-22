@@ -6,7 +6,7 @@ Dark Forest Aztec is a TypeScript + Aztec Noir monorepo. This guide is short on 
 
 Required versions:
 
-- Node.js `24.12.0`
+- Node.js `24.22.1`
 - pnpm `10.28.0`
 
 ## Repository Map

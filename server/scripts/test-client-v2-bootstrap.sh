@@ -47,9 +47,9 @@ use_node_24() {
   if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
     # shellcheck source=/dev/null
     source "${HOME}/.nvm/nvm.sh"
-    if ! nvm use 24.12.0 >/dev/null 2>&1; then
-      nvm install 24.12.0 >/dev/null
-      nvm use 24.12.0 >/dev/null
+    if ! nvm use 24.22.1 >/dev/null 2>&1; then
+      nvm install 24.22.1 >/dev/null
+      nvm use 24.22.1 >/dev/null
     fi
     log "Using node: $(node -v)"
   else

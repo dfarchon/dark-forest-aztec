@@ -291,7 +291,7 @@ function assertNodeSupportsTransformTypes() {
   if (probe.status === 0) return;
 
   throw new Error(
-    `Current node does not support --experimental-transform-types: ${nodeBin} (${process.version}). Use Node 24.12.0 to run e2e scripts.`
+    `Current node does not support --experimental-transform-types: ${nodeBin} (${process.version}). Use Node 24.22.1 to run e2e scripts.`
   );
 }
 
