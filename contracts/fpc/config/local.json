@@ -40,7 +40,7 @@
   "allowedAccountClasses": [
     {
       "name": "SchnorrInitializerlessAccount",
-      "classId": "0x28c2905b5e44745a50b78c9d3084443216b6b369a3c2ecf06640605bf630706f"
+      "classId": "0x1c59d7500b7d8ba4bb13ace9e7c07e9576a11a5966624ced14f8efd117b9d5b2"
     }
   ],
   "requireUnpublishedAccounts": true,

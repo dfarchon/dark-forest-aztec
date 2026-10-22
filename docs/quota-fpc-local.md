@@ -5,8 +5,8 @@ pays their fees, up to a per-player daily allowance, and only for this game's
 own contracts. No game contract changes.
 
 The implementation lives in the published package
-[`@alejoamiras/quota-paymaster@5.0.1`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster)
-(exact-pinned, lockstep with Aztec 5.0.1). This repo keeps only the client
+[`@alejoamiras/quota-paymaster@5.0.1-revision.2`](https://www.npmjs.com/package/@alejoamiras/quota-paymaster)
+(exact-pinned; used here with Aztec 5.2). This repo keeps only the client
 integration, thin operator CLIs, and the config. Architecture, security model,
 and testing guides are in the package README.
 
@@ -66,8 +66,15 @@ failure (something may have — read the output before retrying).
 
 ## Local testing
 
-Run against a local network (`aztec start --local-network`), deploy a
-paymaster with `deploy-fpc` against a config whose targets are your local game
-deployment, and fund it with the bridge/claim pair (the local L1 faucet mints
-freely). Full local-network guidance — clock caveats, funding loops, e2e
-patterns — lives in the package repository.
+`pnpm dev:local` now handles the complete local setup after the game contracts
+are ready: it deploys QuotaFpc from `contracts/fpc/config/local.json`, mints and
+bridges local FeeJuice, claims it into the paymaster, and writes the resulting
+address to `contracts/.env` and `client/.env.local`. The setup is idempotent on
+the current chain and can also be run directly with:
+
+```bash
+pnpm --filter contracts fpc:local
+```
+
+Full local-network guidance — clock caveats, funding loops, and e2e patterns —
+lives in the package repository.

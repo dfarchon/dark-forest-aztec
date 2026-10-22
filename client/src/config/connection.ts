@@ -8,6 +8,7 @@ import {
   getIndexerBootstrapUrl,
   getNodeUrl,
   getProverUrl,
+  getQuotaFpcAddressFromEnv,
   getSponsoredFpcAddressFromEnv,
   getSponsorMode,
 } from "./env";
@@ -19,6 +20,8 @@ const STORAGE_KEY_PROVER_URL = "dfpunk:connection:proverUrl";
 const STORAGE_KEY_SPONSORED_FPC_ADDRESS =
   "dfpunk:connection:sponsoredFpcAddress";
 const STORAGE_KEY_USE_SPONSORED_FPC = "dfpunk:connection:useSponsoredFpc";
+const STORAGE_KEY_QUOTA_FPC_ADDRESS = "dfpunk:connection:quotaFpcAddress";
+const STORAGE_KEY_USE_QUOTA_FPC = "dfpunk:connection:useQuotaFpc";
 
 export interface ConnectionOverrides {
   nodeUrl?: string;
@@ -35,6 +38,8 @@ export interface ConnectionOverrides {
    * null clears the preference and restores the build default.
    */
   useSponsoredFpc?: boolean | null;
+  quotaFpcAddress?: string | null;
+  useQuotaFpc?: boolean | null;
 }
 
 /**
@@ -86,6 +91,13 @@ export function getEffectiveUseSponsoredFpc(): boolean {
   const stored = localStorage.getItem(STORAGE_KEY_USE_SPONSORED_FPC);
   if (stored === "false") return false;
   return true;
+}
+
+export function getEffectiveQuotaFpcAddress(): string | undefined {
+  const enabled = localStorage.getItem(STORAGE_KEY_USE_QUOTA_FPC);
+  if (enabled === "false") return undefined;
+  const stored = localStorage.getItem(STORAGE_KEY_QUOTA_FPC_ADDRESS)?.trim();
+  return stored || getQuotaFpcAddressFromEnv();
 }
 
 /**
@@ -144,6 +156,20 @@ export function setConnectionOverrides(overrides: ConnectionOverrides): void {
       );
     }
   }
+  if (overrides.quotaFpcAddress !== undefined) {
+    const value = overrides.quotaFpcAddress?.trim();
+    if (value) localStorage.setItem(STORAGE_KEY_QUOTA_FPC_ADDRESS, value);
+    else localStorage.removeItem(STORAGE_KEY_QUOTA_FPC_ADDRESS);
+  }
+  if (overrides.useQuotaFpc !== undefined) {
+    if (overrides.useQuotaFpc === null)
+      localStorage.removeItem(STORAGE_KEY_USE_QUOTA_FPC);
+    else
+      localStorage.setItem(
+        STORAGE_KEY_USE_QUOTA_FPC,
+        String(overrides.useQuotaFpc)
+      );
+  }
 }
 
 /**
@@ -160,6 +186,8 @@ export function getConnectionOverrides(): ConnectionOverrides {
   const useSponsoredFpcStored = localStorage.getItem(
     STORAGE_KEY_USE_SPONSORED_FPC
   );
+  const quotaFpcStored = localStorage.getItem(STORAGE_KEY_QUOTA_FPC_ADDRESS);
+  const useQuotaFpcStored = localStorage.getItem(STORAGE_KEY_USE_QUOTA_FPC);
   return {
     nodeUrl: nodeStored !== null ? nodeStored : undefined,
     indexerBootstrapUrl:
@@ -174,5 +202,8 @@ export function getConnectionOverrides(): ConnectionOverrides {
       useSponsoredFpcStored === null
         ? undefined
         : useSponsoredFpcStored !== "false",
+    quotaFpcAddress: quotaFpcStored ?? undefined,
+    useQuotaFpc:
+      useQuotaFpcStored === null ? undefined : useQuotaFpcStored !== "false",
   };
 }

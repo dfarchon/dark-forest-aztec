@@ -27,6 +27,7 @@
         "format": "pnpm run aztec:fmt & pnpm run scripts:fmt",
         "format:check": "pnpm run aztec:fmt:check & pnpm run scripts:fmt:check",
         "fpc": "quota-paymaster",
+        "fpc:local": "bash ../scripts/dev/setup-local-quota-paymaster.sh",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "local-network": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",

@@ -12,7 +12,6 @@
  *   - ContractResolver maps methodName to Aztec contract + method
  */
 
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import {
   type ContractMethod,
   NO_WAIT,
@@ -41,6 +40,7 @@ import {
 import { NotificationType } from "../../Frontend/Game/NotificationManager";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
+import { QuotaPaymasterSender } from "../QuotaPaymaster/QuotaPaymasterSender";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
@@ -134,15 +134,7 @@ export class TxExecutor {
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
 
-  private readonly chainClock: ChainClock;
-  /** Last pre-send allowance reading; display data for the fee gate only. */
-  private lastQuotaRead?: {
-    player: string;
-    subscribed: boolean;
-    remaining: number;
-    reason?: string;
-    chainSeconds: bigint;
-  };
+  private readonly quotaPaymaster: QuotaPaymasterSender;
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -170,7 +162,11 @@ export class TxExecutor {
     );
 
     const wallet = walletManager.getWallet();
-    this.chainClock = chainClock;
+    this.quotaPaymaster = new QuotaPaymasterSender(
+      walletManager,
+      node,
+      chainClock
+    );
     this.contractResolver = new ContractResolver(wallet);
 
     this.stateResolver = new StateResolver(
@@ -367,7 +363,7 @@ export class TxExecutor {
         const activeAddress = this.walletManager.getActiveAddress();
         if (quotaFpcAddress && activeAddress) {
           try {
-            const sponsoredHash = await this.trySponsoredSend(
+            const sponsoredHash = await this.quotaPaymaster.send(
               contract,
               method,
               contractArgs,
@@ -407,7 +403,7 @@ export class TxExecutor {
                 .isRetryableBeforeBroadcast(err)
             ) {
               try {
-                sponsoredSubmission = await this.trySponsoredSend(
+                sponsoredSubmission = await this.quotaPaymaster.send(
                   contract,
                   method,
                   contractArgs,
@@ -770,143 +766,6 @@ export class TxExecutor {
     }
   }
 
-  private async trySponsoredSend(
-    contract: { methods: Record<string, ContractMethod> },
-    method: string,
-    contractArgs: unknown[],
-    quotaFpcAddress: AztecAddress,
-    player: AztecAddress
-  ): Promise<TxHash | undefined> {
-    const [{ buildSandwichPayload, generationAt, resolveFeeSource }, quotaFpc] =
-      await Promise.all([
-        import("@alejoamiras/quota-paymaster"),
-        this.walletManager.getQuotaFpcContract(),
-      ]);
-    if (!quotaFpc) return undefined;
-
-    const chainSeconds = BigInt(this.chainClock.nowSec());
-    const generation = generationAt(chainSeconds);
-    const state = await this.walletManager.readQuotaAllowance(
-      quotaFpc,
-      player,
-      generation
-    );
-
-    // Surface it so the top bar shows what this transaction actually saw.
-    const { publishQuotaStatus, quotaStatusFromAllowance } =
-      await import("../QuotaStatus");
-    publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds));
-
-    const source = await resolveFeeSource({
-      state,
-      chainTimestampSeconds: chainSeconds,
-      // Product decision (the SDK requires one): while allowance evidence is
-      // syncing, WAIT rather than self-pay — the target players have no
-      // balance to fall back on, and a funded player mid-sync must not be
-      // silently charged for a transaction the paymaster would have covered.
-      onSyncing: "wait",
-      findFreeSeat: () =>
-        this.walletManager.findQuotaSeat(quotaFpc, generation),
-      ownBalance: 0n,
-      // Self-pay is handled by the caller's existing paths, so this decision is
-      // only ever "sponsored or not".
-      minSelfPayBalance: 1n,
-      paymasterBalance: await getFeeJuiceBalance(quotaFpcAddress, this.node),
-      minPaymasterBalance: 1n,
-    });
-
-    quotaLog("allowance read", {
-      generation,
-      state,
-      decision: source.kind,
-    });
-    // For the fee gate: whether the player HAD sponsorship today decides
-    // which story an empty-account interruption tells.
-    this.lastQuotaRead = {
-      player: String(player),
-      subscribed: state.subscribed,
-      remaining: state.remaining,
-      reason: source.kind === "blocked" ? source.reason : undefined,
-      chainSeconds,
-    };
-
-    if (source.kind !== "sponsored" && source.kind !== "sponsored-first") {
-      // Sponsorship unavailable (spent, no seats, empty paymaster, rollover,
-      // or still syncing): throw the typed reason so the caller can explain
-      // the fallback instead of charging the player silently.
-      const { QuotaUnavailableError } =
-        await import("@alejoamiras/quota-paymaster");
-      const reason =
-        source.kind === "blocked" ? source.reason : "paymaster-empty";
-      throw new QuotaUnavailableError(
-        reason,
-        `Sponsorship unavailable: ${reason}`,
-        // Only a wallet still catching up is worth retrying; the rest are
-        // settled facts a fresh anchor will not change.
-        reason === "sync-pending"
-      );
-    }
-
-    const methodFn = contract.methods[method];
-    const requested = await methodFn(...(contractArgs as never[])).request();
-    const calls = (requested as { calls?: unknown[] }).calls ?? requested;
-
-    const payload = await buildSandwichPayload(
-      {
-        calls: calls as never,
-        player,
-        fpcAddress: quotaFpcAddress,
-        generation,
-        seat: source.kind === "sponsored-first" ? source.seat : undefined,
-      },
-      this.walletManager.getWallet() as never,
-      quotaFpc as never
-    );
-
-    const txHash = await this.walletManager.sendFromQuotaPaymaster(
-      payload,
-      player
-    );
-
-    // Refresh the badge by waiting for the specific transition this send
-    // implies. `observedSubscribedBefore: true` is the positive evidence the
-    // SDK requires before it will conclude "out for today" — absence alone is
-    // also what a lagging wallet reports. Fire-and-forget: the badge must
-    // never delay or fail the transaction.
-    if (source.kind === "sponsored" && state.subscribed) {
-      void (async () => {
-        try {
-          const { awaitAllowanceTransition } =
-            await import("@alejoamiras/quota-paymaster");
-          const observed = await awaitAllowanceTransition({
-            generation,
-            readState: async () => {
-              const s2 = await this.walletManager.readQuotaAllowance(
-                quotaFpc,
-                player,
-                generation
-              );
-              return { subscribed: s2.subscribed, remaining: s2.remaining };
-            },
-            expectedRemaining: Math.max(0, state.remaining - 1),
-            // This send was BUILT from the observed subscription note — the
-            // positive evidence the exhaustion conclusion requires.
-            observedSubscribedBefore: true,
-          });
-          const {
-            publishQuotaStatus: publish,
-            quotaStatusFromAllowance: from,
-          } = await import("../QuotaStatus");
-          publish(from(observed, BigInt(this.chainClock.nowSec())));
-        } catch {
-          /* badge refresh must never affect the transaction path */
-        }
-      })();
-    }
-
-    return txHash;
-  }
-
   /**
    * Chooses and publishes the fee-gate story for an empty account. Fire and
    * forget; the interruption must never delay or change the throw that stops
@@ -919,7 +778,7 @@ export class TxExecutor {
     try {
       const { millisUntilReset, resetLabel } =
         await import("@alejoamiras/quota-paymaster");
-      const read = this.lastQuotaRead;
+      const read = this.quotaPaymaster.getLastAttempt();
       const player = String(this.walletManager.getActiveAddress() ?? "");
       // The read must belong to THIS player and THIS attempt. A stale read
       // (previous account, or an attempt that failed before it was taken)

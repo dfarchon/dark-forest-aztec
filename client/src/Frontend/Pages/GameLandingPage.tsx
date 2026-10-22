@@ -31,13 +31,13 @@ import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
   getEffectiveProverUrl,
+  getEffectiveQuotaFpcAddress,
   getEffectiveSponsoredFpcAddressOverride,
   getEffectiveUseSponsoredFpc,
 } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getProverEnabled,
-  getQuotaFpcAddressFromEnv,
   getSponsoredFpcMinBalanceFjWei,
   getSponsorMode,
   isProductionLike,
@@ -1323,7 +1323,7 @@ export function GameLandingPage() {
       proverUrl: getEffectiveProverUrl(),
       sponsorMode,
       sponsoredFpcAddressOverride: getEffectiveSponsoredFpcAddressOverride(),
-      quotaFpcAddress: getQuotaFpcAddressFromEnv(),
+      quotaFpcAddress: getEffectiveQuotaFpcAddress(),
       pxeConfig: {
         proverEnabled: getProverEnabled(),
       },
