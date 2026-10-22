@@ -8,6 +8,7 @@ import { AztecAddress } from '@aztec/aztec.js/addresses';
 import type { ContractBase } from '@aztec/aztec.js/contracts';
 import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 import type { AztecNode } from '@aztec/aztec.js/node';
+import type { Wallet } from '@aztec/aztec.js/wallet';
 import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
 import fs from 'fs';
 import path from 'path';
@@ -359,6 +360,8 @@ export type TestContext = {
     contracts: Record<string, ContractBase>;
     /** Aztec node client (e.g. for getPublicEvents). */
     node: AztecNode;
+    /** Embedded wallet used by the test accounts. */
+    wallet: Wallet;
     /** Options for sending a tx from a given address (includes SponsoredFPC fee). */
     sendOpts: (from: AztecAddress) => {
         from: AztecAddress;
@@ -460,6 +463,7 @@ export async function getTestContext(): Promise<TestContext> {
         },
         contracts,
         node: aztecNode,
+        wallet,
         sendOpts,
     };
 }

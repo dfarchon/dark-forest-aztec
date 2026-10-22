@@ -43,6 +43,7 @@
         "test:configure-resume": "pnpm exec tsx scripts/test/test-configure-resume.ts",
         "test:env": "pnpm exec tsx scripts/test/test-env.ts",
         "test:fee-payment": "pnpm exec tsx scripts/test/test-fee-payment.ts",
+        "test:move:quota": "TEST_QUOTA_PAYMASTER=1 pnpm exec tsx scripts/test/test-move.ts",
         "test:moveProof": "pnpm exec tsx scripts/test/test-moveProof.ts",
         "test:superboost": "aztec-nargo test --package libs --silence-warnings",
         "test:types": "aztec-nargo test --package types --silence-warnings",
