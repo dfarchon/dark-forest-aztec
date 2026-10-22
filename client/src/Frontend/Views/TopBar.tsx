@@ -7,6 +7,13 @@ import styled from "styled-components";
 import { Hook } from "../../_types/global/GlobalTypes";
 // import { CaptureZonesGeneratedEvent } from "../../Backend/GameLogic/CaptureZoneGenerator";
 import { weiToEth } from "../../Backend/Utils/Utils";
+import {
+  formatQuotaBadge,
+  formatQuotaTooltip,
+  QUOTA_STATUS_OFF,
+  type QuotaStatus,
+  subscribeToQuotaStatus,
+} from "../../Session/QuotaStatus";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
@@ -229,6 +236,7 @@ export function TopBar({
             ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
           </Sub>
         </TooltipTrigger>
+        <QuotaBadge />
         {process.env.DF_WEBSERVER_URL && (
           <>
             <TooltipTrigger
@@ -269,5 +277,77 @@ export function TopBar({
       <NetworkHealth />
       <Paused />
     </TopBarContainer>
+  );
+}
+
+/**
+ * Shows how many transactions Dark Forest is paying for today. Renders nothing
+ * when sponsorship is not enabled, so builds without a paymaster look exactly
+ * as they always have.
+ */
+function QuotaBadge() {
+  const [status, setStatus] = useState<QuotaStatus>(QUOTA_STATUS_OFF);
+  const uiManager = useUIManager();
+
+  // The transaction path publishes allowance state as it reads it, so the badge
+  // reflects what the last transaction actually saw rather than polling.
+  useEffect(() => subscribeToQuotaStatus(setStatus), []);
+
+  // One read on load (so sponsorship is visible BEFORE the first transaction),
+  // then one more just after each UTC rollover — a tab left open overnight
+  // would otherwise keep showing yesterday's spent allowance until the next
+  // send. The timer re-arms off whatever state each refresh publishes, so it
+  // follows CHAIN time (millisUntilReset is computed from the block timestamp,
+  // not the local clock, which can disagree by hours on some networks).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const refresh = () => {
+      try {
+        void uiManager
+          .getGameManager()
+          .getContractAPI()
+          .getWalletManager()
+          .refreshQuotaStatus();
+      } catch {
+        /* advisory only; the send path will publish regardless */
+      }
+    };
+
+    // Re-arm from published state rather than scheduling ahead of time: every
+    // publisher (this refresh, and every transaction) carries a fresh
+    // millisUntilReset, so the timer self-corrects instead of drifting.
+    const unsubscribe = subscribeToQuotaStatus((status) => {
+      if (cancelled) return;
+      clearTimeout(timer);
+      if (status.kind === "off" || status.millisUntilReset <= 0) return;
+      // +5s past the boundary so the on-chain generation has actually rolled
+      // by the time we read; clamp below so a stale near-zero value cannot
+      // spin-loop refreshes.
+      const delay = Math.max(status.millisUntilReset + 5_000, 30_000);
+      timer = setTimeout(refresh, delay);
+    });
+
+    refresh();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [uiManager]);
+
+  const label = formatQuotaBadge(status);
+  if (!label) return null;
+
+  return (
+    <TooltipTrigger
+      name={TooltipName.Empty}
+      extraContent={<Text>{formatQuotaTooltip(status)}</Text>}
+    >
+      <Sub>
+        {status.kind === "spent" ? <Red>{label}</Red> : <Gold>{label}</Gold>}
+      </Sub>
+    </TooltipTrigger>
   );
 }

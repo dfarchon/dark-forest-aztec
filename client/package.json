@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@alejoamiras/aztec-accelerator": "5.2.0",
+    "@alejoamiras/quota-paymaster": "5.0.1-revision.2",
     "@aztec/aztec.js": "5.2.0",
     "@aztec/constants": "5.2.0",
     "@aztec/foundation": "5.2.0",

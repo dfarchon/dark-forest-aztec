@@ -11,8 +11,9 @@
         "aztec:fmt:check": "aztec-nargo fmt --workspace --check",
         "aztec:fmt:lint-staged": "node -e \"require('child_process').execSync('aztec-nargo fmt --workspace', {stdio:'inherit'})\"",
         "build": "pnpm build-contracts",
-        "build-contracts": "pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts",
+        "build-contracts": "pnpm aztec:fmt && pnpm compile-contracts && pnpm codegen-contracts && pnpm copy-artifacts && pnpm check-artifacts",
         "bytecode-check": "pnpm exec tsx scripts/dev/bytecode-check.ts",
+        "check-artifacts": "pnpm exec tsx scripts/dev/check-artifact-sync.ts",
         "circuit-info": "pnpm exec tsx scripts/dev/circuit-info.ts",
         "clean": "del-cli dist node_modules target codegenCache.json scripts/artifacts",
         "clean-pxe": "del-cli pxe_data_* wallet_data_* ./scripts/pxe_data_* ./scripts/wallet_data_* .store",
@@ -25,6 +26,7 @@
         "deploy-contracts": "pnpm exec tsx scripts/deploy/deploy.ts",
         "format": "pnpm run aztec:fmt & pnpm run scripts:fmt",
         "format:check": "pnpm run aztec:fmt:check & pnpm run scripts:fmt:check",
+        "fpc": "quota-paymaster",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "local-network": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
@@ -48,6 +50,7 @@
         "verify-perms": "pnpm exec tsx scripts/deploy/verify-storage-permissions.ts"
     },
     "dependencies": {
+        "@alejoamiras/quota-paymaster": "5.0.1-revision.2",
         "@dfpunk/hashing": "workspace:*",
         "@dfpunk/utils": "workspace:*"
     },

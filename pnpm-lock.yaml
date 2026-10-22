@@ -191,6 +191,9 @@ importers:
       '@alejoamiras/aztec-accelerator':
         specifier: 5.2.0
         version: 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6)
+      '@alejoamiras/quota-paymaster':
+        specifier: 5.0.1-revision.2
+        version: 5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@5.5.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@5.5.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
       '@aztec/aztec.js':
         specifier: 5.2.0
         version: 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
@@ -399,6 +402,9 @@ importers:
 
   contracts:
     dependencies:
+      '@alejoamiras/quota-paymaster':
+        specifier: 5.0.1-revision.2
+        version: 5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
       '@dfpunk/hashing':
         specifier: workspace:*
         version: link:../packages/hashing
@@ -726,6 +732,26 @@ packages:
   '@alejoamiras/aztec-accelerator@5.2.0':
     resolution: {integrity: sha512-SjgdAEFcllcrbl0U6kZnbr3e16rHqjlAWoOXw1oUx0sLa5+1hiVylpeZn3/l0nMdtTso1ouGuDVF5ywLh1xOsQ==}
     deprecated: Aztec Accelerator has moved to Presto. Use @alejoamiras/presto and follow https://github.com/alejoamiras/presto/blob/main/packages/sdk/MIGRATION.md. Migration is manual.
+
+  '@alejoamiras/quota-paymaster@5.0.1-revision.2':
+    resolution: {integrity: sha512-Dcafrapv/y3oJKO4Mf9QjA4xWYe5EAPk3M+8pE4F9BWbL57w4TQWHlfX7V1Ct1YFeXR7h8706iUa89+GuKEjPg==}
+    engines: {node: '>=22.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@aztec/accounts': 5.0.1
+      '@aztec/aztec.js': 5.0.1
+      '@aztec/entrypoints': 5.0.1
+      '@aztec/ethereum': 5.0.1
+      '@aztec/foundation': 5.0.1
+      '@aztec/l1-artifacts': 5.0.1
+      '@aztec/stdlib': 5.0.1
+      '@aztec/wallets': 5.0.1
+      tsx: ^4.19.0
+    peerDependenciesMeta:
+      '@aztec/wallets':
+        optional: true
+      tsx:
+        optional: true
 
   '@aws-sdk/checksums@3.1001.1':
     resolution: {integrity: sha512-x12Q17KYlJAd3nKf8LV5LV0vt8sh8/6YfQLGPtrGnQf/tW4jqxPGq5GPpuVitpQYM3eUR4XB7CbxZf751NMbLw==}
@@ -2230,6 +2256,7 @@ packages:
   '@opentelemetry/propagator-jaeger@2.11.0':
     resolution: {integrity: sha512-RUOqgoIqXOPQTOhpBrs07Y8sBlxVoLY5Fka6ueZ0prW+k6fWQsba/nHDY4gm+gmfuwtRqbX5Y9YKhDvktjbIqQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Package no longer supported. See https://github.com/open-telemetry/opentelemetry-js/pull/7077
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -2278,30 +2305,35 @@ packages:
   '@opentelemetry/sdk-trace-base@1.28.0':
     resolution: {integrity: sha512-ceUVWuCpIao7Y5xE02Xs3nQi0tOGmMea17ecBdwtCvdo9ekmO+ijc9RFDgfifMl7XCBf41zne/1POM3LqSTZDA==}
     engines: {node: '>=14'}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-base@1.30.1':
     resolution: {integrity: sha512-jVPgBbH1gCy2Lb7X0AVQ8XAfgg0pJ4nvl8/IiQA6nxOsPvS+0zMJaFSs2ltXe0J6C8dqjcnpyqINDJmU30+uOg==}
     engines: {node: '>=14'}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-base@2.10.0':
     resolution: {integrity: sha512-GuYQQT7QD2EeO8lcZLRQzcbOyhqAzL+6WWTKTU9mSUBYBazkEDl+VrQcXQhbB08OWM9anD1aHleVadzulpOaUQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-node@1.30.1':
     resolution: {integrity: sha512-cBjYOINt1JxXdpw1e5MlHmFRc5fgj4GW/86vsKFxJCJ8AL4PdVtYH41gWwl4qd4uQjqEL1oJVrXkSy5cnduAnQ==}
     engines: {node: '>=14'}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-node@2.10.0':
     resolution: {integrity: sha512-GZK/G6oZyBLGlH1pUgeDch7D91KoHd2uotUGIkWCPi9GI5T9X0p4L7nNAMDR1BQjkRYoDqo+ddfVx9t5Uhys+Q==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -7689,6 +7721,32 @@ snapshots:
       - typescript
       - utf-8-validate
       - zod
+
+  '@alejoamiras/quota-paymaster@5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)':
+    dependencies:
+      '@aztec/accounts': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/entrypoints': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/ethereum': 5.2.0(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/foundation': 5.2.0(supports-color@11.0.0)
+      '@aztec/l1-artifacts': 5.2.0
+      '@aztec/stdlib': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+    optionalDependencies:
+      '@aztec/wallets': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6)
+      tsx: 4.21.0
+
+  '@alejoamiras/quota-paymaster@5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@5.5.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@5.5.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)':
+    dependencies:
+      '@aztec/accounts': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/entrypoints': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/ethereum': 5.2.0(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/foundation': 5.2.0(supports-color@5.5.0)
+      '@aztec/l1-artifacts': 5.2.0
+      '@aztec/stdlib': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+    optionalDependencies:
+      '@aztec/wallets': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6)
+      tsx: 4.21.0
 
   '@aws-sdk/checksums@3.1001.1':
     dependencies:
