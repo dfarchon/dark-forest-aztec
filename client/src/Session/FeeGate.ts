@@ -4,29 +4,17 @@
  *
  * The rule that shapes everything here: a player who can pay is NEVER shown a
  * wall. The gate fires only when an action has no fee source at all — no
- * sponsorship AND no own balance — and its copy depends on why:
+ * sponsorship AND no own balance:
  *
- *   "sponsorship-spent"  they were sponsored today and used it up. The gauge
- *                        shows the spent allowance and when it returns.
- *   "needs-fee-juice"    sponsorship never covered them (no paymaster, wrong
- *                        account class, no seat). Plain "you need fee juice",
- *                        no gauge — showing spent pips for an allowance they
- *                        never had would be a lie.
+ *   "needs-fee-juice"    sponsorship is unavailable and the account cannot pay.
  *   "send-failed"        an action already failed for lack of a fee source.
  *                        Rendered as a corner toast, not a modal: the action is
  *                        already dead, a second full-screen stop punishes twice.
  *
- * Same tiny listener pattern as QuotaStatus — advisory UI state, no framework.
+ * This uses a tiny framework-independent listener pattern.
  */
 
 export type FeeGateEvent =
-  | {
-      kind: "sponsorship-spent";
-      /** How many sponsored transactions the day started with, for the gauge. */
-      allowancePerDay: number;
-      resetsAt: string;
-      millisUntilReset: number;
-    }
   | { kind: "needs-fee-juice" }
   | { kind: "send-failed" };
 

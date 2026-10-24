@@ -5,15 +5,10 @@ import styled from "styled-components";
 
 import TutorialManager from "../../Backend/GameLogic/TutorialManager";
 import {
-  getEffectiveSponsoredFpcAddressOverride,
-  getEffectiveUseSponsoredFpc,
+  getEffectiveUseProjectSponsoredFpc,
   setConnectionOverrides,
 } from "../../config/connection";
-import {
-  getAccountMinBalanceFjWei,
-  getSponsoredFpcMinBalanceFjWei,
-  getSponsorMode,
-} from "../../config/env";
+import { getAccountMinBalanceFjWei } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { Btn } from "../Components/Btn";
@@ -68,15 +63,14 @@ export function SettingsPane({
   const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const account = useAccount(uiManager);
   const isDevelopment = process.env.NODE_ENV !== "production";
-  const sponsorMode = getSponsorMode();
 
   const [balance, setBalance] = useState<number>(0);
   const [accountFjWei, setAccountFjWei] = useState<bigint>(0n);
-  const [sponsorFjWei, setSponsorFjWei] = useState<bigint | undefined>(
-    undefined
-  );
+  const [sponsoredFpcFjWei, setSponsoredFpcFjWei] = useState<
+    bigint | undefined
+  >(undefined);
   const [useSponsoredFpc, setUseSponsoredFpc] = useState(
-    getEffectiveUseSponsoredFpc()
+    getEffectiveUseProjectSponsoredFpc()
   );
 
   useEffect(() => {
@@ -96,22 +90,22 @@ export function SettingsPane({
 
   useEffect(() => {
     if (visible) {
-      setUseSponsoredFpc(getEffectiveUseSponsoredFpc());
+      setUseSponsoredFpc(getEffectiveUseProjectSponsoredFpc());
     }
   }, [visible]);
 
   useEffect(() => {
-    if (!visible || !sponsorMode || !useSponsoredFpc) return;
+    if (!visible || !useSponsoredFpc) return;
     let cancelled = false;
     const tick = async () => {
       try {
         const b = await uiManager
           .getGameManager()
-          .getSponsoredFpcFeeJuiceBalance();
-        if (!cancelled) setSponsorFjWei(b);
+          .getProjectSponsoredFpcFeeJuiceBalance();
+        if (!cancelled) setSponsoredFpcFjWei(b);
       } catch (err) {
         console.error(err);
-        if (!cancelled) setSponsorFjWei(undefined);
+        if (!cancelled) setSponsoredFpcFjWei(undefined);
       }
     };
     void tick();
@@ -122,17 +116,14 @@ export function SettingsPane({
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [sponsorMode, useSponsoredFpc, visible, uiManager]);
+  }, [useSponsoredFpc, visible, uiManager]);
 
-  const sponsorFjMinWei = getSponsoredFpcMinBalanceFjWei();
-  const sponsorFjLow =
-    sponsorFjWei !== undefined && sponsorFjWei < sponsorFjMinWei;
   const accountFjMinWei = getAccountMinBalanceFjWei();
   const accountFjLow = accountFjWei < accountFjMinWei;
 
   const onUseSponsoredFpcChange = (e: Event) => {
     const enabled = (e.target as DarkForestCheckbox).checked;
-    setConnectionOverrides({ useSponsoredFpc: enabled });
+    setConnectionOverrides({ useProjectSponsoredFpc: enabled });
     setUseSponsoredFpc(enabled);
   };
 
@@ -260,24 +251,20 @@ export function SettingsPane({
 
         <Section>
           <SectionHeader>Transaction fees</SectionHeader>
-          {sponsorMode && (
-            <>
-              <Checkbox
-                label="Use SponsoredFPC to pay transaction fees"
-                checked={useSponsoredFpc}
-                onChange={onUseSponsoredFpcChange}
-              />
-              <Spacer height={12} />
-            </>
-          )}
+          <Checkbox
+            label="Use Sponsored FPC to pay transaction fees"
+            checked={useSponsoredFpc}
+            onChange={onUseSponsoredFpcChange}
+          />
+          <Spacer height={12} />
 
           {useSponsoredFpc ? (
             <>
-              SponsoredFPC is the selected payer. If its FeeJuice balance is too
-              low, transactions fail instead of charging your account.
+              Sponsored FPC is the selected fee payer for eligible game
+              transactions.
               <Spacer height={12} />
               <Row>
-                <span>Local / env override</span>
+                <span>Sponsored FPC</span>
                 <span
                   style={{
                     wordBreak: "break-all",
@@ -287,68 +274,18 @@ export function SettingsPane({
                     fontSize: "11px",
                   }}
                 >
-                  {getEffectiveSponsoredFpcAddressOverride() ??
-                    "(none — canonical)"}
+                  {uiManager.getGameManager().getProjectSponsoredFpcAddress() ??
+                    "—"}
                 </span>
               </Row>
               <Row>
-                <span>Active payer (this session)</span>
-                <span
-                  style={{
-                    wordBreak: "break-all",
-                    maxWidth: 260,
-                    textAlign: "right",
-                    fontFamily: "monospace",
-                    fontSize: "11px",
-                  }}
-                >
-                  {uiManager.getGameManager().getSponsoredFpcAddress() ?? "—"}
-                </span>
-              </Row>
-              <Row>
-                <span>SponsoredFPC FeeJuice</span>
+                <span>Remaining FeeJuice</span>
                 <span>
-                  {sponsorFjWei === undefined
+                  {sponsoredFpcFjWei === undefined
                     ? "—"
-                    : formatFeeJuiceWei(sponsorFjWei)}
+                    : formatFeeJuiceWei(sponsoredFpcFjWei)}
                 </span>
               </Row>
-              <Row>
-                <span>Minimum balance</span>
-                <span>{formatFeeJuiceWei(sponsorFjMinWei)}</span>
-              </Row>
-              {sponsorFjLow && (
-                <>
-                  <Spacer height={8} />
-                  <Red>
-                    SponsoredFPC balance is below the configured minimum.
-                    Transactions are blocked; fund it or change the address in
-                    Connection settings.
-                  </Red>
-                </>
-              )}
-              <Spacer height={8} />
-              <Btn
-                size="stretch"
-                onClick={async () => {
-                  const addr = uiManager
-                    .getGameManager()
-                    .getSponsoredFpcAddress();
-                  if (!addr) {
-                    setFailure("No SponsoredFPC address for this session.");
-                    return;
-                  }
-                  try {
-                    await window.navigator.clipboard.writeText(addr);
-                    setSuccess("Copied SponsoredFPC address.");
-                  } catch (err) {
-                    console.error(err);
-                    setFailure("Failed to copy to clipboard.");
-                  }
-                }}
-              >
-                Copy active SponsoredFPC address
-              </Btn>
             </>
           ) : (
             <>

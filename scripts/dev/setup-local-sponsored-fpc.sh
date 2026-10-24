@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
-# Deploy and fund the local QuotaFpc, then expose it to the Vite client.
+# Deploy and fund the in-repo SponsoredFpc, then expose it to the Vite client.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONTRACTS_ENV="${ROOT}/contracts/.env"
 CLIENT_ENV="${ROOT}/client/.env.local"
-CONFIG_MODULE="./quota-paymaster.config.ts"
+CONFIG_MODULE="./sponsored-fpc.config.ts"
 LOCAL_CONFIG="fpc/config/local.json"
-JOURNAL_DIR="${ROOT}/.mprocs/quota-paymaster-journal"
-TICKER_LOG="${ROOT}/.mprocs/quota-bootstrap-ticker.log"
+JOURNAL_DIR="${ROOT}/.mprocs/sponsored-fpc-journal"
+TICKER_LOG="${ROOT}/.mprocs/sponsored-fpc-bootstrap-ticker.log"
 ticker_pid=""
 deploy_log=""
 
+terminate_tree() {
+  local pid="$1"
+  local child
+  while IFS= read -r child; do
+    [[ -n "${child}" ]] && terminate_tree "${child}"
+  done < <(pgrep -P "${pid}" 2>/dev/null || true)
+  kill -TERM "${pid}" 2>/dev/null || true
+}
+
 cleanup() {
   if [[ -n "${ticker_pid}" ]]; then
-    kill "${ticker_pid}" 2>/dev/null || true
+    # pnpm adds several wrapper processes. Stop the leaf ticker first so the
+    # wrappers do not remain waiting forever during shell cleanup.
+    terminate_tree "${ticker_pid}"
     wait "${ticker_pid}" 2>/dev/null || true
   fi
   if [[ -n "${deploy_log}" ]]; then
@@ -24,7 +35,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ ! -f "${CONTRACTS_ENV}" ]]; then
-  echo "[quota-fpc] missing ${CONTRACTS_ENV}; deploy game contracts first" >&2
+  echo "[sponsored-fpc] missing ${CONTRACTS_ENV}; deploy game contracts first" >&2
   exit 1
 fi
 
@@ -37,7 +48,6 @@ export NODE_URL="${AZTEC_NODE_URL:-http://127.0.0.1:8080}"
 export L1_RPC_URL="${ETHEREUM_HOST:-http://127.0.0.1:8545}"
 # First Anvil dev account. This script is local-network-only.
 export L1_PRIVATE_KEY="${L1_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
-export QUOTA_FPC_ADMIN_ADDRESS="${QUOTA_FPC_ADMIN_ADDRESS:-${ACCOUNT_ADDRESS}}"
 
 upsert_env() {
   local file="$1"
@@ -87,20 +97,20 @@ claim_with_retry() {
       --journal-dir "${JOURNAL_DIR}" --allow-retry-after-unknown --yes </dev/null; then
       return 0
     fi
-    echo "[quota-fpc] claim message not ready; retry ${attempt}/30"
+    echo "[sponsored-fpc] claim message not ready; retry ${attempt}/30"
     sleep 2
   done
-  echo "[quota-fpc] timed out waiting for claim message for ${recipient}" >&2
+  echo "[sponsored-fpc] timed out waiting for claim message for ${recipient}" >&2
   return 1
 }
 
 cd "${ROOT}/contracts"
 
-existing="${QUOTA_FPC_CONTRACT_ADDRESS:-}"
+existing="${SPONSORED_FPC_CONTRACT_ADDRESS:-}"
 if [[ -n "${existing}" ]] && contract_exists "${existing}"; then
-  echo "[quota-fpc] reusing ${existing}"
-  upsert_env "${CONTRACTS_ENV}" QUOTA_FPC_CONTRACT_ADDRESS "${existing}"
-  upsert_env "${CLIENT_ENV}" VITE_QUOTA_FPC_ADDRESS "${existing}"
+  echo "[sponsored-fpc] reusing ${existing}"
+  upsert_env "${CONTRACTS_ENV}" SPONSORED_FPC_CONTRACT_ADDRESS "${existing}"
+  upsert_env "${CLIENT_ENV}" VITE_SPONSORED_FPC_ADDRESS "${existing}"
   exit 0
 fi
 
@@ -112,10 +122,10 @@ cast send "${LOCAL_FEE_ASSET_ADDRESS:-0x0165878A594ca255338adfa4d48449f69242Eb8F
   --rpc-url "${L1_RPC_URL}" --private-key "${L1_PRIVATE_KEY}" >/dev/null
 
 deploy_log="$(mktemp)"
-pnpm fpc deploy --config "${LOCAL_CONFIG}" --config-module "${CONFIG_MODULE}" --yes </dev/null | tee "${deploy_log}"
-address="$(sed -n 's/.*QUOTA_FPC_CONTRACT_ADDRESS=\(0x[0-9a-fA-F]*\).*/\1/p' "${deploy_log}" | tail -1)"
+pnpm deploy-sponsored-fpc "${LOCAL_CONFIG}" </dev/null | tee "${deploy_log}"
+address="$(sed -n 's/.*SPONSORED_FPC_CONTRACT_ADDRESS=\(0x[0-9a-fA-F]*\).*/\1/p' "${deploy_log}" | tail -1)"
 if [[ -z "${address}" ]]; then
-  echo "[quota-fpc] deployment completed without an address in the CLI output" >&2
+  echo "[sponsored-fpc] deployment completed without an address in the CLI output" >&2
   exit 1
 fi
 
@@ -125,11 +135,11 @@ fi
 pnpm --filter contracts run timestamp-ticker 2 >"${TICKER_LOG}" 2>&1 &
 ticker_pid=$!
 
-echo "[quota-fpc] funding paymaster ${address}"
-pnpm fpc bridge --to "${address}" --amount "${QUOTA_FPC_FUND_FJ:-500}" \
+echo "[sponsored-fpc] funding paymaster ${address}"
+pnpm fpc bridge --to "${address}" --amount "${SPONSORED_FPC_FUND_FJ:-500}" \
   --config-module "${CONFIG_MODULE}" --journal-dir "${JOURNAL_DIR}" --yes </dev/null
 claim_with_retry "${address}"
 
-upsert_env "${CONTRACTS_ENV}" QUOTA_FPC_CONTRACT_ADDRESS "${address}"
-upsert_env "${CLIENT_ENV}" VITE_QUOTA_FPC_ADDRESS "${address}"
-echo "[quota-fpc] ready: ${address}"
+upsert_env "${CONTRACTS_ENV}" SPONSORED_FPC_CONTRACT_ADDRESS "${address}"
+upsert_env "${CLIENT_ENV}" VITE_SPONSORED_FPC_ADDRESS "${address}"
+echo "[sponsored-fpc] ready: ${address}"

@@ -117,9 +117,9 @@ export async function prepareFeePayment(
 
     // If a bridged-but-unredeemed claim is configured, it takes precedence:
     // it is the only thing that can pay when the account balance is still zero.
-    const claimAmount = getOptionalEnv('QUOTA_FPC_CLAIM_AMOUNT');
-    const claimSecret = getOptionalEnv('QUOTA_FPC_CLAIM_SECRET');
-    const claimLeafIndex = getOptionalEnv('QUOTA_FPC_CLAIM_LEAF_INDEX');
+    const claimAmount = getOptionalEnv('SPONSORED_FPC_CLAIM_AMOUNT');
+    const claimSecret = getOptionalEnv('SPONSORED_FPC_CLAIM_SECRET');
+    const claimLeafIndex = getOptionalEnv('SPONSORED_FPC_CLAIM_LEAF_INDEX');
     if (claimAmount && claimSecret && claimLeafIndex && from) {
         const { FeeJuicePaymentMethodWithClaim } =
             await import('@aztec/aztec.js/fee');
@@ -127,7 +127,7 @@ export async function prepareFeePayment(
             '🎟️  Redeeming a bridged fee-juice claim with this transaction.'
         );
         console.log(
-            '    Clear QUOTA_FPC_CLAIM_* from the env once it has been redeemed —'
+            '    Clear SPONSORED_FPC_CLAIM_* from the env once it has been redeemed —'
         );
         console.log(
             '    a claim is single-use and reusing it will fail the next transaction.'

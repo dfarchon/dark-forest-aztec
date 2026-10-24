@@ -47,12 +47,14 @@ vite.config.ts.timestamp-*
 .sandbox/
 .aztec-sandbox/
 .store/
+.store-sponsored-fpc/
 
 # Aztec local state & cache (nested)
 **/.aztec/
 **/.pxe/
 **/.sandbox/
 **/.store/
+**/.store-sponsored-fpc/
 bridge/.store/
 bridge/.store.backup/
 

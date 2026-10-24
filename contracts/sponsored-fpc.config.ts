@@ -1,8 +1,8 @@
 /**
- * Operator config module for the quota-paymaster CLI.
+ * Operator adapter for the external quota-paymaster CLI used to bridge and
+ * claim FeeJuice for this project's Sponsored FPC.
  *
- *   pnpm --filter contracts run fpc -- policy --fpc 0x… \
- *     --config-module ./quota-paymaster.config.ts --show
+ * Used by the local setup script for the CLI's `bridge` and `claim` commands.
  *
  * The CLI never touches key material: it loads this module, and this module
  * builds the signer the way this repo already does — from ACCOUNT_* in the

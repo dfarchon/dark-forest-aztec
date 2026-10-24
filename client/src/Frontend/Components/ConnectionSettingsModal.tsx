@@ -6,15 +6,16 @@ import {
   getConnectionOverrides,
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
+  getEffectiveProjectSponsoredFpcAddress,
   getEffectiveProverUrl,
-  getEffectiveQuotaFpcAddress,
+  getEffectiveUseProjectSponsoredFpc,
   setConnectionOverrides,
 } from "../../config/connection";
 import {
   getIndexerBootstrapUrl,
   getNodeUrl,
+  getProjectSponsoredFpcAddressFromEnv,
   getProverUrl,
-  getQuotaFpcAddressFromEnv,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
 import dfstyles from "../Styles/dfstyles";
@@ -130,8 +131,8 @@ export function ConnectionSettingsModal({
   const [nodeUrlInput, setNodeUrlInput] = useState("");
   const [indexerUrlInput, setIndexerUrlInput] = useState("");
   const [proverUrlInput, setProverUrlInput] = useState("");
-  const [quotaFpcInput, setQuotaFpcInput] = useState("");
-  const [useQuotaFpc, setUseQuotaFpc] = useState(true);
+  const [projectSponsoredFpcInput, setProjectSponsoredFpcInput] = useState("");
+  const [useProjectSponsoredFpc, setUseProjectSponsoredFpc] = useState(true);
   const [saveMessage, setSaveMessage] = useState<
     "saved" | "restored" | "error" | null
   >(null);
@@ -141,8 +142,10 @@ export function ConnectionSettingsModal({
     setIndexerUrlInput(getEffectiveIndexerBootstrapUrl() ?? "");
     setProverUrlInput(getEffectiveProverUrl());
     const overrides = getConnectionOverrides();
-    setQuotaFpcInput(overrides.quotaFpcAddress?.trim() ?? "");
-    setUseQuotaFpc(overrides.useQuotaFpc !== false);
+    setProjectSponsoredFpcInput(
+      overrides.projectSponsoredFpcAddress?.trim() ?? ""
+    );
+    setUseProjectSponsoredFpc(getEffectiveUseProjectSponsoredFpc());
   }, []);
 
   useEffect(() => {
@@ -172,10 +175,10 @@ export function ConnectionSettingsModal({
       setSaveMessage("error");
       return;
     }
-    const quotaTrimmed = quotaFpcInput.trim();
-    if (useQuotaFpc && quotaTrimmed.length > 0) {
+    const sponsoredFpcTrimmed = projectSponsoredFpcInput.trim();
+    if (useProjectSponsoredFpc && sponsoredFpcTrimmed.length > 0) {
       try {
-        AztecAddress.fromStringUnsafe(quotaTrimmed);
+        AztecAddress.fromStringUnsafe(sponsoredFpcTrimmed);
       } catch {
         setSaveMessage("error");
         return;
@@ -185,16 +188,16 @@ export function ConnectionSettingsModal({
       nodeUrl: nodeTrimmed,
       indexerBootstrapUrl: indexerTrimmed || null,
       proverUrl: proverTrimmed || "",
-      quotaFpcAddress: quotaTrimmed,
-      useQuotaFpc,
+      projectSponsoredFpcAddress: sponsoredFpcTrimmed,
+      useProjectSponsoredFpc,
     });
     setSaveMessage("saved");
   }, [
     nodeUrlInput,
     indexerUrlInput,
     proverUrlInput,
-    quotaFpcInput,
-    useQuotaFpc,
+    projectSponsoredFpcInput,
+    useProjectSponsoredFpc,
   ]);
 
   const handleRestoreDefault = useCallback(() => {
@@ -202,14 +205,16 @@ export function ConnectionSettingsModal({
       nodeUrl: "",
       indexerBootstrapUrl: undefined,
       proverUrl: "",
-      quotaFpcAddress: "",
-      useQuotaFpc: null,
+      projectSponsoredFpcAddress: "",
+      useProjectSponsoredFpc: null,
     });
     setNodeUrlInput(getNodeUrl());
     setIndexerUrlInput(getIndexerBootstrapUrl() ?? "");
     setProverUrlInput(getProverUrl());
-    setQuotaFpcInput("");
-    setUseQuotaFpc(true);
+    setProjectSponsoredFpcInput("");
+    setUseProjectSponsoredFpc(
+      getProjectSponsoredFpcAddressFromEnv() !== undefined
+    );
     setSaveMessage("restored");
   }, []);
 
@@ -272,42 +277,45 @@ export function ConnectionSettingsModal({
           <FeePaymentToggle>
             <FeePaymentCheckbox
               type="checkbox"
-              checked={useQuotaFpc}
+              checked={useProjectSponsoredFpc}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setUseQuotaFpc(e.target.checked)
+                setUseProjectSponsoredFpc(e.target.checked)
               }
             />
             <FeePaymentToggleCopy>
-              <FeePaymentTitle>Quota paymaster</FeePaymentTitle>
+              <FeePaymentTitle>Sponsored FPC</FeePaymentTitle>
               <FeePaymentSubtitle>
-                Use the project's daily sponsored transaction quota
+                Let the project pay fees for eligible game transactions
               </FeePaymentSubtitle>
             </FeePaymentToggleCopy>
           </FeePaymentToggle>
 
-          {useQuotaFpc ? (
+          {useProjectSponsoredFpc ? (
             <FeePaymentDetails>
-              <FeePaymentStatus>Quota paymaster selected</FeePaymentStatus>
+              <FeePaymentStatus>Sponsored FPC selected</FeePaymentStatus>
               <FeePaymentHelp>
-                Eligible game calls use the project's quota first, then fall
-                back to your account when sponsorship is unavailable.
+                Eligible game calls are paid by the project's Sponsored FPC. If
+                sponsorship is unavailable, you will be notified before the
+                transaction uses your account.
               </FeePaymentHelp>
-              <FeePaymentFieldLabel>QuotaFpc address</FeePaymentFieldLabel>
+              <FeePaymentFieldLabel>Sponsored FPC address</FeePaymentFieldLabel>
               <TextInput
-                value={quotaFpcInput}
+                value={projectSponsoredFpcInput}
                 onChange={(e) =>
-                  setQuotaFpcInput((e.target as HTMLInputElement).value)
+                  setProjectSponsoredFpcInput(
+                    (e.target as HTMLInputElement).value
+                  )
                 }
                 placeholder={
-                  getEffectiveQuotaFpcAddress() ??
-                  getQuotaFpcAddressFromEnv() ??
-                  "QuotaFpc Aztec address"
+                  getEffectiveProjectSponsoredFpcAddress() ??
+                  getProjectSponsoredFpcAddressFromEnv() ??
+                  "Sponsored FPC Aztec address"
                 }
                 style={{ width: "100%", marginBottom: 7 }}
               />
               <FeePaymentHelp style={{ marginBottom: 0 }}>
-                Leave empty to use <code>VITE_QUOTA_FPC_ADDRESS</code>. Address
-                changes apply after refresh.
+                Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code>.
+                Address changes apply after refresh.
               </FeePaymentHelp>
             </FeePaymentDetails>
           ) : (
@@ -348,8 +356,8 @@ export function ConnectionSettingsModal({
         )}
         {saveMessage === "error" && (
           <Text style={{ color: dfstyles.colors.dfred, marginBottom: 8 }}>
-            Please enter valid HTTP(S) URLs and a valid QuotaFpc address (or
-            leave the address empty).
+            Please enter valid HTTP(S) URLs and a valid Sponsored FPC address
+            (or leave the address empty).
           </Text>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>

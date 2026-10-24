@@ -11,7 +11,7 @@
  *
  * Usage:
  *   node --experimental-transform-types scripts/test/test-move.ts [userIndex]
- *   TEST_QUOTA_PAYMASTER=1 pnpm exec tsx scripts/test/test-move.ts [userIndex]
+ *   TEST_SPONSORED_FPC=1 pnpm exec tsx scripts/test/test-move.ts [userIndex]
  * userIndex: 0 = user1, 1 = user2 (default 0). Player must already be initialized.
  */
 import { getPublicEvents } from '@aztec/aztec.js/events';
@@ -21,7 +21,7 @@ import { getGasLimits } from '@aztec/wallet-sdk/base-wallet';
 
 import { unwrapSimulateResult } from '../utils/index.ts';
 import { logFeeMeasure } from './feeMeasureLog.ts';
-import { sendWithQuotaPaymaster } from './quotaPaymasterSend.ts';
+import { sendWithSponsoredFpc } from './sponsoredFpcSend.ts';
 import {
     getTestContext,
     sendTimestampRefreshTx,
@@ -713,13 +713,13 @@ async function main() {
     }
 
     try {
-        if (process.env.TEST_QUOTA_PAYMASTER === '1') {
+        if (process.env.TEST_SPONSORED_FPC === '1') {
             const requested = await Move.methods.move(...moveArgs).request();
             const calls =
                 (requested as unknown as { calls?: unknown[] }).calls ??
                 (requested as unknown as unknown[]);
-            console.log('\n💳 Sending move through QuotaFpc...');
-            const sponsored = await sendWithQuotaPaymaster({
+            console.log('\n💳 Sending move through SponsoredFpc...');
+            const sponsored = await sendWithSponsoredFpc({
                 wallet: ctx.wallet,
                 node: ctx.node,
                 player: user,
@@ -745,17 +745,15 @@ async function main() {
                     console.log('   Receipt status:', status);
                     console.log('   Execution result:', executionResult);
                     if (executionResult.toLowerCase() !== 'success') {
-                        throw new Error(`Quota-sponsored move ${status}`);
+                        throw new Error(`Sponsored move ${status}`);
                     }
-                    console.log(
-                        '\n✅ TEST SUCCESS — quota-sponsored move committed'
-                    );
+                    console.log('\n✅ TEST SUCCESS — sponsored move committed');
                     console.log('  Transaction:', sponsored.txHash);
                     return;
                 }
                 await new Promise((resolve) => setTimeout(resolve, 1_000));
             }
-            throw new Error('Timed out waiting for quota-sponsored move');
+            throw new Error('Timed out waiting for sponsored move');
         }
         const { receipt } = await Move.methods
             .move(...moveArgs)

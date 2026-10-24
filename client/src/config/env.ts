@@ -77,7 +77,7 @@ export function getProverUrl(): string {
   return getString("VITE_TEEREX_PROVER_URL") ?? DEFAULT_PROVER_URL;
 }
 
-/** Legacy SponsoredFPC is disabled; QuotaFpc is the only sponsored path. */
+/** The protocol-level development sponsor path is disabled. */
 export function getSponsorMode(): boolean {
   return false;
 }
@@ -137,36 +137,20 @@ export function txExplorerUrl(hash: string, layer: "l2" | "l1" = "l2"): string {
 }
 
 /**
- * Address of the QuotaFpc paymaster, which sponsors each player a daily
- * allowance of transactions restricted to Dark Forest's own contracts.
- *
- * Setting this activates quota mode (inside the existing sponsor-mode path —
- * one switch, not a parallel pipeline). Unset means the paymaster is not in
- * play and fees behave exactly as they do today.
- * Build-time: `VITE_QUOTA_FPC_ADDRESS`.
+ * Address of the project's Sponsored FPC. It pays eligible Dark Forest calls
+ * from one shared FeeJuice balance; there is no user, seat, or daily quota.
+ * Build-time: `VITE_SPONSORED_FPC_ADDRESS`.
  */
-export function getQuotaFpcAddressFromEnv(): string | undefined {
-  const v = getString("VITE_QUOTA_FPC_ADDRESS");
+export function getProjectSponsoredFpcAddressFromEnv(): string | undefined {
+  const v = getString("VITE_SPONSORED_FPC_ADDRESS");
   if (v === undefined) return undefined;
   const t = v.trim();
   return t.length > 0 ? t : undefined;
 }
 
-/** True when a quota paymaster is configured for this build. */
-export function isQuotaModeEnabled(): boolean {
-  return getQuotaFpcAddressFromEnv() !== undefined;
-}
-
-/**
- * How long to wait for the wallet to observe an updated allowance before
- * treating it as unknown. Never used to conclude a player is out of free
- * transactions — only to decide when to stop waiting and say "still checking".
- * Env: `VITE_QUOTA_SYNC_TIMEOUT_MS`.
- */
-export function getQuotaSyncTimeoutMs(): number {
-  const raw = getString("VITE_QUOTA_SYNC_TIMEOUT_MS");
-  const parsed = raw === undefined ? NaN : Number(raw.trim());
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+/** True when the project Sponsored FPC is configured for this build. */
+export function isProjectSponsoredFpcEnabled(): boolean {
+  return getProjectSponsoredFpcAddressFromEnv() !== undefined;
 }
 
 /**

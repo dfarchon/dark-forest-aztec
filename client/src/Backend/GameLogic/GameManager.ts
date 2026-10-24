@@ -2061,6 +2061,21 @@ class GameManager extends EventEmitter {
       .getSponsoredFpcFeeJuiceBalance();
   }
 
+  /** Sponsored FPC address used by the sponsorship path. */
+  getProjectSponsoredFpcAddress(): string | undefined {
+    return this.contractsAPI
+      .getWalletManager()
+      .getProjectSponsoredFpcAddress()
+      ?.toString();
+  }
+
+  /** Remaining FeeJuice held by the Sponsored FPC. */
+  async getProjectSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
+    return this.contractsAPI
+      .getWalletManager()
+      .getProjectSponsoredFpcFeeJuiceBalance();
+  }
+
   /**
    * Gets the balance of the account measured in Eth (i.e. in full units of the chain).
    */

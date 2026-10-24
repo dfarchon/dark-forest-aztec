@@ -66,7 +66,7 @@ write_state() {
 
 if [[ "${sources_match}" == 1 && "${chain_has_contracts}" == 1 && "${saved_l1}" == "${l1_genesis}" ]]; then
   echo "[mprocs-contracts] sources unchanged and contracts already on this chain; skipping compile and deploy"
-  bash "${ROOT}/scripts/dev/setup-local-quota-paymaster.sh"
+  bash "${ROOT}/scripts/dev/setup-local-sponsored-fpc.sh"
   touch "${MARKER}"
   echo "[mprocs-contracts] done (marker ${MARKER})"
   exit 0
@@ -130,7 +130,7 @@ else
   printf 'y\n' | pnpm --filter contracts run start
 fi
 
-bash "${ROOT}/scripts/dev/setup-local-quota-paymaster.sh"
+bash "${ROOT}/scripts/dev/setup-local-sponsored-fpc.sh"
 write_state
 touch "${MARKER}"
 echo "[mprocs-contracts] done (marker ${MARKER})"

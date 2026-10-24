@@ -7,8 +7,8 @@
 import {
   getIndexerBootstrapUrl,
   getNodeUrl,
+  getProjectSponsoredFpcAddressFromEnv,
   getProverUrl,
-  getQuotaFpcAddressFromEnv,
   getSponsoredFpcAddressFromEnv,
   getSponsorMode,
 } from "./env";
@@ -20,8 +20,10 @@ const STORAGE_KEY_PROVER_URL = "dfpunk:connection:proverUrl";
 const STORAGE_KEY_SPONSORED_FPC_ADDRESS =
   "dfpunk:connection:sponsoredFpcAddress";
 const STORAGE_KEY_USE_SPONSORED_FPC = "dfpunk:connection:useSponsoredFpc";
-const STORAGE_KEY_QUOTA_FPC_ADDRESS = "dfpunk:connection:quotaFpcAddress";
-const STORAGE_KEY_USE_QUOTA_FPC = "dfpunk:connection:useQuotaFpc";
+const STORAGE_KEY_PROJECT_SPONSORED_FPC_ADDRESS =
+  "dfpunk:connection:projectSponsoredFpcAddress";
+const STORAGE_KEY_USE_PROJECT_SPONSORED_FPC =
+  "dfpunk:connection:useProjectSponsoredFpc";
 
 export interface ConnectionOverrides {
   nodeUrl?: string;
@@ -38,8 +40,8 @@ export interface ConnectionOverrides {
    * null clears the preference and restores the build default.
    */
   useSponsoredFpc?: boolean | null;
-  quotaFpcAddress?: string | null;
-  useQuotaFpc?: boolean | null;
+  projectSponsoredFpcAddress?: string | null;
+  useProjectSponsoredFpc?: boolean | null;
 }
 
 /**
@@ -93,11 +95,19 @@ export function getEffectiveUseSponsoredFpc(): boolean {
   return true;
 }
 
-export function getEffectiveQuotaFpcAddress(): string | undefined {
-  const enabled = localStorage.getItem(STORAGE_KEY_USE_QUOTA_FPC);
-  if (enabled === "false") return undefined;
-  const stored = localStorage.getItem(STORAGE_KEY_QUOTA_FPC_ADDRESS)?.trim();
-  return stored || getQuotaFpcAddressFromEnv();
+export function getEffectiveProjectSponsoredFpcAddress(): string | undefined {
+  const stored = localStorage
+    .getItem(STORAGE_KEY_PROJECT_SPONSORED_FPC_ADDRESS)
+    ?.trim();
+  return stored || getProjectSponsoredFpcAddressFromEnv();
+}
+
+/** Whether eligible calls should currently use the configured Sponsored FPC. */
+export function getEffectiveUseProjectSponsoredFpc(): boolean {
+  if (!getEffectiveProjectSponsoredFpcAddress()) return false;
+  return (
+    localStorage.getItem(STORAGE_KEY_USE_PROJECT_SPONSORED_FPC) !== "false"
+  );
 }
 
 /**
@@ -156,18 +166,19 @@ export function setConnectionOverrides(overrides: ConnectionOverrides): void {
       );
     }
   }
-  if (overrides.quotaFpcAddress !== undefined) {
-    const value = overrides.quotaFpcAddress?.trim();
-    if (value) localStorage.setItem(STORAGE_KEY_QUOTA_FPC_ADDRESS, value);
-    else localStorage.removeItem(STORAGE_KEY_QUOTA_FPC_ADDRESS);
+  if (overrides.projectSponsoredFpcAddress !== undefined) {
+    const value = overrides.projectSponsoredFpcAddress?.trim();
+    if (value)
+      localStorage.setItem(STORAGE_KEY_PROJECT_SPONSORED_FPC_ADDRESS, value);
+    else localStorage.removeItem(STORAGE_KEY_PROJECT_SPONSORED_FPC_ADDRESS);
   }
-  if (overrides.useQuotaFpc !== undefined) {
-    if (overrides.useQuotaFpc === null)
-      localStorage.removeItem(STORAGE_KEY_USE_QUOTA_FPC);
+  if (overrides.useProjectSponsoredFpc !== undefined) {
+    if (overrides.useProjectSponsoredFpc === null)
+      localStorage.removeItem(STORAGE_KEY_USE_PROJECT_SPONSORED_FPC);
     else
       localStorage.setItem(
-        STORAGE_KEY_USE_QUOTA_FPC,
-        String(overrides.useQuotaFpc)
+        STORAGE_KEY_USE_PROJECT_SPONSORED_FPC,
+        String(overrides.useProjectSponsoredFpc)
       );
   }
 }
@@ -186,8 +197,12 @@ export function getConnectionOverrides(): ConnectionOverrides {
   const useSponsoredFpcStored = localStorage.getItem(
     STORAGE_KEY_USE_SPONSORED_FPC
   );
-  const quotaFpcStored = localStorage.getItem(STORAGE_KEY_QUOTA_FPC_ADDRESS);
-  const useQuotaFpcStored = localStorage.getItem(STORAGE_KEY_USE_QUOTA_FPC);
+  const projectSponsoredFpcStored = localStorage.getItem(
+    STORAGE_KEY_PROJECT_SPONSORED_FPC_ADDRESS
+  );
+  const useProjectSponsoredFpcStored = localStorage.getItem(
+    STORAGE_KEY_USE_PROJECT_SPONSORED_FPC
+  );
   return {
     nodeUrl: nodeStored !== null ? nodeStored : undefined,
     indexerBootstrapUrl:
@@ -202,8 +217,10 @@ export function getConnectionOverrides(): ConnectionOverrides {
       useSponsoredFpcStored === null
         ? undefined
         : useSponsoredFpcStored !== "false",
-    quotaFpcAddress: quotaFpcStored ?? undefined,
-    useQuotaFpc:
-      useQuotaFpcStored === null ? undefined : useQuotaFpcStored !== "false",
+    projectSponsoredFpcAddress: projectSponsoredFpcStored ?? undefined,
+    useProjectSponsoredFpc:
+      useProjectSponsoredFpcStored === null
+        ? undefined
+        : useProjectSponsoredFpcStored !== "false",
   };
 }

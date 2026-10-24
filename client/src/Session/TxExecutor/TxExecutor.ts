@@ -32,7 +32,10 @@ import type {
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
-import { getEffectiveUseSponsoredFpc } from "../../config/connection";
+import {
+  getEffectiveUseProjectSponsoredFpc,
+  getEffectiveUseSponsoredFpc,
+} from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
@@ -40,7 +43,7 @@ import {
 import { NotificationType } from "../../Frontend/Game/NotificationManager";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
-import { QuotaPaymasterSender } from "../QuotaPaymaster/QuotaPaymasterSender";
+import { SponsoredFpcSender } from "../SponsoredFpc/SponsoredFpcSender";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
@@ -91,19 +94,19 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 /**
- * Verbose sponsorship diagnostics, off unless VITE_QUOTA_DEBUG is set.
+ * Verbose sponsorship diagnostics, off unless VITE_SPONSORED_FPC_DEBUG is set.
  *
  * Exists for capture sessions against a real network: the interesting facts —
  * which path a transaction took, what the paymaster's allowance said, what the
  * fee actually was — are otherwise invisible, and a screen recording of the
  * game shows none of them.
  */
-function quotaLog(event: string, detail?: unknown): void {
+function sponsoredFpcLog(event: string, detail?: unknown): void {
   try {
-    if (!import.meta.env?.VITE_QUOTA_DEBUG) return;
+    if (!import.meta.env?.VITE_SPONSORED_FPC_DEBUG) return;
 
     console.log(
-      `%c[quota] ${event}`,
+      `%c[sponsored-fpc] ${event}`,
       "color:#e0a642;font-weight:bold",
       detail ?? ""
     );
@@ -134,7 +137,7 @@ export class TxExecutor {
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
 
-  private readonly quotaPaymaster: QuotaPaymasterSender;
+  private readonly sponsoredFpc: SponsoredFpcSender;
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
   private readonly afterTransaction?: AfterTransaction;
@@ -162,11 +165,7 @@ export class TxExecutor {
     );
 
     const wallet = walletManager.getWallet();
-    this.quotaPaymaster = new QuotaPaymasterSender(
-      walletManager,
-      node,
-      chainClock
-    );
+    this.sponsoredFpc = new SponsoredFpcSender(walletManager);
     this.contractResolver = new ContractResolver(wallet);
 
     this.stateResolver = new StateResolver(
@@ -345,7 +344,7 @@ export class TxExecutor {
 
         // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
         //
-        // Quota mode note: when a QuotaFpc paymaster is configured, sponsored
+        // Sponsored FPC mode note: when a ProjectSponsoredFpc paymaster is configured, sponsored
         // transactions do not go through this path at all — they are assembled
         // with the paymaster as the transaction origin so the game still sees
         // the player as msg_sender (see @alejoamiras/quota-paymaster). That assembly lands
@@ -354,27 +353,32 @@ export class TxExecutor {
         // game behaves exactly as it does today.
         //
         // Sponsored path: when a paymaster is configured and the player still
-        // has allowance, the transaction is assembled with the PAYMASTER as its
+        // is available, the transaction is assembled with the PAYMASTER as its
         // origin (see @alejoamiras/quota-paymaster). Any failure here falls through to the
         // normal paths below rather than blocking the move — a player who can
         // pay their own way must never be stopped because sponsorship lapsed.
         let sponsoredSubmission: TxHash | undefined;
-        const quotaFpcAddress = this.walletManager.getQuotaFpcAddress();
+        const projectSponsoredFpcAddress =
+          this.walletManager.getProjectSponsoredFpcAddress();
         const activeAddress = this.walletManager.getActiveAddress();
-        if (quotaFpcAddress && activeAddress) {
+        if (
+          getEffectiveUseProjectSponsoredFpc() &&
+          projectSponsoredFpcAddress &&
+          activeAddress
+        ) {
           try {
-            const sponsoredHash = await this.quotaPaymaster.send(
+            const sponsoredHash = await this.sponsoredFpc.send(
               contract,
               method,
               contractArgs,
-              quotaFpcAddress,
+              projectSponsoredFpcAddress,
               activeAddress
             );
             sponsoredSubmission = sponsoredHash;
-            quotaLog("SPONSORED ✓ submitted", {
+            sponsoredFpcLog("SPONSORED ✓ submitted", {
               txHash: String(sponsoredHash),
               method,
-              paymaster: quotaFpcAddress,
+              paymaster: projectSponsoredFpcAddress,
               player: String(activeAddress),
             });
             // The fee the PAYMASTER actually paid — the number that matters
@@ -382,7 +386,7 @@ export class TxExecutor {
             void waitForTx(this.node, sponsoredHash as never)
               .then((r) => {
                 const fee = (r as { transactionFee?: bigint })?.transactionFee;
-                quotaLog("SPONSORED ✓ settled", {
+                sponsoredFpcLog("SPONSORED ✓ settled", {
                   txHash: String(sponsoredHash),
                   feeWei: fee?.toString(),
                   feeJuice: fee ? Number(fee) / 1e18 : undefined,
@@ -395,7 +399,7 @@ export class TxExecutor {
             // was broadcast. A blanket retry is unsafe: if sendTx reached the
             // node but its response was lost, rebuilding produces a second
             // transaction with a fresh nonce — replaying the player's move and
-            // burning a second allowance. Losing sponsorship is recoverable;
+            // paying for a duplicate transaction. Losing sponsorship is recoverable;
             // moving twice is not.
             if (
               this.walletManager
@@ -403,11 +407,11 @@ export class TxExecutor {
                 .isRetryableBeforeBroadcast(err)
             ) {
               try {
-                sponsoredSubmission = await this.quotaPaymaster.send(
+                sponsoredSubmission = await this.sponsoredFpc.send(
                   contract,
                   method,
                   contractArgs,
-                  quotaFpcAddress,
+                  projectSponsoredFpcAddress,
                   activeAddress
                 );
               } catch (retryErr) {
@@ -446,7 +450,7 @@ export class TxExecutor {
           }
         }
         // Legacy SponsoredFPC path — now user-toggleable via Connection
-        // settings (origin/main). Irrelevant when the quota paymaster already
+        // settings (origin/main). Irrelevant when the Sponsored FPC already
         // broadcast: that transaction is out and paid for, and the balance
         // checks below would reject it for a balance it never needed.
         const useSponsoredFpc = sponsoredSubmission
@@ -707,7 +711,7 @@ export class TxExecutor {
    * on success or `undefined` when sponsorship is not available right now.
    *
    * Returning `undefined` rather than throwing is the point: an exhausted
-   * allowance, a busy network, or a missing paymaster are all ordinary states
+   * FPC balance, a busy network, or a missing paymaster are all ordinary states
    * that should quietly fall back to the player paying, not errors that stop a
    * move.
    */
@@ -716,7 +720,7 @@ export class TxExecutor {
    * of their own gas rather than being sponsored.
    *
    * Sponsorship can stop for several reasons the player cannot see — their
-   * daily allowance ran out, the operator narrowed the policy, network fees
+   * shared FeeJuice balance ran out, the operator narrowed the policy, network fees
    * outran the paymaster's ceiling. Whatever the cause, being charged without
    * being told is the one outcome that is never acceptable, so this is
    * best-effort but unconditional: it never rethrows, because failing to show
@@ -727,34 +731,18 @@ export class TxExecutor {
       const message = String(
         (err as { message?: string })?.message ?? err ?? ""
       );
-      const [
-        { reasonFromRevert },
-        { describeQuotaUnavailable },
-        NotificationMod,
-      ] = await Promise.all([
-        import("@alejoamiras/quota-paymaster"),
-        import("../quotaMessages"),
-        import("../../Frontend/Game/NotificationManager"),
-      ]);
+      const NotificationMod =
+        await import("../../Frontend/Game/NotificationManager");
       // NotificationType is a `const enum`: it is erased at compile time, so
       // it must come from the STATIC import above — reading it off the dynamic
       // module object yields undefined at runtime.
-      const reason = reasonFromRevert(message);
-      const copy = reason
-        ? describeQuotaUnavailable(reason, {})
-        : {
-            headline:
-              "This move wasn't sponsored, so it's coming out of your own gas.",
-            detail: undefined,
-          };
-      quotaLog("NOT sponsored — player pays", {
-        reason: reason ?? "unknown",
+      sponsoredFpcLog("NOT sponsored — player pays", {
         message: message.slice(0, 200),
       });
       const NotificationManager = NotificationMod.default;
       NotificationManager.getInstance().notify(
         NotificationType.TxInitError,
-        `${copy.headline}${copy.detail ? ` ${copy.detail}` : ""}`
+        "Sponsored FPC is unavailable. This transaction will use your account FeeJuice."
       );
       console.debug("[TxExecutor] sponsorship unavailable:", message);
     } catch (notifyErr) {
@@ -776,35 +764,7 @@ export class TxExecutor {
     const { claimModalSlot, publishFeeGate } = await import("../FeeGate");
     const release = claimModalSlot();
     try {
-      const { millisUntilReset, resetLabel } =
-        await import("@alejoamiras/quota-paymaster");
-      const read = this.quotaPaymaster.getLastAttempt();
-      const player = String(this.walletManager.getActiveAddress() ?? "");
-      // The read must belong to THIS player and THIS attempt. A stale read
-      // (previous account, or an attempt that failed before it was taken)
-      // would otherwise tell a player they spent an allowance they never had.
-      const fresh = read && read.player === player ? read : undefined;
-      // "Spent" is only true when sponsorship was actually exhausted. A
-      // still-syncing wallet, an empty paymaster or a fee spike are not
-      // exhaustion — they get the generic story, which is honest for all of
-      // them: this account cannot pay right now.
-      const exhausted =
-        Boolean(this.walletManager.getQuotaFpcAddress()) &&
-        fresh?.subscribed === true &&
-        fresh.remaining === 0 &&
-        (fresh.reason === undefined || fresh.reason === "exhausted");
-
-      if (!exhausted) {
-        publishFeeGate({ kind: "needs-fee-juice" });
-        return;
-      }
-      const allowancePerDay = (await this.walletManager.getQuotaMaxUses()) ?? 0;
-      publishFeeGate({
-        kind: "sponsorship-spent",
-        allowancePerDay,
-        resetsAt: resetLabel(),
-        millisUntilReset: millisUntilReset(fresh.chainSeconds),
-      });
+      publishFeeGate({ kind: "needs-fee-juice" });
     } catch (err) {
       console.debug("[TxExecutor] fee gate publish failed:", err);
       // Never leave the player with no explanation at all.

@@ -97,10 +97,10 @@
       "import": "./src/artifacts/ArtifactValut.ts",
       "default": "./src/artifacts/ArtifactValut.ts"
     },
-    "./artifacts/QuotaFpc": {
-      "types": "./src/artifacts/QuotaFpc.ts",
-      "import": "./src/artifacts/QuotaFpc.ts",
-      "default": "./src/artifacts/QuotaFpc.ts"
+    "./artifacts/SponsoredFpc": {
+      "types": "./src/artifacts/SponsoredFpc.ts",
+      "import": "./src/artifacts/SponsoredFpc.ts",
+      "default": "./src/artifacts/SponsoredFpc.ts"
     }
   },
   "main": "src/index.ts",

@@ -95,7 +95,7 @@ import { acquireWalletSessionLock } from "./walletSessionLock";
  * (a move uses ~65% of its L2 budget). Re-measure via the operator's
  * measureSponsoredFee when the action mix changes.
  */
-const QUOTA_GAS_PROFILE = DARK_FOREST_REFERENCE_GAS_PROFILE;
+const SPONSORED_FPC_GAS_PROFILE = DARK_FOREST_REFERENCE_GAS_PROFILE;
 
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
@@ -436,17 +436,17 @@ function skipHeadlessHttpsHealthProbe(proverUrl: string): void {
 }
 
 /**
- * Registers the QuotaFpc paymaster so the wallet can simulate and prove against
- * it. Unlike the SponsoredFPC, this contract must already be deployed — its
+ * Registers the project SponsoredFpc so the wallet can simulate and prove against
+ * it. Unlike the protocol SponsoredFPC, this contract must already be deployed — its
  * address is deployment-specific and comes from config.
  */
-async function registerQuotaFpcWithWallet(
+async function registerProjectSponsoredFpcWithWallet(
   node: AztecNode,
   wallet: Wallet,
   config: WalletManagerConfig,
   onRegisterProgress?: (message: string) => void
 ): Promise<AztecAddress | undefined> {
-  const configured = config.quotaFpcAddress?.trim();
+  const configured = config.projectSponsoredFpcAddress?.trim();
   if (!configured) return undefined;
 
   const address = AztecAddress.fromStringUnsafe(configured);
@@ -455,21 +455,18 @@ async function registerQuotaFpcWithWallet(
     // Deliberately not fatal: the game must remain playable (players pay their
     // own way) if the paymaster is missing or points at the wrong network.
     console.warn(
-      `[WalletManager] QuotaFpc not found at ${configured}; continuing without sponsored transactions.`
+      `[WalletManager] SponsoredFpc not found at ${configured}; continuing without sponsored transactions.`
     );
     return undefined;
   }
 
-  const { QuotaFpcContractArtifact } =
-    await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
+  const { SponsoredFpcContractArtifact } =
+    await import("@dfpunk/contracts/artifacts/SponsoredFpc");
   onRegisterProgress?.("Registering sponsored-transaction paymaster");
   // Class AND instance: the artifact is stored separately, keyed by class id,
   // and that is what the PXE looks up when syncing. It matters here because the
-  // paymaster holds PRIVATE STATE for the player — quota notes live in its
-  // PrivateSet — so the wallet syncs it like any contract the player owns notes
-  // in, and syncing needs the artifact to resolve `sync_state`.
-  await wallet.registerContractClass(QuotaFpcContractArtifact);
-  await wallet.registerContract(instance, QuotaFpcContractArtifact);
+  await wallet.registerContractClass(SponsoredFpcContractArtifact);
+  await wallet.registerContract(instance, SponsoredFpcContractArtifact);
   return instance.address;
 }
 
@@ -485,8 +482,8 @@ export class WalletManager {
   private readonly nodeUrl?: string;
   private readonly wallet: Wallet;
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
-  private readonly quotaFpcAddress: AztecAddress | undefined;
-  private quotaFpcContract: unknown | undefined;
+  private readonly projectSponsoredFpcAddress: AztecAddress | undefined;
+  private projectSponsoredFpcContract: unknown | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
@@ -503,14 +500,14 @@ export class WalletManager {
     sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore,
     isExternal: boolean,
-    quotaFpcAddress?: AztecAddress,
+    projectSponsoredFpcAddress?: AztecAddress,
     nodeUrl?: string
   ) {
     this.node = node;
     this.nodeUrl = nodeUrl;
     this.wallet = wallet;
     this.sponsoredFpcAddress = sponsoredFpcAddress;
-    this.quotaFpcAddress = quotaFpcAddress;
+    this.projectSponsoredFpcAddress = projectSponsoredFpcAddress;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
     this.walletChanged$ = monomitter(true);
@@ -591,7 +588,7 @@ export class WalletManager {
     await waitForNode(node);
 
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
-    const quotaFpcAddress: AztecAddress | undefined = undefined;
+    const projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
     if (config.sponsorMode) {
       try {
         sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
@@ -607,12 +604,12 @@ export class WalletManager {
       }
     }
 
-    // Quota mode is embedded-wallet only (Ask A6). The sponsored send path needs
+    // Sponsored FPC mode is embedded-wallet only (Ask A6). The sponsored send path needs
     // the embedded wallet's PXE to assemble a paymaster-origin transaction, which
     // external wallet-sdk providers do not expose. Registering it here would
     // leave the paymaster address set and make every sponsored attempt fail, so
-    // external-wallet sessions deliberately get no quota mode.
-    if (config.quotaFpcAddress) {
+    // external-wallet sessions deliberately get no sponsored FPC mode.
+    if (config.projectSponsoredFpcAddress) {
       console.warn(
         "[WalletManager] Sponsored transactions are only available with the built-in wallet; " +
           "this external-wallet session will use its own gas."
@@ -632,7 +629,7 @@ export class WalletManager {
       sponsoredFpcAddress,
       keyStore,
       true,
-      quotaFpcAddress
+      projectSponsoredFpcAddress
     );
 
     mgr.activeAddress = await WalletManager.resolveExternalAddress(
@@ -735,14 +732,14 @@ export class WalletManager {
     // synced before application setup gets a chance to register anything, and
     // fails. Registering the class here is cheap, needs no node round-trip and
     // no instance, and lands before that queued job runs.
-    if (config.quotaFpcAddress?.trim()) {
+    if (config.projectSponsoredFpcAddress?.trim()) {
       try {
-        const { QuotaFpcContractArtifact } =
-          await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
-        await wallet.registerContractClass(QuotaFpcContractArtifact);
+        const { SponsoredFpcContractArtifact } =
+          await import("@dfpunk/contracts/artifacts/SponsoredFpc");
+        await wallet.registerContractClass(SponsoredFpcContractArtifact);
       } catch (err) {
         console.warn(
-          "[WalletManager] could not pre-register the QuotaFpc class:",
+          "[WalletManager] could not pre-register the SponsoredFpc class:",
           err
         );
       }
@@ -750,7 +747,7 @@ export class WalletManager {
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
     let sponsoredFpcAddress: AztecAddress | undefined = undefined;
-    let quotaFpcAddress: AztecAddress | undefined = undefined;
+    let projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
 
     if (config.sponsorMode) {
       sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
@@ -762,7 +759,7 @@ export class WalletManager {
     }
 
     try {
-      quotaFpcAddress = await registerQuotaFpcWithWallet(
+      projectSponsoredFpcAddress = await registerProjectSponsoredFpcWithWallet(
         node,
         wallet,
         config,
@@ -770,7 +767,7 @@ export class WalletManager {
       );
     } catch (err) {
       // Never fatal: without the paymaster players simply pay their own fees.
-      console.warn("[WalletManager] Failed to register QuotaFpc:", err);
+      console.warn("[WalletManager] Failed to register SponsoredFpc:", err);
     }
 
     const contractStartStep = config.sponsorMode ? 6 : 5;
@@ -787,7 +784,7 @@ export class WalletManager {
       sponsoredFpcAddress,
       keyStore,
       false,
-      quotaFpcAddress,
+      projectSponsoredFpcAddress,
       config.nodeUrl
     );
   }
@@ -922,9 +919,9 @@ export class WalletManager {
     return this.sponsoredFpcAddress;
   }
 
-  /** The quota paymaster, when one is configured and was found on the node. */
-  getQuotaFpcAddress(): AztecAddress | undefined {
-    return this.quotaFpcAddress;
+  /** The project Sponsored FPC, when configured and found on the node. */
+  getProjectSponsoredFpcAddress(): AztecAddress | undefined {
+    return this.projectSponsoredFpcAddress;
   }
 
   /** The node client, for callers that need to read chain state directly. */
@@ -940,11 +937,12 @@ export class WalletManager {
    * paymaster fails with "No artifact registered for contract class …".
    * Registration is idempotent, so this is free when setup already ran.
    */
-  async getQuotaFpcContract(): Promise<unknown | undefined> {
-    if (!this.quotaFpcAddress) return undefined;
-    if (this.quotaFpcContract) return this.quotaFpcContract;
-    const { QuotaFpcContract, QuotaFpcContractArtifact } =
-      await import("@alejoamiras/quota-paymaster/artifacts/quota-fpc");
+  async getProjectSponsoredFpcContract(): Promise<unknown | undefined> {
+    if (!this.projectSponsoredFpcAddress) return undefined;
+    if (this.projectSponsoredFpcContract)
+      return this.projectSponsoredFpcContract;
+    const { SponsoredFpcContract, SponsoredFpcContractArtifact } =
+      await import("@dfpunk/contracts/artifacts/SponsoredFpc");
     try {
       const w = this.wallet as unknown as {
         registerContractClass(a: unknown): Promise<void>;
@@ -952,282 +950,74 @@ export class WalletManager {
       };
       // Class first: the artifact is what the failing lookup needs, and it can
       // be registered independently of any instance.
-      await w.registerContractClass(QuotaFpcContractArtifact);
-      const instance = await this.node.getContract(this.quotaFpcAddress);
+      await w.registerContractClass(SponsoredFpcContractArtifact);
+      const instance = await this.node.getContract(
+        this.projectSponsoredFpcAddress
+      );
       if (instance) {
-        await w.registerContract(instance, QuotaFpcContractArtifact);
+        await w.registerContract(instance, SponsoredFpcContractArtifact);
       }
     } catch (err) {
       // Not fatal on its own: if setup already registered it the call is
       // redundant, and if it genuinely cannot be registered the simulate below
       // fails with a clearer error than this one would give.
-      console.debug("[WalletManager] QuotaFpc re-register skipped:", err);
+      console.debug("[WalletManager] SponsoredFpc re-register skipped:", err);
     }
-    this.quotaFpcContract = QuotaFpcContract.at(
-      this.quotaFpcAddress,
+    this.projectSponsoredFpcContract = SponsoredFpcContract.at(
+      this.projectSponsoredFpcAddress,
       this.wallet
     );
-    return this.quotaFpcContract;
+    return this.projectSponsoredFpcContract;
   }
 
   /**
-   * A player's allowance for a generation.
-   *
-   * A read failure yields `syncing: true`, never "nothing left" — those states
-   * are indistinguishable from the outside, and reporting the wrong one sends
-   * an active player to a funding page they do not need.
-   */
-  async readQuotaAllowance(
-    quotaFpc: unknown,
-    player: AztecAddress,
-    generation: number
-  ): Promise<{
-    generation: number;
-    subscribed: boolean;
-    remaining: number;
-    syncing: boolean;
-  }> {
-    try {
-      const contract = quotaFpc as {
-        methods: Record<
-          string,
-          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
-        >;
-      };
-      const raw = (await contract.methods
-        .get_quota_info(player, generation)
-        .simulate({ from: player })) as { result?: [boolean, bigint] };
-      const [subscribed, remaining] = (raw?.result ?? raw) as [boolean, bigint];
-      if (subscribed) {
-        return {
-          generation,
-          subscribed: true,
-          remaining: Number(remaining),
-          syncing: false,
-        };
-      }
-
-      // No usable note visible does NOT mean "out of transactions": the
-      // nullifier is read from the node (instant) while notes come from the
-      // local PXE (lags seconds), so this state also occurs right after a
-      // successful send. Report it as inconclusive; the contract is the
-      // authority, and a genuinely spent allowance fails the sponsored send
-      // with a safe, typed pre-broadcast error.
-      const { hasSubscribed } = await import("@alejoamiras/quota-paymaster");
-      const alreadyClaimed = await hasSubscribed({
-        node: this.node as never,
-        fpcAddress: this.quotaFpcAddress!,
-        generation,
-        player,
-      });
-      return {
-        generation,
-        subscribed: alreadyClaimed,
-        remaining: 0,
-        // Started today but no usable note visible yet: either the PXE has not
-        // caught up, or the allowance is genuinely spent. Never assert the
-        // second from the outside.
-        syncing: alreadyClaimed,
-      };
-    } catch (err) {
-      console.debug("[WalletManager] could not read allowance:", err);
-      return { generation, subscribed: false, remaining: 0, syncing: true };
-    }
-  }
-
-  /**
-   * Whether THIS player can be sponsored right now: their own allowance
-   * first, a free seat only if they have not started today. (Seats alone
-   * would turn away returning players who still hold transactions.) Read
-   * failures return false rather than a promise that cannot be kept.
-   */
-  async hasSponsorshipCapacity(): Promise<boolean> {
-    try {
-      const quotaFpc = await this.getQuotaFpcContract();
-      if (!quotaFpc) return false;
-      const { generationAt } = await import("@alejoamiras/quota-paymaster");
-      const block = await this.node.getBlockData("latest");
-      const generation = generationAt(
-        BigInt(block!.header.globalVariables.timestamp)
-      );
-
-      // Already playing today with transactions left: no seat needed.
-      if (this.activeAddress) {
-        const allowance = await this.readQuotaAllowance(
-          quotaFpc,
-          this.activeAddress,
-          generation
-        );
-        if (allowance.remaining > 0) return true;
-        // Inconclusive is not a refusal; the contract decides at send time.
-        if (allowance.syncing) return true;
-      }
-
-      const seat = await this.findQuotaSeat(quotaFpc, generation);
-      return seat !== null;
-    } catch (err) {
-      console.debug("[WalletManager] sponsorship capacity check failed:", err);
-      return false;
-    }
-  }
-
-  /**
-   * Reads the active player's allowance and publishes it to the quota badge.
-   *
-   * The transaction path publishes as a side effect of sending, which means a
-   * player who has not yet sent anything sees no sponsorship state at all —
-   * the top bar only lit up AFTER the first move. Called on game load (and
-   * harmless any other time); fire-and-forget, advisory only.
-   */
-  async refreshQuotaStatus(): Promise<void> {
-    try {
-      if (!this.quotaFpcAddress || !this.activeAddress) return;
-      const quotaFpc = await this.getQuotaFpcContract();
-      if (!quotaFpc) return;
-      const { beginQuotaRead } = await import("../QuotaStatus");
-      const token = beginQuotaRead();
-      const [{ generationAt }, block] = await Promise.all([
-        import("@alejoamiras/quota-paymaster"),
-        this.node.getBlockData("latest"),
-      ]);
-      const chainSeconds = BigInt(block!.header.globalVariables.timestamp);
-      const generation = generationAt(chainSeconds);
-      const state = await this.readQuotaAllowance(
-        quotaFpc,
-        this.activeAddress,
-        generation
-      );
-      const { publishQuotaStatus, quotaStatusFromAllowance } =
-        await import("../QuotaStatus");
-      publishQuotaStatus(quotaStatusFromAllowance(state, chainSeconds), token);
-    } catch (err) {
-      console.debug("[WalletManager] quota status refresh failed:", err);
-    }
-  }
-
-  /**
-   * The paymaster's transactions-per-player-per-day, for the fee-gate gauge.
-   * Advisory display data; a read failure just means the gauge shows no pips.
-   */
-  async getQuotaMaxUses(): Promise<number | undefined> {
-    try {
-      const quotaFpc = await this.getQuotaFpcContract();
-      if (!quotaFpc) return undefined;
-      const contract = quotaFpc as {
-        methods: Record<
-          string,
-          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
-        >;
-      };
-      // Bounded: this feeds a modal. A hung simulation must not hold the
-      // fee-gate's pending flag open, which would suppress every later notice.
-      const raw = (await Promise.race([
-        contract.methods.get_policy().simulate({ from: this.activeAddress! }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("get_policy timed out")), 5_000)
-        ),
-      ])) as { result?: { max_uses: bigint } };
-      const policy = (raw?.result ?? raw) as { max_uses: bigint };
-      return Number(policy.max_uses);
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** A free seat for this generation, or null when today is fully claimed. */
-  async findQuotaSeat(
-    quotaFpc: unknown,
-    generation: number
-  ): Promise<number | null> {
-    if (!this.quotaFpcAddress) return null;
-    try {
-      const contract = quotaFpc as {
-        methods: Record<
-          string,
-          (...args: unknown[]) => { simulate(opts: unknown): Promise<unknown> }
-        >;
-      };
-      const raw = (await contract.methods.get_policy().simulate({
-        from: this.activeAddress!,
-      })) as { result?: { max_users: bigint } };
-      const policy = (raw?.result ?? raw) as { max_users: bigint };
-      const { findFreeSeat } = await import("@alejoamiras/quota-paymaster");
-      return await findFreeSeat({
-        node: this.node as never,
-        fpcAddress: this.quotaFpcAddress,
-        generation,
-        maxUsers: Number(policy.max_users),
-      });
-    } catch (err) {
-      console.debug("[WalletManager] could not pick a seat:", err);
-      return null;
-    }
-  }
-
-  /**
-   * Sends a transaction whose ORIGIN is the quota paymaster rather than the
-   * player's account. This is what makes sponsorship possible without changing
-   * the game's contracts: the paymaster checks the payload against its
-   * allowlist and pays, then hands off to the player's own account entrypoint,
-   * so the game still sees the player as `msg_sender`.
-   *
-   * `scope` must be the PLAYER: the allowance note is delivered to them, and
-   * proving needs their keys to see it.
+   * Sends a transaction whose origin is the project Sponsored FPC. The FPC
+   * pays, then hands the signed payload to the player's account entrypoint.
    */
   /**
    * Refuses sponsorship when the paymaster's live per-transaction ceiling is
    * below what this client would spend at current fees.
    *
-   * Both sides of that comparison move independently: an operator can lower
-   * the ceiling (effective 12h later) and network fees drift on their own. If
-   * they cross, every sponsored transaction becomes unprovable — so the caller
-   * must fall back deliberately and visibly, rather than a proof failing deep
-   * in the stack and the player quietly paying.
+   * The ceiling is immutable for this deployment while network fees move. If
+   * they cross, fail before proving so the caller can visibly fall back.
    */
   private async assertSponsorshipAffordable(fees?: {
     feePerDaGas: bigint | number;
     feePerL2Gas: bigint | number;
   }): Promise<void> {
-    const fpc = await this.getQuotaFpcContract();
+    const fpc = await this.getProjectSponsoredFpcContract();
     if (!fpc) return;
     // Caller-supplied when the same sample must also build maxFeesPerGas:
     // sampling twice lets a fee rise between reads pass the old floor and then
     // declare a higher ceiling on-chain — floor-pass, ceiling-fail.
     fees ??= await this.node.getCurrentMinFees();
     const floor = sponsoredFeeFloorWei(
-      QUOTA_GAS_PROFILE,
+      SPONSORED_FPC_GAS_PROFILE,
       BigInt(fees.feePerDaGas),
       BigInt(fees.feePerL2Gas)
     );
     const raw: unknown = await (
       fpc as unknown as {
         methods: {
-          get_policy(): {
+          get_max_fee(): {
             simulate(o: { from: AztecAddress }): Promise<unknown>;
           };
         };
       }
     ).methods
-      .get_policy()
+      .get_max_fee()
       .simulate({ from: this.activeAddress! });
-    const policy = (raw as { result?: unknown }).result ?? raw;
     const maxFee = BigInt(
-      (policy as { max_fee?: bigint | number })?.max_fee ??
-        (policy as (bigint | number)[])[0]
+      (raw as { result?: bigint }).result ?? (raw as bigint)
     );
     if (maxFee < floor) {
-      const { QuotaUnavailableError } =
-        await import("@alejoamiras/quota-paymaster");
-      throw new QuotaUnavailableError(
-        "fee-spike",
-        `Sponsorship covers up to ${maxFee} wei per transaction, but this one needs ${floor}.`,
-        // Retryable: fees fall, or the operator raises the ceiling.
-        true
+      throw new Error(
+        `Sponsorship covers up to ${maxFee} wei per transaction, but this one needs ${floor}.`
       );
     }
   }
 
-  async sendFromQuotaPaymaster(
+  async sendFromSponsoredFpc(
     executionPayload: unknown,
     scope: AztecAddress
   ): Promise<TxHash> {
@@ -1258,12 +1048,12 @@ export class WalletManager {
     // maximum, which no sane per-transaction ceiling would ever cover.
     const gasSettings = GasSettings.fallback({
       gasLimits: new Gas(
-        QUOTA_GAS_PROFILE.daGasLimit,
-        QUOTA_GAS_PROFILE.l2GasLimit
+        SPONSORED_FPC_GAS_PROFILE.daGasLimit,
+        SPONSORED_FPC_GAS_PROFILE.l2GasLimit
       ),
       teardownGasLimits: new Gas(
-        QUOTA_GAS_PROFILE.teardownDaGasLimit,
-        QUOTA_GAS_PROFILE.teardownL2GasLimit
+        SPONSORED_FPC_GAS_PROFILE.teardownDaGasLimit,
+        SPONSORED_FPC_GAS_PROFILE.teardownL2GasLimit
       ),
       // Padded via the package's own headroom arithmetic, per dimension. The
       // contract bills gas_limits x max_fees_per_gas and the policy's fee
@@ -1274,11 +1064,11 @@ export class WalletManager {
         const { GasFees } = await import("@aztec/stdlib/gas");
         return new GasFees(
           maxFeePerGasWithHeadroom(
-            QUOTA_GAS_PROFILE,
+            SPONSORED_FPC_GAS_PROFILE,
             BigInt(feeSample.feePerDaGas)
           ),
           maxFeePerGasWithHeadroom(
-            QUOTA_GAS_PROFILE,
+            SPONSORED_FPC_GAS_PROFILE,
             BigInt(feeSample.feePerL2Gas)
           )
         );
@@ -1381,6 +1171,24 @@ export class WalletManager {
       console.error(
         "[WalletManager] getSponsoredFpcFeeJuiceBalance failed for",
         this.sponsoredFpcAddress.toString(),
+        err
+      );
+      return 0n;
+    }
+  }
+
+  /** FeeJuice remaining in the Sponsored FPC. */
+  async getProjectSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
+    if (!this.projectSponsoredFpcAddress) return undefined;
+    try {
+      return await getFeeJuiceBalance(
+        this.projectSponsoredFpcAddress,
+        this.node
+      );
+    } catch (err) {
+      console.error(
+        "[WalletManager] getProjectSponsoredFpcFeeJuiceBalance failed for",
+        this.projectSponsoredFpcAddress.toString(),
         err
       );
       return 0n;

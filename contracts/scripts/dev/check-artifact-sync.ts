@@ -18,7 +18,7 @@
  * `copy-artifacts` leaves the later two behind, silently.
  *
  * That is not a hypothetical. It cost a full debugging session: the client had
- * a three-day-old QuotaFpc whose class id was `0x0e554d67…` while the deployed
+ * a stale SponsoredFpc whose class id was `0x0e554d67…` while the deployed
  * contract was `0x115cfdfd…`. Registration succeeded every time — it filed the
  * artifact under the stale class — and the PXE's lookup for the real class
  * found nothing, reporting "No artifact registered for contract class …" from a

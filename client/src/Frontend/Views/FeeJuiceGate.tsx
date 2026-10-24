@@ -11,7 +11,6 @@
  * spent; and every state offers the bridge, because a wall without a door is
  * just a dead end.
  */
-import { humanizeDuration } from "@alejoamiras/quota-paymaster";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
@@ -66,49 +65,22 @@ export function FeeJuiceGate() {
     );
   }
 
-  const spent = state.kind === "sponsorship-spent";
   return (
     <Dim>
       <Card role="dialog" aria-modal="true" aria-label="Fee juice required">
-        <Eyebrow>{spent ? "DAILY SPONSORSHIP" : "FEE JUICE REQUIRED"}</Eyebrow>
-        <Title>
-          {spent
-            ? "You've used today's sponsored transactions"
-            : "This action needs fee juice"}
-        </Title>
-        {spent && (
-          <>
-            <Gauge aria-label="0 sponsored transactions left">
-              {Array.from({ length: state.allowancePerDay }, (_, i) => (
-                <Pip key={i} />
-              ))}
-            </Gauge>
-            <GaugeLabel>
-              0 of {state.allowancePerDay} sponsored transactions left
-            </GaugeLabel>
-          </>
-        )}
+        <Eyebrow>FEE JUICE REQUIRED</Eyebrow>
+        <Title>This action needs fee juice</Title>
         <Body>
-          {spent
-            ? "Dark Forest covered your fees so far. From here it's your own " +
-              "fee juice — or a short wait. This action was not sent and " +
-              "nothing was spent."
-            : "Sponsored transactions don't cover this account, and it holds " +
-              "no fee juice — so this action was not sent and nothing was " +
-              "spent. Bridge $AZTEC into fee juice to play."}
+          Sponsored FPC is unavailable, and this account holds no fee juice — so
+          this action was not sent and nothing was spent. Bridge $AZTEC into fee
+          juice to play.
         </Body>
-        {spent && (
-          <Reset>
-            ⏱ Sponsored transactions will reset in approx.{" "}
-            {humanizeDuration(state.millisUntilReset)} ({state.resetsAt})
-          </Reset>
-        )}
         <Row $center>
           <Primary href={BRIDGE_URL} target="_blank" rel="noreferrer">
             Bridge fee juice ↗
           </Primary>
           <Ghost as="button" onClick={dismiss}>
-            {spent ? "I'll wait" : "Not now"}
+            Not now
           </Ghost>
         </Row>
       </Card>
@@ -148,38 +120,11 @@ const Title = styled.div`
   margin: 0.5rem 0;
 `;
 
-const Gauge = styled.div`
-  display: flex;
-  gap: 7px;
-  justify-content: center;
-  margin: 0.9rem 0 0.3rem;
-`;
-
-const Pip = styled.div`
-  width: 34px;
-  height: 10px;
-  border-radius: 2px;
-  background: ${dfstyles.colors.dfgreendark};
-  border: 1px solid ${dfstyles.colors.dfgreendark};
-`;
-
-const GaugeLabel = styled.div`
-  font-size: 0.78rem;
-  color: ${dfstyles.colors.subtext};
-  margin-bottom: 0.9rem;
-`;
-
 const Body = styled.p`
   font-size: 0.88rem;
   margin: 0 auto 0.9rem;
   max-width: 42ch;
   color: ${dfstyles.colors.text};
-`;
-
-const Reset = styled.div`
-  color: ${dfstyles.colors.dfyellow};
-  font-size: 0.82rem;
-  margin-bottom: 1rem;
 `;
 
 const Row = styled.div<{ $center?: boolean }>`

@@ -30,9 +30,10 @@ import { ChainClock } from "../../Backend/Utils/ChainClock";
 import {
   getEffectiveIndexerBootstrapUrl,
   getEffectiveNodeUrl,
+  getEffectiveProjectSponsoredFpcAddress,
   getEffectiveProverUrl,
-  getEffectiveQuotaFpcAddress,
   getEffectiveSponsoredFpcAddressOverride,
+  getEffectiveUseProjectSponsoredFpc,
   getEffectiveUseSponsoredFpc,
 } from "../../config/connection";
 import {
@@ -510,7 +511,7 @@ function printAccountFeeJuiceRecoveryMenu(
 
 /** Non-sponsored mode: ensure active account has enough FeeJuice before continuing. */
 /**
- * Onboarding gate for quota mode.
+ * Onboarding gate for sponsored FPC mode.
  *
  * The whole point of the paymaster is that a player needs no fee juice of their
  * own, so this must never ask them to fund anything. It checks that the
@@ -520,28 +521,25 @@ function printAccountFeeJuiceRecoveryMenu(
  * gate rather than blocking: a player who has their own fee juice should still
  * be able to play when sponsorship is unavailable.
  */
-async function runQuotaPreflightGate(params: {
+async function runSponsoredFpcPreflightGate(params: {
   terminal: React.MutableRefObject<TerminalHandle | undefined>;
   getWalletManager: () => WalletManager | undefined;
 }): Promise<{ sponsored: boolean }> {
   const { terminal, getWalletManager } = params;
+  if (!getEffectiveUseProjectSponsoredFpc()) return { sponsored: false };
   const wm = getWalletManager();
-  const quotaFpc = wm?.getQuotaFpcAddress();
+  const projectSponsoredFpc = wm?.getProjectSponsoredFpcAddress();
 
-  if (!wm || !quotaFpc) {
+  if (!wm || !projectSponsoredFpc) {
     return { sponsored: false };
   }
 
   terminal.current?.println("Checking sponsored transactions...");
   try {
-    // A single wei is not enough to sponsor anything, and a full day has no seat
-    // for a new player. Confirm the paymaster can actually cover this player
-    // before promising they need no gas — a false promise here strands them at
-    // the first move instead of at the (skipped) funding gate.
-    const balance = await getFeeJuiceBalance(quotaFpc, wm.getNode());
-    const canSponsor =
-      balance >= getSponsoredFpcMinBalanceFjWei() &&
-      (await wm.hasSponsorshipCapacity());
+    // The FPC has no per-user or daily quota. Its balance is the only shared
+    // availability limit checked during onboarding.
+    const balance = await getFeeJuiceBalance(projectSponsoredFpc, wm.getNode());
+    const canSponsor = balance >= getSponsoredFpcMinBalanceFjWei();
     if (!canSponsor) {
       terminal.current?.println(
         "Sponsored transactions aren't available right now — you'll need gas in your account.",
@@ -555,7 +553,7 @@ async function runQuotaPreflightGate(params: {
     );
     return { sponsored: true };
   } catch (err) {
-    console.warn("[GameLandingPage] quota preflight failed:", err);
+    console.warn("[GameLandingPage] sponsored FPC preflight failed:", err);
     return { sponsored: false };
   }
 }
@@ -1323,7 +1321,7 @@ export function GameLandingPage() {
       proverUrl: getEffectiveProverUrl(),
       sponsorMode,
       sponsoredFpcAddressOverride: getEffectiveSponsoredFpcAddressOverride(),
-      quotaFpcAddress: getEffectiveQuotaFpcAddress(),
+      projectSponsoredFpcAddress: getEffectiveProjectSponsoredFpcAddress(),
       pxeConfig: {
         proverEnabled: getProverEnabled(),
       },
@@ -1549,9 +1547,9 @@ export function GameLandingPage() {
             onRefreshPage: playRefreshPageTransition,
           });
         } else {
-          // Quota paymaster first, same as every other entry path: a player
+          // Sponsored FPC first, same as every other entry path: a player
           // the paymaster covers must never be stopped at the FeeJuice gate.
-          const { sponsored } = await runQuotaPreflightGate({
+          const { sponsored } = await runSponsoredFpcPreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
           });
@@ -2855,7 +2853,7 @@ export function GameLandingPage() {
             onRefreshPage: playRefreshPageTransition,
           });
         } else {
-          const { sponsored } = await runQuotaPreflightGate({
+          const { sponsored } = await runSponsoredFpcPreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
           });
@@ -2898,7 +2896,7 @@ export function GameLandingPage() {
       {
         // Sponsored players must never be asked to fund themselves; only fall
         // through to the funding gate when sponsorship cannot cover them.
-        const { sponsored } = await runQuotaPreflightGate({
+        const { sponsored } = await runSponsoredFpcPreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
         });
@@ -2976,7 +2974,7 @@ export function GameLandingPage() {
       {
         // Sponsored players must never be asked to fund themselves; only fall
         // through to the funding gate when sponsorship cannot cover them.
-        const { sponsored } = await runQuotaPreflightGate({
+        const { sponsored } = await runSponsoredFpcPreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
         });
