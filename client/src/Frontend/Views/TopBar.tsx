@@ -7,6 +7,7 @@ import styled from "styled-components";
 import { Hook } from "../../_types/global/GlobalTypes";
 // import { CaptureZonesGeneratedEvent } from "../../Backend/GameLogic/CaptureZoneGenerator";
 import { weiToEth } from "../../Backend/Utils/Utils";
+import { getEffectiveUseProjectSponsoredFpc } from "../../config/connection";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
@@ -195,6 +196,44 @@ export function TopBar({
     uiManager.getMyBalance$(),
     uiManager.getMyBalanceBn()
   );
+  const [useSponsoredFpc, setUseSponsoredFpc] = useState(
+    getEffectiveUseProjectSponsoredFpc()
+  );
+  const [sponsoredFpcBalance, setSponsoredFpcBalance] = useState<
+    bigint | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshFeePayer = async () => {
+      const sponsored = getEffectiveUseProjectSponsoredFpc();
+      if (cancelled) return;
+      setUseSponsoredFpc(sponsored);
+      if (!sponsored) {
+        setSponsoredFpcBalance(undefined);
+        return;
+      }
+
+      try {
+        const nextBalance = await uiManager
+          .getGameManager()
+          .getProjectSponsoredFpcFeeJuiceBalance();
+        if (!cancelled) setSponsoredFpcBalance(nextBalance);
+      } catch {
+        if (!cancelled) setSponsoredFpcBalance(undefined);
+      }
+    };
+
+    void refreshFeePayer();
+    const intervalId = setInterval(() => void refreshFeePayer(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [uiManager]);
+
+  const displayedBalance = useSponsoredFpc ? sponsoredFpcBalance : balance;
 
   // TODO: CaptureZoneGenerator module and getCaptureZoneGenerator not yet implemented
   // let captureZones = null;
@@ -223,10 +262,20 @@ export function TopBar({
         </TooltipTrigger>
         <TooltipTrigger
           name={TooltipName.Empty}
-          extraContent={<Text>Your current wallet balance.</Text>}
+          extraContent={
+            <Text>
+              {useSponsoredFpc
+                ? "Sponsored FPC FeeJuice balance."
+                : "Your current wallet balance."}
+            </Text>
+          }
         >
           <Sub>
-            ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
+            (
+            {displayedBalance === undefined
+              ? "—"
+              : weiToEth(displayedBalance).toFixed(2)}{" "}
+            {L2_TOKEN_SYMBOL})
           </Sub>
         </TooltipTrigger>
         {process.env.DF_WEBSERVER_URL && (
