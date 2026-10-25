@@ -2044,23 +2044,6 @@ class GameManager extends EventEmitter {
     return this.contractsAPI.getWalletManager().isExternalWallet();
   }
 
-  /**
-   * SponsoredFPC Aztec address used for sponsored fees (sponsor mode), if any.
-   */
-  getSponsoredFpcAddress(): string | undefined {
-    const addr = this.contractsAPI.getWalletManager().getSponsoredFpcAddress();
-    return addr?.toString();
-  }
-
-  /**
-   * FeeJuice balance of the SponsoredFPC payer (sponsor mode), when configured.
-   */
-  async getSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
-    return this.contractsAPI
-      .getWalletManager()
-      .getSponsoredFpcFeeJuiceBalance();
-  }
-
   /** Sponsored FPC address used by the sponsorship path. */
   getProjectSponsoredFpcAddress(): string | undefined {
     return this.contractsAPI

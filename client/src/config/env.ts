@@ -77,25 +77,8 @@ export function getProverUrl(): string {
   return getString("VITE_TEEREX_PROVER_URL") ?? DEFAULT_PROVER_URL;
 }
 
-/** The protocol-level development sponsor path is disabled. */
-export function getSponsorMode(): boolean {
-  return false;
-}
-
 /**
- * Optional SponsoredFPC contract address (Aztec address string) when it differs
- * from the default salt-derived instance (e.g. public testnet). Used only in sponsor mode.
- * Build-time: `VITE_SPONSORED_FPC_ADDRESS`.
- */
-export function getSponsoredFpcAddressFromEnv(): string | undefined {
-  const v = getString("VITE_SPONSORED_FPC_ADDRESS");
-  if (v === undefined) return undefined;
-  const t = v.trim();
-  return t.length > 0 ? t : undefined;
-}
-
-/**
- * Minimum SponsoredFPC FeeJuice balance (in wei) required before sponsored deploy / txs preflight.
+ * Minimum project Sponsored FPC FeeJuice balance (in wei) required before sponsored transactions.
  * Env: `VITE_SPONSORED_FPC_MIN_BALANCE_FJ` as a decimal FJ string (e.g. "0.01").
  * Falls back to {@link DEFAULT_SPONSORED_FPC_MIN_FJ} when unset or invalid.
  */

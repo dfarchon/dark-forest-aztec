@@ -203,9 +203,6 @@ importers:
       '@aztec/foundation':
         specifier: 5.2.0
         version: 5.2.0(supports-color@5.5.0)
-      '@aztec/noir-contracts.js':
-        specifier: 5.2.0
-        version: 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
       '@aztec/wallets':
         specifier: 5.2.0
         version: 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6)
@@ -8329,18 +8326,6 @@ snapshots:
   '@aztec/noir-contracts.js@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)':
     dependencies:
       '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - bufferutil
-      - debug
-      - encoding
-      - supports-color
-      - typescript
-      - utf-8-validate
-
-  '@aztec/noir-contracts.js@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)':
-    dependencies:
-      '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
       tslib: 2.8.1
     transitivePeerDependencies:
       - bufferutil

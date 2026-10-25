@@ -21,8 +21,6 @@ import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
-import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { TxHash } from "@aztec/stdlib/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
@@ -79,13 +77,8 @@ import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldS
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
-import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
 import { KeyStore } from "./KeyStore";
-import type {
-  AccountRecord,
-  SponsorFeeJuicePreflight,
-  WalletManagerConfig,
-} from "./types";
+import type { AccountRecord, WalletManagerConfig } from "./types";
 import { acquireWalletSessionLock } from "./walletSessionLock";
 
 /**
@@ -115,7 +108,6 @@ function fqFromHex(signingKeyHex: string): Fq {
 const GENESIS_PENDING_SENTINEL = "genesis-pending";
 
 const WALLET_INIT_TOTAL_STEPS_BASE = 21;
-const WALLET_INIT_SPONSOR_EXTRA_STEPS = 1;
 
 /**
  * Compute a fingerprint for the current network instance by hashing block 1's header.
@@ -366,41 +358,6 @@ async function registerGameContractsWithPxe(
 }
 
 /**
- * Register SponsoredFPC with the wallet for sponsor mode: optional address override
- * (fetched from node) or canonical salt-derived instance.
- */
-async function registerSponsoredFpcWithWallet(
-  node: AztecNode,
-  wallet: Wallet,
-  config: WalletManagerConfig,
-  onRegisterProgress?: (message: string) => void
-): Promise<AztecAddress | undefined> {
-  if (!config.sponsorMode) return undefined;
-
-  const override = config.sponsoredFpcAddressOverride?.trim();
-  if (override) {
-    const addr = AztecAddress.fromStringUnsafe(override);
-    const instance = await node.getContract(addr);
-    if (!instance) {
-      throw new Error(
-        `SponsoredFPC not found on node at ${override}. Check Aztec node URL and address, or clear the override in Connection settings.`
-      );
-    }
-    onRegisterProgress?.("Registering Sponsored FPC (custom address)");
-    await wallet.registerContract(instance, SponsoredFPCContractArtifact);
-    return instance.address;
-  }
-
-  const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContractArtifact,
-    { salt: new Fr(SPONSORED_FPC_SALT) }
-  );
-  onRegisterProgress?.("Registering Sponsored FPC");
-  await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-  return sponsoredFPC.address;
-}
-
-/**
  * The accelerator probes HTTP and HTTPS together. Headless Presto only listens on HTTP,
  * so the HTTPS probe (port + 1) shows up as a refused connection. Reject that URL in
  * fetch before the browser opens it. HTTP proving is unchanged.
@@ -436,9 +393,9 @@ function skipHeadlessHttpsHealthProbe(proverUrl: string): void {
 }
 
 /**
- * Registers the project SponsoredFpc so the wallet can simulate and prove against
- * it. Unlike the protocol SponsoredFPC, this contract must already be deployed — its
- * address is deployment-specific and comes from config.
+ * Registers the project SponsoredFpc so the wallet can simulate and prove
+ * against it. The contract must already be deployed; its address comes from
+ * project configuration.
  */
 async function registerProjectSponsoredFpcWithWallet(
   node: AztecNode,
@@ -481,7 +438,6 @@ export class WalletManager {
   /** Needed to build the non-retrying send client; see `sendOnce`. */
   private readonly nodeUrl?: string;
   private readonly wallet: Wallet;
-  private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly projectSponsoredFpcAddress: AztecAddress | undefined;
   private projectSponsoredFpcContract: unknown | undefined;
   private readonly keyStore: KeyStore;
@@ -497,7 +453,6 @@ export class WalletManager {
   private constructor(
     node: AztecNode,
     wallet: Wallet,
-    sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore,
     isExternal: boolean,
     projectSponsoredFpcAddress?: AztecAddress,
@@ -506,7 +461,6 @@ export class WalletManager {
     this.node = node;
     this.nodeUrl = nodeUrl;
     this.wallet = wallet;
-    this.sponsoredFpcAddress = sponsoredFpcAddress;
     this.projectSponsoredFpcAddress = projectSponsoredFpcAddress;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
@@ -521,9 +475,7 @@ export class WalletManager {
   static async create(config: WalletManagerConfig): Promise<WalletManager> {
     const node = createAztecNodeClient(config.nodeUrl);
     const onProgress = config.onWalletProgress;
-    const total =
-      WALLET_INIT_TOTAL_STEPS_BASE +
-      (config.sponsorMode ? WALLET_INIT_SPONSOR_EXTRA_STEPS : 0);
+    const total = WALLET_INIT_TOTAL_STEPS_BASE;
 
     onProgress?.(1, total, "Connecting to node");
     await waitForNode(node);
@@ -587,22 +539,7 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
-    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
     const projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
-    if (config.sponsorMode) {
-      try {
-        sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
-          node,
-          wallet,
-          config
-        );
-      } catch (err) {
-        console.warn(
-          "[WalletManager] Failed to register SponsoredFPC on external wallet:",
-          err
-        );
-      }
-    }
 
     // Sponsored FPC mode is embedded-wallet only (Ask A6). The sponsored send path needs
     // the embedded wallet's PXE to assemble a paymaster-origin transaction, which
@@ -617,7 +554,7 @@ export class WalletManager {
     }
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
-    const contractStartStep = config.sponsorMode ? 6 : 5;
+    const contractStartStep = 5;
     await registerGameContractsWithPxe(wallet, admin, contractStartStep);
 
     const keyStore = new KeyStore(
@@ -626,7 +563,6 @@ export class WalletManager {
     const mgr = new WalletManager(
       node,
       wallet,
-      sponsoredFpcAddress,
       keyStore,
       true,
       projectSponsoredFpcAddress
@@ -660,9 +596,7 @@ export class WalletManager {
     onProgress?: WalletManagerConfig["onWalletProgress"]
   ): Promise<WalletManager> {
     const keyStore = new KeyStore(config.storagePrefix);
-    const total =
-      WALLET_INIT_TOTAL_STEPS_BASE +
-      (config.sponsorMode ? WALLET_INIT_SPONSOR_EXTRA_STEPS : 0);
+    const total = WALLET_INIT_TOTAL_STEPS_BASE;
 
     const fingerprint = await getNetworkFingerprint(node);
     const storedFingerprint = keyStore.getNetworkFingerprint();
@@ -746,17 +680,7 @@ export class WalletManager {
     }
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
-    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
     let projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
-
-    if (config.sponsorMode) {
-      sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
-        node,
-        wallet,
-        config,
-        (msg) => onProgress?.(5, total, msg)
-      );
-    }
 
     try {
       projectSponsoredFpcAddress = await registerProjectSponsoredFpcWithWallet(
@@ -770,7 +694,7 @@ export class WalletManager {
       console.warn("[WalletManager] Failed to register SponsoredFpc:", err);
     }
 
-    const contractStartStep = config.sponsorMode ? 6 : 5;
+    const contractStartStep = 5;
     await registerGameContractsWithPxe(
       wallet,
       admin,
@@ -781,7 +705,6 @@ export class WalletManager {
     return new WalletManager(
       node,
       wallet,
-      sponsoredFpcAddress,
       keyStore,
       false,
       projectSponsoredFpcAddress,
@@ -909,14 +832,6 @@ export class WalletManager {
 
   getWallet(): Wallet {
     return this.wallet;
-  }
-
-  /**
-   * When sponsorMode is enabled, returns the SponsoredFPC address so gameplay
-   * txs can pay fees via SponsoredFeePaymentMethod.
-   */
-  getSponsoredFpcAddress(): AztecAddress | undefined {
-    return this.sponsoredFpcAddress;
   }
 
   /** The project Sponsored FPC, when configured and found on the node. */
@@ -1159,24 +1074,6 @@ export class WalletManager {
     }
   }
 
-  /**
-   * FeeJuice balance held by the SponsoredFPC used for sponsored fees.
-   * @returns `undefined` when not using sponsored fees; `0n` when depleted or on query failure.
-   */
-  async getSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
-    if (!this.sponsoredFpcAddress) return undefined;
-    try {
-      return await getFeeJuiceBalance(this.sponsoredFpcAddress, this.node);
-    } catch (err) {
-      console.error(
-        "[WalletManager] getSponsoredFpcFeeJuiceBalance failed for",
-        this.sponsoredFpcAddress.toString(),
-        err
-      );
-      return 0n;
-    }
-  }
-
   /** FeeJuice remaining in the Sponsored FPC. */
   async getProjectSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
     if (!this.projectSponsoredFpcAddress) return undefined;
@@ -1193,29 +1090,6 @@ export class WalletManager {
       );
       return 0n;
     }
-  }
-
-  /**
-   * Preflight SponsoredFPC FeeJuice vs configured minimum threshold.
-   * Schnorr initializerless accounts need no deploy tx; this only gates sponsored gameplay fees.
-   */
-  async getSponsorFeeJuicePreflight(): Promise<
-    SponsorFeeJuicePreflight | undefined
-  > {
-    if (!this.sponsoredFpcAddress) return undefined;
-
-    const minWei = getSponsoredFpcMinBalanceFjWei();
-    const balanceWei = await getFeeJuiceBalance(
-      this.sponsoredFpcAddress,
-      this.node
-    );
-
-    return {
-      balanceWei,
-      requiredWei: minWei,
-      sufficient: balanceWei >= minWei,
-      estimateSource: "threshold",
-    };
   }
 
   // ---------------------------------------------------------------------------

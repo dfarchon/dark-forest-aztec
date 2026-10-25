@@ -14,13 +14,6 @@ export interface WalletManagerConfig {
   nodeUrl: string;
   storagePrefix?: string;
   balancePollIntervalMs?: number;
-  /** When enabled, use SponsoredFPC/SponsoredFeePaymentMethod for fees (local dev convenience). */
-  sponsorMode?: boolean;
-  /**
-   * Optional SponsoredFPC Aztec address (see `getEffectiveSponsoredFpcAddressOverride()`).
-   * When unset, uses canonical instance from `SPONSORED_FPC_SALT`.
-   */
-  sponsoredFpcAddressOverride?: string;
   /** Address of the project's Sponsored FPC for eligible game transactions. */
   projectSponsoredFpcAddress?: string;
   /** HTTP base URL for native accelerator (host:port), e.g. from getEffectiveProverUrl(). */
@@ -55,15 +48,4 @@ export interface WalletStatus {
   activeAddress: string | undefined;
   accounts: AccountRecord[];
   balance: bigint;
-}
-
-/** How required FeeJuice was derived for sponsor-mode FeeJuice preflight. */
-export type SponsorFeeJuicePreflightSource = "threshold";
-
-/** Sponsor-mode SponsoredFPC FeeJuice preflight result. */
-export interface SponsorFeeJuicePreflight {
-  balanceWei: bigint;
-  requiredWei: bigint;
-  sufficient: boolean;
-  estimateSource: SponsorFeeJuicePreflightSource;
 }

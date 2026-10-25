@@ -18,7 +18,6 @@ import {
   type NoWait,
   type SendInteractionOptions,
 } from "@aztec/aztec.js/contracts";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import { waitForTx } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
@@ -32,10 +31,7 @@ import type {
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
-import {
-  getEffectiveUseProjectSponsoredFpc,
-  getEffectiveUseSponsoredFpc,
-} from "../../config/connection";
+import { getEffectiveUseProjectSponsoredFpc } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getSponsoredFpcMinBalanceFjWei,
@@ -449,32 +445,8 @@ export class TxExecutor {
             }
           }
         }
-        // Legacy SponsoredFPC path — now user-toggleable via Connection
-        // settings (origin/main). Irrelevant when the Sponsored FPC already
-        // broadcast: that transaction is out and paid for, and the balance
-        // checks below would reject it for a balance it never needed.
-        const useSponsoredFpc = sponsoredSubmission
-          ? false
-          : getEffectiveUseSponsoredFpc();
-        const sponsoredFpcAddress = useSponsoredFpc
-          ? this.walletManager.getSponsoredFpcAddress()
-          : undefined;
         if (sponsoredSubmission) {
           // fall through to the shared submit/confirm handling
-        } else if (useSponsoredFpc) {
-          if (!sponsoredFpcAddress) {
-            throw new Error(
-              "[TxExecutor] SponsoredFPC payment is selected, but no SponsoredFPC is registered. Check Connection settings and refresh the page."
-            );
-          }
-          const sponsorFjBal =
-            await this.walletManager.getSponsoredFpcFeeJuiceBalance();
-          const minWei = getSponsoredFpcMinBalanceFjWei();
-          if (sponsorFjBal === undefined || sponsorFjBal < minWei) {
-            throw new Error(
-              `[TxExecutor] SponsoredFPC at ${sponsoredFpcAddress.toString()} FeeJuice balance is below minimum (${minWei.toString()} wei units). Fund SponsoredFPC or change SponsoredFPC address in Connection settings and refresh the page.`
-            );
-          }
         } else {
           const activeAddr = this.walletManager.getActiveAddress();
           const minAccountFj = getAccountMinBalanceFjWei();
@@ -505,29 +477,16 @@ export class TxExecutor {
         }
         // Same scope list for every method (move, reveal, artifacts, admin, init).
         const additionalScopes = await collectTxScopes(
-          this.walletManager.getWallet(),
-          sponsoredFpcAddress
+          this.walletManager.getWallet()
         );
-        const sendOptsNoWait = useSponsoredFpc
-          ? ({
-              from: this.walletManager.getActiveAddress()!,
-              additionalScopes,
-              fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                  sponsoredFpcAddress!
-                ),
-              },
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>)
-          : ({
-              from: this.walletManager.getActiveAddress()!,
-              additionalScopes,
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>);
+        const sendOptsNoWait = {
+          from: this.walletManager.getActiveAddress()!,
+          additionalScopes,
+          wait: NO_WAIT,
+        } satisfies SendInteractionOptions<NoWait>;
         const simulateOpts = {
           from: sendOptsNoWait.from,
           additionalScopes,
-          fee: sendOptsNoWait.fee,
         };
 
         // 5. Submit — send({ wait: NO_WAIT }) returns TxSendResultImmediate (txHash + offchain output)

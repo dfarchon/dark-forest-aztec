@@ -4,8 +4,6 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import type { Aliased } from "@aztec/aztec.js/wallet";
-import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { hashToEmoji } from "@aztec/wallet-sdk/crypto";
 import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
@@ -32,15 +30,12 @@ import {
   getEffectiveNodeUrl,
   getEffectiveProjectSponsoredFpcAddress,
   getEffectiveProverUrl,
-  getEffectiveSponsoredFpcAddressOverride,
   getEffectiveUseProjectSponsoredFpc,
-  getEffectiveUseSponsoredFpc,
 } from "../../config/connection";
 import {
   getAccountMinBalanceFjWei,
   getProverEnabled,
   getSponsoredFpcMinBalanceFjWei,
-  getSponsorMode,
   isProductionLike,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
@@ -66,10 +61,7 @@ import {
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
-import type {
-  AccountRecord,
-  SponsorFeeJuicePreflight,
-} from "../../Session/WalletManager/types";
+import type { AccountRecord } from "../../Session/WalletManager/types";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
@@ -152,10 +144,6 @@ function printGameLandingDebugConfig({
     indexerBootstrapUrl: getEffectiveIndexerBootstrapUrl() ?? "(unset)",
     proverEnabled: getProverEnabled(),
     proverUrl: getEffectiveProverUrl(),
-    sponsorMode: getSponsorMode(),
-    useSponsoredFpc: getEffectiveUseSponsoredFpc(),
-    sponsoredFpcAddress:
-      getEffectiveSponsoredFpcAddressOverride() ?? "(default from salt)",
     sponsoredFpcMinBalanceFjWei: getSponsoredFpcMinBalanceFjWei().toString(),
     accountMinBalanceFjWei: getAccountMinBalanceFjWei().toString(),
   });
@@ -242,237 +230,6 @@ function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
       )}
     </DownloadAccountInfoRow>
   );
-}
-
-function printSponsorFeeJuicePreflight(
-  terminal: React.MutableRefObject<TerminalHandle | undefined>,
-  sponsoredAddr: { toString: () => string },
-  pf: SponsorFeeJuicePreflight
-): void {
-  const estimateSourceLabel =
-    pf.estimateSource === "threshold"
-      ? "configured minimum"
-      : pf.estimateSource;
-
-  terminal.current?.println("");
-  terminal.current?.println(
-    `SponsoredFPC address: ${sponsoredAddr.toString()}`,
-    TerminalTextStyle.Sub
-  );
-  terminal.current?.println(
-    `SponsoredFPC FeeJuice balance: ${formatFeeJuiceWei(pf.balanceWei)}`,
-    TerminalTextStyle.Sub
-  );
-  terminal.current?.println(
-    `Minimum required (preflight): ${formatFeeJuiceWei(pf.requiredWei)} [source: ${estimateSourceLabel}]`,
-    TerminalTextStyle.Sub
-  );
-}
-
-async function resolveInitialSponsoredFpcAddress(): Promise<AztecAddress> {
-  const override = getEffectiveSponsoredFpcAddressOverride();
-  if (override) return AztecAddress.fromStringUnsafe(override);
-
-  const instance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContractArtifact,
-    { salt: new Fr(SPONSORED_FPC_SALT) }
-  );
-  return instance.address;
-}
-
-async function printInitialSponsorStatus(
-  terminal: React.MutableRefObject<TerminalHandle | undefined>
-): Promise<void> {
-  terminal.current?.println("Sponsor mode enabled.", TerminalTextStyle.Green);
-  try {
-    const sponsoredAddr = await resolveInitialSponsoredFpcAddress();
-    const node = createAztecNodeClient(getEffectiveNodeUrl());
-    const balanceWei = await getFeeJuiceBalance(sponsoredAddr, node);
-    const minWei = getSponsoredFpcMinBalanceFjWei();
-
-    terminal.current?.println(
-      `SponsoredFPC address: ${sponsoredAddr.toString()}`,
-      TerminalTextStyle.Sub
-    );
-    terminal.current?.println(
-      `SponsoredFPC FeeJuice balance: ${formatFeeJuiceWei(balanceWei)}`,
-      TerminalTextStyle.Sub
-    );
-    terminal.current?.println(
-      `Minimum required (preflight): ${formatFeeJuiceWei(minWei)}`,
-      TerminalTextStyle.Sub
-    );
-    if (balanceWei < minWei) {
-      terminal.current?.println(
-        "SponsoredFPC balance is too low. Fund this contract or set a funded SponsoredFPC address in Connection settings before continuing.",
-        TerminalTextStyle.Red
-      );
-    }
-  } catch (err) {
-    console.error("Failed to print initial SponsoredFPC status:", err);
-    terminal.current?.println(
-      "Could not read SponsoredFPC status. Check Connection settings and the Aztec node URL before continuing.",
-      TerminalTextStyle.Red
-    );
-  }
-  terminal.current?.println("");
-}
-
-function printSponsorRecoveryMenu(
-  terminal: React.MutableRefObject<TerminalHandle | undefined>,
-  setConnectionSettingsOpen: (open: boolean) => void
-): void {
-  terminal.current?.println(
-    "After funding or changing SponsoredFPC in Connection settings, choose an action below.",
-    TerminalTextStyle.Sub
-  );
-  terminal.current?.printLink(
-    "Open connection settings",
-    () => setConnectionSettingsOpen(true),
-    TerminalTextStyle.Blue
-  );
-  terminal.current?.newline();
-  terminal.current?.printOption("c", "Continue after updating SponsoredFPC", {
-    hideKey: true,
-  });
-  terminal.current?.printOption("r", "Refresh page", { hideKey: true });
-}
-
-/**
- * Sponsor-mode infrastructure check with recovery: rebuild WalletManager after
- * Connection settings changes, or full page reload.
- */
-async function runSponsorInfrastructurePreflightGate(params: {
-  terminal: React.MutableRefObject<TerminalHandle | undefined>;
-  getWalletManager: () => WalletManager | undefined;
-  setConnectionSettingsOpen: (open: boolean) => void;
-  setTerminalVisible: (visible: boolean) => void;
-  /** Landing entry mode (`terminal` is treated like standard for visibility). */
-  entryMode: "pending" | "quick" | "standard" | "terminal";
-  rebuildWalletAfterConnectionSave: () => Promise<void>;
-  onRefreshPage: () => Promise<void>;
-}): Promise<void> {
-  const {
-    terminal,
-    getWalletManager,
-    setConnectionSettingsOpen,
-    setTerminalVisible,
-    entryMode,
-    rebuildWalletAfterConnectionSave,
-    onRefreshPage,
-  } = params;
-
-  if (entryMode === "quick") {
-    setTerminalVisible(true);
-  }
-
-  while (true) {
-    if (!getEffectiveUseSponsoredFpc()) {
-      await runAccountFeeJuicePreflightGate(params);
-      return;
-    }
-    const wm = getWalletManager();
-    if (!wm) {
-      terminal.current?.println(
-        "Wallet manager is unavailable. Choose Continue to retry after checking Connection settings, or refresh the page.",
-        TerminalTextStyle.Red
-      );
-      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-      const input = (await terminal.current?.getInput()) || "";
-      if (input === "r") {
-        await onRefreshPage();
-        return;
-      }
-      if (input === "c") {
-        try {
-          await rebuildWalletAfterConnectionSave();
-        } catch (e) {
-          terminal.current?.println(
-            e instanceof Error ? e.message : String(e),
-            TerminalTextStyle.Red
-          );
-        }
-      }
-      continue;
-    }
-
-    const sponsoredAddr = wm.getSponsoredFpcAddress();
-    if (!sponsoredAddr) {
-      terminal.current?.println(
-        wm.isExternalWallet()
-          ? "Sponsor mode is on but SponsoredFPC could not be registered on the extension wallet. Check Connection settings and the Aztec node URL."
-          : "Sponsor mode is on but SponsoredFPC could not be registered. Check Connection settings and the Aztec node URL.",
-        TerminalTextStyle.Red
-      );
-      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-      const input = (await terminal.current?.getInput()) || "";
-      if (input === "r") {
-        await onRefreshPage();
-        return;
-      }
-      if (input === "c") {
-        try {
-          await rebuildWalletAfterConnectionSave();
-        } catch (e) {
-          terminal.current?.println(
-            e instanceof Error ? e.message : String(e),
-            TerminalTextStyle.Red
-          );
-        }
-      }
-      continue;
-    }
-
-    const pf = await wm.getSponsorFeeJuicePreflight();
-    if (!pf) {
-      terminal.current?.println(
-        "Could not read SponsoredFPC FeeJuice balance. Check the Aztec node URL and SponsoredFPC address in Connection settings.",
-        TerminalTextStyle.Red
-      );
-      printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-      const input = (await terminal.current?.getInput()) || "";
-      if (input === "r") {
-        await onRefreshPage();
-        return;
-      }
-      if (input === "c") {
-        try {
-          await rebuildWalletAfterConnectionSave();
-        } catch (e) {
-          terminal.current?.println(
-            e instanceof Error ? e.message : String(e),
-            TerminalTextStyle.Red
-          );
-        }
-      }
-      continue;
-    }
-
-    printSponsorFeeJuicePreflight(terminal, sponsoredAddr, pf);
-
-    if (pf.sufficient) return;
-
-    terminal.current?.println(
-      "SponsoredFPC balance is too low for sponsored transactions. Fund this contract or set a funded SponsoredFPC address in Connection settings.",
-      TerminalTextStyle.Red
-    );
-    printSponsorRecoveryMenu(terminal, setConnectionSettingsOpen);
-    const input = (await terminal.current?.getInput()) || "";
-    if (input === "r") {
-      await onRefreshPage();
-      return;
-    }
-    if (input === "c") {
-      try {
-        await rebuildWalletAfterConnectionSave();
-      } catch (e) {
-        terminal.current?.println(
-          e instanceof Error ? e.message : String(e),
-          TerminalTextStyle.Red
-        );
-      }
-    }
-  }
 }
 
 /**
@@ -600,10 +357,6 @@ async function runAccountFeeJuicePreflightGate(params: {
   }
 
   outer: while (true) {
-    if (getEffectiveUseSponsoredFpc()) {
-      await runSponsorInfrastructurePreflightGate(params);
-      return;
-    }
     const wm = getWalletManager();
     if (!wm) {
       terminal.current?.println(
@@ -1119,7 +872,6 @@ export function GameLandingPage() {
   const lastLoggedGamestateEntityProgressRef = useRef<Record<string, number>>(
     {}
   );
-  const walletMenuSponsorStatusPrintedRef = useRef(false);
   const externalWalletSimulationSupportRef =
     useRef<ExternalWalletSimulationSupport | null>(null);
   const selectedWalletModeRef = useRef<SelectedWalletMode>(null);
@@ -1149,8 +901,6 @@ export function GameLandingPage() {
     ? address(contract)
     : address(CORE_CONTRACT_ADDRESS);
   const isLobby = contractAddress !== address(CORE_CONTRACT_ADDRESS);
-
-  const sponsorMode = getSponsorMode();
 
   useEffect(() => {
     printGameLandingDebugConfig({ contractAddress, isLobby });
@@ -1319,8 +1069,6 @@ export function GameLandingPage() {
       nodeUrl: getEffectiveNodeUrl(),
       storagePrefix: "dfpunk",
       proverUrl: getEffectiveProverUrl(),
-      sponsorMode,
-      sponsoredFpcAddressOverride: getEffectiveSponsoredFpcAddressOverride(),
       projectSponsoredFpcAddress: getEffectiveProjectSponsoredFpcAddress(),
       pxeConfig: {
         proverEnabled: getProverEnabled(),
@@ -1333,7 +1081,7 @@ export function GameLandingPage() {
         });
       },
     }),
-    [sponsorMode]
+    []
   );
 
   const ensureEmbeddedWalletManager = useCallback(async () => {
@@ -1430,7 +1178,7 @@ export function GameLandingPage() {
 
   /**
    * Destroy and recreate WalletManager so sponsor Connection settings overrides
-   * (node URL, SponsoredFPC address) take effect without a full page reload.
+   * (node URL, project Sponsored FPC address) take effect without a full page reload.
    */
   const rebuildWalletAfterConnectionSave = useCallback(async () => {
     const prev = walletManagerRef.current;
@@ -1536,8 +1284,14 @@ export function GameLandingPage() {
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 
-        if (getEffectiveUseSponsoredFpc()) {
-          await runSponsorInfrastructurePreflightGate({
+        // Sponsored FPC first, same as every other entry path: a player
+        // the paymaster covers must never be stopped at the FeeJuice gate.
+        const { sponsored } = await runSponsoredFpcPreflightGate({
+          terminal: terminalHandle,
+          getWalletManager: () => walletManagerRef.current,
+        });
+        if (!sponsored) {
+          await runAccountFeeJuicePreflightGate({
             terminal: terminalHandle,
             getWalletManager: () => walletManagerRef.current,
             setConnectionSettingsOpen,
@@ -1546,24 +1300,6 @@ export function GameLandingPage() {
             rebuildWalletAfterConnectionSave,
             onRefreshPage: playRefreshPageTransition,
           });
-        } else {
-          // Sponsored FPC first, same as every other entry path: a player
-          // the paymaster covers must never be stopped at the FeeJuice gate.
-          const { sponsored } = await runSponsoredFpcPreflightGate({
-            terminal: terminalHandle,
-            getWalletManager: () => walletManagerRef.current,
-          });
-          if (!sponsored) {
-            await runAccountFeeJuicePreflightGate({
-              terminal: terminalHandle,
-              getWalletManager: () => walletManagerRef.current,
-              setConnectionSettingsOpen,
-              setTerminalVisible,
-              entryMode: "quick",
-              rebuildWalletAfterConnectionSave,
-              onRefreshPage: playRefreshPageTransition,
-            });
-          }
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 
@@ -1599,7 +1335,6 @@ export function GameLandingPage() {
     rebuildWalletAfterConnectionSave,
     refreshLocalAccountCount,
     selectWalletMode,
-    sponsorMode,
     setConnectionSettingsOpen,
     setTerminalVisible,
   ]);
@@ -2243,14 +1978,6 @@ export function GameLandingPage() {
           terminal.current?.newline();
           terminal.current?.newline();
 
-          if (
-            getEffectiveUseSponsoredFpc() &&
-            !walletMenuSponsorStatusPrintedRef.current
-          ) {
-            walletMenuSponsorStatusPrintedRef.current = true;
-            await printInitialSponsorStatus(terminal);
-          }
-
           /* Version / Date / Champion table (commented out)
         terminal.current?.print("    ");
         terminal.current?.print("Version", TerminalTextStyle.Sub);
@@ -2842,8 +2569,12 @@ export function GameLandingPage() {
       terminal.current?.println("");
       terminal.current?.println(`Welcome, player ${playerAddress}.`);
       if (walletManager.isExternalWallet()) {
-        if (getEffectiveUseSponsoredFpc()) {
-          await runSponsorInfrastructurePreflightGate({
+        const { sponsored } = await runSponsoredFpcPreflightGate({
+          terminal,
+          getWalletManager: () => walletManagerRef.current,
+        });
+        if (!sponsored) {
+          await runAccountFeeJuicePreflightGate({
             terminal,
             getWalletManager: () => walletManagerRef.current,
             setConnectionSettingsOpen,
@@ -2852,40 +2583,7 @@ export function GameLandingPage() {
             rebuildWalletAfterConnectionSave,
             onRefreshPage: playRefreshPageTransition,
           });
-        } else {
-          const { sponsored } = await runSponsoredFpcPreflightGate({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-          });
-          if (!sponsored) {
-            await runAccountFeeJuicePreflightGate({
-              terminal,
-              getWalletManager: () => walletManagerRef.current,
-              setConnectionSettingsOpen,
-              setTerminalVisible,
-              entryMode: entryModeRef.current,
-              rebuildWalletAfterConnectionSave,
-              onRefreshPage: playRefreshPageTransition,
-            });
-          }
         }
-        if (entryModeRef.current === "quick") {
-          setTerminalVisible(false);
-        }
-        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
-        return;
-      }
-
-      if (getEffectiveUseSponsoredFpc()) {
-        await runSponsorInfrastructurePreflightGate({
-          terminal,
-          getWalletManager: () => walletManagerRef.current,
-          setConnectionSettingsOpen,
-          setTerminalVisible,
-          entryMode: entryModeRef.current,
-          rebuildWalletAfterConnectionSave,
-          onRefreshPage: playRefreshPageTransition,
-        });
         if (entryModeRef.current === "quick") {
           setTerminalVisible(false);
         }
@@ -2926,36 +2624,7 @@ export function GameLandingPage() {
       if (!walletManager) throw new Error("no wallet manager");
 
       if (walletManager.isExternalWallet()) {
-        if (getEffectiveUseSponsoredFpc()) {
-          await runSponsorInfrastructurePreflightGate({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            setTerminalVisible,
-            entryMode: entryModeRef.current,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        } else {
-          await runAccountFeeJuicePreflightGate({
-            terminal,
-            getWalletManager: () => walletManagerRef.current,
-            setConnectionSettingsOpen,
-            setTerminalVisible,
-            entryMode: entryModeRef.current,
-            rebuildWalletAfterConnectionSave,
-            onRefreshPage: playRefreshPageTransition,
-          });
-        }
-        if (entryModeRef.current === "quick") {
-          setTerminalVisible(false);
-        }
-        setStep(TerminalPromptStep.FETCHING_ETH_DATA);
-        return;
-      }
-
-      if (getEffectiveUseSponsoredFpc()) {
-        await runSponsorInfrastructurePreflightGate({
+        await runAccountFeeJuicePreflightGate({
           terminal,
           getWalletManager: () => walletManagerRef.current,
           setConnectionSettingsOpen,
