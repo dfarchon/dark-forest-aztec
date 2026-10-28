@@ -1,12 +1,12 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { L1FeeJuicePortalManager } from "@aztec/aztec.js/ethereum";
-import { FeeJuicePaymentMethodWithClaim } from "@aztec/aztec.js/fee";
-import { Fq, Fr } from "@aztec/aztec.js/fields";
-import { createLogger } from "@aztec/aztec.js/log";
-import { isL1ToL2MessageReady } from "@aztec/aztec.js/messaging";
-import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
-import { ExecutionPayload, mergeExecutionPayloads } from "@aztec/aztec.js/tx";
-import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { L1FeeJuicePortalManager } from "@aztec-labs/aztec.js/ethereum";
+import { FeeJuicePaymentMethodWithClaim } from "@aztec-labs/aztec.js/fee";
+import { Fq, Fr } from "@aztec-labs/aztec.js/fields";
+import { createLogger } from "@aztec-labs/aztec.js/log";
+import { isL1ToL2MessageReady } from "@aztec-labs/aztec.js/messaging";
+import { createAztecNodeClient, type AztecNode } from "@aztec-labs/aztec.js/node";
+import { ExecutionPayload, mergeExecutionPayloads } from "@aztec-labs/aztec.js/tx";
+import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 

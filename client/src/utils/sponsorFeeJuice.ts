@@ -1,5 +1,5 @@
-import type { Gas } from "@aztec/stdlib/gas";
-import type { GasFees } from "@aztec/stdlib/gas";
+import type { Gas } from "@aztec-labs/stdlib/gas";
+import type { GasFees } from "@aztec-labs/stdlib/gas";
 
 /**
  * Approximate FeeJuice cost from padded gas dimensions and current min fee schedule.

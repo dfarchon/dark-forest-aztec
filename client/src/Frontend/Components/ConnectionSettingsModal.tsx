@@ -1,4 +1,4 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 
@@ -279,7 +279,7 @@ export function ConnectionSettingsModal({
           style={{ width: "100%", marginBottom: 12 }}
         />
         <label style={{ display: "block", marginBottom: 4 }}>
-          <Text>Accelerator / prover URL</Text>
+          <Text>Presto / prover URL</Text>
         </label>
         <TextInput
           value={proverUrlInput}

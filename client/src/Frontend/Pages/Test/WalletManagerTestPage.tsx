@@ -288,7 +288,7 @@ export function WalletManagerTestPage() {
             </div>
           </div>
           <div className="test-page__stat">
-            <div className="test-page__stat-label">Accelerator URL</div>
+            <div className="test-page__stat-label">Presto URL</div>
             <div className="test-page__stat-value">
               <code style={{ fontSize: "0.85rem" }}>
                 {getEffectiveProverUrl()}
@@ -296,7 +296,7 @@ export function WalletManagerTestPage() {
             </div>
           </div>
           <div className="test-page__stat">
-            <div className="test-page__stat-label">Native accelerator path</div>
+            <div className="test-page__stat-label">Presto path</div>
             <div className="test-page__stat-value">
               <span
                 className={`test-page__badge ${getProverEnabled() ? "test-page__badge--success" : "test-page__badge--idle"}`}

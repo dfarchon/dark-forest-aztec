@@ -7,8 +7,8 @@
  * the complete argument array matching the Noir contract function signature.
  */
 
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { Wallet } from "@aztec/aztec.js/wallet";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { Wallet } from "@aztec-labs/aztec.js/wallet";
 import { CONTRACT_PRECISION } from "@dfpunk/constants";
 import {
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
@@ -1494,7 +1494,7 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHashPromise: Promise<import("@aztec-labs/aztec.js/fields").Fr>,
       loadOnChainHash: () => Promise<unknown>
     ) => {
       const localHash = await localHashPromise;
@@ -1657,7 +1657,7 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHashPromise: Promise<import("@aztec-labs/aztec.js/fields").Fr>,
       loadOnChainHash: () => Promise<unknown>
     ) => {
       const localHash = await localHashPromise;
@@ -1717,7 +1717,7 @@ export class StateResolver {
 
     const check = async (
       label: string,
-      localHashPromise: Promise<import("@aztec/aztec.js/fields").Fr>,
+      localHashPromise: Promise<import("@aztec-labs/aztec.js/fields").Fr>,
       loadOnChainHash: () => Promise<unknown>
     ) => {
       const localHash = await localHashPromise;

@@ -1,4 +1,4 @@
-import type { TxHash, TxReceipt } from "@aztec/stdlib/tx";
+import type { TxHash, TxReceipt } from "@aztec-labs/stdlib/tx";
 import type { ClientTxStatus, TxIntent } from "./transactions";
 
 export interface TransactionCollection {

@@ -6,20 +6,20 @@
  *   pnpm deploy:run --resume <id>
  *   pnpm deploy:run --new
  */
-import { AztecAddress } from '@aztec/aztec.js/addresses';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
 import {
     Contract,
     DeployMethod,
     getContractInstanceFromInstantiationParams,
-} from '@aztec/aztec.js/contracts';
-import { Fr } from '@aztec/aztec.js/fields';
-import { PublicKeys } from '@aztec/aztec.js/keys';
-import type { AztecNode } from '@aztec/aztec.js/node';
-import type { Wallet } from '@aztec/aztec.js/wallet';
+} from '@aztec-labs/aztec.js/contracts';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import { PublicKeys } from '@aztec-labs/aztec.js/keys';
+import type { AztecNode } from '@aztec-labs/aztec.js/node';
+import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import {
     type ContractArtifact,
     getDefaultInitializer,
-} from '@aztec/stdlib/abi';
+} from '@aztec-labs/stdlib/abi';
 
 import { loadNetworkEnv } from '../runtime/env.ts';
 import {

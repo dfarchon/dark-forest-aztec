@@ -6,17 +6,17 @@
  * with localStorage persistence via KeyStore.
  */
 
-import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
-import { BlockNumber, Fq, Fr } from "@aztec/aztec.js/fields";
-import type { AztecNode } from "@aztec/aztec.js/node";
-import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
-import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import { type Wallet } from "@aztec/aztec.js/wallet";
-import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
-import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { PrestoProver } from "@alejoamiras/presto";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { getContractInstanceFromInstantiationParams } from "@aztec-labs/aztec.js/contracts";
+import { BlockNumber, Fq, Fr } from "@aztec-labs/aztec.js/fields";
+import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import { createAztecNodeClient, waitForNode } from "@aztec-labs/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
+import { type Wallet } from "@aztec-labs/aztec.js/wallet";
+import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
+import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
+import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
@@ -531,8 +531,8 @@ export class WalletManager {
         ...(config.pxeConfig?.proverEnabled && config.proverUrl
           ? (() => {
               const url = new URL(config.proverUrl!);
-              const prover = new AcceleratorProver({
-                accelerator: {
+              const prover = new PrestoProver({
+                presto: {
                   port: parseInt(url.port, 10) || 59833,
                   host: url.hostname,
                 },

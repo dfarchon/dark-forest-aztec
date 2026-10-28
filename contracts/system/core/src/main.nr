@@ -186,7 +186,7 @@ contract Core {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn get_all_storage_addresses_unconstrained() -> CoreSystemStorageAddresses {
+    unconstrained fn get_all_storage_addresses_unconstrained() -> pub CoreSystemStorageAddresses {
         CoreSystemStorageAddresses {
             config_storage_address: self.storage.config_storage_address.read(),
             world_storage_address: self.storage.world_storage_address.read(),

@@ -3,9 +3,9 @@
  * instance and contract method name.
  */
 
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { ContractBase } from "@aztec/aztec.js/contracts";
-import type { Wallet } from "@aztec/aztec.js/wallet";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { ContractBase } from "@aztec-labs/aztec.js/contracts";
+import type { Wallet } from "@aztec-labs/aztec.js/wallet";
 import {
   ADMIN_CONTRACT_ADDRESS,
   ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS,

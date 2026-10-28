@@ -3,12 +3,12 @@
  * Uses @dfpunk/contracts for artifact event metadata and default addresses.
  */
 
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { type EventCursor, getPublicEvents } from "@aztec/aztec.js/events";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { BlockNumber } from "@aztec/foundation/branded-types";
-import type { EventMetadataDefinition } from "@aztec/stdlib/abi";
-import type { AztecNode } from "@aztec/stdlib/interfaces/client";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { type EventCursor, getPublicEvents } from "@aztec-labs/aztec.js/events";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { BlockNumber } from "@aztec-labs/foundation/branded-types";
+import type { EventMetadataDefinition } from "@aztec-labs/stdlib/abi";
+import type { AztecNode } from "@aztec-labs/stdlib/interfaces/client";
 import {
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,

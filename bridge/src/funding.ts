@@ -1,6 +1,6 @@
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { FeeJuicePortalAbi } from "@aztec/l1-artifacts/FeeJuicePortalAbi";
-import { TestERC20Abi } from "@aztec/l1-artifacts/TestERC20Abi";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { FeeJuicePortalAbi } from "@aztec-foundation/l1-artifacts/FeeJuicePortalAbi";
+import { TestERC20Abi } from "@aztec-foundation/l1-artifacts/TestERC20Abi";
 import {
   formatEther,
   formatUnits,

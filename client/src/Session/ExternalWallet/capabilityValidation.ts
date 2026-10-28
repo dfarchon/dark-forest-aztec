@@ -1,4 +1,4 @@
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
+import type { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type {
   Aliased,
   ContractFunctionPattern,
@@ -10,7 +10,7 @@ import type {
   TransactionCapability,
   Wallet,
   WalletCapabilities,
-} from "@aztec/aztec.js/wallet";
+} from "@aztec-labs/aztec.js/wallet";
 
 import { createDfpunkCapabilities } from "../../config/capabilities";
 

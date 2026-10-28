@@ -15,8 +15,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\""
   },
   "dependencies": {
-    "@aztec/aztec.js": "5.0.1",
-    "@aztec/foundation": "5.0.1",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
     "@dfpunk/hashing": "workspace:*"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { poseidon2Hash } from "@aztec-labs/foundation/crypto/poseidon";
 import { LOCATION_ID_UB } from "@dfpunk/constants";
 import { initPoseidon2, perlin } from "@dfpunk/hashing";
 import { locationIdFromBigInt } from "@dfpunk/serde";

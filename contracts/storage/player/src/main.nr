@@ -130,7 +130,7 @@ pub contract PlayerStorage {
 
     #[external("public")]
     #[view]
-    fn verify(id: AztecAddress, state: Player) -> bool {
+    fn verify(id: AztecAddress, state: Player) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         if stored_hash == 0 {
             state == Player::zero()
@@ -142,7 +142,7 @@ pub contract PlayerStorage {
 
     #[external("public")]
     #[view]
-    fn compute_state_hash(state: Player) -> Field {
+    fn compute_state_hash(state: Player) -> pub Field {
         if (state == Player::zero()) {
             0
         } else {
@@ -152,20 +152,20 @@ pub contract PlayerStorage {
 
     #[external("public")]
     #[view]
-    fn is_initialized(id: AztecAddress) -> bool {
+    fn is_initialized(id: AztecAddress) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash != 0
     }
 
     #[external("public")]
     #[view]
-    fn get_state_root(id: AztecAddress) -> Field {
+    fn get_state_root(id: AztecAddress) -> pub Field {
         self.storage.state_roots.at(id).read()
     }
 
     #[external("public")]
     #[view]
-    fn verify_hash(id: AztecAddress, hash: Field) -> bool {
+    fn verify_hash(id: AztecAddress, hash: Field) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash == hash
     }
@@ -173,7 +173,7 @@ pub contract PlayerStorage {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn verify_unconstrained(id: AztecAddress, state: Player) -> bool {
+    unconstrained fn verify_unconstrained(id: AztecAddress, state: Player) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         if stored_hash == 0 {
             state == Player::zero()
@@ -184,7 +184,7 @@ pub contract PlayerStorage {
     }
 
     #[external("utility")]
-    unconstrained fn compute_state_hash_unconstrained(state: Player) -> Field {
+    unconstrained fn compute_state_hash_unconstrained(state: Player) -> pub Field {
         if (state == Player::zero()) {
             0
         } else {
@@ -193,39 +193,39 @@ pub contract PlayerStorage {
     }
 
     #[external("utility")]
-    unconstrained fn get_state_root_unconstrained(id: AztecAddress) -> Field {
+    unconstrained fn get_state_root_unconstrained(id: AztecAddress) -> pub Field {
         self.storage.state_roots.at(id).read()
     }
 
     #[external("utility")]
-    unconstrained fn get_default_state_unconstrained() -> Player {
+    unconstrained fn get_default_state_unconstrained() -> pub Player {
         Player::zero()
     }
 
     #[external("utility")]
-    unconstrained fn get_admin_unconstrained() -> AztecAddress {
+    unconstrained fn get_admin_unconstrained() -> pub AztecAddress {
         self.storage.admin.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_authorized_count_unconstrained() -> u32 {
+    unconstrained fn get_authorized_count_unconstrained() -> pub u32 {
         self.storage.authorized_count.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_authorized_contract_unconstrained(index: u32) -> AztecAddress {
+    unconstrained fn get_authorized_contract_unconstrained(index: u32) -> pub AztecAddress {
         self.storage.authorized_list.at(index).read()
     }
 
     #[external("utility")]
-    unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> bool {
+    unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> pub bool {
         let is_admin: bool = addr == self.storage.admin.read();
         let is_authorized: bool = self.storage.authorized_map.at(addr).read();
         is_admin | is_authorized
     }
 
     #[external("utility")]
-    unconstrained fn is_initialized_unconstrained(id: AztecAddress) -> bool {
+    unconstrained fn is_initialized_unconstrained(id: AztecAddress) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash != 0
     }
@@ -234,19 +234,19 @@ pub contract PlayerStorage {
 
     #[external("public")]
     #[view]
-    fn get_authorized_count() -> u32 {
+    fn get_authorized_count() -> pub u32 {
         self.storage.authorized_count.read()
     }
 
     #[external("public")]
     #[view]
-    fn get_authorized_contract(index: u32) -> AztecAddress {
+    fn get_authorized_contract(index: u32) -> pub AztecAddress {
         self.storage.authorized_list.at(index).read()
     }
 
     #[external("public")]
     #[view]
-    fn is_authorized(addr: AztecAddress) -> bool {
+    fn is_authorized(addr: AztecAddress) -> pub bool {
         let is_admin: bool = addr == self.storage.admin.read();
         let is_authorized: bool = self.storage.authorized_map.at(addr).read();
         is_admin | is_authorized

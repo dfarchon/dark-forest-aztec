@@ -1,5 +1,5 @@
-import { Fq, Fr } from "@aztec/aztec.js/fields";
-import { getSchnorrInitializerlessAccountContractAddress } from "@aztec/accounts/schnorr";
+import { Fq, Fr } from "@aztec-labs/aztec.js/fields";
+import { getSchnorrInitializerlessAccountContractAddress } from "@aztec-labs/accounts/schnorr";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { writeNetworkAccounts } from "./config.js";

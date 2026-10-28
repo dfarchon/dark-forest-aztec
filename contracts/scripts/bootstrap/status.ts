@@ -4,8 +4,8 @@
  *   pnpm bootstrap:status
  *   pnpm bootstrap:status --id <deployment-id>
  */
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import type { ContractBase } from '@aztec/aztec.js/contracts';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import type { ContractBase } from '@aztec-labs/aztec.js/contracts';
 import { unwrapSimulateResult } from '@dfpunk/utils';
 
 import {

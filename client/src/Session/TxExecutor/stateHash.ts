@@ -14,9 +14,9 @@
  *   AztecAddress → bigint  (the inner Field)
  */
 
-import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
-import type { Fieldable } from "@aztec/foundation/serialize";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { poseidon2Hash } from "@aztec-labs/foundation/crypto/poseidon";
+import type { Fieldable } from "@aztec-labs/foundation/serialize";
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,4 +1,4 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import {
   ADMIN_CONTRACT_ADDRESS,
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,

@@ -76,7 +76,7 @@ fi
 if $DO_CODEGEN; then
   # Check prerequisites
   if ! command -v aztec &>/dev/null; then
-    err "aztec CLI not found. Install via: VERSION=5.0.1 baseh -i <(curl -sL https://install.aztec.network/5.0.1)"
+    err "aztec CLI not found. Install via: VERSION=6.0.0 bash -i <(curl -sL https://install.aztec.network/6.0.0)"
     exit 1
   fi
 

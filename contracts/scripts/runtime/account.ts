@@ -1,8 +1,8 @@
 /**
  * Account runtime checks and append-only writes to networks/<name>.env.
  */
-import { getSchnorrInitializerlessAccountContractAddress } from '@aztec/accounts/schnorr';
-import { Fq, Fr } from '@aztec/aztec.js/fields';
+import { getSchnorrInitializerlessAccountContractAddress } from '@aztec-labs/accounts/schnorr';
+import { Fq, Fr } from '@aztec-labs/aztec.js/fields';
 import fs from 'fs';
 import path from 'path';
 

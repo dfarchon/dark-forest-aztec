@@ -2,7 +2,7 @@
  * Deploy order and manifest-key prefixes. Later entries may read earlier
  * addresses via ctx.addresses[name]. This is the scripts source of truth.
  */
-import type { ContractArtifact } from '@aztec/stdlib/abi';
+import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';

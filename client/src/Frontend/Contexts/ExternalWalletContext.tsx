@@ -1,6 +1,6 @@
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { Aliased } from "@aztec/aztec.js/wallet";
-import type { Wallet } from "@aztec/aztec.js/wallet";
+import type { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { Aliased } from "@aztec-labs/aztec.js/wallet";
+import type { Wallet } from "@aztec-labs/aztec.js/wallet";
 import React, {
   createContext,
   type ReactNode,

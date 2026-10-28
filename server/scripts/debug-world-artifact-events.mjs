@@ -1,7 +1,7 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { getPublicEvents } from "@aztec/aztec.js/events";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { BlockNumber } from "@aztec/foundation/branded-types";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { getPublicEvents } from "@aztec-labs/aztec.js/events";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { BlockNumber } from "@aztec-labs/foundation/branded-types";
 
 import {
   ARTIFACT_STORAGE_CONTRACT_ADDRESS,

@@ -77,7 +77,7 @@ pub contract Config {
     }
 
     #[internal("public")]
-    fn is_admin() -> bool {
+    fn is_admin() -> pub bool {
         self.msg_sender() == self.storage.admin.read()
     }
 
@@ -443,35 +443,35 @@ pub contract Config {
     /// Returns WorldConfig (world radius, time factor, reveal cooldown, etc.).
     #[external("public")]
     #[view]
-    fn get_world_config() -> WorldConfig {
+    fn get_world_config() -> pub WorldConfig {
         self.storage.world_config.read()
     }
 
     /// Returns SNARK constants (Perlin keys, mirror flag, etc.).
     #[external("public")]
     #[view]
-    fn get_snark_config() -> SnarkConfig {
+    fn get_snark_config() -> pub SnarkConfig {
         self.storage.snark_config.read()
     }
 
     /// Returns GameConfigCore (Perlin thresholds, planet_rarity, etc.).
     #[external("public")]
     #[view]
-    fn get_game_config_core() -> GameConfigCore {
+    fn get_game_config_core() -> pub GameConfigCore {
         self.storage.game_config_core.read()
     }
 
     /// Returns the planet level thresholds array [10].
     #[external("public")]
     #[view]
-    fn get_planet_level_thresholds() -> PlanetLevelThresholds {
+    fn get_planet_level_thresholds() -> pub PlanetLevelThresholds {
         self.storage.planet_level_thresholds.read()
     }
 
     /// Returns planet type weights for the given tier (0..=3).
     #[external("public")]
     #[view]
-    fn get_planet_type_weights_tier(tier: u8) -> PlanetTypeWeightsTier {
+    fn get_planet_type_weights_tier(tier: u8) -> pub PlanetTypeWeightsTier {
         if tier == 0 {
             self.storage.planet_type_weights_tier_0.read()
         } else if tier == 1 {
@@ -489,70 +489,70 @@ pub contract Config {
     /// Returns ArtifactsConfig (artifact points, photoid delay, etc.).
     #[external("public")]
     #[view]
-    fn get_artifacts_config() -> ArtifactsConfig {
+    fn get_artifacts_config() -> pub ArtifactsConfig {
         self.storage.artifacts_config.read()
     }
 
     /// Returns SpaceshipsConfig (gear, mothership toggles, etc.).
     #[external("public")]
     #[view]
-    fn get_spaceships_config() -> SpaceshipsConfig {
+    fn get_spaceships_config() -> pub SpaceshipsConfig {
         self.storage.spaceships_config.read()
     }
 
     /// Returns SpaceJunkConfig (space_junk_limit, planet_level_junk, etc.).
     #[external("public")]
     #[view]
-    fn get_space_junk_config() -> SpaceJunkConfig {
+    fn get_space_junk_config() -> pub SpaceJunkConfig {
         self.storage.space_junk_config.read()
     }
 
     /// Returns CaptureZonesConfig.
     #[external("public")]
     #[view]
-    fn get_capture_zones_config() -> CaptureZonesConfig {
+    fn get_capture_zones_config() -> pub CaptureZonesConfig {
         self.storage.capture_zones_config.read()
     }
 
     /// Returns UpgradeConfig (upgrade costs and level caps).
     #[external("public")]
     #[view]
-    fn get_upgrade_config() -> UpgradeConfig {
+    fn get_upgrade_config() -> pub UpgradeConfig {
         self.storage.upgrade_config.read()
     }
 
     /// Returns default planet stats for the given level.
     #[external("public")]
     #[view]
-    fn get_planet_default_stats(level: u8) -> PlanetDefaultStats {
+    fn get_planet_default_stats(level: u8) -> pub PlanetDefaultStats {
         self.storage.planet_default_stats.at(level).read()
     }
 
     /// Returns Upgrade for the given key (branch * 10 + level).
     #[external("public")]
     #[view]
-    fn get_upgrade(key: u128) -> Upgrade {
+    fn get_upgrade(key: u128) -> pub Upgrade {
         self.storage.upgrades.at(key).read()
     }
 
     /// Returns Upgrade by branch and level.
     #[external("public")]
     #[view]
-    fn get_upgrade_by_branch_level(branch: u128, level: u128) -> Upgrade {
+    fn get_upgrade_by_branch_level(branch: u128, level: u128) -> pub Upgrade {
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).read()
     }
 
     #[external("public")]
     #[view]
-    fn get_cumulative_rarity(index: u128) -> u128 {
+    fn get_cumulative_rarity(index: u128) -> pub u128 {
         self.storage.cumulative_rarities.at(index).read()
     }
 
     /// Batch getter: returns all config needed for planet initialization in one call.
     #[external("public")]
     #[view]
-    fn get_planet_init_config(level: u8) -> PlanetInitConfig {
+    fn get_planet_init_config(level: u8) -> pub PlanetInitConfig {
         PlanetInitConfig {
             world_config: self.storage.world_config.read(),
             game_config_core: self.storage.game_config_core.read(),
@@ -571,35 +571,35 @@ pub contract Config {
     /// Returns the stored hash of WorldConfig.
     #[external("public")]
     #[view]
-    fn get_world_config_hash() -> Field {
+    fn get_world_config_hash() -> pub Field {
         self.storage.world_config_hash.read()
     }
 
     /// Returns the stored hash of SnarkConfig.
     #[external("public")]
     #[view]
-    fn get_snark_config_hash() -> Field {
+    fn get_snark_config_hash() -> pub Field {
         self.storage.snark_config_hash.read()
     }
 
     /// Returns the stored hash of GameConfigCore.
     #[external("public")]
     #[view]
-    fn get_game_config_core_hash() -> Field {
+    fn get_game_config_core_hash() -> pub Field {
         self.storage.game_config_core_hash.read()
     }
 
     /// Returns the stored hash of PlanetLevelThresholds.
     #[external("public")]
     #[view]
-    fn get_planet_level_thresholds_hash() -> Field {
+    fn get_planet_level_thresholds_hash() -> pub Field {
         self.storage.planet_level_thresholds_hash.read()
     }
 
     /// Returns the stored hash of PlanetTypeWeightsTier for the given tier.
     #[external("public")]
     #[view]
-    fn get_planet_type_weights_tier_hash(tier: u8) -> Field {
+    fn get_planet_type_weights_tier_hash(tier: u8) -> pub Field {
         if tier == 0 {
             self.storage.planet_type_weights_tier_0_hash.read()
         } else if tier == 1 {
@@ -617,63 +617,63 @@ pub contract Config {
     /// Returns the stored hash of ArtifactsConfig.
     #[external("public")]
     #[view]
-    fn get_artifacts_config_hash() -> Field {
+    fn get_artifacts_config_hash() -> pub Field {
         self.storage.artifacts_config_hash.read()
     }
 
     /// Returns the stored hash of SpaceshipsConfig.
     #[external("public")]
     #[view]
-    fn get_spaceships_config_hash() -> Field {
+    fn get_spaceships_config_hash() -> pub Field {
         self.storage.spaceships_config_hash.read()
     }
 
     /// Returns the stored hash of SpaceJunkConfig.
     #[external("public")]
     #[view]
-    fn get_space_junk_config_hash() -> Field {
+    fn get_space_junk_config_hash() -> pub Field {
         self.storage.space_junk_config_hash.read()
     }
 
     /// Returns the stored hash of CaptureZonesConfig.
     #[external("public")]
     #[view]
-    fn get_capture_zones_config_hash() -> Field {
+    fn get_capture_zones_config_hash() -> pub Field {
         self.storage.capture_zones_config_hash.read()
     }
 
     /// Returns the stored hash of UpgradeConfig.
     #[external("public")]
     #[view]
-    fn get_upgrade_config_hash() -> Field {
+    fn get_upgrade_config_hash() -> pub Field {
         self.storage.upgrade_config_hash.read()
     }
 
     /// Returns the stored hash of Upgrade for the given key (branch * 10 + level).
     #[external("public")]
     #[view]
-    fn get_upgrade_hash(key: u128) -> Field {
+    fn get_upgrade_hash(key: u128) -> pub Field {
         self.storage.upgrades_hash.at(key).read()
     }
 
     /// Returns the stored hash of Upgrade by branch and level.
     #[external("public")]
     #[view]
-    fn get_upgrade_hash_by_branch_level(branch: u128, level: u128) -> Field {
+    fn get_upgrade_hash_by_branch_level(branch: u128, level: u128) -> pub Field {
         self.storage.upgrades_hash.at(branch * 10 + level).read()
     }
 
     /// Returns the stored hash of PlanetDefaultStats for the given level.
     #[external("public")]
     #[view]
-    fn get_planet_default_stats_hash(level: u8) -> Field {
+    fn get_planet_default_stats_hash(level: u8) -> pub Field {
         self.storage.planet_default_stats_hash.at(level).read()
     }
 
     /// Returns all planet default stats hashes for levels 0-9.
     #[external("public")]
     #[view]
-    fn get_all_planet_default_stats_hashes() -> [Field; 10] {
+    fn get_all_planet_default_stats_hashes() -> pub [Field; 10] {
         [
             self.storage.planet_default_stats_hash.at(0).read(),
             self.storage.planet_default_stats_hash.at(1).read(),
@@ -693,35 +693,35 @@ pub contract Config {
     /// Verifies that the given hash matches the stored WorldConfig hash.
     #[external("public")]
     #[view]
-    fn verify_world_config_hash(hash: Field) -> bool {
+    fn verify_world_config_hash(hash: Field) -> pub bool {
         self.storage.world_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored SnarkConfig hash.
     #[external("public")]
     #[view]
-    fn verify_snark_config_hash(hash: Field) -> bool {
+    fn verify_snark_config_hash(hash: Field) -> pub bool {
         self.storage.snark_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored GameConfigCore hash.
     #[external("public")]
     #[view]
-    fn verify_game_config_core_hash(hash: Field) -> bool {
+    fn verify_game_config_core_hash(hash: Field) -> pub bool {
         self.storage.game_config_core_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored PlanetLevelThresholds hash.
     #[external("public")]
     #[view]
-    fn verify_planet_level_thresholds_hash(hash: Field) -> bool {
+    fn verify_planet_level_thresholds_hash(hash: Field) -> pub bool {
         self.storage.planet_level_thresholds_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored PlanetTypeWeightsTier hash for the given tier.
     #[external("public")]
     #[view]
-    fn verify_planet_type_weights_tier_hash(tier: u8, hash: Field) -> bool {
+    fn verify_planet_type_weights_tier_hash(tier: u8, hash: Field) -> pub bool {
         let stored_hash = if tier == 0 {
             self.storage.planet_type_weights_tier_0_hash.read()
         } else if tier == 1 {
@@ -740,63 +740,63 @@ pub contract Config {
     /// Verifies that the given hash matches the stored ArtifactsConfig hash.
     #[external("public")]
     #[view]
-    fn verify_artifacts_config_hash(hash: Field) -> bool {
+    fn verify_artifacts_config_hash(hash: Field) -> pub bool {
         self.storage.artifacts_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored SpaceshipsConfig hash.
     #[external("public")]
     #[view]
-    fn verify_spaceships_config_hash(hash: Field) -> bool {
+    fn verify_spaceships_config_hash(hash: Field) -> pub bool {
         self.storage.spaceships_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored SpaceJunkConfig hash.
     #[external("public")]
     #[view]
-    fn verify_space_junk_config_hash(hash: Field) -> bool {
+    fn verify_space_junk_config_hash(hash: Field) -> pub bool {
         self.storage.space_junk_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored CaptureZonesConfig hash.
     #[external("public")]
     #[view]
-    fn verify_capture_zones_config_hash(hash: Field) -> bool {
+    fn verify_capture_zones_config_hash(hash: Field) -> pub bool {
         self.storage.capture_zones_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored UpgradeConfig hash.
     #[external("public")]
     #[view]
-    fn verify_upgrade_config_hash(hash: Field) -> bool {
+    fn verify_upgrade_config_hash(hash: Field) -> pub bool {
         self.storage.upgrade_config_hash.read() == hash
     }
 
     /// Verifies that the given hash matches the stored Upgrade hash for the given key.
     #[external("public")]
     #[view]
-    fn verify_upgrade_hash(key: u128, hash: Field) -> bool {
+    fn verify_upgrade_hash(key: u128, hash: Field) -> pub bool {
         self.storage.upgrades_hash.at(key).read() == hash
     }
 
     /// Verifies that the given hash matches the stored Upgrade hash by branch and level.
     #[external("public")]
     #[view]
-    fn verify_upgrade_hash_by_branch_level(branch: u128, level: u128, hash: Field) -> bool {
+    fn verify_upgrade_hash_by_branch_level(branch: u128, level: u128, hash: Field) -> pub bool {
         self.storage.upgrades_hash.at(branch * 10 + level).read() == hash
     }
 
     /// Verifies that the given hash matches the stored PlanetDefaultStats hash for the given level.
     #[external("public")]
     #[view]
-    fn verify_planet_default_stats_hash(level: u8, hash: Field) -> bool {
+    fn verify_planet_default_stats_hash(level: u8, hash: Field) -> pub bool {
         self.storage.planet_default_stats_hash.at(level).read() == hash
     }
 
     /// Verifies all planet default stats hashes at once. Returns true if all match.
     #[external("public")]
     #[view]
-    fn verify_all_planet_default_stats_hashes(hashes: [Field; 10]) -> bool {
+    fn verify_all_planet_default_stats_hashes(hashes: [Field; 10]) -> pub bool {
         let mut all_match = true;
         for i in 0..10 {
             if self.storage.planet_default_stats_hash.at(i as u8).read() != hashes[i] {
@@ -816,7 +816,7 @@ pub contract Config {
         level: u8,
         planet_default_stats_hash: Field,
         hashes: [Field; 9],
-    ) -> bool {
+    ) -> pub bool {
         (self.storage.snark_config_hash.read() == hashes[0])
             & (self.storage.world_config_hash.read() == hashes[1])
             & (self.storage.game_config_core_hash.read() == hashes[2])
@@ -833,39 +833,41 @@ pub contract Config {
     // Essential getter functions for accessing contract storage
 
     #[external("utility")]
-    unconstrained fn get_admin_unconstrained() -> AztecAddress {
+    unconstrained fn get_admin_unconstrained() -> pub AztecAddress {
         self.storage.admin.read()
     }
 
     /// Noir port of Solidity `DFGetterFacet.adminAddress`.
     /// Returns the admin/owner address of the contract.
     #[external("utility")]
-    unconstrained fn admin_address_unconstrained() -> AztecAddress {
+    unconstrained fn admin_address_unconstrained() -> pub AztecAddress {
         self.storage.admin.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_world_config_unconstrained() -> WorldConfig {
+    unconstrained fn get_world_config_unconstrained() -> pub WorldConfig {
         self.storage.world_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_snark_config_unconstrained() -> SnarkConfig {
+    unconstrained fn get_snark_config_unconstrained() -> pub SnarkConfig {
         self.storage.snark_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_game_config_core_unconstrained() -> GameConfigCore {
+    unconstrained fn get_game_config_core_unconstrained() -> pub GameConfigCore {
         self.storage.game_config_core.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_planet_level_thresholds_unconstrained() -> PlanetLevelThresholds {
+    unconstrained fn get_planet_level_thresholds_unconstrained() -> pub PlanetLevelThresholds {
         self.storage.planet_level_thresholds.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_planet_type_weights_tier_unconstrained(tier: u8) -> PlanetTypeWeightsTier {
+    unconstrained fn get_planet_type_weights_tier_unconstrained(
+        tier: u8,
+    ) -> pub PlanetTypeWeightsTier {
         if tier == 0 {
             self.storage.planet_type_weights_tier_0.read()
         } else if tier == 1 {
@@ -881,38 +883,38 @@ pub contract Config {
     }
 
     #[external("utility")]
-    unconstrained fn get_artifacts_config_unconstrained() -> ArtifactsConfig {
+    unconstrained fn get_artifacts_config_unconstrained() -> pub ArtifactsConfig {
         self.storage.artifacts_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_spaceships_config_unconstrained() -> SpaceshipsConfig {
+    unconstrained fn get_spaceships_config_unconstrained() -> pub SpaceshipsConfig {
         self.storage.spaceships_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_space_junk_config_unconstrained() -> SpaceJunkConfig {
+    unconstrained fn get_space_junk_config_unconstrained() -> pub SpaceJunkConfig {
         self.storage.space_junk_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_capture_zones_config_unconstrained() -> CaptureZonesConfig {
+    unconstrained fn get_capture_zones_config_unconstrained() -> pub CaptureZonesConfig {
         self.storage.capture_zones_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_upgrade_config_unconstrained() -> UpgradeConfig {
+    unconstrained fn get_upgrade_config_unconstrained() -> pub UpgradeConfig {
         self.storage.upgrade_config.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_planet_default_stats_unconstrained(level: u8) -> PlanetDefaultStats {
+    unconstrained fn get_planet_default_stats_unconstrained(level: u8) -> pub PlanetDefaultStats {
         self.storage.planet_default_stats.at(level).read()
     }
 
     /// Key is `branch * 10 + level`, matching storage comment.
     #[external("utility")]
-    unconstrained fn get_upgrade_unconstrained(key: u128) -> Upgrade {
+    unconstrained fn get_upgrade_unconstrained(key: u128) -> pub Upgrade {
         self.storage.upgrades.at(key).read()
     }
 
@@ -920,7 +922,7 @@ pub contract Config {
     unconstrained fn get_upgrade_by_branch_level_unconstrained(
         branch: u128,
         level: u128,
-    ) -> Upgrade {
+    ) -> pub Upgrade {
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).read()
     }
@@ -928,7 +930,7 @@ pub contract Config {
     /// Noir port of Solidity `DFGetterFacet.getTypeWeights`.
     /// Returns the full [4][10][5] planet type weights table.
     #[external("utility")]
-    unconstrained fn get_type_weights_unconstrained() -> [[[u128; 5]; 10]; 4] {
+    unconstrained fn get_type_weights_unconstrained() -> pub [[[u128; 5]; 10]; 4] {
         let tier0: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_0.read();
         let tier1: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_1.read();
         let tier2: PlanetTypeWeightsTier = self.storage.planet_type_weights_tier_2.read();
@@ -940,7 +942,7 @@ pub contract Config {
     /// Noir port of Solidity `DFGetterFacet.getUpgrades`.
     /// Returns the full [3][4] upgrades table: [branch][level].
     #[external("utility")]
-    unconstrained fn get_upgrades_unconstrained() -> [[Upgrade; 4]; 3] {
+    unconstrained fn get_upgrades_unconstrained() -> pub [[Upgrade; 4]; 3] {
         // Branch 0 (Defense): keys 0..3
         let branch0: [Upgrade; 4] = [
             self.storage.upgrades.at(0).read(),
@@ -971,7 +973,7 @@ pub contract Config {
     /// Noir port of Solidity `DFGetterFacet.getDefaultStats`.
     /// Returns the full array of default planet stats for levels 0..9.
     #[external("utility")]
-    unconstrained fn get_default_stats_unconstrained() -> [PlanetDefaultStats; 10] {
+    unconstrained fn get_default_stats_unconstrained() -> pub [PlanetDefaultStats; 10] {
         [
             self.storage.planet_default_stats.at(0).read(),
             self.storage.planet_default_stats.at(1).read(),
@@ -987,14 +989,14 @@ pub contract Config {
     }
 
     #[external("utility")]
-    unconstrained fn get_cumulative_rarity_unconstrained(index: u128) -> u128 {
+    unconstrained fn get_cumulative_rarity_unconstrained(index: u128) -> pub u128 {
         self.storage.cumulative_rarities.at(index).read()
     }
 
     /// Noir port of Solidity `DFGetterFacet.getArtifactPointValues`.
     /// Returns the artifact point values array [6].
     #[external("utility")]
-    unconstrained fn get_artifact_point_values_unconstrained() -> [u128; 6] {
+    unconstrained fn get_artifact_point_values_unconstrained() -> pub [u128; 6] {
         let artifacts_config = self.storage.artifacts_config.read();
         artifacts_config.artifact_point_values
     }
@@ -1002,7 +1004,7 @@ pub contract Config {
     /// Noir port of Solidity `DFGetterFacet.getRevealCooldown`.
     /// Returns the location reveal cooldown in seconds.
     #[external("utility")]
-    unconstrained fn get_reveal_cooldown_unconstrained() -> u64 {
+    unconstrained fn get_reveal_cooldown_unconstrained() -> pub u64 {
         let world_config = self.storage.world_config.read();
         world_config.location_reveal_cooldown
     }
@@ -1011,31 +1013,31 @@ pub contract Config {
 
     /// Returns the stored hash of WorldConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_world_config_hash_unconstrained() -> Field {
+    unconstrained fn get_world_config_hash_unconstrained() -> pub Field {
         self.storage.world_config_hash.read()
     }
 
     /// Returns the stored hash of SnarkConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_snark_config_hash_unconstrained() -> Field {
+    unconstrained fn get_snark_config_hash_unconstrained() -> pub Field {
         self.storage.snark_config_hash.read()
     }
 
     /// Returns the stored hash of GameConfigCore (unconstrained).
     #[external("utility")]
-    unconstrained fn get_game_config_core_hash_unconstrained() -> Field {
+    unconstrained fn get_game_config_core_hash_unconstrained() -> pub Field {
         self.storage.game_config_core_hash.read()
     }
 
     /// Returns the stored hash of PlanetLevelThresholds (unconstrained).
     #[external("utility")]
-    unconstrained fn get_planet_level_thresholds_hash_unconstrained() -> Field {
+    unconstrained fn get_planet_level_thresholds_hash_unconstrained() -> pub Field {
         self.storage.planet_level_thresholds_hash.read()
     }
 
     /// Returns the stored hash of PlanetTypeWeightsTier for the given tier (unconstrained).
     #[external("utility")]
-    unconstrained fn get_planet_type_weights_tier_hash_unconstrained(tier: u8) -> Field {
+    unconstrained fn get_planet_type_weights_tier_hash_unconstrained(tier: u8) -> pub Field {
         if tier == 0 {
             self.storage.planet_type_weights_tier_0_hash.read()
         } else if tier == 1 {
@@ -1052,36 +1054,36 @@ pub contract Config {
 
     /// Returns the stored hash of ArtifactsConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_artifacts_config_hash_unconstrained() -> Field {
+    unconstrained fn get_artifacts_config_hash_unconstrained() -> pub Field {
         self.storage.artifacts_config_hash.read()
     }
 
     /// Returns the stored hash of SpaceshipsConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_spaceships_config_hash_unconstrained() -> Field {
+    unconstrained fn get_spaceships_config_hash_unconstrained() -> pub Field {
         self.storage.spaceships_config_hash.read()
     }
 
     /// Returns the stored hash of SpaceJunkConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_space_junk_config_hash_unconstrained() -> Field {
+    unconstrained fn get_space_junk_config_hash_unconstrained() -> pub Field {
         self.storage.space_junk_config_hash.read()
     }
 
     /// Returns the stored hash of CaptureZonesConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_capture_zones_config_hash_unconstrained() -> Field {
+    unconstrained fn get_capture_zones_config_hash_unconstrained() -> pub Field {
         self.storage.capture_zones_config_hash.read()
     }
 
     /// Returns the stored hash of UpgradeConfig (unconstrained).
     #[external("utility")]
-    unconstrained fn get_upgrade_config_hash_unconstrained() -> Field {
+    unconstrained fn get_upgrade_config_hash_unconstrained() -> pub Field {
         self.storage.upgrade_config_hash.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_upgrade_hash_unconstrained(key: u128) -> Field {
+    unconstrained fn get_upgrade_hash_unconstrained(key: u128) -> pub Field {
         self.storage.upgrades_hash.at(key).read()
     }
 
@@ -1089,19 +1091,19 @@ pub contract Config {
     unconstrained fn get_upgrade_hash_by_branch_level_unconstrained(
         branch: u128,
         level: u128,
-    ) -> Field {
+    ) -> pub Field {
         self.storage.upgrades_hash.at(branch * 10 + level).read()
     }
 
     /// Returns the stored hash of PlanetDefaultStats for the given level (unconstrained).
     #[external("utility")]
-    unconstrained fn get_planet_default_stats_hash_unconstrained(level: u8) -> Field {
+    unconstrained fn get_planet_default_stats_hash_unconstrained(level: u8) -> pub Field {
         self.storage.planet_default_stats_hash.at(level).read()
     }
 
     /// Returns all planet default stats hashes for levels 0-9 (unconstrained).
     #[external("utility")]
-    unconstrained fn get_all_planet_default_stats_hashes_unconstrained() -> [Field; 10] {
+    unconstrained fn get_all_planet_default_stats_hashes_unconstrained() -> pub [Field; 10] {
         [
             self.storage.planet_default_stats_hash.at(0).read(),
             self.storage.planet_default_stats_hash.at(1).read(),
@@ -1119,7 +1121,7 @@ pub contract Config {
     /// Returns all config hashes in a single call (unconstrained).
     /// Order: [world, snark, game_core, thresholds, tier0, tier1, tier2, tier3, artifacts, spaceships, space_junk, capture_zones, upgrade]
     #[external("utility")]
-    unconstrained fn get_all_config_hashes_unconstrained() -> [Field; 13] {
+    unconstrained fn get_all_config_hashes_unconstrained() -> pub [Field; 13] {
         [
             self.storage.world_config_hash.read(),
             self.storage.snark_config_hash.read(),
@@ -1141,7 +1143,7 @@ pub contract Config {
     /// Lets the client fetch all config with one PXE `simulate` instead of many
     /// serial calls. Reuses the same storage reads as the individual getters.
     #[external("utility")]
-    unconstrained fn get_full_config_unconstrained() -> FullConfig {
+    unconstrained fn get_full_config_unconstrained() -> pub FullConfig {
         let default_stats: [PlanetDefaultStats; 10] = [
             self.storage.planet_default_stats.at(0).read(),
             self.storage.planet_default_stats.at(1).read(),

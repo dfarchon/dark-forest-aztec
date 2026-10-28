@@ -1,12 +1,12 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
-import { Fr } from "@aztec/aztec.js/fields";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import type { Aliased } from "@aztec/aztec.js/wallet";
-import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
-import { hashToEmoji } from "@aztec/wallet-sdk/crypto";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { getContractInstanceFromInstantiationParams } from "@aztec-labs/aztec.js/contracts";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
+import type { Aliased } from "@aztec-labs/aztec.js/wallet";
+import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
+import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
+import { hashToEmoji } from "@aztec-labs/wallet-sdk/crypto";
 import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
   CONFIG_CONTRACT_ADDRESS,

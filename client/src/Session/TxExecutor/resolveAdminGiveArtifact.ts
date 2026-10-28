@@ -9,8 +9,8 @@
  * Intent args (flat): [locationIdDec, rarity, biome, artifactType, ownerAddress]
  */
 
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { Fr } from "@aztec/aztec.js/fields";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { Fr } from "@aztec-labs/aztec.js/fields";
 import type { TxIntent } from "@dfpunk/types";
 
 import type { ResolverDeps } from "./resolverHelpers";

@@ -1,5 +1,5 @@
-import type { AztecNode } from '@aztec/aztec.js/node';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
+import type { AztecNode } from '@aztec-labs/aztec.js/node';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
 
 const NULLABLE_METHODS = new Set<PropertyKey>([
     'getContract',

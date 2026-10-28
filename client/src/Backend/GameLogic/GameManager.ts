@@ -1,5 +1,5 @@
-import { Fr } from "@aztec/aztec.js/fields";
-import { poseidon2Hash } from "@aztec/foundation/crypto/poseidon";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { poseidon2Hash } from "@aztec-labs/foundation/crypto/poseidon";
 import {
   BLOCK_EXPLORER_URL,
   CONTRACT_PRECISION,

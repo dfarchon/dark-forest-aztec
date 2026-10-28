@@ -3,8 +3,8 @@
  * Config objects are immutable during a game session (set by admin during configure).
  */
 
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { ContractBase } from "@aztec/aztec.js/contracts";
+import type { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { ContractBase } from "@aztec-labs/aztec.js/contracts";
 import { unwrapSimulateResult } from "@dfpunk/utils";
 
 /** Raw Upgrade from contract (snake_case). */

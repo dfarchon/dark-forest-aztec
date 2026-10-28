@@ -16,17 +16,17 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@aztec/accounts": "5.0.1",
-    "@aztec/aztec.js": "5.0.1",
-    "@aztec/constants": "5.0.1",
-    "@aztec/entrypoints": "5.0.1",
-    "@aztec/foundation": "5.0.1",
-    "@aztec/kv-store": "5.0.1",
-    "@aztec/noir-contracts.js": "5.0.1",
-    "@aztec/pxe": "5.0.1",
-    "@aztec/stdlib": "5.0.1",
-    "@aztec/wallet-sdk": "5.0.1",
-    "@aztec/wallets": "5.0.1"
+    "@aztec-labs/accounts": "6.0.0",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/entrypoints": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/kv-store": "6.0.0",
+    "@aztec-labs/noir-contracts.js": "6.0.0",
+    "@aztec-labs/pxe": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
+    "@aztec-labs/wallet-sdk": "6.0.0",
+    "@aztec-labs/wallets": "6.0.0"
   },
   "devDependencies": {
     "@commitlint/cli": "19.6.0",

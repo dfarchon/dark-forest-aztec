@@ -5,15 +5,15 @@
  * - `sponsored`: pay via canonical SponsoredFPC (`SponsoredFeePaymentMethod`).
  * - `account`: omit `fee.paymentMethod`; SDK charges FeeJuice from the sender account.
  */
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { Fr } from '@aztec/aztec.js/fields';
-import type { AztecNode } from '@aztec/aztec.js/node';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
-import { SPONSORED_FPC_SALT } from '@aztec/constants';
-import { SponsoredFPCContractArtifact } from '@aztec/noir-contracts.js/SponsoredFPC';
-import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
+import { SponsoredFeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import type { AztecNode } from '@aztec-labs/aztec.js/node';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
+import { SPONSORED_FPC_SALT } from '@aztec-labs/constants';
+import { SponsoredFPCContractArtifact } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
+import type { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
 import path from 'path';
 
 import { getNetworkValue, loadNetworkEnv } from '../runtime/env.ts';

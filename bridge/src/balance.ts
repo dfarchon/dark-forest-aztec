@@ -1,6 +1,6 @@
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
 import { formatUnits } from "viem";
 
 import { envPath } from "./config.js";

@@ -5,8 +5,8 @@
  *   pnpm admin:balance --json
  *   pnpm admin:balance <aztec-address>
  */
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
 import path from 'path';
 
 import { getAztecNodeUrlFromNetwork } from '../deploy/session.ts';

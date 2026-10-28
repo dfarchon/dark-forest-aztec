@@ -12,9 +12,9 @@
 
 import "./TestPageStyles.css";
 
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { AztecNode } from "@aztec/aztec.js/node";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
 import { CONFIG_CONTRACT_ADDRESS, START_BLOCK } from "@dfpunk/contracts";
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import type { ClientTxStatus, Transaction, TxIntent } from "@dfpunk/types";
@@ -500,9 +500,7 @@ export function TxExecutorTestPage() {
             </div>
           </div>
           <div className="test-page__stat">
-            <div className="test-page__stat-label">
-              PXE prover / accelerator
-            </div>
+            <div className="test-page__stat-label">PXE prover / Presto</div>
             <div className="test-page__stat-value">
               <span
                 className={`test-page__badge ${getProverEnabled() ? "test-page__badge--success" : "test-page__badge--idle"}`}
@@ -512,7 +510,7 @@ export function TxExecutorTestPage() {
             </div>
           </div>
           <div className="test-page__stat">
-            <div className="test-page__stat-label">Accelerator URL</div>
+            <div className="test-page__stat-label">Presto URL</div>
             <div className="test-page__stat-value">
               <code style={{ fontSize: "0.85rem" }}>
                 {getEffectiveProverUrl()}

@@ -12,7 +12,7 @@
  *   const nowSec = clock.nowSec();    // chain-adjusted seconds
  */
 
-import type { AztecNode } from "@aztec/aztec.js/node";
+import type { AztecNode } from "@aztec-labs/aztec.js/node";
 
 const defaultMonotonicNow = (): number =>
   typeof performance === "undefined" ? Date.now() : performance.now();

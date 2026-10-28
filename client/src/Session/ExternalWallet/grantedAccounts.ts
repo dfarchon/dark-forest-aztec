@@ -1,5 +1,5 @@
-import type { AztecAddress } from "@aztec/aztec.js/addresses";
-import type { Aliased, Wallet } from "@aztec/aztec.js/wallet";
+import type { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import type { Aliased, Wallet } from "@aztec-labs/aztec.js/wallet";
 
 import { resolveExternalWalletCapabilities } from "./capabilityValidation";
 

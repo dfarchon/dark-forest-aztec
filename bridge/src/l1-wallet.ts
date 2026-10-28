@@ -1,4 +1,4 @@
-import { createExtendedL1Client } from "@aztec/ethereum/client";
+import { createExtendedL1Client } from "@aztec-labs/ethereum/client";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   createPublicClient,

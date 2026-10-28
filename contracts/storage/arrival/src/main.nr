@@ -98,7 +98,7 @@ pub contract ArrivalStorage {
     /// Used by move_public to allocate unique IDs for arrivals/events
     /// without touching the World state hash.
     #[external("public")]
-    fn allocate_event_id() -> Field {
+    fn allocate_event_id() -> pub Field {
         self.internal.assert_authorized();
         let current = self.storage.event_id_counter.read();
         let next = current + 1;
@@ -169,7 +169,7 @@ pub contract ArrivalStorage {
 
     #[external("public")]
     #[view]
-    fn verify(id: Field, state: Arrival) -> bool {
+    fn verify(id: Field, state: Arrival) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         if stored_hash == 0 {
             state == Arrival::zero()
@@ -181,7 +181,7 @@ pub contract ArrivalStorage {
 
     #[external("public")]
     #[view]
-    fn compute_state_hash(state: Arrival) -> Field {
+    fn compute_state_hash(state: Arrival) -> pub Field {
         if state == Arrival::zero() {
             0
         } else {
@@ -191,33 +191,33 @@ pub contract ArrivalStorage {
 
     #[external("public")]
     #[view]
-    fn get_arrival(id: Field) -> Arrival {
+    fn get_arrival(id: Field) -> pub Arrival {
         arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("public")]
     #[view]
-    fn is_initialized(id: Field) -> bool {
+    fn is_initialized(id: Field) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash != 0
     }
 
     #[external("public")]
     #[view]
-    fn get_state_root(id: Field) -> Field {
+    fn get_state_root(id: Field) -> pub Field {
         self.storage.state_roots.at(id).read()
     }
 
     #[external("public")]
     #[view]
-    fn verify_hash(id: Field, hash: Field) -> bool {
+    fn verify_hash(id: Field, hash: Field) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash == hash
     }
 
     #[external("public")]
     #[view]
-    fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20], count: u32) -> bool {
+    fn verify_hashes_batch(ids: [Field; 20], hashes: [Field; 20], count: u32) -> pub bool {
         assert(count <= 20, "count exceeds batch size");
         let mut result = true;
         for i in 0..20 {
@@ -234,7 +234,7 @@ pub contract ArrivalStorage {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn verify_unconstrained(id: Field, state: Arrival) -> bool {
+    unconstrained fn verify_unconstrained(id: Field, state: Arrival) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         if stored_hash == 0 {
             state == Arrival::zero()
@@ -245,7 +245,7 @@ pub contract ArrivalStorage {
     }
 
     #[external("utility")]
-    unconstrained fn compute_state_hash_unconstrained(state: Arrival) -> Field {
+    unconstrained fn compute_state_hash_unconstrained(state: Arrival) -> pub Field {
         if state == Arrival::zero() {
             0
         } else {
@@ -254,50 +254,50 @@ pub contract ArrivalStorage {
     }
 
     #[external("utility")]
-    unconstrained fn get_state_root_unconstrained(id: Field) -> Field {
+    unconstrained fn get_state_root_unconstrained(id: Field) -> pub Field {
         self.storage.state_roots.at(id).read()
     }
 
     #[external("utility")]
-    unconstrained fn get_default_state_unconstrained() -> Arrival {
+    unconstrained fn get_default_state_unconstrained() -> pub Arrival {
         Arrival::zero()
     }
 
     #[external("utility")]
-    unconstrained fn get_admin_unconstrained() -> AztecAddress {
+    unconstrained fn get_admin_unconstrained() -> pub AztecAddress {
         self.storage.admin.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_authorized_count_unconstrained() -> u32 {
+    unconstrained fn get_authorized_count_unconstrained() -> pub u32 {
         self.storage.authorized_count.read()
     }
 
     #[external("utility")]
-    unconstrained fn get_authorized_contract_unconstrained(index: u32) -> AztecAddress {
+    unconstrained fn get_authorized_contract_unconstrained(index: u32) -> pub AztecAddress {
         self.storage.authorized_list.at(index).read()
     }
 
     #[external("utility")]
-    unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> bool {
+    unconstrained fn is_authorized_unconstrained(addr: AztecAddress) -> pub bool {
         let is_admin: bool = addr == self.storage.admin.read();
         let is_authorized: bool = self.storage.authorized_map.at(addr).read();
         is_admin | is_authorized
     }
 
     #[external("utility")]
-    unconstrained fn is_initialized_unconstrained(id: Field) -> bool {
+    unconstrained fn is_initialized_unconstrained(id: Field) -> pub bool {
         let stored_hash = self.storage.state_roots.at(id).read();
         stored_hash != 0
     }
 
     #[external("utility")]
-    unconstrained fn get_arrival_unconstrained(id: Field) -> Arrival {
+    unconstrained fn get_arrival_unconstrained(id: Field) -> pub Arrival {
         arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read())
     }
 
     #[external("utility")]
-    unconstrained fn get_event_id_counter_unconstrained() -> Field {
+    unconstrained fn get_event_id_counter_unconstrained() -> pub Field {
         self.storage.event_id_counter.read()
     }
 
@@ -305,19 +305,19 @@ pub contract ArrivalStorage {
 
     #[external("public")]
     #[view]
-    fn get_authorized_count() -> u32 {
+    fn get_authorized_count() -> pub u32 {
         self.storage.authorized_count.read()
     }
 
     #[external("public")]
     #[view]
-    fn get_authorized_contract(index: u32) -> AztecAddress {
+    fn get_authorized_contract(index: u32) -> pub AztecAddress {
         self.storage.authorized_list.at(index).read()
     }
 
     #[external("public")]
     #[view]
-    fn is_authorized(addr: AztecAddress) -> bool {
+    fn is_authorized(addr: AztecAddress) -> pub bool {
         let is_admin: bool = addr == self.storage.admin.read();
         let is_authorized: bool = self.storage.authorized_map.at(addr).read();
         is_admin | is_authorized

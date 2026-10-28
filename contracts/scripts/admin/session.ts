@@ -1,8 +1,8 @@
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Contract, type ContractBase } from '@aztec/aztec.js/contracts';
-import type { AztecNode } from '@aztec/aztec.js/node';
-import type { ContractArtifact } from '@aztec/stdlib/abi';
-import type { EmbeddedWallet } from '@aztec/wallets/embedded';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { Contract, type ContractBase } from '@aztec-labs/aztec.js/contracts';
+import type { AztecNode } from '@aztec-labs/aztec.js/node';
+import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
+import type { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';

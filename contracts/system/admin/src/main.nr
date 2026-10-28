@@ -105,7 +105,7 @@ contract Admin {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn get_all_storage_addresses_unconstrained() -> AdminSystemStorageAddresses {
+    unconstrained fn get_all_storage_addresses_unconstrained() -> pub AdminSystemStorageAddresses {
         AdminSystemStorageAddresses {
             config_storage_address: self.storage.config_storage_address.read(),
             world_storage_address: self.storage.world_storage_address.read(),

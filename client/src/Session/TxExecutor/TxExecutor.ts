@@ -17,12 +17,12 @@ import {
   NO_WAIT,
   type NoWait,
   type SendInteractionOptions,
-} from "@aztec/aztec.js/contracts";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import type { AztecNode } from "@aztec/aztec.js/node";
-import { waitForTx } from "@aztec/aztec.js/node";
-import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
-import { type TxHash, type TxReceipt, TxStatus } from "@aztec/stdlib/tx";
+} from "@aztec-labs/aztec.js/contracts";
+import { SponsoredFeePaymentMethod } from "@aztec-labs/aztec.js/fee";
+import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import { waitForTx } from "@aztec-labs/aztec.js/node";
+import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
+import { type TxHash, type TxReceipt, TxStatus } from "@aztec-labs/stdlib/tx";
 import type {
   PersistedTransaction,
   Transaction,

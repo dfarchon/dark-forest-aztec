@@ -1,8 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getPublicEvents } from "@aztec/aztec.js/events";
-import { BlockNumber } from "@aztec/foundation/branded-types";
+import { getPublicEvents } from "@aztec-labs/aztec.js/events";
+import { BlockNumber } from "@aztec-labs/foundation/branded-types";
 import dotenv from "dotenv";
 
 import { getTestContext } from "../../contracts/scripts/test/test-setup.ts";

@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
  */
 function emitSqliteRuntimeAssets(): Plugin {
   const opfsProxySource = readFileSync(
-    require.resolve("@aztec/sqlite3mc-wasm/vendor/jswasm/sqlite3-opfs-async-proxy.js"),
+    require.resolve("@aztec-labs/sqlite3mc-wasm/vendor/jswasm/sqlite3-opfs-async-proxy.js"),
     "utf8"
   );
 
@@ -86,23 +86,24 @@ export default defineConfig({
       target: "esnext",
     },
     include: [
-      "@aztec/aztec.js/fields",
-      "@aztec/aztec.js/addresses",
-      "@aztec/aztec.js/abi",
-      "@aztec/aztec.js/contracts",
-      "@aztec/aztec.js/wallet",
-      "@aztec/foundation/crypto/poseidon",
-      "@aztec/accounts/schnorr/lazy",
-      "@aztec/accounts/schnorr/stub/lazy",
-      "@aztec/standard-contracts/multi-call-entrypoint/lazy",
+      "@aztec-labs/aztec.js/fields",
+      "@aztec-labs/aztec.js/addresses",
+      "@aztec-labs/aztec.js/abi",
+      "@aztec-labs/aztec.js/contracts",
+      "@aztec-labs/aztec.js/wallet",
+      "@aztec-labs/foundation/crypto/poseidon",
+      "@aztec-labs/accounts/schnorr/lazy",
+      "@aztec-labs/accounts/schnorr/stub/lazy",
+      "@aztec-labs/standard-contracts/multi-call-entrypoint/lazy",
       "msgpackr/index-no-eval",
       "pino",
     ],
     exclude: [
-      "@aztec/bb.js",
-      "@aztec/noir-acvm_js",
-      "@aztec/noir-noirc_abi",
-      "@aztec/kv-store/sqlite-opfs",
+      "@alejoamiras/presto",
+      "@aztec-foundation/bb.js",
+      "@aztec-foundation/noir-acvm_js",
+      "@aztec-foundation/noir-noirc_abi",
+      "@aztec-labs/kv-store/sqlite-opfs",
     ],
   },
 });

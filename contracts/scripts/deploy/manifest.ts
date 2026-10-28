@@ -2,7 +2,7 @@
  * Per-batch deploy journal. Each run gets a unique id under
  * contracts/deployments/<network>/<id>/manifest.json.
  */
-import type { ContractArtifact } from '@aztec/stdlib/abi';
+import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
 import { createHash, randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';

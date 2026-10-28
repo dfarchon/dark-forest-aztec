@@ -182,7 +182,7 @@ contract Move {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn get_all_storage_addresses_unconstrained() -> MoveSystemStorageAddresses {
+    unconstrained fn get_all_storage_addresses_unconstrained() -> pub MoveSystemStorageAddresses {
         MoveSystemStorageAddresses {
             config_storage_address: self.storage.config_storage_address.read(),
             world_storage_address: self.storage.world_storage_address.read(),

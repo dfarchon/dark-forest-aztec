@@ -1,6 +1,6 @@
-import { getSchnorrInitializerlessAccountContractAddress } from "@aztec/accounts/schnorr";
-import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { Fq, Fr } from "@aztec/aztec.js/fields";
+import { getSchnorrInitializerlessAccountContractAddress } from "@aztec-labs/accounts/schnorr";
+import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
+import { Fq, Fr } from "@aztec-labs/aztec.js/fields";
 
 import { loadConfig, writeAztecAccount } from "./config.js";
 

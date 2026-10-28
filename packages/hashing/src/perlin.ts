@@ -1,5 +1,5 @@
-import { BarretenbergSync } from "@aztec/bb.js";
-import { Fr } from "@aztec/aztec.js/fields";
+import { BarretenbergSync } from "@aztec-foundation/bb.js";
+import { Fr } from "@aztec-labs/aztec.js/fields";
 import { PerlinConfig } from "@dfpunk/types";
 import BigInt, { BigInteger } from "big-integer";
 import { Fraction, IFraction } from "./fractions/bigFraction";

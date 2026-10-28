@@ -34,10 +34,10 @@
     "test": "node --test --experimental-transform-types src/*.test.ts"
   },
   "dependencies": {
-    "@aztec/aztec.js": "5.0.1",
-    "@aztec/constants": "5.0.1",
-    "@aztec/foundation": "5.0.1",
-    "@aztec/stdlib": "5.0.1",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
     "@dfpunk/contracts": "workspace:*"
   },
   "devDependencies": {

@@ -69,7 +69,7 @@ export function getProverEnabled(): boolean {
 }
 
 /**
- * Native accelerator / TeeRex-style prover HTTP base URL (host + port).
+ * Presto prover HTTP base URL (host + port). Host must be loopback.
  * Defaults to http://127.0.0.1:59833 when unset.
  */
 export function getProverUrl(): string {

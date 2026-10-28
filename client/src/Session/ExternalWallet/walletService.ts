@@ -1,13 +1,13 @@
-import type { ChainInfo } from "@aztec/aztec.js/account";
-import { Fr } from "@aztec/aztec.js/fields";
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
-import type { Wallet } from "@aztec/aztec.js/wallet";
+import type { ChainInfo } from "@aztec-labs/aztec.js/account";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import type { Wallet } from "@aztec-labs/aztec.js/wallet";
 import {
   type DiscoverySession,
   type PendingConnection,
   WalletManager,
   type WalletProvider,
-} from "@aztec/wallet-sdk/manager";
+} from "@aztec-labs/wallet-sdk/manager";
 
 const APP_ID = "dfpunk";
 // App-level default so wallet discovery completes quickly without requiring

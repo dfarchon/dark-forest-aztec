@@ -170,7 +170,7 @@ contract ArtifactAction {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
-    unconstrained fn get_all_storage_addresses_unconstrained() -> ArtifactFacetSystemStorageAddresses {
+    unconstrained fn get_all_storage_addresses_unconstrained() -> pub ArtifactFacetSystemStorageAddresses {
         ArtifactFacetSystemStorageAddresses {
             config_storage_address: self.storage.config_storage_address.read(),
             arrivals_storage_address: self.storage.arrivals_storage_address.read(),

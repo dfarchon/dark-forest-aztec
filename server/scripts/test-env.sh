@@ -137,7 +137,7 @@ wait_for_http_ok() {
 
 resolve_aztec_cmd() {
   local aztec_entry
-  aztec_entry="$(ls -1d "${HOME}"/.aztec/versions/*/node_modules/@aztec/aztec/dest/bin/index.js 2>/dev/null | tail -n 1 || true)"
+  aztec_entry="$(ls -1d "${HOME}"/.aztec/versions/*/node_modules/@aztec-labs/aztec/dest/bin/index.js 2>/dev/null | tail -n 1 || true)"
   if [[ -n "${aztec_entry}" ]]; then
     echo "node --no-warnings ${aztec_entry}"
     return 0
