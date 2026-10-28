@@ -81,6 +81,13 @@ export default defineConfig({
   build: {
     target: "esnext",
   },
+  resolve: {
+    dedupe: [
+      "@aztec-labs/foundation",
+      "@aztec-labs/stdlib",
+      "@aztec-labs/constants",
+    ],
+  },
   optimizeDeps: {
     esbuildOptions: {
       target: "esnext",
@@ -91,10 +98,15 @@ export default defineConfig({
       "@aztec-labs/aztec.js/abi",
       "@aztec-labs/aztec.js/contracts",
       "@aztec-labs/aztec.js/wallet",
-      "@aztec-labs/foundation/crypto/poseidon",
+      "@aztec-labs/foundation > sha3",
+      "@aztec-labs/foundation > hash.js",
+      "@aztec-labs/foundation > detect-node",
+      "@aztec-labs/stdlib > lodash.chunk",
+      "@aztec-labs/stdlib > lodash.times",
+      "@aztec-labs/stdlib > json-stringify-deterministic",
+      "ms",
       "@aztec-labs/accounts/schnorr/lazy",
       "@aztec-labs/accounts/schnorr/stub/lazy",
-      "@aztec-labs/standard-contracts/multi-call-entrypoint/lazy",
       "msgpackr/index-no-eval",
       "pino",
     ],
@@ -103,6 +115,9 @@ export default defineConfig({
       "@aztec-foundation/bb.js",
       "@aztec-foundation/noir-acvm_js",
       "@aztec-foundation/noir-noirc_abi",
+      "@aztec-labs/foundation",
+      "@aztec-labs/stdlib",
+      "@aztec-labs/constants",
       "@aztec-labs/kv-store/sqlite-opfs",
     ],
   },

@@ -58,7 +58,8 @@ export function getEffectiveIndexerBootstrapUrl(): string | undefined {
 }
 
 /**
- * Effective accelerator prover URL: user override from localStorage, else env default.
+ * Effective accelerator prover URL: user override from localStorage, else env.
+ * Empty when neither is set: the client does not connect to Presto.
  */
 export function getEffectiveProverUrl(): string {
   const stored = localStorage.getItem(STORAGE_KEY_PROVER_URL);

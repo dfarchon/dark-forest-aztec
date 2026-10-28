@@ -22,7 +22,7 @@ const USAGE = 'Usage: pnpm admin:tick [intervalSeconds] [--id <deployment-id>]';
 function parseOptions(): { intervalSeconds: number; id?: string } {
     const parsed = parseAdminArgs(process.argv.slice(2), { usage: USAGE });
     if (parsed.positionals.length > 1) throw new Error(USAGE);
-    const intervalText = parsed.positionals[0] ?? '120';
+    const intervalText = parsed.positionals[0] ?? '20';
     if (!/^\d+$/.test(intervalText)) throw new Error(USAGE);
     const intervalSeconds = Number(intervalText);
     if (!Number.isSafeInteger(intervalSeconds) || intervalSeconds <= 0) {

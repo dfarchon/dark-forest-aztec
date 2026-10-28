@@ -11,7 +11,6 @@ import {
  */
 
 const DEFAULT_NODE_URL = "http://localhost:8080";
-const DEFAULT_PROVER_URL = "http://127.0.0.1:59833";
 
 /** Default indexer bootstrap URL (testnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in testnet builds. */
 const DEFAULT_INDEXER_BOOTSTRAP_URL = "";
@@ -70,10 +69,10 @@ export function getProverEnabled(): boolean {
 
 /**
  * Presto prover HTTP base URL (host + port). Host must be loopback.
- * Defaults to http://127.0.0.1:59833 when unset.
+ * Empty when `VITE_TEEREX_PROVER_URL` is unset: the client does not connect to Presto.
  */
 export function getProverUrl(): string {
-  return getString("VITE_TEEREX_PROVER_URL") ?? DEFAULT_PROVER_URL;
+  return getString("VITE_TEEREX_PROVER_URL") ?? "";
 }
 
 function getBoolean(key: string, defaultValue: boolean): boolean {

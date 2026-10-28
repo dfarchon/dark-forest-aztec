@@ -115,9 +115,21 @@ importers:
       '@alejoamiras/presto':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)(zod@4.4.3)
+      '@aztec-foundation/bb.js':
+        specifier: 6.0.0
+        version: 6.0.0
+      '@aztec-foundation/noir-acvm_js':
+        specifier: 6.0.0
+        version: 6.0.0
+      '@aztec-foundation/noir-noirc_abi':
+        specifier: 6.0.0
+        version: 6.0.0
       '@aztec-labs/aztec.js':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)
+      '@aztec-labs/bb-prover':
+        specifier: 6.0.0
+        version: 6.0.0(typescript@5.9.3)(zod@4.4.3)
       '@aztec-labs/constants':
         specifier: 6.0.0
         version: 6.0.0
@@ -127,6 +139,9 @@ importers:
       '@aztec-labs/noir-contracts.js':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)
+      '@aztec-labs/simulator':
+        specifier: 6.0.0
+        version: 6.0.0(typescript@5.9.3)(zod@4.4.3)
       '@aztec-labs/wallets':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)(zod@4.4.3)
@@ -208,6 +223,9 @@ importers:
       lodash:
         specifier: 4.17.21
         version: 4.17.21
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
       msgpackr:
         specifier: 1.11.8
         version: 1.11.8

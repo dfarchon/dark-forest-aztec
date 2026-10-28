@@ -7,6 +7,7 @@
  */
 
 import { PrestoProver } from "@alejoamiras/presto";
+import { Barretenberg } from "@aztec-foundation/bb.js";
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec-labs/aztec.js/contracts";
 import { BlockNumber, Fq, Fr } from "@aztec-labs/aztec.js/fields";
@@ -14,8 +15,10 @@ import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec-labs/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
 import { type Wallet } from "@aztec-labs/aztec.js/wallet";
+import { BBLazyPrivateKernelProver } from "@aztec-labs/bb-prover/client/lazy";
 import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
 import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
+import { WASMSimulator } from "@aztec-labs/simulator/client";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
@@ -83,6 +86,112 @@ import { acquireWalletSessionLock } from "./walletSessionLock";
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
+/** Browser CRS starts here. 2^19 is bb.js's default and is short of this client's proofs. */
+const INITIAL_SRS_SIZE = 2 ** 20;
+/** Compressed CRS at this size is about 256MB. Larger downloads are not attempted. */
+const MAX_SRS_SIZE = 2 ** 23;
+
+/**
+ * Points requested by a proof that exceeded the CRS loaded in WASM.
+ * The message is `MemBn254CrsFactory! <loaded> vs <needed>`.
+ */
+function crsPointsNeeded(error: unknown): number | undefined {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = /MemBn254CrsFactory!\s*(\d+)\s+vs\s+(\d+)/.exec(message);
+  if (!match) return undefined;
+  return Number(match[2]);
+}
+
+function nextSrsSize(needed: number): number {
+  return 2 ** Math.ceil(Math.log2(needed));
+}
+
+/**
+ * Browser kernel prover used when Presto is not running.
+ * Grows the in-memory CRS up to {@link MAX_SRS_SIZE} when a proof asks for more points.
+ */
+class BrowserKernelProver extends BBLazyPrivateKernelProver {
+  constructor() {
+    super(new WASMSimulator(), { srsSize: INITIAL_SRS_SIZE });
+  }
+
+  override async createChonkProof(
+    steps: Parameters<BBLazyPrivateKernelProver["createChonkProof"]>[0]
+  ) {
+    for (;;) {
+      try {
+        return await super.createChonkProof(steps);
+      } catch (error) {
+        const needed = crsPointsNeeded(error);
+        const current = this.options.srsSize ?? INITIAL_SRS_SIZE;
+        if (needed === undefined || needed <= current) throw error;
+        const next = nextSrsSize(needed);
+        if (next > MAX_SRS_SIZE) throw error;
+        console.info(
+          `[WalletManager] CRS has ${current} points; this proof needs ${needed}. Retrying with ${next}.`
+        );
+        this.options = { ...this.options, srsSize: next };
+        await Barretenberg.destroySingleton();
+      }
+    }
+  }
+}
+
+type ChonkProofSteps = Parameters<
+  BBLazyPrivateKernelProver["createChonkProof"]
+>[0];
+
+/**
+ * Presto's own WASM fallback fetches a multi-megabyte data: URL, which the
+ * browser rejects. That failure is the signal to prove with {@link BrowserKernelProver}.
+ */
+function isPrestoFallbackFetchFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Failed to fetch");
+}
+
+/**
+ * Uses Presto when `/health` says it can prove, and the browser prover otherwise.
+ * The health result is cached on this instance for about 10 seconds.
+ * `httpsOnly` stays off so an `http://` prover URL is actually probed.
+ */
+class PrestoRoutingProver extends PrestoProver {
+  private readonly browser: BrowserKernelProver | undefined;
+
+  constructor(proverEnabled: boolean, presto: { host: string; port: number }) {
+    super({
+      presto: { ...presto, httpsOnly: false },
+      onPhase: (phase, data) => {
+        console.log(`Phase: ${phase}`, data);
+      },
+    });
+    this.browser = proverEnabled ? new BrowserKernelProver() : undefined;
+  }
+
+  override async createChonkProof(steps: ChonkProofSteps) {
+    const status = await this.checkPrestoStatus();
+    if (status.available) {
+      try {
+        return await super.createChonkProof(steps);
+      } catch (error) {
+        if (!isPrestoFallbackFetchFailure(error)) throw error;
+        return this.proveInBrowser(
+          steps,
+          "Presto fell back to WASM and the wasm fetch failed"
+        );
+      }
+    }
+    return this.proveInBrowser(steps, `Presto unavailable (${status.reason})`);
+  }
+
+  private proveInBrowser(steps: ChonkProofSteps, reason: string) {
+    if (!this.browser) {
+      throw new Error(`${reason}, and browser proving is disabled`);
+    }
+    console.info(`[WalletManager] ${reason}. Using the browser prover.`);
+    return this.browser.createChonkProof(steps);
+  }
+}
 
 /** Persist Fq signing keys as hex without a 0x prefix (matches ACCOUNT_SIGNING_KEY). */
 function fqToHex(signingKey: Fq): string {
@@ -521,6 +630,20 @@ export class WalletManager {
     onProgress?.(4, total, "Creating PXE");
     // OPFS SAH handles are exclusive per origin; fail fast if another tab holds them.
     await acquireWalletSessionLock();
+    const proverUrl = config.proverUrl;
+    let prover: PrestoRoutingProver | BrowserKernelProver | undefined;
+    if (proverUrl) {
+      const url = new URL(proverUrl);
+      prover = new PrestoRoutingProver(
+        config.pxeConfig?.proverEnabled === true,
+        {
+          host: url.hostname,
+          port: Number.parseInt(url.port, 10) || 59833,
+        }
+      );
+    } else if (config.pxeConfig?.proverEnabled) {
+      prover = new BrowserKernelProver();
+    }
     const wallet = await EmbeddedWallet.create(node, {
       pxe: {
         dataDirectory: pxeDataDir,
@@ -528,21 +651,7 @@ export class WalletManager {
           config.pxeConfig?.dataStoreMapSizeKb ??
           DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
         ...config.pxeConfig,
-        ...(config.pxeConfig?.proverEnabled && config.proverUrl
-          ? (() => {
-              const url = new URL(config.proverUrl!);
-              const prover = new PrestoProver({
-                presto: {
-                  port: parseInt(url.port, 10) || 59833,
-                  host: url.hostname,
-                },
-                onPhase: (phase, data) => {
-                  console.log(`Phase: ${phase}`, data);
-                },
-              });
-              return { proverOrOptions: prover };
-            })()
-          : {}),
+        ...(prover ? { proverOrOptions: prover } : {}),
       },
     });
 
