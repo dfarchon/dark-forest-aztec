@@ -7,13 +7,7 @@
  */
 
 import { AcceleratorProver } from "@alejoamiras/aztec-accelerator";
-import {
-  createSendOnceContext,
-  DARK_FOREST_REFERENCE_GAS_PROFILE,
-  maxFeePerGasWithHeadroom,
-  type SendOnceContext,
-  sponsoredFeeFloorWei,
-} from "@alejoamiras/quota-paymaster";
+import { DARK_FOREST_REFERENCE_GAS_PROFILE } from "@alejoamiras/quota-paymaster";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
 import { BlockNumber, Fq, Fr } from "@aztec/aztec.js/fields";
@@ -21,8 +15,8 @@ import type { AztecNode } from "@aztec/aztec.js/node";
 import { createAztecNodeClient, waitForNode } from "@aztec/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec/aztec.js/utils";
 import { type Wallet } from "@aztec/aztec.js/wallet";
-import type { TxHash } from "@aztec/stdlib/tx";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { SponsoredFpcClient } from "@dfarchon/sponsored-fpc";
 import {
   ACCOUNT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
@@ -88,8 +82,6 @@ import { acquireWalletSessionLock } from "./walletSessionLock";
  * (a move uses ~65% of its L2 budget). Re-measure via the operator's
  * measureSponsoredFee when the action mix changes.
  */
-const SPONSORED_FPC_GAS_PROFILE = DARK_FOREST_REFERENCE_GAS_PROFILE;
-
 const DEFAULT_BALANCE_POLL_MS = 15_000;
 /** Default PXE data store size: 128 MB (in KB). SDK default is ~128 GB which is too large for browser. */
 const DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB = 128 * 1024;
@@ -402,7 +394,7 @@ async function registerProjectSponsoredFpcWithWallet(
   wallet: Wallet,
   config: WalletManagerConfig,
   onRegisterProgress?: (message: string) => void
-): Promise<AztecAddress | undefined> {
+): Promise<SponsoredFpcClient | undefined> {
   const configured = config.projectSponsoredFpcAddress?.trim();
   if (!configured) return undefined;
 
@@ -417,14 +409,16 @@ async function registerProjectSponsoredFpcWithWallet(
     return undefined;
   }
 
-  const { SponsoredFpcContractArtifact } =
-    await import("@dfpunk/contracts/artifacts/SponsoredFpc");
   onRegisterProgress?.("Registering sponsored-transaction paymaster");
-  // Class AND instance: the artifact is stored separately, keyed by class id,
-  // and that is what the PXE looks up when syncing. It matters here because the
-  await wallet.registerContractClass(SponsoredFpcContractArtifact);
-  await wallet.registerContract(instance, SponsoredFpcContractArtifact);
-  return instance.address;
+  const client = new SponsoredFpcClient({
+    node,
+    wallet,
+    address: instance.address,
+    gasProfile: DARK_FOREST_REFERENCE_GAS_PROFILE,
+    nodeUrl: config.nodeUrl,
+  });
+  await client.register();
+  return client;
 }
 
 // Per-transaction gas ceilings for sponsored transactions now live in
@@ -435,11 +429,8 @@ async function registerProjectSponsoredFpcWithWallet(
 
 export class WalletManager {
   private readonly node: AztecNode;
-  /** Needed to build the non-retrying send client; see `sendOnce`. */
-  private readonly nodeUrl?: string;
   private readonly wallet: Wallet;
-  private readonly projectSponsoredFpcAddress: AztecAddress | undefined;
-  private projectSponsoredFpcContract: unknown | undefined;
+  private readonly projectSponsoredFpcClient: SponsoredFpcClient | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
@@ -455,13 +446,11 @@ export class WalletManager {
     wallet: Wallet,
     keyStore: KeyStore,
     isExternal: boolean,
-    projectSponsoredFpcAddress?: AztecAddress,
-    nodeUrl?: string
+    projectSponsoredFpcClient?: SponsoredFpcClient
   ) {
     this.node = node;
-    this.nodeUrl = nodeUrl;
     this.wallet = wallet;
-    this.projectSponsoredFpcAddress = projectSponsoredFpcAddress;
+    this.projectSponsoredFpcClient = projectSponsoredFpcClient;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
     this.walletChanged$ = monomitter(true);
@@ -539,7 +528,7 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
-    const projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
+    const projectSponsoredFpcClient: SponsoredFpcClient | undefined = undefined;
 
     // Sponsored FPC mode is embedded-wallet only (Ask A6). The sponsored send path needs
     // the embedded wallet's PXE to assemble a paymaster-origin transaction, which
@@ -565,7 +554,7 @@ export class WalletManager {
       wallet,
       keyStore,
       true,
-      projectSponsoredFpcAddress
+      projectSponsoredFpcClient
     );
 
     mgr.activeAddress = await WalletManager.resolveExternalAddress(
@@ -669,7 +658,7 @@ export class WalletManager {
     if (config.projectSponsoredFpcAddress?.trim()) {
       try {
         const { SponsoredFpcContractArtifact } =
-          await import("@dfpunk/contracts/artifacts/SponsoredFpc");
+          await import("@dfarchon/sponsored-fpc/artifact");
         await wallet.registerContractClass(SponsoredFpcContractArtifact);
       } catch (err) {
         console.warn(
@@ -680,10 +669,10 @@ export class WalletManager {
     }
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
-    let projectSponsoredFpcAddress: AztecAddress | undefined = undefined;
+    let projectSponsoredFpcClient: SponsoredFpcClient | undefined = undefined;
 
     try {
-      projectSponsoredFpcAddress = await registerProjectSponsoredFpcWithWallet(
+      projectSponsoredFpcClient = await registerProjectSponsoredFpcWithWallet(
         node,
         wallet,
         config,
@@ -707,8 +696,7 @@ export class WalletManager {
       wallet,
       keyStore,
       false,
-      projectSponsoredFpcAddress,
-      config.nodeUrl
+      projectSponsoredFpcClient
     );
   }
 
@@ -836,197 +824,17 @@ export class WalletManager {
 
   /** The project Sponsored FPC, when configured and found on the node. */
   getProjectSponsoredFpcAddress(): AztecAddress | undefined {
-    return this.projectSponsoredFpcAddress;
+    return this.projectSponsoredFpcClient?.address;
+  }
+
+  /** Standalone SDK client; all paymaster-specific transaction logic lives there. */
+  getProjectSponsoredFpcClient(): SponsoredFpcClient | undefined {
+    return this.projectSponsoredFpcClient;
   }
 
   /** The node client, for callers that need to read chain state directly. */
   getNode(): AztecNode {
     return this.node;
-  }
-
-  /**
-   * The paymaster contract handle, or undefined when none is configured.
-   *
-   * Registers the artifact first: `.at()` only builds a typed wrapper and tells
-   * the PXE nothing, so a reader that arrives before setup has registered the
-   * paymaster fails with "No artifact registered for contract class …".
-   * Registration is idempotent, so this is free when setup already ran.
-   */
-  async getProjectSponsoredFpcContract(): Promise<unknown | undefined> {
-    if (!this.projectSponsoredFpcAddress) return undefined;
-    if (this.projectSponsoredFpcContract)
-      return this.projectSponsoredFpcContract;
-    const { SponsoredFpcContract, SponsoredFpcContractArtifact } =
-      await import("@dfpunk/contracts/artifacts/SponsoredFpc");
-    try {
-      const w = this.wallet as unknown as {
-        registerContractClass(a: unknown): Promise<void>;
-        registerContract(i: unknown, a?: unknown): Promise<void>;
-      };
-      // Class first: the artifact is what the failing lookup needs, and it can
-      // be registered independently of any instance.
-      await w.registerContractClass(SponsoredFpcContractArtifact);
-      const instance = await this.node.getContract(
-        this.projectSponsoredFpcAddress
-      );
-      if (instance) {
-        await w.registerContract(instance, SponsoredFpcContractArtifact);
-      }
-    } catch (err) {
-      // Not fatal on its own: if setup already registered it the call is
-      // redundant, and if it genuinely cannot be registered the simulate below
-      // fails with a clearer error than this one would give.
-      console.debug("[WalletManager] SponsoredFpc re-register skipped:", err);
-    }
-    this.projectSponsoredFpcContract = SponsoredFpcContract.at(
-      this.projectSponsoredFpcAddress,
-      this.wallet
-    );
-    return this.projectSponsoredFpcContract;
-  }
-
-  /**
-   * Sends a transaction whose origin is the project Sponsored FPC. The FPC
-   * pays, then hands the signed payload to the player's account entrypoint.
-   */
-  /**
-   * Refuses sponsorship when the paymaster's live per-transaction ceiling is
-   * below what this client would spend at current fees.
-   *
-   * The ceiling is immutable for this deployment while network fees move. If
-   * they cross, fail before proving so the caller can visibly fall back.
-   */
-  private async assertSponsorshipAffordable(fees?: {
-    feePerDaGas: bigint | number;
-    feePerL2Gas: bigint | number;
-  }): Promise<void> {
-    const fpc = await this.getProjectSponsoredFpcContract();
-    if (!fpc) return;
-    // Caller-supplied when the same sample must also build maxFeesPerGas:
-    // sampling twice lets a fee rise between reads pass the old floor and then
-    // declare a higher ceiling on-chain — floor-pass, ceiling-fail.
-    fees ??= await this.node.getCurrentMinFees();
-    const floor = sponsoredFeeFloorWei(
-      SPONSORED_FPC_GAS_PROFILE,
-      BigInt(fees.feePerDaGas),
-      BigInt(fees.feePerL2Gas)
-    );
-    const raw: unknown = await (
-      fpc as unknown as {
-        methods: {
-          get_max_fee(): {
-            simulate(o: { from: AztecAddress }): Promise<unknown>;
-          };
-        };
-      }
-    ).methods
-      .get_max_fee()
-      .simulate({ from: this.activeAddress! });
-    const maxFee = BigInt(
-      (raw as { result?: bigint }).result ?? (raw as bigint)
-    );
-    if (maxFee < floor) {
-      throw new Error(
-        `Sponsorship covers up to ${maxFee} wei per transaction, but this one needs ${floor}.`
-      );
-    }
-  }
-
-  async sendFromSponsoredFpc(
-    executionPayload: unknown,
-    scope: AztecAddress
-  ): Promise<TxHash> {
-    const wallet = this.wallet as unknown as {
-      pxe: {
-        proveTx(
-          request: unknown,
-          opts: { scopes: AztecAddress[] }
-        ): Promise<{ toTx(): Promise<{ getTxHash(): TxHash }> }>;
-      };
-      getChainInfo(): Promise<unknown>;
-    };
-
-    const { DefaultEntrypoint } = await import("@aztec/entrypoints/default");
-    const { GasSettings, Gas } = await import("@aztec/stdlib/gas");
-
-    // Check the paymaster can actually afford us BEFORE spending seconds on a
-    // proof. The ceiling is retunable by its admin and network fees move, so
-    // the two can drift apart at any time; proving first and discovering it in
-    // a revert wastes the player's time and (without this) silently charges
-    // them. Failing here is loud and instant.
-    // ONE fee sample for both the affordability floor and the declared
-    // ceiling below, so the two cannot disagree.
-    const feeSample = await this.node.getCurrentMinFees();
-    await this.assertSponsorshipAffordable(feeSample);
-
-    // Explicit limits are mandatory here: the wallet's default is the network
-    // maximum, which no sane per-transaction ceiling would ever cover.
-    const gasSettings = GasSettings.fallback({
-      gasLimits: new Gas(
-        SPONSORED_FPC_GAS_PROFILE.daGasLimit,
-        SPONSORED_FPC_GAS_PROFILE.l2GasLimit
-      ),
-      teardownGasLimits: new Gas(
-        SPONSORED_FPC_GAS_PROFILE.teardownDaGasLimit,
-        SPONSORED_FPC_GAS_PROFILE.teardownL2GasLimit
-      ),
-      // Padded via the package's own headroom arithmetic, per dimension. The
-      // contract bills gas_limits x max_fees_per_gas and the policy's fee
-      // floor budgets for exactly that product — a client that rounds
-      // headroom differently can pass the policy check and still be rejected
-      // on-chain, so the one rounding that exists is the package's.
-      maxFeesPerGas: await (async () => {
-        const { GasFees } = await import("@aztec/stdlib/gas");
-        return new GasFees(
-          maxFeePerGasWithHeadroom(
-            SPONSORED_FPC_GAS_PROFILE,
-            BigInt(feeSample.feePerDaGas)
-          ),
-          maxFeePerGasWithHeadroom(
-            SPONSORED_FPC_GAS_PROFILE,
-            BigInt(feeSample.feePerL2Gas)
-          )
-        );
-      })(),
-    });
-
-    const txRequest = await new DefaultEntrypoint().createTxExecutionRequest(
-      executionPayload as never,
-      gasSettings,
-      (await wallet.getChainInfo()) as never
-    );
-
-    const proven = await wallet.pxe.proveTx(txRequest, { scopes: [scope] });
-    const tx = await proven.toTx();
-
-    // Non-retrying context: one attempt, one outcome, so a node rejection
-    // means what it says. `attemptSend` brands errors so the classifiers
-    // never trust a foreign error with a familiar message.
-    await this.getSendContext().attemptSend(() =>
-      this.getSendContext().node.sendTx(tx as never)
-    );
-    return tx.getTxHash();
-  }
-
-  /**
-   * The package's non-retrying send path + classifiers. Sponsored sends must
-   * run inside `attemptSend`; TxExecutor reads the classifiers from here so
-   * branding and classification share one context.
-   */
-  private sendCtx?: SendOnceContext;
-
-  getSendContext(): SendOnceContext {
-    if (!this.sendCtx) {
-      if (!this.nodeUrl) {
-        // Config always provides a node URL in practice; failing loudly beats
-        // silently classifying against an unbranded transport.
-        throw new Error(
-          "[WalletManager] no node URL — cannot build the send-once context"
-        );
-      }
-      this.sendCtx = createSendOnceContext(this.nodeUrl);
-    }
-    return this.sendCtx;
   }
 
   getActiveAddress(): AztecAddress | undefined {
@@ -1076,16 +884,13 @@ export class WalletManager {
 
   /** FeeJuice remaining in the Sponsored FPC. */
   async getProjectSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
-    if (!this.projectSponsoredFpcAddress) return undefined;
+    if (!this.projectSponsoredFpcClient) return undefined;
     try {
-      return await getFeeJuiceBalance(
-        this.projectSponsoredFpcAddress,
-        this.node
-      );
+      return await this.projectSponsoredFpcClient.balance();
     } catch (err) {
       console.error(
         "[WalletManager] getProjectSponsoredFpcFeeJuiceBalance failed for",
-        this.projectSponsoredFpcAddress.toString(),
+        this.projectSponsoredFpcClient.address.toString(),
         err
       );
       return 0n;

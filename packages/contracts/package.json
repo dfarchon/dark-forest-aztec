@@ -96,11 +96,6 @@
       "types": "./src/artifacts/ArtifactValut.ts",
       "import": "./src/artifacts/ArtifactValut.ts",
       "default": "./src/artifacts/ArtifactValut.ts"
-    },
-    "./artifacts/SponsoredFpc": {
-      "types": "./src/artifacts/SponsoredFpc.ts",
-      "import": "./src/artifacts/SponsoredFpc.ts",
-      "default": "./src/artifacts/SponsoredFpc.ts"
     }
   },
   "main": "src/index.ts",

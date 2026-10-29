@@ -16,7 +16,6 @@ packages:
   - packages/procedural
   - packages/renderer
   - packages/ui
-  - packages/quota-fpc
 
 # pnpm 11 config. Overrides moved here from package.json#pnpm.
 autoInstallPeers: true

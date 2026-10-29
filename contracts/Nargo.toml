@@ -20,5 +20,4 @@ members = [
     "system/artifact_valut",
     "system/core",
     "system/move",
-    "sponsored_fpc",
 ]

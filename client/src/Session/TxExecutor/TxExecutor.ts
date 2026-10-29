@@ -399,8 +399,8 @@ export class TxExecutor {
             // moving twice is not.
             if (
               this.walletManager
-                .getSendContext()
-                .isRetryableBeforeBroadcast(err)
+                .getProjectSponsoredFpcClient()!
+                .sendContext.isRetryableBeforeBroadcast(err)
             ) {
               try {
                 sponsoredSubmission = await this.sponsoredFpc.send(
@@ -414,8 +414,8 @@ export class TxExecutor {
                 // The retry itself may now be ambiguous. Same rule applies.
                 if (
                   !this.walletManager
-                    .getSendContext()
-                    .isProvablyPreBroadcast(retryErr)
+                    .getProjectSponsoredFpcClient()!
+                    .sendContext.isProvablyPreBroadcast(retryErr)
                 ) {
                   throw new Error(
                     "Sponsored transaction status unknown — not retrying or " +
@@ -427,7 +427,9 @@ export class TxExecutor {
                 await this.notifySponsorshipFallback(retryErr ?? err);
               }
             } else if (
-              !this.walletManager.getSendContext().isProvablyPreBroadcast(err)
+              !this.walletManager
+                .getProjectSponsoredFpcClient()!
+                .sendContext.isProvablyPreBroadcast(err)
             ) {
               // Could not prove nothing was sent. Falling through to the
               // ordinary self-paid send would replay the move — sponsored

@@ -23,6 +23,7 @@
     "@aztec/constants": "5.2.0",
     "@aztec/foundation": "5.2.0",
     "@aztec/wallets": "5.2.0",
+    "@dfarchon/sponsored-fpc": "github:dfarchon/sponsored-fpc#1e158fd54a57d0a62e6941ac573980d8ac8c5597",
     "@dfpunk/constants": "workspace:*",
     "@dfpunk/contracts": "workspace:*",
     "@dfpunk/events": "workspace:*",

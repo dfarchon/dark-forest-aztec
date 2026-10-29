@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy and fund the in-repo SponsoredFpc, then expose it to the Vite client.
+# Deploy and fund the standalone SponsoredFpc, then expose it to the Vite client.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

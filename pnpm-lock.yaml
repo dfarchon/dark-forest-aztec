@@ -206,6 +206,9 @@ importers:
       '@aztec/wallets':
         specifier: 5.2.0
         version: 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6)
+      '@dfarchon/sponsored-fpc':
+        specifier: github:dfarchon/sponsored-fpc#1e158fd54a57d0a62e6941ac573980d8ac8c5597
+        version: https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@5.5.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@5.5.0))(@aztec/l1-artifacts@5.2.0)(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6))(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(tsx@4.21.0)(typescript@5.9.3)
       '@dfpunk/constants':
         specifier: workspace:*
         version: link:../packages/constants
@@ -402,6 +405,9 @@ importers:
       '@alejoamiras/quota-paymaster':
         specifier: 5.0.1-revision.2
         version: 5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
+      '@dfarchon/sponsored-fpc':
+        specifier: github:dfarchon/sponsored-fpc#1e158fd54a57d0a62e6941ac573980d8ac8c5597
+        version: https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(tsx@4.21.0)(typescript@5.9.3)
       '@dfpunk/hashing':
         specifier: workspace:*
         version: link:../packages/hashing
@@ -1225,6 +1231,12 @@ packages:
   '@dependents/detective-less@5.0.1':
     resolution: {integrity: sha512-Y6+WUMsTFWE5jb20IFP4YGa5IrGY/+a/FbOSjDF/wz9gepU2hwCYSXRHP/vPwBvwcY3SVMASt4yXxbXNXigmZQ==}
     engines: {node: '>=18'}
+
+  '@dfarchon/sponsored-fpc@https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597':
+    resolution: {gitHosted: true, integrity: sha512-mfYvC+4Uc76dyzJyH+AFPpwk6NVZwjt8ZwFxWKFT5kmaeuUOhNZxPvXdLOi0DKEf5Hq1p1PeYIfO5XORJ5V3Ng==, tarball: https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597}
+    version: 0.1.0
+    engines: {node: 24.19.0, pnpm: 11.28.0}
+    hasBin: true
 
   '@electric-sql/pglite@0.3.16':
     resolution: {integrity: sha512-mZkZfOd9OqTMHsK+1cje8OSzfAQcpD7JmILXTl5ahdempjUDdmg4euf1biDex5/LfQIDJ3gvCu6qDgdnDxfJmA==}
@@ -9172,6 +9184,46 @@ snapshots:
     dependencies:
       gonzales-pe: 4.3.0
       node-source-walk: 7.0.1
+
+  '@dfarchon/sponsored-fpc@https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(tsx@4.21.0)(typescript@5.9.3)':
+    dependencies:
+      '@alejoamiras/quota-paymaster': 5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@11.0.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@11.0.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
+      '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/entrypoints': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+      '@aztec/stdlib': 5.2.0(debug@4.4.3(supports-color@11.0.0))(supports-color@11.0.0)(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@aztec/accounts'
+      - '@aztec/ethereum'
+      - '@aztec/foundation'
+      - '@aztec/l1-artifacts'
+      - '@aztec/wallets'
+      - bufferutil
+      - debug
+      - encoding
+      - supports-color
+      - tsx
+      - typescript
+      - utf-8-validate
+
+  '@dfarchon/sponsored-fpc@https://codeload.github.com/dfarchon/sponsored-fpc/tar.gz/1e158fd54a57d0a62e6941ac573980d8ac8c5597(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@5.5.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@5.5.0))(@aztec/l1-artifacts@5.2.0)(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6))(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(tsx@4.21.0)(typescript@5.9.3)':
+    dependencies:
+      '@alejoamiras/quota-paymaster': 5.0.1-revision.2(@aztec/accounts@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/aztec.js@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/entrypoints@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/ethereum@5.2.0(supports-color@5.5.0)(typescript@5.9.3))(@aztec/foundation@5.2.0(supports-color@5.5.0))(@aztec/l1-artifacts@5.2.0)(@aztec/stdlib@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3))(@aztec/wallets@5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)(zod@4.3.6))(tsx@4.21.0)
+      '@aztec/aztec.js': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/entrypoints': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+      '@aztec/stdlib': 5.2.0(debug@4.4.3(supports-color@5.5.0))(supports-color@5.5.0)(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@aztec/accounts'
+      - '@aztec/ethereum'
+      - '@aztec/foundation'
+      - '@aztec/l1-artifacts'
+      - '@aztec/wallets'
+      - bufferutil
+      - debug
+      - encoding
+      - supports-color
+      - tsx
+      - typescript
+      - utf-8-validate
 
   '@electric-sql/pglite@0.3.16': {}
 

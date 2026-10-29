@@ -24,7 +24,7 @@
         "configure": "pnpm exec tsx scripts/deploy/configure.ts",
         "copy-artifacts": "mkdir -p scripts/artifacts ../packages/contracts/src/artifacts && cp target/*.json target/*.ts scripts/artifacts && cp target/*.json target/*.ts ../packages/contracts/src/artifacts",
         "deploy-contracts": "pnpm exec tsx scripts/deploy/deploy.ts",
-        "deploy-sponsored-fpc": "pnpm exec tsx scripts/deploy/deploy-sponsored-fpc.ts",
+        "deploy-sponsored-fpc": "pnpm --filter client exec sponsored-fpc deploy --config ../contracts/fpc/config/local.json --context ../contracts/sponsored-fpc.deploy-context.ts",
         "format": "pnpm run aztec:fmt & pnpm run scripts:fmt",
         "format:check": "pnpm run aztec:fmt:check & pnpm run scripts:fmt:check",
         "fpc": "quota-paymaster",
@@ -54,6 +54,7 @@
     },
     "dependencies": {
         "@alejoamiras/quota-paymaster": "5.0.1-revision.2",
+        "@dfarchon/sponsored-fpc": "github:dfarchon/sponsored-fpc#1e158fd54a57d0a62e6941ac573980d8ac8c5597",
         "@dfpunk/hashing": "workspace:*",
         "@dfpunk/utils": "workspace:*"
     },
