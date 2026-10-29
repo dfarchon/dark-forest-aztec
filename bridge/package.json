@@ -8,6 +8,7 @@
     "claim": "tsx src/index.ts claim",
     "deposit": "tsx src/index.ts deposit",
     "generate:accounts": "tsx src/generate-accounts.ts",
+    "history": "tsx src/index.ts history",
     "lint": "pnpm run typecheck",
     "quote": "tsx src/index.ts quote",
     "status": "tsx src/index.ts status",

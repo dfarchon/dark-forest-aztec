@@ -10,7 +10,13 @@ import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { loadClaim, markClaimed, saveClaim } from "./claim-store.js";
+import {
+  loadClaims,
+  markClaimed,
+  saveClaim,
+  selectClaim,
+  type ClaimRecord,
+} from "./claim-store.js";
 import { loadConfig, pxeDataDir } from "./config.js";
 import {
   assertSufficientFunding,
@@ -25,7 +31,8 @@ function usage(): never {
   pnpm quote --amount <decimal> [--recipient <aztec-address>]
   pnpm deposit --amount <decimal> [--recipient <aztec-address>]
   pnpm status [--recipient <aztec-address>]
-  pnpm claim [--recipient <aztec-address>]`);
+  pnpm history [--recipient <aztec-address>]
+  pnpm claim [<number>] [--recipient <aztec-address>]`);
   process.exit(1);
 }
 
@@ -44,6 +51,48 @@ function parseAmount(): string {
   const value = option("--amount");
   if (!value) usage();
   return value;
+}
+
+function parseMessageHash(): string | undefined {
+  const index = process.argv.indexOf("--message-hash");
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(
+      "--message-hash requires a message hash. Run `pnpm status` and pass its number to `pnpm claim`.",
+    );
+  }
+  return value;
+}
+
+function parseClaimSelector(): { messageHash?: string; index?: number } {
+  const messageHash = parseMessageHash();
+  const args = process.argv.slice(3);
+  const skip = new Set<number>();
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === "--message-hash" || args[index] === "--recipient") {
+      skip.add(index);
+      skip.add(index + 1);
+    }
+  }
+  const positional = args.filter(
+    (arg, index) => !skip.has(index) && !arg.startsWith("--"),
+  );
+  if (positional.length > 1) {
+    throw new Error(
+      "Pass one claim number from `pnpm status`, for example `pnpm claim 1`.",
+    );
+  }
+  if (positional.length === 0) return { messageHash };
+  if (!/^[1-9]\d*$/.test(positional[0])) {
+    throw new Error(
+      `Claim number must be a positive integer from \`pnpm status\`. Received ${positional[0]}.`,
+    );
+  }
+  if (messageHash) {
+    throw new Error("Pass either a claim number or --message-hash, not both.");
+  }
+  return { index: Number(positional[0]) };
 }
 
 async function quote(): Promise<void> {
@@ -81,40 +130,90 @@ async function deposit(): Promise<void> {
     quote.amount,
     false,
   );
+  const messageHash = claim.messageHash.toString();
   saveClaim({
     recipient: recipient.toString(),
     claimAmount: claim.claimAmount.toString(),
     claimSecret: claim.claimSecret.toString(),
     messageLeafIndex: claim.messageLeafIndex.toString(),
-    messageHash: claim.messageHash.toString(),
+    messageHash,
     depositedAt: new Date().toISOString(),
   });
   console.log(
-    `Deposit confirmed. The pending claim is stored locally for ${recipient.toString()}.`,
+    `Deposit confirmed. Pending claim ${messageHash} is stored locally for ${recipient.toString()}.`,
   );
   console.log(
-    "Wait for the L1→L2 message, then run `pnpm status` and `pnpm claim`.",
+    "Wait for the L1→L2 message, then run `pnpm status` and `pnpm claim <number>`.",
   );
 }
 
-async function status(): Promise<void> {
-  const recipient = parseRecipient();
-  const config = loadConfig();
-  const claim = loadClaim(recipient.toString());
-  const node = createAztecNodeClient(config.aztecNodeUrl);
-  const ready = await isL1ToL2MessageReady(
-    node,
-    Fr.fromHexString(claim.messageHash),
-  );
-  console.log(`Recipient: ${claim.recipient}`);
+async function printClaim(
+  claim: ClaimRecord,
+  label: string,
+  ready: boolean | undefined,
+): Promise<void> {
+  console.log(`\n[${label}] ${claim.messageHash}`);
   console.log(`Amount: ${claim.claimAmount} wei`);
   console.log(`Deposited: ${claim.depositedAt}`);
-  console.log(
-    `L1→L2 message: ${ready ? "ready to claim" : "waiting for inclusion"}`,
-  );
-  console.log(
-    `Claim: ${claim.claimedAt ? `claimed at ${claim.claimedAt}` : "pending"}`,
-  );
+  if (ready !== undefined) {
+    console.log(
+      `L1→L2 message: ${ready ? "ready to claim" : "waiting for inclusion"}`,
+    );
+  }
+  if (claim.claimedAt) {
+    console.log(`Claim: claimed at ${claim.claimedAt}`);
+    if (claim.l2TransactionHash) {
+      console.log(`L2 transaction: ${claim.l2TransactionHash}`);
+    }
+    return;
+  }
+  console.log("Claim: pending");
+}
+
+async function listClaims(onlyPending: boolean): Promise<void> {
+  const recipient = parseRecipient();
+  const config = loadConfig();
+  const file = loadClaims(recipient.toString());
+  const node = createAztecNodeClient(config.aztecNodeUrl);
+  console.log(`Recipient: ${file.recipient}`);
+  if (file.claims.length === 0) {
+    console.log("No claims are stored.");
+    return;
+  }
+
+  let pendingNumber = 0;
+  for (const claim of file.claims) {
+    if (claim.claimedAt) {
+      if (!onlyPending) await printClaim(claim, "claimed", undefined);
+      continue;
+    }
+    pendingNumber += 1;
+    const ready = await isL1ToL2MessageReady(
+      node,
+      Fr.fromHexString(claim.messageHash),
+    );
+    await printClaim(claim, String(pendingNumber), ready);
+  }
+
+  if (pendingNumber === 0) {
+    console.log(
+      onlyPending
+        ? "\nNo pending claims. Run `pnpm history` to see completed claims."
+        : "\nNo pending claims.",
+    );
+    return;
+  }
+  if (onlyPending && pendingNumber > 1) {
+    console.log("\nPass a number to `pnpm claim`, for example `pnpm claim 1`.");
+  }
+}
+
+async function status(): Promise<void> {
+  return listClaims(true);
+}
+
+async function history(): Promise<void> {
+  return listClaims(false);
 }
 
 function signingKeyFromHex(value: string): Fq {
@@ -156,11 +255,10 @@ async function claim(): Promise<void> {
   const config = loadConfig({ requireAztecAccount: true });
   const accountConfig = config.aztecAccount!;
   const node = createAztecNodeClient(config.aztecNodeUrl);
-  const claimData = loadClaim(recipient.toString());
-  if (claimData.claimedAt)
-    throw new Error(
-      `Claim for ${recipient.toString()} is already marked as completed.`,
-    );
+  const claimData = selectClaim(
+    loadClaims(recipient.toString()),
+    parseClaimSelector(),
+  );
   if (
     !(await isL1ToL2MessageReady(node, Fr.fromHexString(claimData.messageHash)))
   ) {
@@ -212,7 +310,11 @@ async function claim(): Promise<void> {
   if (!result.receipt.hasExecutionSucceeded()) {
     throw new Error(`Claim transaction failed: ${result.receipt.toString()}`);
   }
-  markClaimed(claimData);
+  markClaimed(
+    recipient.toString(),
+    claimData.messageHash,
+    result.receipt.txHash.toString(),
+  );
   console.log(
     `Fee Juice claim succeeded in L2 transaction ${result.receipt.txHash.toString()}.`,
   );
@@ -223,6 +325,7 @@ async function main(): Promise<void> {
   if (command === "quote") return quote();
   if (command === "deposit") return deposit();
   if (command === "status") return status();
+  if (command === "history") return history();
   if (command === "claim") return claim();
   usage();
 }

@@ -2,6 +2,7 @@
 .store.backup/
 claims/
 accounts/
+legacy/
 
 # Environment variables
 .env
