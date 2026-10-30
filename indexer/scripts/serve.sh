@@ -3,9 +3,9 @@
 # serve.sh — One-command local frontend setup for dfpunk-aztec
 #
 # Usage:
-#   pnpm --filter server run serve              # generate artifacts + start client dev server
-#   pnpm --filter server run serve --codegen # only regenerate artifacts (no dev server)
-#   pnpm --filter server run serve --dev-only # only start dev server (skip codegen)
+#   pnpm --filter indexer run serve              # generate artifacts + start client dev server
+#   pnpm --filter indexer run serve --codegen # only regenerate artifacts (no dev server)
+#   pnpm --filter indexer run serve --dev-only # only start dev server (skip codegen)
 #
 # What it does:
 #   1. Run `aztec codegen` to generate TS wrappers from compiled contract JSON

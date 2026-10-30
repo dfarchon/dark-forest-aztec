@@ -1,4 +1,4 @@
-# Dark Forest Aztec Indexer Server
+# Dark Forest Aztec Indexer
 
 Indexes DFPunk Aztec public storage updates block-by-block, keeps an in-memory typed snapshot, persists to SQLite, and exposes read APIs for clients.
 
@@ -17,7 +17,7 @@ Aztec Node (public events)
 ### Directory Layout
 
 ```text
-server/
+indexer/
   src/
     index.ts                    # bootstrap + wiring
     api.ts                      # Hono routes
@@ -33,7 +33,7 @@ packages/
       convert.ts, debounce.ts, types.ts, TableTypes/
 ```
 
-The server depends on `@dfpunk/contracts` and `@dfpunk/indexer-core` (`workspace:*`). Docker builds copy `server/`, `contracts/`, `packages/contracts/`, and `packages/indexer-core/` into the image.
+The indexer depends on `@dfpunk/contracts` and `@dfpunk/indexer-core` (`workspace:*`). Docker builds copy `indexer/`, `contracts/`, `packages/contracts/`, and `packages/indexer-core/` into the image.
 
 ## Data Model
 
@@ -117,25 +117,25 @@ IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`
 
 ## Package Scripts
 
-Run via `pnpm --filter server <script>`:
+Run via `pnpm --filter indexer <script>`:
 
 | Script                                                                          | Purpose                                                           |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `dev` / `start`                                                                 | Run server (`tsx src/index.ts`); Docker uses `node --experimental-transform-types` |
-| `compare:snapshot`                                                              | Compare snapshot JSON to server `/snapshot` and v2 reconstruction |
-| `docker:build`                                                                  | Build server image (`scripts/build-server-image.sh`)              |
+| `dev` / `start`                                                                 | Run the indexer (`tsx src/index.ts`); Docker uses `node --experimental-transform-types` |
+| `compare:snapshot`                                                              | Compare snapshot JSON to indexer `/snapshot` and v2 reconstruction |
+| `docker:build`                                                                  | Build indexer image (`scripts/build-indexer-image.sh`)              |
 | `docker:publish`                                                                | Build and push image (`IMAGE_PUSH=1`)                             |
 | `docker:publish:testnet`                                                        | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`)  |
 | `e2e:up` / `e2e:down` / `e2e:runtime` / `e2e:status` / `e2e:logs` / `e2e:reset` | Local stack + E2E helpers via `scripts/test-env.sh`               |
 | `prepare:contracts` / `prepare:contracts:build`                                 | Sync contract artifacts for indexing                              |
-| `mock:snapshot`                                                                 | Mock big-snapshot stream server for testing                       |
+| `mock:snapshot`                                                                 | Mock a large snapshot stream for testing                          |
 | `format` / `format:check`                                                       | Prettier formatting                                               |
 | `test:build:image` / `test:prepare:contracts`                                   | Node native test runner tests                                     |
 
 Unit tests:
 
 ```bash
-cd server && node --test --experimental-transform-types src/*.test.ts
+cd indexer && node --test --experimental-transform-types src/*.test.ts
 ```
 
 ## Quick Start
@@ -144,10 +144,10 @@ cd server && node --test --experimental-transform-types src/*.test.ts
 corepack pnpm install
 
 # Testnet (default)
-corepack pnpm --filter server dev
+corepack pnpm --filter indexer dev
 
 # Local sandbox
-AZTEC_NODE_URL=http://localhost:8080 corepack pnpm --filter server dev
+AZTEC_NODE_URL=http://localhost:8080 corepack pnpm --filter indexer dev
 ```
 
 ### Local API Checks
@@ -209,25 +209,25 @@ window.dfDebug.connection.getSnapshotAsJsonString();
 ## E2E Test Stack
 
 ```bash
-pnpm --filter server run e2e:reset    # clear local test cache
-pnpm --filter server run e2e:runtime  # start anvil + aztec sandbox + server
-pnpm --filter server run e2e:up       # full stack + continuous e2e runner
-pnpm --filter server run e2e:status   # inspect status
-pnpm --filter server run e2e:logs     # tail logs
-pnpm --filter server run e2e:down     # stop everything
+pnpm --filter indexer run e2e:reset    # clear local test cache
+pnpm --filter indexer run e2e:runtime  # start anvil + aztec sandbox + indexer
+pnpm --filter indexer run e2e:up       # full stack + continuous e2e runner
+pnpm --filter indexer run e2e:status   # inspect status
+pnpm --filter indexer run e2e:logs     # tail logs
+pnpm --filter indexer run e2e:down     # stop everything
 ```
 
-`e2e:reset` deletes: the current network PXE store (`pnpm --filter contracts run clean:runtime`), `contracts/scripts/.test-accounts.json`, and `server/data/indexer.db`.
+`e2e:reset` deletes: the current network PXE store (`pnpm --filter contracts run clean:runtime`), `contracts/scripts/.test-accounts.json`, and `indexer/data/indexer.db`.
 
 ## Docker
 
 ```bash
-docker build -t dfpunk-indexer-server -f server/Dockerfile .
-docker run --rm -p 3001:3001 -v $(pwd)/server/data:/data \
+docker build -t dfpunk-aztec-indexer -f indexer/Dockerfile .
+docker run --rm -p 3001:3001 -v $(pwd)/indexer/data:/data \
   -e AZTEC_NODE_URL=https://canonical.testnet.rpc.aztec-labs.com \
   -e CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app \
   -e ADMIN_TOKEN=change-me \
-  dfpunk-indexer-server
+  dfpunk-aztec-indexer
 ```
 
 For local sandbox: replace `AZTEC_NODE_URL` with `http://host.docker.internal:8080`.
@@ -236,7 +236,7 @@ For local sandbox: replace `AZTEC_NODE_URL` with `http://host.docker.internal:80
 
 Recommended settings:
 
-- **Deploy source**: empty Railway service with builder `DOCKERFILE`, path `server/Dockerfile`, build context repo root; or a prebuilt **GHCR** image (see [docs/railway-deploy.md](./docs/railway-deploy.md)).
+- **Deploy source**: empty Railway service with builder `DOCKERFILE`, path `indexer/Dockerfile`, build context repo root; or a prebuilt **GHCR** image (see [docs/railway-deploy.md](./docs/railway-deploy.md)).
 - Mount persistent volume at `/data`; set `SQLITE_PATH=/data/indexer.db`
 - Set `AZTEC_NODE_URL=https://canonical.testnet.rpc.aztec-labs.com`
 - Set `CORS_ORIGINS=https://dark-forest-aztec-testnet-v5.netlify.app,https://dfpunk-aztec.netlify.app,https://dfpunk-aztec-testnet.netlify.app`

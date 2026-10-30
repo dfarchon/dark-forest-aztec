@@ -13,13 +13,13 @@ Required versions:
 
 - `client/` - React + Vite game client.
 - `contracts/` - Aztec Noir contracts and deployment/configuration scripts.
-- `server/` - off-chain indexer server with SQLite persistence and snapshot APIs.
-- `packages/` - shared `@dfpunk/*` packages used across the client, contracts scripts, and server.
+- `indexer/` - off-chain indexer with SQLite persistence and snapshot APIs.
+- `packages/` - shared `@dfpunk/*` packages used across the client, contracts scripts, and indexer.
 - `docs/` - project-level setup, architecture, and developer guides.
 
 ## Working Style
 
-- Keep changes close to the layer you are modifying: client, contracts, server, or shared package.
+- Keep changes close to the layer you are modifying: client, contracts, indexer, or shared package.
 - Prefer existing helpers and package boundaries over adding new abstractions.
 - If a shared type or helper already exists under `packages/`, use it instead of redefining it locally.
 - Treat Aztec state and hash conversions carefully. Avoid using `number`for values that can exceed JavaScript's safe integer range.

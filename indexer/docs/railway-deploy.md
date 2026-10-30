@@ -1,8 +1,8 @@
 # Railway Deploy Guide
 
-Deploy the indexer server to Railway: sync from Aztec testnet, persist SQLite on a mounted volume, serve snapshot APIs with CORS for the Netlify frontend.
+Deploy the indexer to Railway: sync from Aztec testnet, persist SQLite on a mounted volume, serve snapshot APIs with CORS for the Netlify frontend.
 
-For architecture, HTTP API, configuration defaults, and local development, see [server README](../README.md).
+For architecture, HTTP API, configuration defaults, and local development, see the [indexer README](../README.md).
 
 ## Service Setup
 
@@ -10,10 +10,10 @@ Create an **Empty Service** in Railway. Two deployment sources are supported:
 
 | Source | When to use |
 | --- | --- |
-| GHCR image (`ghcr.io/<user>/dfpunk-aztec-server:<tag>`) | Steady-state deploys |
-| Local source upload + `server/Dockerfile` | First-time setup or debugging |
+| GHCR image (`ghcr.io/<user>/dfpunk-aztec-indexer:<tag>`) | Steady-state deploys |
+| Local source upload + `indexer/Dockerfile` | First-time setup or debugging |
 
-Service shape: builder `DOCKERFILE`, Dockerfile path `server/Dockerfile`, build context repo root, volume mount `/data`.
+Service shape: builder `DOCKERFILE`, Dockerfile path `indexer/Dockerfile`, build context repo root, volume mount `/data`.
 
 ## Environment Variables
 
@@ -28,7 +28,7 @@ PERSIST_MIN_INTERVAL_SEC=10
 # ADMIN_TOKEN=<set only if you need /admin/backup>
 ```
 
-Do **not** set `PORT` — Railway injects it at runtime. See `server/.env.example`, `env.railway.example` for full reference.
+Do **not** set `PORT` — Railway injects it at runtime. See `indexer/.env.example`, `env.railway.example` for full reference.
 
 ## Deploy Flow
 
@@ -36,9 +36,9 @@ Do **not** set `PORT` — Railway injects it at runtime. See `server/.env.exampl
 
 ```bash
 # Day-to-day publish
-pnpm --filter server run docker:publish:testnet
+pnpm --filter indexer run docker:publish:testnet
 # Equivalent:
-bash server/scripts/publish-devnet-image.sh
+bash indexer/scripts/publish-devnet-image.sh
 ```
 
 This builds `linux/amd64` via `docker buildx` and pushes to GHCR.
@@ -52,9 +52,9 @@ echo "$(gh auth token)" | docker login ghcr.io -u <github-user> --password-stdin
 If Railway caches a stale mutable tag, publish a fresh immutable tag:
 
 ```bash
-IMAGE_REPO=ghcr.io/<user>/dfpunk-aztec-server \
+IMAGE_REPO=ghcr.io/<user>/dfpunk-aztec-indexer \
 IMAGE_TAG=devnet-YYYYMMDD-HHMM \
-pnpm --filter server run docker:publish
+pnpm --filter indexer run docker:publish
 ```
 
 ### Option B: Local Source Upload
@@ -82,7 +82,7 @@ Healthy expectations:
 
 ### Client Compatibility
 
-- [ ] `CORS_ORIGINS` (Railway env + `server/src/config.ts` `DEFAULT_CORS_ORIGINS`) includes production frontend domain
+- [ ] `CORS_ORIGINS` (Railway env + `indexer/src/config.ts` `DEFAULT_CORS_ORIGINS`) includes production frontend domain
 - [ ] Snapshot response includes CORS header for frontend origin
 - [ ] Exposed headers present: `X-Snapshot-Uncompressed-Length`, `X-Snapshot-Block`
 - [ ] `VITE_INDEXER_BOOTSTRAP_URL` target is reachable and returns `/snapshot`
@@ -110,11 +110,11 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 
 **CORS blocks frontend** — Verify `CORS_ORIGINS` includes the real frontend origin and the browser isn't pointing to `localhost:3001`. The current production frontend is `dark-forest-aztec-testnet-v5.netlify.app`; stale entries like `df-aztec.netlify.app` should be removed.
 
-**Clean-clone image build fails** — `AztecNodeSource.ts` imports generated contract artifacts (`contracts/src/artifacts/*.ts`) which are `.gitignore`d. Run `pnpm --filter server run prepare:contracts` before building.
+**Clean-clone image build fails** — `AztecNodeSource.ts` imports generated contract artifacts (`contracts/src/artifacts/*.ts`) which are `.gitignore`d. Run `pnpm --filter indexer run prepare:contracts` before building.
 
 **`ERR_MODULE_NOT_FOUND` in Docker (extensionless imports)** — The Docker entrypoint uses `node --experimental-transform-types`, which requires explicit `.ts` extensions on relative imports. `tsx`/Vite tolerate extensionless imports but Node does not. All relative imports in `packages/indexer-core/src/**` must end with `.ts`.
 
-**Aztec SDK upgrade breaks contract artifacts** — When `@aztec-labs/*` is upgraded (e.g. 5.0.1 → 6.0.0), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build:contracts` then `pnpm --filter server run prepare:contracts` before building the image.
+**Aztec SDK upgrade breaks contract artifacts** — When `@aztec-labs/*` is upgraded (e.g. 5.0.1 → 6.0.0), old generated artifacts fail at runtime with schema validation errors (missing `function_locations`, `file_map`). Artifacts are `.gitignore`d; regenerate locally via `pnpm --filter contracts run build:contracts` then `pnpm --filter indexer run prepare:contracts` before building the image.
 
 **RPC unreachable / TLS handshake failures** — `canonical.testnet.rpc.aztec-labs.com` is the canonical Aztec testnet RPC (the older `rpc.testnet.aztec-labs.com` endpoint had TLS failures). If curl fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` IP, a local PAC/WPAD proxy (Clash/Surge fake-ip mode) is hijacking the domain. Pin the real IP (`dig @8.8.8.8 canonical.testnet.rpc.aztec-labs.com`) or disable the proxy to verify. Railway containers do not go through your local proxy; check Railway logs separately.
 
@@ -127,13 +127,13 @@ Roll back immediately if: browser CORS failure on `/snapshot`, indexer stuck in 
 ## Operational Notes
 
 - **No auto-redeploy on image push**: Railway image-based services do not redeploy when a new image is pushed to GHCR. Run `railway redeploy --yes` after publishing.
-- **Service manifest watch patterns**: ensure the manifest's `watchPatterns` references `packages/indexer-core/**` (not the stale `packages/indexer-server-core/**` path from before the rename).
+- **Service manifest watch patterns**: ensure the manifest's `watchPatterns` references `indexer/**` and `packages/indexer-core/**`.
 - **Healthcheck endpoint**: `/health` returns `lifecycle: "syncing"` during catch-up and `lifecycle: "live"` once live. Raise the platform healthcheck timeout to 300s for first deploy.
 - **Restart policy**: `ON_FAILURE` with max 10 retries. For prolonged RPC outages, manually redeploy after recovery.
-- **CORS env vs. code default**: `CORS_ORIGINS` env var wins over `DEFAULT_CORS_ORIGINS` in `server/src/config.ts`. Keep both in sync with the real frontend domain.
+- **CORS env vs. code default**: `CORS_ORIGINS` env var wins over `DEFAULT_CORS_ORIGINS` in `indexer/src/config.ts`. Keep both in sync with the real frontend domain.
 - **Automatic RPC failover**: when `AZTEC_NODE_URL_BACKUP` is set (comma-separated list of URLs), a transparent proxy wraps the primary and all backup AztecNode clients. On primary failure (network error, timeout), the call cascades to the next backup and subsequent calls route through backups until one succeeds or all are exhausted. After a 60 s cooldown, the next call probes the primary again. Failover events are logged with `[FailoverNode]` prefix. When unset, behavior is unchanged (zero overhead).
 
 ## Notes
 
 - Railway `image auto updates` only redeploys when the tag changes upstream — it does not build/push for you.
-- Docker build context is the monorepo root; upload filtering is controlled by root `.dockerignore`, not `server/.dockerignore`.
+- Docker build context is the monorepo root; upload filtering is controlled by root `.dockerignore`, not `indexer/.dockerignore`.

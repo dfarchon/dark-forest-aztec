@@ -583,7 +583,7 @@ export class IndexerService {
   }
 
   /**
-   * Full snapshot as JSON string (same shape as server GET /snapshot).
+   * Full snapshot as JSON string (same shape as indexer GET /snapshot).
    * Use for debugging or exporting the current synced state.
    */
   getSnapshotAsJsonString(): string {

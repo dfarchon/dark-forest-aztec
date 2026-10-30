@@ -5,18 +5,18 @@ ACTION="${1:-status}"
 shift || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_ROOT="$(cd "${SERVER_DIR}/.." && pwd)"
+INDEXER_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${INDEXER_DIR}/.." && pwd)"
 
 ANVIL_PID_FILE="${DFPUNK_ANVIL_PID:-/tmp/dfpunk-anvil.pid}"
 AZTEC_PID_FILE="${DFPUNK_AZTEC_PID:-/tmp/dfpunk-aztec.pid}"
-SERVER_PID_FILE="${DFPUNK_SERVER_PID:-/tmp/dfpunk-server.pid}"
-E2E_PID_FILE="${SERVER_E2E_PID:-/tmp/server-e2e.pid}"
+INDEXER_PID_FILE="${DFPUNK_INDEXER_PID:-/tmp/dfpunk-indexer.pid}"
+E2E_PID_FILE="${INDEXER_E2E_PID:-/tmp/indexer-e2e.pid}"
 
 ANVIL_LOG_FILE="${DFPUNK_ANVIL_LOG:-/tmp/dfpunk-anvil.log}"
 AZTEC_LOG_FILE="${DFPUNK_AZTEC_LOG:-/tmp/dfpunk-aztec.log}"
-SERVER_LOG_FILE="${DFPUNK_SERVER_LOG:-/tmp/dfpunk-server.log}"
-E2E_LOG_FILE="${SERVER_E2E_LOG:-/tmp/server-e2e.log}"
+INDEXER_LOG_FILE="${DFPUNK_INDEXER_LOG:-/tmp/dfpunk-indexer.log}"
+E2E_LOG_FILE="${INDEXER_E2E_LOG:-/tmp/indexer-e2e.log}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -186,15 +186,15 @@ start_aztec() {
   wait_for_port_stable 8080 480 5 "aztec"
 }
 
-start_server() {
+start_indexer() {
   require_cmd pnpm
   if lsof -nP -iTCP:3001 -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "server already listening on :3001"
+    echo "indexer already listening on :3001"
   else
-    start_bg "server" "${SERVER_PID_FILE}" "${SERVER_LOG_FILE}" \
-      bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.22.1 >/dev/null 2>&1 || true; pnpm --filter server run dev"
+    start_bg "indexer" "${INDEXER_PID_FILE}" "${INDEXER_LOG_FILE}" \
+      bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.22.1 >/dev/null 2>&1 || true; pnpm --filter indexer run dev"
   fi
-  wait_for_http_ok "http://localhost:3001/health" 90 "server"
+  wait_for_http_ok "http://localhost:3001/health" 90 "indexer"
 }
 
 start_e2e() {
@@ -212,9 +212,9 @@ start_e2e() {
     return 1
   fi
 
-  wait_for_http_ok "http://localhost:3001/health" 60 "server before e2e"
+  wait_for_http_ok "http://localhost:3001/health" 60 "indexer before e2e"
 
-  nohup bash -lc "cd '${SERVER_DIR}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.22.1 >/dev/null 2>&1 || true; node --experimental-transform-types -e '' >/dev/null 2>&1 || { echo 'node does not support --experimental-transform-types'; exit 64; }; exec node scripts/test-indexer-e2e.mjs --server-url http://localhost:3001 ${args[*]}" >"${E2E_LOG_FILE}" 2>&1 &
+  nohup bash -lc "cd '${INDEXER_DIR}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.22.1 >/dev/null 2>&1 || true; node --experimental-transform-types -e '' >/dev/null 2>&1 || { echo 'node does not support --experimental-transform-types'; exit 64; }; exec node scripts/test-indexer-e2e.mjs --indexer-url http://localhost:3001 ${args[*]}" >"${E2E_LOG_FILE}" 2>&1 &
   local pid=$!
   echo "${pid}" >"${E2E_PID_FILE}"
   echo "indexer-e2e started: pid=${pid} log=${E2E_LOG_FILE}"
@@ -289,7 +289,7 @@ logs_e2e() {
 
 reset_cache() {
   stop_e2e || true
-  stop_by_pidfile "server" "${SERVER_PID_FILE}"
+  stop_by_pidfile "indexer" "${INDEXER_PID_FILE}"
   stop_by_pidfile "aztec" "${AZTEC_PID_FILE}"
   stop_by_pidfile "anvil" "${ANVIL_PID_FILE}"
 
@@ -300,9 +300,9 @@ reset_cache() {
 
   rm -f "${REPO_ROOT}/contracts/scripts/.test-accounts.json"
   bash -lc "cd '${REPO_ROOT}' && source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; nvm use 24.22.1 >/dev/null 2>&1 || true; pnpm --filter contracts run clean:runtime" || true
-  rm -f "${SERVER_DIR}/data/indexer.db"
+  rm -f "${INDEXER_DIR}/data/indexer.db"
 
-  mkdir -p "${SERVER_DIR}/data"
+  mkdir -p "${INDEXER_DIR}/data"
   echo "cache reset complete"
 }
 
@@ -315,7 +315,7 @@ show_status() {
 
   echo
   echo "=== managed pids ==="
-  for f in "${ANVIL_PID_FILE}" "${AZTEC_PID_FILE}" "${SERVER_PID_FILE}" "${E2E_PID_FILE}"; do
+  for f in "${ANVIL_PID_FILE}" "${AZTEC_PID_FILE}" "${INDEXER_PID_FILE}" "${E2E_PID_FILE}"; do
     if [[ -f "${f}" ]]; then
       if is_running_pidfile "${f}"; then
         echo "$(basename "${f}") => $(cat "${f}") (running)"
@@ -340,16 +340,16 @@ show_logs() {
   case "${target}" in
     anvil) tail -f "${ANVIL_LOG_FILE}" ;;
     aztec) tail -f "${AZTEC_LOG_FILE}" ;;
-    server) tail -f "${SERVER_LOG_FILE}" ;;
+    indexer) tail -f "${INDEXER_LOG_FILE}" ;;
     e2e) tail -f "${E2E_LOG_FILE}" ;;
     all)
       echo "anvil:  ${ANVIL_LOG_FILE}"
       echo "aztec:  ${AZTEC_LOG_FILE}"
-      echo "server: ${SERVER_LOG_FILE}"
+      echo "indexer: ${INDEXER_LOG_FILE}"
       echo "e2e:    ${E2E_LOG_FILE}"
       ;;
     *)
-      echo "usage: $0 logs {anvil|aztec|server|e2e|all}"
+      echo "usage: $0 logs {anvil|aztec|indexer|e2e|all}"
       exit 2
       ;;
   esac
@@ -358,7 +358,7 @@ show_logs() {
 start_stack() {
   start_anvil
   start_aztec
-  start_server
+  start_indexer
   echo "stack start requested"
   show_status
 }
@@ -374,7 +374,7 @@ up_all() {
   start_anvil
   start_aztec
   run_contracts_start
-  start_server
+  start_indexer
   start_e2e_fast "$@"
   echo "full test environment started"
   show_status
@@ -382,7 +382,7 @@ up_all() {
 
 stop_stack() {
   stop_e2e || true
-  stop_by_pidfile "server" "${SERVER_PID_FILE}"
+  stop_by_pidfile "indexer" "${INDEXER_PID_FILE}"
   stop_by_pidfile "aztec" "${AZTEC_PID_FILE}"
   stop_by_pidfile "anvil" "${ANVIL_PID_FILE}"
 
@@ -407,17 +407,17 @@ case "${ACTION}" in
   logs) show_logs "${1:-all}" ;;
   *)
     cat <<'USAGE'
-usage: test-env.sh {reset-cache|start|start-all|up|stop|status|logs [anvil|aztec|server|e2e|all]}
+usage: test-env.sh {reset-cache|start|start-all|up|stop|status|logs [anvil|aztec|indexer|e2e|all]}
   reset-cache  stop managed services and clear local test cache
-  start        start anvil + aztec + server
-  start-all    start anvil + aztec + server + server e2e runner
-  up           one command: reset-cache + anvil + aztec + contracts start + server + fast e2e
+  start        start anvil + aztec + indexer
+  start-all    start anvil + aztec + indexer + indexer e2e runner
+  up           one command: reset-cache + anvil + aztec + contracts start + indexer + fast e2e
   e2e-start    start indexer e2e process (defaults to --interval-sec 0)
   e2e-start-fast  start high-throughput indexer e2e (faster event production, no full reset)
   e2e-stop     stop indexer e2e process
   e2e-status   show indexer e2e process status
   e2e-logs     tail indexer e2e log
-  stop         stop e2e + server + aztec + anvil
+  stop         stop e2e + indexer + aztec + anvil
   status       show port listeners and /health
   logs         tail a specific log file
 USAGE

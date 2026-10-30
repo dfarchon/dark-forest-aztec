@@ -12,7 +12,7 @@ import {
 
 const DEFAULT_NODE_URL = "http://localhost:8080";
 
-/** Default indexer bootstrap URL (testnet server) when VITE_INDEXER_BOOTSTRAP_URL is unset in testnet builds. */
+/** Default indexer bootstrap URL (testnet indexer) when VITE_INDEXER_BOOTSTRAP_URL is unset in testnet builds. */
 const DEFAULT_INDEXER_BOOTSTRAP_URL = "";
 
 function getString(key: string): string | undefined {
@@ -33,7 +33,7 @@ export function getNodeUrl(): string {
 /**
  * Optional off-chain indexer API base URL for bootstrap snapshot.
  * When undefined, client syncs from node starting at START_BLOCK.
- * In testnet builds, defaults to the testnet server when env is unset.
+ * In testnet builds, defaults to the testnet indexer when env is unset.
  */
 export function getIndexerBootstrapUrl(): string | undefined {
   const fromEnv = getString("VITE_INDEXER_BOOTSTRAP_URL");

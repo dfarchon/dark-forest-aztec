@@ -6,7 +6,7 @@ node_modules
 **/build
 *.log
 
-# Server deployment does not need the client bundle or top-level docs.
+# Indexer deployment does not need the client bundle or top-level docs.
 client
 docs
 
@@ -21,7 +21,7 @@ contracts/wallet_data_*
 contracts/scripts/pxe_data_*
 contracts/scripts/wallet_data_*
 
-server/.env
-server/data
-server/docs
-server/src/*.test.ts
+indexer/.env
+indexer/data
+indexer/docs
+indexer/src/*.test.ts

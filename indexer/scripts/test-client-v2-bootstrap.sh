@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVER_URL="${SERVER_URL:-http://localhost:3001}"
+INDEXER_URL="${INDEXER_URL:-${SERVER_URL:-http://localhost:3001}}"
 SNAPSHOT_FILE="${SNAPSHOT_FILE:-}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-10}"
 
@@ -59,7 +59,7 @@ use_node_24() {
 
 check_health() {
   local body
-  body="$(curl -fsS --max-time "${TEST_TIMEOUT}" "${SERVER_URL}/health")" || return 1
+  body="$(curl -fsS --max-time "${TEST_TIMEOUT}" "${INDEXER_URL}/health")" || return 1
   if command -v jq >/dev/null 2>&1; then
     [[ "$(printf '%s' "$body" | jq -r '.status // empty')" == "ok" ]]
   else
@@ -69,7 +69,7 @@ check_health() {
 
 check_manifest_v2() {
   local body
-  body="$(curl -fsS --max-time "${TEST_TIMEOUT}" "${SERVER_URL}/snapshot/manifest")" || return 1
+  body="$(curl -fsS --max-time "${TEST_TIMEOUT}" "${INDEXER_URL}/snapshot/manifest")" || return 1
   if command -v jq >/dev/null 2>&1; then
     [[ "$(printf '%s' "$body" | jq -r '.version // empty')" == "2" ]]
   else
@@ -79,7 +79,7 @@ check_manifest_v2() {
 
 check_chunk_status() {
   local code
-  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${TEST_TIMEOUT}" "${SERVER_URL}/snapshot/chunks/player/0")" || return 1
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${TEST_TIMEOUT}" "${INDEXER_URL}/snapshot/chunks/player/0")" || return 1
   [[ "$code" == "200" || "$code" == "404" ]]
 }
 
@@ -88,29 +88,29 @@ compare_snapshot_if_needed() {
     warn "SNAPSHOT_FILE not set, skip compare-snapshots"
     return 0
   fi
-  node "${ROOT_DIR}/server/scripts/compare-snapshots.mjs" \
+  node "${ROOT_DIR}/indexer/scripts/compare-snapshots.mjs" \
     "$SNAPSHOT_FILE" \
-    --server-url "$SERVER_URL" \
+    --indexer-url "$INDEXER_URL" \
     --ignore-block-mismatch
 }
 
 main() {
   parse_args "$@"
   log "Root: ${ROOT_DIR}"
-  log "Server URL: ${SERVER_URL}"
+  log "Indexer URL: ${INDEXER_URL}"
   use_node_24
 
-  run_step "Server Typecheck (tsc --noEmit)" \
-    "cd '${ROOT_DIR}' && corepack pnpm --filter server exec tsc --noEmit"
+  run_step "Indexer Typecheck (tsc --noEmit)" \
+    "cd '${ROOT_DIR}' && corepack pnpm --filter indexer exec tsc --noEmit"
 
-  run_step "Server Tests (api/persistence/config/index/contractsConfig)" \
+  run_step "Indexer Tests (api/persistence/config/index/contractsConfig)" \
     "cd '${ROOT_DIR}' && node --experimental-transform-types --test \
-      server/src/api.test.ts \
-      server/src/persistence.test.ts \
-      server/src/snapshotContract.test.ts \
-      server/src/config.test.ts \
-      server/src/index.test.ts \
-      server/src/contractsConfig.test.ts"
+      indexer/src/api.test.ts \
+      indexer/src/persistence.test.ts \
+      indexer/src/snapshotContract.test.ts \
+      indexer/src/config.test.ts \
+      indexer/src/index.test.ts \
+      indexer/src/contractsConfig.test.ts"
 
   run_step "API Smoke /health status=ok" check_health
   run_step "API Smoke /snapshot/manifest version=2" check_manifest_v2
@@ -126,10 +126,10 @@ main() {
 usage() {
   cat <<'EOF'
 Usage:
-  server/scripts/test-client-v2-bootstrap.sh [options]
+  indexer/scripts/test-client-v2-bootstrap.sh [options]
 
 Options:
-  --server-url <url>       Server base URL (default: http://localhost:3001)
+  --indexer-url <url>       Indexer base URL (default: http://localhost:3001)
   --snapshot-file <path>   Local client snapshot JSON for compare step
   --timeout <seconds>      Curl timeout seconds (default: 10)
   -h, --help               Show this help
@@ -139,8 +139,8 @@ EOF
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --server-url)
-        SERVER_URL="${2:-}"
+      --indexer-url|--server-url)
+        INDEXER_URL="${2:-}"
         shift 2
         ;;
       --snapshot-file)

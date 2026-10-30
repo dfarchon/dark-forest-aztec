@@ -6,10 +6,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(".");
-const scriptPath = path.join(repoRoot, "server/scripts/build-server-image.sh");
+const scriptPath = path.join(repoRoot, "indexer/scripts/build-indexer-image.sh");
 const publishScriptPath = path.join(
   repoRoot,
-  "server/scripts/publish-devnet-image.sh",
+  "indexer/scripts/publish-devnet-image.sh",
 );
 
 function writeExecutable(filePath, content) {
@@ -96,7 +96,7 @@ test("build script prepares artifacts and builds linux/amd64 image with --load b
   assert.equal(result.status, 0, result.stderr);
   assert.equal(
     nodeArgs[0],
-    path.join(repoRoot, "server/scripts/prepare-contract-artifacts.mjs"),
+    path.join(repoRoot, "indexer/scripts/prepare-contract-artifacts.mjs"),
   );
   assert.equal(nodeArgs[1], "--build-if-missing");
   assert.equal(dockerArgs[0], "buildx");
@@ -104,28 +104,28 @@ test("build script prepares artifacts and builds linux/amd64 image with --load b
   assert.ok(dockerArgs.includes("--load"));
   assert.ok(dockerArgs.includes("--platform"));
   assert.ok(dockerArgs.includes("linux/amd64"));
-  assert.ok(dockerArgs.includes("dfpunk-indexer-server:dev"));
+  assert.ok(dockerArgs.includes("dfpunk-aztec-indexer:dev"));
 });
 
 test("build script pushes when IMAGE_PUSH=1", () => {
   const { result, dockerArgs } = runBuildScript({
     IMAGE_PUSH: "1",
-    IMAGE_REPO: "ghcr.io/0xpabloli/dfpunk-aztec-server",
+    IMAGE_REPO: "ghcr.io/0xpabloli/dfpunk-aztec-indexer",
     IMAGE_TAG: "testnet",
   });
 
   assert.equal(result.status, 0, result.stderr);
   assert.ok(dockerArgs.includes("--push"));
   assert.ok(!dockerArgs.includes("--load"));
-  assert.ok(dockerArgs.includes("ghcr.io/0xpabloli/dfpunk-aztec-server:testnet"));
+  assert.ok(dockerArgs.includes("ghcr.io/0xpabloli/dfpunk-aztec-indexer:testnet"));
 });
 
 test("publish helper defaults to the testnet GHCR release configuration", () => {
   const { result, log } = runPublishScript();
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(log, /IMAGE_REPO=ghcr\.io\/0xpabloli\/dfpunk-aztec-server/);
+  assert.match(log, /IMAGE_REPO=ghcr\.io\/0xpabloli\/dfpunk-aztec-indexer/);
   assert.match(log, /IMAGE_TAG=testnet/);
   assert.match(log, /IMAGE_PUSH=1/);
-  assert.match(log, /ARGS=.*server\/scripts\/build-server-image\.sh/);
+  assert.match(log, /ARGS=.*indexer\/scripts\/build-indexer-image\.sh/);
 });

@@ -376,6 +376,34 @@ importers:
         specifier: 8.53.0
         version: 8.53.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
 
+  indexer:
+    dependencies:
+      '@dfpunk/contracts':
+        specifier: workspace:*
+        version: link:../packages/contracts
+      '@dfpunk/indexer-core':
+        specifier: workspace:*
+        version: link:../packages/indexer-core
+      '@hono/node-server':
+        specifier: ^1.13.8
+        version: 1.19.9(hono@4.12.3)
+      better-sqlite3:
+        specifier: ^11.8.1
+        version: 11.10.0
+      hono:
+        specifier: ^4.7.4
+        version: 4.12.3
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+      prettier:
+        specifier: 3.7.4
+        version: 3.7.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/constants:
     dependencies:
       '@dfpunk/types':
@@ -625,34 +653,6 @@ importers:
         specifier: workspace:*
         version: link:../hashing
     devDependencies:
-      prettier:
-        specifier: 3.7.4
-        version: 3.7.4
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-
-  server:
-    dependencies:
-      '@dfpunk/contracts':
-        specifier: workspace:*
-        version: link:../packages/contracts
-      '@dfpunk/indexer-core':
-        specifier: workspace:*
-        version: link:../packages/indexer-core
-      '@hono/node-server':
-        specifier: ^1.13.8
-        version: 1.19.9(hono@4.12.3)
-      better-sqlite3:
-        specifier: ^11.8.1
-        version: 11.10.0
-      hono:
-        specifier: ^4.7.4
-        version: 4.12.3
-    devDependencies:
-      '@types/better-sqlite3':
-        specifier: ^7.6.12
-        version: 7.6.13
       prettier:
         specifier: 3.7.4
         version: 3.7.4

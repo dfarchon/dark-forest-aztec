@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const scriptPath = path.resolve("server/scripts/prepare-contract-artifacts.mjs");
+const scriptPath = path.resolve("indexer/scripts/prepare-contract-artifacts.mjs");
 
 function writeFile(filePath, content = "export const ok = true;\n") {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

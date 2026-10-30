@@ -151,7 +151,7 @@ function parseContractChunk(value: unknown): ContractChunk | null {
   };
 }
 
-test("server v2 manifest/chunks satisfy snapshot contract end-to-end", async () => {
+test("indexer v2 manifest/chunks satisfy snapshot contract end-to-end", async () => {
   const indexer = createFakeIndexer(
     {
       world: {

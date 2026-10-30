@@ -2,7 +2,7 @@ packages:
   - bridge
   - client
   - contracts
-  - server
+  - indexer
   - packages/constants
   - packages/contracts
   - packages/events
@@ -16,6 +16,8 @@ packages:
   - packages/procedural
   - packages/renderer
   - packages/ui
+
+packageImportMethod: clone-or-copy
 
 # ignoredBuiltDependencies:
 #   - esbuild

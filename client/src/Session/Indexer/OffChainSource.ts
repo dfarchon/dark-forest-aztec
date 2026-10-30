@@ -46,7 +46,7 @@ const V2_TIMEOUT_MS = 10_000;
 const V2_MAX_RETRIES = 2;
 
 /**
- * Expected API shape (implement on your indexer server):
+ * Expected API shape (implement on the indexer):
  *
  * For bootstrap only (IndexerService bootstrapSource), one of these is required:
  *

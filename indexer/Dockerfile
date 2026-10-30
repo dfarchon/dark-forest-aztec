@@ -9,21 +9,21 @@ WORKDIR /app
 
 # Copy dependency manifests first for layer caching
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY server/package.json server/
+COPY indexer/package.json indexer/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/indexer-core/package.json packages/indexer-core/
 
-# Install only server and its workspace dependencies
-RUN pnpm install --frozen-lockfile --filter server...
+# Install only the indexer and its workspace dependencies
+RUN pnpm install --frozen-lockfile --filter indexer...
 
 # Copy source code
-COPY server/ server/
+COPY indexer/ indexer/
 COPY contracts/ contracts/
 COPY packages/contracts/ packages/contracts/
 COPY packages/indexer-core/ packages/indexer-core/
 
 # Normalize runtime artifacts inside the image build.
-RUN node server/scripts/prepare-contract-artifacts.mjs
+RUN node indexer/scripts/prepare-contract-artifacts.mjs
 
 # Data directory for SQLite (mount a volume here)
 RUN mkdir -p /data
@@ -33,4 +33,4 @@ EXPOSE 3001
 ENV SQLITE_PATH=/data/indexer.db
 ENV PORT=3001
 
-CMD ["node", "--experimental-transform-types", "server/src/index.ts"]
+CMD ["node", "--experimental-transform-types", "indexer/src/index.ts"]

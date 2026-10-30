@@ -2,17 +2,17 @@
 /**
  * compare-snapshots.mjs
  *
- * Compares a client-side snapshot JSON file against the server's live snapshot.
+ * Compares a client-side snapshot JSON file against the indexer's live snapshot.
  *
  * Usage:
- *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]
+ *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]
  *
  * The client snapshot file can be obtained from the browser console:
  *   dfDebug.downloadSnapshot()
  *
  * Examples:
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json
- *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --server-url http://localhost:3001
+ *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --indexer-url http://localhost:3001
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --ignore-block-mismatch
  */
 
@@ -39,20 +39,20 @@ const TABLE_NAMES = [
 function parseArgs() {
   const args = process.argv.slice(2);
   let clientFile = null;
-  let serverUrl = process.env.SERVER_URL ?? "http://localhost:3001";
+  let serverUrl = process.env.INDEXER_URL ?? process.env.SERVER_URL ?? "http://localhost:3001";
   let ignoreBlockMismatch = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "-h" || args[i] === "--help") {
       console.log(
-        "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]"
+        "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
       );
       console.log("");
       console.log("Get the client snapshot from browser console:");
       console.log("  dfDebug.downloadSnapshot()");
       process.exit(0);
     }
-    if (args[i] === "--server-url" && args[i + 1]) {
+    if ((args[i] === "--indexer-url" || args[i] === "--server-url") && args[i + 1]) {
       serverUrl = args[i + 1];
       i++;
     } else if (args[i] === "--ignore-block-mismatch") {
@@ -64,7 +64,7 @@ function parseArgs() {
 
   if (!clientFile) {
     console.error(
-      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--server-url URL] [--ignore-block-mismatch]"
+      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
     );
     console.error("");
     console.error("Get the client snapshot from browser console:");
@@ -125,7 +125,7 @@ function rowCount(snap) {
 // v2 chunk helpers
 // ---------------------------------------------------------------------------
 
-/** Fetch v2 manifest + all chunks from the server and reconstruct a snapshot. */
+/** Fetch v2 manifest + all chunks from the indexer and reconstruct a snapshot. */
 async function fetchV2Snapshot(serverUrl) {
   const manifestRes = await fetch(`${serverUrl}/snapshot/manifest`);
   if (!manifestRes.ok) return null;
@@ -249,11 +249,11 @@ async function main() {
   const clientBlock = clientSnap.lastProcessedBlock;
   console.log(`   Client block: ${clientBlock}, rows: ${rowCount(clientSnap)}`);
 
-  // 2. Fetch server v1 snapshot
-  console.log(`🌐 Fetching server v1 snapshot from ${serverUrl}/snapshot ...`);
+  // 2. Fetch indexer v1 snapshot
+  console.log(`🌐 Fetching indexer v1 snapshot from ${serverUrl}/snapshot ...`);
   const res = await fetch(`${serverUrl}/snapshot`);
   if (!res.ok) {
-    console.error(`   ❌ Server responded with ${res.status}`);
+    console.error(`   ❌ Indexer responded with ${res.status}`);
     process.exit(1);
   }
 
@@ -273,30 +273,30 @@ async function main() {
   }
   const serverSnap = normalizeSnapshot(serverJson);
   const serverBlock = serverSnap.lastProcessedBlock;
-  console.log(`   Server v1 block: ${serverBlock}, rows: ${rowCount(serverSnap)}`);
+  console.log(`   Indexer v1 block: ${serverBlock}, rows: ${rowCount(serverSnap)}`);
 
-  // 3. Fetch server v2 snapshot (from chunks)
-  console.log(`🌐 Fetching server v2 snapshot from ${serverUrl}/snapshot/manifest + chunks ...`);
+  // 3. Fetch indexer v2 snapshot (from chunks)
+  console.log(`🌐 Fetching indexer v2 snapshot from ${serverUrl}/snapshot/manifest + chunks ...`);
   const v2Raw = await fetchV2Snapshot(serverUrl);
   const v2Snap = v2Raw ? normalizeSnapshot(v2Raw) : null;
   if (v2Snap) {
-    console.log(`   Server v2 block: ${v2Snap.lastProcessedBlock}, rows: ${rowCount(v2Snap)}`);
+    console.log(`   Indexer v2 block: ${v2Snap.lastProcessedBlock}, rows: ${rowCount(v2Snap)}`);
   } else {
-    console.log(`   Server v2: not available (no manifest or fetch failed)`);
+    console.log(`   Indexer v2: not available (no manifest or fetch failed)`);
   }
 
   // 4. Block mismatch warnings
   if (clientBlock !== serverBlock) {
     console.log("");
     console.warn(
-      `⚠️  Block mismatch: client=${clientBlock}, server-v1=${serverBlock}`
+      `⚠️  Block mismatch: client=${clientBlock}, indexer-v1=${serverBlock}`
     );
     console.warn(
       `   Differences may be due to block lag.`
     );
   }
 
-  // 5. Client vs Server v1
+  // 5. Client vs Indexer v1
   const clientHash = sha256(canonicalJson(clientSnap));
   const serverHash = sha256(canonicalJson(serverSnap));
   const clientContentHash = sha256(canonicalJson(tableContentOnly(clientSnap)));
@@ -304,40 +304,40 @@ async function main() {
 
   console.log("");
   console.log("═══════════════════════════════════════════════════════");
-  console.log("  Client vs Server v1 (/snapshot)");
+  console.log("  Client vs Indexer v1 (/snapshot)");
   console.log("═══════════════════════════════════════════════════════");
   console.log(`🔑 Client hash: ${clientHash}`);
-  console.log(`🔑 Server v1 hash: ${serverHash}`);
+  console.log(`🔑 Indexer v1 hash: ${serverHash}`);
 
   const clientV1Same =
     clientHash === serverHash ||
     (ignoreBlockMismatch && clientContentHash === serverContentHash);
   if (clientV1Same) {
-    console.log(`✅ Client vs Server v1: IDENTICAL`);
+    console.log(`✅ Client vs Indexer v1: IDENTICAL`);
   } else {
     console.log("");
-    const diffs = diffSnapshots("client-vs-v1", clientSnap, serverSnap, "client", "server-v1");
+    const diffs = diffSnapshots("client-vs-v1", clientSnap, serverSnap, "client", "indexer-v1");
     console.log("");
     console.log(`Total differences (client vs v1): ${diffs}`);
   }
 
-  // 6. Server v1 vs Server v2
+  // 6. Indexer v1 vs Indexer v2
   if (v2Snap) {
     const v2Hash = sha256(canonicalJson(v2Snap));
     const v2ContentHash = sha256(canonicalJson(tableContentOnly(v2Snap)));
 
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
-    console.log("  Server v1 (/snapshot) vs Server v2 (chunks)");
+    console.log("  Indexer v1 (/snapshot) vs Indexer v2 (chunks)");
     console.log("═══════════════════════════════════════════════════════");
-    console.log(`🔑 Server v1 hash: ${serverHash}`);
-    console.log(`🔑 Server v2 hash: ${v2Hash}`);
+    console.log(`🔑 Indexer v1 hash: ${serverHash}`);
+    console.log(`🔑 Indexer v2 hash: ${v2Hash}`);
 
     const v1V2Same =
       serverHash === v2Hash ||
       (ignoreBlockMismatch && serverContentHash === v2ContentHash);
     if (v1V2Same) {
-      console.log(`✅ Server v1 vs v2: IDENTICAL`);
+      console.log(`✅ Indexer v1 vs v2: IDENTICAL`);
     } else {
       console.log("");
       if (serverBlock !== v2Snap.lastProcessedBlock) {
@@ -350,23 +350,23 @@ async function main() {
       console.log(`Total differences (v1 vs v2): ${diffs}`);
     }
 
-    // 7. Client vs Server v2
+    // 7. Client vs Indexer v2
     const clientV2Hash = v2Hash;
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
-    console.log("  Client vs Server v2 (chunks)");
+    console.log("  Client vs Indexer v2 (chunks)");
     console.log("═══════════════════════════════════════════════════════");
     console.log(`🔑 Client hash: ${clientHash}`);
-    console.log(`🔑 Server v2 hash: ${clientV2Hash}`);
+    console.log(`🔑 Indexer v2 hash: ${clientV2Hash}`);
 
     const clientV2Same =
       clientHash === clientV2Hash ||
       (ignoreBlockMismatch && clientContentHash === v2ContentHash);
     if (clientV2Same) {
-      console.log(`✅ Client vs Server v2: IDENTICAL`);
+      console.log(`✅ Client vs Indexer v2: IDENTICAL`);
     } else {
       console.log("");
-      const diffs = diffSnapshots("client-vs-v2", clientSnap, v2Snap, "client", "server-v2");
+      const diffs = diffSnapshots("client-vs-v2", clientSnap, v2Snap, "client", "indexer-v2");
       console.log("");
       console.log(`Total differences (client vs v2): ${diffs}`);
     }

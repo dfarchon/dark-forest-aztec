@@ -4,7 +4,7 @@ Dark Forest Aztec is a monorepo with three application layers and a set of share
 
 * Aztec Noir contracts define authoritative game state transitions.
 * The React client renders the game and submits private gameplay transactions.
-* The indexer server rebuilds public table state and serves consistent snapshots.
+* The indexer rebuilds public table state and serves consistent snapshots.
 * Shared `@dfpunk/*` packages keep domain types, game logic, rendering, hashing, serialization, and constants consistent across layers.
 
 ## What's Different from Dark Forest v0.6.5
@@ -16,7 +16,7 @@ Dark Forest Aztec is a monorepo with three application layers and a set of share
 | Hash function        | MiMC                                 | Poseidon2                                         |
 | Onchain state        | Full entity fields per planet/player | **Hash of entity state**; full state lives offchain |
 | Private state        | Coordinate hashes only               | Same hash model. Private functions prove `(x, y) → location_id`; `(x, y)` stay offchain. Home planet ids and arrivals are public |
-| Indexing             | TheGraph subgraph                    | Aztec public-log indexer (server + client)        |
+| Indexing             | TheGraph subgraph                    | Aztec public-log indexer (off-chain + client) |
 | Account model        | EOA + relayer signatures             | Aztec account contracts / burner accounts         |
 
 The port keeps Dark Forest's gameplay surface while moving trust onto Aztec's L2-native private execution.
@@ -30,13 +30,13 @@ flowchart TD
   wallet --> aztec[Aztec Network]
   aztec --> contracts[Noir Contracts]
   contracts --> publicEvents[Public Storage Events]
-  publicEvents --> serverIndexer[Indexer Server]
-  serverIndexer --> snapshotApi[Snapshot API]
+  publicEvents --> indexer[Indexer]
+  indexer --> snapshotApi[Snapshot API]
   snapshotApi --> client
   publicEvents --> clientIndexer[Client Indexer]
   clientIndexer --> client
   packages[Shared Packages] --> client
-  packages --> serverIndexer
+  packages --> indexer
   packages --> contractScripts[Contract Scripts]
 ```
 
@@ -63,7 +63,7 @@ state  │    2. assert == onchain stored hash                 │
        └──────────────────────────────────────────────────────┘
                               │
                               ▼
-              public log ─▶ indexer server / client indexer
+              public log ─▶ indexer / client indexer
                               │
                               ▼
               snapshot table ─▶ React renderer + game UI
@@ -78,7 +78,7 @@ Benefits:
 Tradeoffs:
 
 * transaction builders must supply complete and current state inputs;
-* client and server indexers must keep table conversion logic accurate;
+* the off-chain indexer and the client indexer must keep table conversion logic accurate;
 * schema changes require careful artifact, indexer, and documentation updates.
 
 ## Client
@@ -112,11 +112,11 @@ Startup guarantee:
 
 See [client/src/Session/Indexer/README.md](../client/src/Session/Indexer/README.md) for API details and type conversion rules.
 
-## Indexer Server
+## Indexer
 
-Path: `server/`
+Path: `indexer/`
 
-The server exists to speed up client startup and provide operational visibility. It reads public Aztec storage events, keeps typed in memory maps, writes snapshots to SQLite, and serves compressed snapshot APIs.
+The indexer exists to speed up client startup and provide operational visibility. It reads public Aztec storage events, keeps typed in memory maps, writes snapshots to SQLite, and serves compressed snapshot APIs.
 
 Main runtime flow:
 
@@ -128,7 +128,7 @@ Main runtime flow:
 6. Subscribe to incremental updates and poll for new blocks.
 7. Persist snapshots on a throttle and save immediately during shutdown.
 
-See [server/README.md](../server/README.md) for endpoint and deployment details.
+See [indexer/README.md](../indexer/README.md) for endpoint and deployment details.
 
 ## Shared Packages
 
@@ -150,16 +150,16 @@ Path: `packages/`
 | `@dfpunk/utils`               | Aztec helpers (`unwrapSimulateResult`, move-proof validation)   |
 | `@dfpunk/indexer-core`        | Reusable indexer building blocks (`IndexerService`, sources)    |
 
-Shared packages should not depend on application-only code from `client/` or `server/`. Keep dependency direction flowing from apps to packages.
+Shared packages should not depend on application-only code from `client/` or `indexer/`. Keep dependency direction flowing from apps to packages.
 
 ## Data Ownership
 
 ```mermaid
 flowchart LR
   contractState[Contract State Hashes] --> publicLogs[Public Logs]
-  publicLogs --> serverSnapshot[Server Snapshot]
+  publicLogs --> indexerSnapshot[Indexer Snapshot]
   publicLogs --> clientState[Client State]
-  serverSnapshot --> clientState
+  indexerSnapshot --> clientState
   clientState --> renderer[Renderer And UI]
   clientState --> txBuilder[Transaction Builder]
   txBuilder --> contractState
@@ -167,7 +167,7 @@ flowchart LR
 
 * Contracts own authoritative state transitions.
 * Public logs expose enough information for indexers to reconstruct public table state.
-* The server snapshot is a performance optimization, not a replacement for chain derived sync.
+* The indexer snapshot is a performance optimization, not a replacement for chain derived sync.
 * The client owns local UI state, private key/home coordinate persistence, and pending user actions.
 * Shared packages own deterministic helpers and domain types.
 
@@ -184,7 +184,7 @@ Client:
 * Vite environment variables use the `VITE_*` prefix.
 * Connection config can come from localStorage overrides, env vars, or built in defaults.
 
-Server:
+Indexer:
 
 * `AZTEC_NODE_URL` selects the Aztec node.
 * `INDEXER_START_BLOCK` can override contract defaults.

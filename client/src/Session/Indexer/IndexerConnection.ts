@@ -467,8 +467,8 @@ export class IndexerConnection {
   }
 
   /**
-   * Full snapshot as JSON string (same shape as server GET /snapshot).
-   * Use for comparing client state with server snapshot.
+   * Full snapshot as JSON string (same shape as indexer GET /snapshot).
+   * Use for comparing client state with the indexer snapshot.
    */
   public getSnapshotAsJsonString(): string {
     if (!import.meta.env.DEV) {

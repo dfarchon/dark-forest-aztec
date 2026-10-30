@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE_REPO="${IMAGE_REPO:-dfpunk-indexer-server}"
+IMAGE_REPO="${IMAGE_REPO:-dfpunk-aztec-indexer}"
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 IMAGE_PLATFORMS="${IMAGE_PLATFORMS:-linux/amd64}"
 IMAGE_PUSH="${IMAGE_PUSH:-0}"
 IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
 
-node "$ROOT/server/scripts/prepare-contract-artifacts.mjs" --build-if-missing
+node "$ROOT/indexer/scripts/prepare-contract-artifacts.mjs" --build-if-missing
 
 if [[ "$IMAGE_PUSH" != "1" && "$IMAGE_PLATFORMS" == *,* ]]; then
   printf 'Refusing multi-platform local load for %s; set IMAGE_PUSH=1.\n' "$IMAGE_PLATFORMS" >&2
@@ -23,7 +23,7 @@ docker_args=(
   -t
   "$IMAGE_REF"
   -f
-  "$ROOT/server/Dockerfile"
+  "$ROOT/indexer/Dockerfile"
 )
 
 if [[ "$IMAGE_PUSH" == "1" ]]; then

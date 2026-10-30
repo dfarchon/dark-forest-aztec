@@ -31,12 +31,12 @@ function parseArgs(argv) {
     timeoutSec: 120,
     pollMs: 1500,
     strict: false,
-    serverUrl: process.env.SERVER_URL ?? "http://localhost:3001",
+    indexerUrl: process.env.INDEXER_URL ?? process.env.SERVER_URL ?? "http://localhost:3001",
     contractsDir: path.join(repoRoot, "contracts"),
     lockFile:
-      process.env.SERVER_E2E_LOCK_FILE ?? "/tmp/dfpunk-indexer-e2e.lock",
+      process.env.INDEXER_E2E_LOCK_FILE ?? process.env.SERVER_E2E_LOCK_FILE ?? "/tmp/dfpunk-indexer-e2e.lock",
     sqlitePath:
-      process.env.SQLITE_PATH ?? path.join(repoRoot, "server", "data", "indexer.db"),
+      process.env.SQLITE_PATH ?? path.join(repoRoot, "indexer", "data", "indexer.db"),
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -100,8 +100,8 @@ function parseArgs(argv) {
       i++;
       continue;
     }
-    if (key === "--server-url" && next) {
-      args.serverUrl = next;
+    if ((key === "--indexer-url" || key === "--server-url") && next) {
+      args.indexerUrl = next;
       i++;
       continue;
     }
@@ -319,8 +319,8 @@ async function fetchJson(url) {
   return await res.json();
 }
 
-async function fetchSnapshot(serverUrl) {
-  const res = await fetch(`${serverUrl}/snapshot`);
+async function fetchSnapshot(indexerUrl) {
+  const res = await fetch(`${indexerUrl}/snapshot`);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`HTTP ${res.status} for /snapshot: ${body}`);
@@ -350,12 +350,12 @@ function readSnapshotRow(sqlitePath) {
   }
 }
 
-async function waitForBlock(serverUrl, minBlock, timeoutMs, pollMs) {
+async function waitForBlock(indexerUrl, minBlock, timeoutMs, pollMs) {
   const deadline = Date.now() + timeoutMs;
   let last = -1;
 
   while (Date.now() <= deadline) {
-    const latest = await fetchJson(`${serverUrl}/blocks/latest`);
+    const latest = await fetchJson(`${indexerUrl}/blocks/latest`);
     last = Number(latest.blockNumber);
     if (last >= minBlock) return last;
     await sleep(pollMs);
@@ -387,7 +387,7 @@ async function waitForDbAtLeast(sqlitePath, minBlock, timeoutMs, pollMs) {
 function workloadPlan(config) {
   const safeInitScript = path.join(
     repoRoot,
-    "server",
+    "indexer",
     "scripts",
     "test-core-initialize-player-safe.mjs"
   );
@@ -552,7 +552,7 @@ function missingTables(counts, tables) {
 }
 
 async function runCoverageCheck(config) {
-  const snapshot = await fetchSnapshot(config.serverUrl);
+  const snapshot = await fetchSnapshot(config.indexerUrl);
   const counts = snapshotTableCounts(snapshot);
   const missingExpected = missingTables(counts, EXPECTED_TABLES);
   const missingAll = missingTables(counts, ALL_TABLES);
@@ -587,7 +587,7 @@ async function runCoverageCheck(config) {
 
 async function runAndVerify(name, args, config, options = {}) {
   const { checkSqlite = true } = options;
-  const beforeLatest = await fetchJson(`${config.serverUrl}/blocks/latest`);
+  const beforeLatest = await fetchJson(`${config.indexerUrl}/blocks/latest`);
   const beforeBlock = Number(beforeLatest.blockNumber);
 
   for (let attempt = 1; attempt <= config.stepRetries; attempt += 1) {
@@ -600,7 +600,7 @@ async function runAndVerify(name, args, config, options = {}) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isCommandTimeoutError(msg)) {
         console.warn(
-          `[${nowIso()}] [server-check] WARN ${name} | step timed out after ${config.stepTimeoutSec}s; child killed, skip assertions`
+          `[${nowIso()}] [indexer-check] WARN ${name} | step timed out after ${config.stepTimeoutSec}s; child killed, skip assertions`
         );
         return false;
       }
@@ -609,7 +609,7 @@ async function runAndVerify(name, args, config, options = {}) {
       const canRetry = transient && attempt < config.stepRetries;
       if (canRetry) {
         console.warn(
-          `[${nowIso()}] [server-check] WARN ${name} | transient reorg/drop error, retry ${attempt}/${config.stepRetries - 1}`
+          `[${nowIso()}] [indexer-check] WARN ${name} | transient reorg/drop error, retry ${attempt}/${config.stepRetries - 1}`
         );
         await sleep(1200);
         continue;
@@ -622,7 +622,7 @@ async function runAndVerify(name, args, config, options = {}) {
   let syncedBlock;
   try {
     syncedBlock = await waitForBlock(
-      config.serverUrl,
+      config.indexerUrl,
       beforeBlock + 1,
       config.timeoutSec * 1000,
       config.pollMs
@@ -631,14 +631,14 @@ async function runAndVerify(name, args, config, options = {}) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Timed out waiting for /blocks/latest")) {
       console.warn(
-        `[${nowIso()}] [server-check] WARN ${name} | no new block within ${config.timeoutSec}s; skip server/sqlite assertions`
+        `[${nowIso()}] [indexer-check] WARN ${name} | no new block within ${config.timeoutSec}s; skip indexer/sqlite assertions`
       );
       return false;
     }
     throw err;
   }
 
-  const health = await fetchJson(`${config.serverUrl}/health`);
+  const health = await fetchJson(`${config.indexerUrl}/health`);
   if (health.status !== "ok") {
     throw new Error(`${name}: /health status is not ok`);
   }
@@ -648,7 +648,7 @@ async function runAndVerify(name, args, config, options = {}) {
     );
   }
 
-  const snapshot = await fetchSnapshot(config.serverUrl);
+  const snapshot = await fetchSnapshot(config.indexerUrl);
   if (Number(snapshot.lastProcessedBlock) < syncedBlock) {
     throw new Error(
       `${name}: /snapshot.lastProcessedBlock=${snapshot.lastProcessedBlock} < synced=${syncedBlock}`
@@ -664,13 +664,13 @@ async function runAndVerify(name, args, config, options = {}) {
       config.pollMs
     );
     console.log(
-      `[${nowIso()}] [server-check] OK ${name} | block=${syncedBlock} | sqlite=${dbRow.blockNumber} | sqliteMin=${sqliteMinBlock}`
+      `[${nowIso()}] [indexer-check] OK ${name} | block=${syncedBlock} | sqlite=${dbRow.blockNumber} | sqliteMin=${sqliteMinBlock}`
     );
     return true;
   }
 
   console.log(
-    `[${nowIso()}] [server-check] OK ${name} | block=${syncedBlock} | sqlite=skip(periodic)`
+    `[${nowIso()}] [indexer-check] OK ${name} | block=${syncedBlock} | sqlite=skip(periodic)`
   );
   return true;
 }
@@ -681,8 +681,8 @@ async function main() {
   const releaseLock = acquireSingleRunnerLock(config.lockFile);
   assertNodeSupportsTransformTypes();
   try {
-    console.log("[server-e2e] Continuous mode");
-    console.log(`  serverUrl:    ${config.serverUrl}`);
+    console.log("[indexer-e2e] Continuous mode");
+    console.log(`  indexerUrl:    ${config.indexerUrl}`);
     console.log(`  contractsDir: ${config.contractsDir}`);
     console.log(`  sqlitePath:   ${config.sqlitePath}`);
     console.log(`  lockFile:     ${config.lockFile}`);
@@ -699,9 +699,9 @@ async function main() {
     console.log(`  strict:       ${config.strict}`);
 
     if (config.skipWarmup) {
-      console.log("[server-e2e] Warmup SKIP (--skip-warmup)");
+      console.log("[indexer-e2e] Warmup SKIP (--skip-warmup)");
     } else {
-      console.log("[server-e2e] Warmup (idempotent)");
+      console.log("[indexer-e2e] Warmup (idempotent)");
       let warmupSucceeded = 0;
       for (const step of plan.warmup) {
         const ok = await runWarmupStep(step.args, config);
@@ -717,7 +717,7 @@ async function main() {
       }
 
       if (warmupSucceeded === 0) {
-        const snapshot = await fetchSnapshot(config.serverUrl).catch(() => null);
+        const snapshot = await fetchSnapshot(config.indexerUrl).catch(() => null);
         if (snapshot && hasGameplayState(snapshot)) {
           console.warn(
             `[${nowIso()}] [warmup] WARN no init step succeeded, but snapshot already has gameplay state; continuing`
@@ -747,10 +747,10 @@ async function main() {
     let noProgressSteps = 0;
     while (true) {
       const cycle = buildRoundCycle(plan, round, config);
-      console.log(`\n[${nowIso()}] [server-check] ROUND ${round} | steps=${cycle.length}`);
+      console.log(`\n[${nowIso()}] [indexer-check] ROUND ${round} | steps=${cycle.length}`);
 
       for (const item of cycle) {
-        console.log(`[${nowIso()}] [server-check] RUN ${item.name}`);
+        console.log(`[${nowIso()}] [indexer-check] RUN ${item.name}`);
         let progressed = false;
         try {
           if (item.mode === "init") {
@@ -758,7 +758,7 @@ async function main() {
             if (!ok) {
               const msg = `${item.name} failed`;
               if (config.strict) throw new Error(msg);
-              console.warn(`[${nowIso()}] [server-check] WARN ${msg}`);
+              console.warn(`[${nowIso()}] [indexer-check] WARN ${msg}`);
             }
             await sleep(config.intervalSec * 1000);
             continue;
@@ -780,7 +780,7 @@ async function main() {
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[${nowIso()}] [server-check] FAIL ${item.name}: ${msg}`);
+          console.error(`[${nowIso()}] [indexer-check] FAIL ${item.name}: ${msg}`);
           if (config.strict) throw err;
         }
 
@@ -791,7 +791,7 @@ async function main() {
             noProgressSteps += 1;
             if (noProgressSteps >= config.maxNoProgressSteps) {
               throw new Error(
-                `[watchdog] no new block for ${noProgressSteps} consecutive non-init steps; restart e2e only with: bash server/scripts/test-env.sh e2e-start-fast`
+                `[watchdog] no new block for ${noProgressSteps} consecutive non-init steps; restart e2e only with: bash indexer/scripts/test-env.sh e2e-start-fast`
               );
             }
           }
@@ -807,6 +807,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[server-e2e] Fatal:", err);
+  console.error("[indexer-e2e] Fatal:", err);
   process.exit(1);
 });

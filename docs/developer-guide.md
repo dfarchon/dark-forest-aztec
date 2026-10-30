@@ -12,7 +12,7 @@ Recommended order:
 
 Useful module docs:
 
-- [server/README.md](../server/README.md)
+- [indexer/README.md](../indexer/README.md)
 - [client/src/Session/Indexer/README.md](../client/src/Session/Indexer/README.md)
 - [docs/external-wallet.md](external-wallet.md)
 
@@ -31,7 +31,7 @@ Good client tasks:
 - improve wallet connection and local persistence flows;
 - integrate new shared types or contract artifacts.
 
-Avoid putting server-only persistence or contract deployment logic in the client. If a helper needs to be shared, consider whether it belongs under `packages/`.
+Avoid putting indexer-only persistence or contract deployment logic in the client. If a helper needs to be shared, consider whether it belongs under `packages/`.
 
 ### Contracts
 
@@ -48,20 +48,20 @@ Good contract tasks:
 
 Contract scripts load environment variables through `contracts/scripts/runtime/env.ts`. Prefer those helpers over reading `process.env` directly in new deploy/config scripts.
 
-### Server
+### Indexer
 
-Path: `server/`
+Path: `indexer/`
 
-The server indexes public Aztec storage updates, persists snapshots to SQLite, and exposes snapshot/block/health APIs to clients.
+The indexer indexes public Aztec storage updates, persists snapshots to SQLite, and exposes snapshot/block/health APIs to clients.
 
-Good server tasks:
+Good indexer tasks:
 
 - add or optimize snapshot endpoints;
 - improve SQLite persistence, chunking, or restore behavior;
 - update indexer service configuration;
 - add operational docs for deployment.
 
-Keep browser-only assumptions out of the server. The server should use contract metadata and public events, not client UI state.
+Keep browser-only assumptions out of the indexer. The indexer should use contract metadata and public events, not client UI state.
 
 ### Shared Packages
 
@@ -90,9 +90,9 @@ Do not add a package just to hide one local helper. Start local, extract only wh
 
 1. Update the contract event or storage output first.
 2. Regenerate contract artifacts and bindings.
-3. Update table conversion in the client/server indexer layer.
+3. Update table conversion in the client indexer and the off-chain indexer.
 4. Update snapshot compatibility docs or checks if the serialized shape changes.
-5. Run the relevant contract and server tests.
+5. Run the relevant contract and indexer tests.
 
 ### Add A Contract Action
 

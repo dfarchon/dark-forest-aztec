@@ -56,7 +56,7 @@ This is enforced by the IndexerService lifecycle:
 - `notifyListeners()` is gated: it only dispatches callbacks in the **live** phase
 - `start()` awaits full catch-up before transitioning to **live** and starting the poll timer
 
-JavaScript's single-threaded execution ensures the in-memory snapshot is consistent between `processNewBlocks()` calls. For the off-chain bootstrap, the `/snapshot` endpoint must return a consistent snapshot (server responsibility).
+JavaScript's single-threaded execution ensures the in-memory snapshot is consistent between `processNewBlocks()` calls. For the off-chain bootstrap, the `/snapshot` endpoint must return a consistent snapshot (indexer responsibility).
 
 ## Data flow
 
