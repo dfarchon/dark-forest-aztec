@@ -2,6 +2,11 @@ import { START_BLOCK } from "@dfpunk/contracts";
 
 export const DEFAULT_AZTEC_NODE_URL = "https://canonical.testnet.rpc.aztec-labs.com";
 
+export const DEFAULT_SNAPSHOT_SCHEMA_VERSION = 2;
+
+const INDEXER_TIP_TAGS = ["checkpointed", "proven", "finalized"] as const;
+type IndexerTipTag = (typeof INDEXER_TIP_TAGS)[number];
+
 export const DEFAULT_CORS_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -12,8 +17,8 @@ export const DEFAULT_CORS_ORIGINS = [
 
 export interface ServerRuntimeConfig {
   aztecNodeUrl: string;
-  /** Backup RPC URLs (comma-separated in AZTEC_NODE_URL_BACKUP env). */
-  aztecNodeUrlBackups: string[];
+  /** L2 tip the indexer follows. Proven blocks are not pruned by the node. */
+  indexerTipTag: IndexerTipTag;
   nodeKind: "local" | "remote";
   port: number;
   sqlitePath: string;
@@ -59,6 +64,16 @@ function detectNodeKind(url: string): "local" | "remote" {
   return "remote";
 }
 
+function parseIndexerTipTag(raw: string | undefined): IndexerTipTag {
+  const value = raw?.trim() || "proven";
+  if (!INDEXER_TIP_TAGS.includes(value as IndexerTipTag)) {
+    throw new Error(
+      `[ServerConfig] INDEXER_TIP_TAG must be one of ${INDEXER_TIP_TAGS.join(", ")}`,
+    );
+  }
+  return value as IndexerTipTag;
+}
+
 function parseCorsOrigins(raw: string | undefined): string[] {
   return (raw ?? DEFAULT_CORS_ORIGINS.join(","))
     .split(",")
@@ -70,13 +85,9 @@ export function parseServerConfig(
   env: Record<string, string | undefined> = process.env,
 ): ServerRuntimeConfig {
   const aztecNodeUrl = parseAztecNodeUrl(env.AZTEC_NODE_URL);
-  const aztecNodeUrlBackups = (env.AZTEC_NODE_URL_BACKUP ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
   const snapshotSchemaVersion = parseIntEnv(
     env.SNAPSHOT_SCHEMA_VERSION,
-    1,
+    DEFAULT_SNAPSHOT_SCHEMA_VERSION,
     "SNAPSHOT_SCHEMA_VERSION",
   );
   if (snapshotSchemaVersion < 1) {
@@ -86,7 +97,7 @@ export function parseServerConfig(
   }
   return {
     aztecNodeUrl,
-    aztecNodeUrlBackups,
+    indexerTipTag: parseIndexerTipTag(env.INDEXER_TIP_TAG),
     nodeKind: detectNodeKind(aztecNodeUrl),
     port: parseIntEnv(env.PORT, 3001, "PORT"),
     sqlitePath: env.SQLITE_PATH?.trim() || "./data/indexer.db",

@@ -31,7 +31,9 @@ import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
 
 import type {
+  BlockTipTag,
   BlockUpdates,
+  IBlockEventSource,
   PublicEventBatchCounts,
   PublicEventName,
   TableName,
@@ -130,101 +132,54 @@ function toIdStr(v: unknown): string {
   return String(v);
 }
 
-/**
- * Wraps an AztecNode client (primary + N backups) behind a transparent Proxy.
- *
- * Every method call goes to the currently-active node. If the active node fails
- * (network error, timeout, etc.), the proxy cascades to the next backup and
- * retries the call. After a cooldown period it probes the primary again and
- * switches back on success.
- *
- * If no backup URLs are provided, the primary is returned as-is (no overhead).
- */
-function createFailoverNode(
-  primaryUrl: string,
-  backupUrls: string[],
-): AztecNode {
-  const primary = createAztecNodeClient(primaryUrl) as AztecNode;
-
-  if (backupUrls.length === 0) return primary;
-
-  const backups = backupUrls.map(
-    (url) => createAztecNodeClient(url) as AztecNode,
-  );
-  const nodes: AztecNode[] = [primary, ...backups];
-  const labels = ["primary", ...backups.map((_, i) => `backup${i + 1}`)];
-  const COOLDOWN_MS = 60_000; // try primary again after 60 s on backup
-
-  let activeIndex = 0;
-  let lastFailoverAt = 0;
-
-  /** After cooldown, probe the primary (index 0) again. */
-  const tryRecovery = (): void => {
-    if (activeIndex === 0) return;
-    if (Date.now() - lastFailoverAt < COOLDOWN_MS) return;
-    activeIndex = 0;
-  };
-
-  return new Proxy({} as AztecNode, {
-    get(_target, prop: string | symbol) {
-      tryRecovery();
-
-      const current = nodes[activeIndex];
-      const value = Reflect.get(current, prop, current);
-
-      if (typeof value !== "function") return value;
-
-      // Wrap async methods so a rejection cascades through backups.
-      return async (...args: unknown[]) => {
-        let tryIndex = activeIndex;
-
-        while (true) {
-          try {
-            const node = nodes[tryIndex];
-            const fn = Reflect.get(node, prop, node) as (
-              ...a: unknown[]
-            ) => unknown;
-            return await fn.apply(node, args);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            const nextIndex = tryIndex + 1;
-
-            if (nextIndex < nodes.length) {
-              tryIndex = nextIndex;
-              activeIndex = nextIndex;
-              lastFailoverAt = Date.now();
-              console.warn(
-                `[FailoverNode] Switched to ${labels[activeIndex]} (${msg}). Will retry primary in ${COOLDOWN_MS / 1000}s.`,
-              );
-              continue;
-            }
-
-            throw err; // all nodes exhausted
-          }
-        }
-      };
-    },
-  });
+export interface AztecNodeBlockSourceOptions {
+  /** L2 tip to follow. Default "proposed", matching getBlockNumber() with no argument. */
+  tipTag?: BlockTipTag;
+  /** Per-request timeout. Unset means wait for the node (previous behavior). */
+  requestTimeoutMs?: number;
 }
 
 /**
- * Returns an IBlockEventSource that reads public storage events from the Aztec node.
+ * Rejects if `p` does not settle within `ms`. A late rejection of `p` is swallowed
+ * so it cannot surface as an unhandled rejection after the timeout already won.
+ */
+async function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(new Error(`[AztecNodeSource] ${label} timed out after ${ms}ms`)),
+      ms,
+    );
+  });
+  p.catch(() => {});
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * Returns an IBlockEventSource that reads public storage events from one Aztec node.
  * @param nodeUrl - Aztec node URL (e.g. http://localhost:8080)
  * @param contractAddresses - Optional map of storage contract name to hex address; omitted entries use defaults from @dfpunk/contracts
- * @param backupNodeUrls - Optional array of backup Aztec node URLs for automatic failover (cascades primary → backup1 → backup2 → ...)
+ * @param options - Tip to follow and optional per-request timeout
  */
 export function createAztecNodeBlockSource(
   nodeUrl: string,
   contractAddresses?: StorageContractAddresses,
-  backupNodeUrls?: string[],
-): {
-  getLatestBlockNumber: () => Promise<number>;
-  getBlockUpdates: (
-    fromBlock: number,
-    toBlock: number,
-  ) => Promise<BlockUpdates>;
-} {
-  const node = createFailoverNode(nodeUrl, backupNodeUrls ?? []);
+  options?: AztecNodeBlockSourceOptions,
+): IBlockEventSource {
+  const node = createAztecNodeClient(nodeUrl) as AztecNode;
+  const tipTag = options?.tipTag ?? "proposed";
+  const timeoutMs = options?.requestTimeoutMs;
+  const call = <T>(p: Promise<T>, label: string): Promise<T> =>
+    timeoutMs !== undefined ? withTimeout(p, timeoutMs, label) : p;
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
 
   const specsWithArtifacts = STORAGE_SPECS.filter((spec) => {
@@ -235,18 +190,32 @@ export function createAztecNodeBlockSource(
     address: AztecAddress.fromStringUnsafe(addresses[spec.contractKey]!),
   }));
 
-  return {
-    async getLatestBlockNumber(): Promise<number> {
-      return Number(await node.getBlockNumber());
-    },
+  const blockHash = async (n: number): Promise<string | undefined> => {
+    const data = await call(
+      node.getBlockData(BlockNumber(n)),
+      `getBlockData(${n})`,
+    );
+    return data?.blockHash.toString();
+  };
 
-    async getBlockUpdates(
-      fromBlock: number,
-      toBlock: number,
-    ): Promise<BlockUpdates> {
-      const limit = Math.max(0, toBlock - fromBlock + 1);
-      if (limit === 0) {
-        return { fromBlock, toBlock, updates: [], eventCounts: {} };
+  return {
+    getLatestBlockNumber: async () =>
+      Number(await call(node.getBlockNumber(tipTag), "getBlockNumber")),
+
+    getBlockHash: blockHash,
+
+    async getBlockUpdates(fromBlock, toBlock): Promise<BlockUpdates> {
+      const tip = Number(
+        await call(node.getBlockNumber(tipTag), "getBlockNumber"),
+      );
+      const end = Math.min(toBlock, tip);
+      if (end < fromBlock) {
+        return {
+          fromBlock,
+          toBlock: fromBlock - 1,
+          updates: [],
+          eventCounts: {},
+        };
       }
 
       const updates: BlockUpdates["updates"] = [];
@@ -260,12 +229,15 @@ export function createAztecNodeBlockSource(
       } of specsWithArtifacts) {
         let afterEvent: EventCursor | undefined;
         do {
-          const page = await getPublicEvents(node, eventDef, {
-            fromBlock: BlockNumber(fromBlock),
-            toBlock: BlockNumber(fromBlock + limit),
-            contractAddress: address,
-            afterEvent,
-          });
+          const page = await call(
+            getPublicEvents(node, eventDef, {
+              fromBlock: BlockNumber(fromBlock),
+              toBlock: BlockNumber(end + 1), // exclusive
+              contractAddress: address,
+              afterEvent,
+            }),
+            `getPublicEvents(${eventName})`,
+          );
           eventCounts[eventName] =
             (eventCounts[eventName] ?? 0) + page.events.length;
           const events = page.events.map((e) => e.event) as DecodedUpdate[];
@@ -278,7 +250,8 @@ export function createAztecNodeBlockSource(
         } while (afterEvent);
       }
 
-      return { fromBlock, toBlock, updates, eventCounts };
+      const toBlockHash = await blockHash(end);
+      return { fromBlock, toBlock: end, toBlockHash, updates, eventCounts };
     },
   };
 }

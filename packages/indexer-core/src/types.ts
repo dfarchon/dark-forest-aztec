@@ -15,6 +15,9 @@ import type {
   WorldState,
 } from "./TableTypes/chain.ts";
 
+/** Which Aztec L2 tip an indexer follows. */
+export type BlockTipTag = "proposed" | "checkpointed" | "proven" | "finalized";
+
 /** Table names matching contract storage and client types. */
 export const TABLE_NAMES = [
   "world",
@@ -80,6 +83,8 @@ export type TableStateMap<T> = Map<TableId, T>;
 /** Full snapshot: all tables + last processed block. */
 export interface IndexerSnapshot {
   lastProcessedBlock: number;
+  /** Hash of lastProcessedBlock; undefined for legacy snapshots. */
+  lastProcessedBlockHash?: string;
   world: TableStateMap<WorldState>;
   player: TableStateMap<PlayerState>;
   planet: TableStateMap<PlanetState>;
@@ -101,7 +106,9 @@ export interface TableUpdate<T = unknown> {
 /** Block range update: apply these to go from fromBlock to toBlock. */
 export interface BlockUpdates {
   fromBlock: number;
+  /** Actually processed up to; may be < requested toBlock if the node is behind. */
   toBlock: number;
+  toBlockHash?: string;
   updates: TableUpdate[];
   /** Raw decoded events in this range, before rows with the same id overwrite. */
   eventCounts?: PublicEventBatchCounts;
@@ -123,6 +130,9 @@ export interface IBlockEventSource {
    * Each update should be applied in order; same id in same table overwrites.
    */
   getBlockUpdates(fromBlock: number, toBlock: number): Promise<BlockUpdates>;
+
+  /** Canonical hash of a block on the source chain, undefined if unknown. */
+  getBlockHash?(blockNumber: number): Promise<string | undefined>;
 }
 
 /** Lifecycle states for IndexerService. */
@@ -140,6 +150,10 @@ export interface IndexerStatus {
   latestKnownBlock: number;
   isSyncing: boolean;
   lifecycle: IndexerLifecycle;
+  /** Consecutive background or initial sync failures since the last success. */
+  consecutiveFailures: number;
+  /** Message from the most recent sync failure, if any. */
+  lastError?: string;
 }
 
 /**

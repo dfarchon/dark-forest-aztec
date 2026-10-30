@@ -47,12 +47,12 @@ In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBl
 
 1. Validate contracts config and parse runtime config.
 2. Initialize `SnapshotStore` (SQLite, WAL mode).
-3. Create `IndexerService` with `createAztecNodeBlockSource(aztecNodeUrl, undefined, aztecNodeUrlBackups)`. When `AZTEC_NODE_URL_BACKUP` is set (comma-separated list), a transparent failover proxy wraps the primary and all backup RPC clients: on primary failure, calls cascade through backups (backup1 → backup2 → ...) with retry, with periodic primary recovery probes (60 s cooldown).
+3. Create `IndexerService` with `createAztecNodeBlockSource(aztecNodeUrl, undefined, { tipTag, requestTimeoutMs: 30_000 })`. The server follows `INDEXER_TIP_TAG` (default `proven`) on a single node. Each RPC call times out after 30s.
 4. Create `SnapshotCache` bound to the indexer.
 5. Run `runServerRuntime()`:
-   - Restore snapshot from SQLite; verify v1 JSON against v2 chunk reconstruction.
+   - Restore the last snapshot into `SnapshotCache` so HTTP can keep serving it. Do not load it into `IndexerService`; the indexer resyncs from `startBlock` with an empty state. Verify v1 JSON against v2 chunk reconstruction.
    - Start HTTP listener (so `/health` responds while sync runs).
-   - `await indexer.start()` — catch up to latest chain block.
+   - `await indexer.start()` — full resync up to the proven tip. RPC failures retry with backoff instead of exiting.
    - `cache.buildFull()` from current indexer state.
    - `indexer.subscribe(...)`: incremental cache updates + throttled persistence.
    - `indexer.startPolling()` for new blocks.
@@ -64,8 +64,8 @@ TLS terminates at the edge or reverse proxy in production.
 
 Uses **IndexerService** from `@dfpunk/indexer-core`:
 
-- **Lifecycle**: `applySnapshot` → `start()` → `subscribe(cb)` → `startPolling()` → `destroy()`.
-- **API**: `getProcessedBlockNumber()`, `getStatus()`, `getTable()`.
+- **Lifecycle**: `start()` → `subscribe(cb)` → `startPolling()` → `destroy()`. Restart does not call `applySnapshot`; the indexer rebuilds from `startBlock`.
+- **API**: `getProcessedBlockNumber()`, `getProcessedBlockHash()`, `getStatus()`, `getTable()`.
 - **Polling**: checks `getLatestBlockNumber()` every `pollIntervalMs` (2 s); skips `getBlockUpdates` when caught up.
 
 **Source adapter**: `AztecNodeSource` calls Aztec `getPublicEvents` with contract metadata from `@dfpunk/contracts/artifacts/*`.
@@ -89,10 +89,10 @@ Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snap
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /snapshot`                                      | Full snapshot as pre-compressed JSON. Headers: `Content-Encoding`, `X-Snapshot-Block`, `X-Snapshot-Uncompressed-Length`, `Cache-Control: no-cache`. |
 | `GET /snapshot/hash`                                 | `{ hash, lastProcessedBlock }` — SHA-256 hex of canonical snapshot JSON.                                                                            |
-| `GET /snapshot/manifest?chunkRows=`                  | v2 chunk metadata: `{ version: 2, lastProcessedBlock, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`.                                  |
+| `GET /snapshot/manifest?chunkRows=`                  | v2 chunk metadata: `{ version: 2, lastProcessedBlock, lastProcessedBlockHash?, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`.                                  |
 | `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`.                     |
 | `GET /blocks/latest`                                 | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }`                                                                                   |
-| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, metrics: { blockLag, snapshotBlock, snapshotBytes } }`                       |
+| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, consecutiveFailures, lastError?, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
 | `GET /admin/backup`                                  | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty.                                              |
 
 ## Configuration
@@ -102,16 +102,16 @@ Env file references: `.env.example` (generic), `env.local.example` (local testne
 | Variable                   | Default                              | Notes                                                                                                  |
 | -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `AZTEC_NODE_URL`           | `https://canonical.testnet.rpc.aztec-labs.com` | Use `http://localhost:8080` for local sandbox                                                          |
-| `AZTEC_NODE_URL_BACKUP`    | (empty)                              | Optional comma-separated backup RPC URLs for automatic failover (e.g. `url1,url2`). When set, RPC call failures on primary cascade through backups with retry. Empty = no failover (zero overhead). |
+| `INDEXER_TIP_TAG`          | `proven`                             | `checkpointed`, `proven`, or `finalized`. Proven blocks are not pruned by the node.                    |
 | `CORS_ORIGINS`             | local Vite + Netlify origins         | Comma-separated; `*` = any; empty = disabled                                                           |
 | `INDEXER_START_BLOCK`      | `START_BLOCK` from contracts         | Optional override                                                                                      |
 | `PORT`                     | `3001`                               | Local default. On Railway (and similar hosts), **omit `PORT`** and use the value the platform injects. |
 | `SQLITE_PATH`              | `./data/indexer.db`                  |                                                                                                        |
-| `SNAPSHOT_SCHEMA_VERSION`  | `1`                                  | Mismatch resets persisted snapshot                                                                     |
+| `SNAPSHOT_SCHEMA_VERSION`  | `2`                                  | Mismatch resets persisted snapshot                                                                     |
 | `PERSIST_MIN_INTERVAL_SEC` | `10`                                 | Throttles SQLite writes during live sync (see below).                                                  |
 | `ADMIN_TOKEN`              | (empty)                              | Empty = backup endpoint disabled                                                                       |
 
-IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`.
+IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`, `requestTimeoutMs: 30_000`, `maxBackoffMs: 60_000`, `initialSyncMaxRetries: Infinity`, `verifyBlockHashes: true`.
 
 **Timing:** Chosen for **public testnet** (seconds-scale blocks): poll only queries latest block height every 2s; `getBlockUpdates` runs when there is backlog. Debounce (1s) and `PERSIST_MIN_INTERVAL_SEC` cut redundant work. Hardcoded in `src/index.ts` (no env override).
 
@@ -248,11 +248,10 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 
 ## Failure & Recovery
 
-- **Automatic RPC failover**: when `AZTEC_NODE_URL_BACKUP` is set (comma-separated), a transparent proxy intercepts all RPC calls. If the primary fails (network error, timeout), the call is retried on the next backup and subsequent calls cascade through backups until one succeeds or all are exhausted. After a 60 s cooldown, the next call probes the primary again. Failover events are logged with `[FailoverNode]` prefix. When `AZTEC_NODE_URL_BACKUP` is unset, behavior is unchanged.
-- **Fast-fail on RPC unreachable**: `main().catch(() => process.exit(1))` — if `indexer.start()` cannot reach `AZTEC_NODE_URL` (and no backups are configured, or all are unreachable), the process exits immediately. Railway's `ON_FAILURE` restart policy (max 10 retries) brings it back automatically; for prolonged outages, run `railway redeploy --yes` once the RPC recovers.
+- **RPC retry**: a single Aztec node is used. Each request times out after 30s. Initial sync retries with backoff (2s, 4s, 8s, … capped at 60s) until the node responds, and background sync uses the same cap. The process stays up and keeps serving the last SQLite snapshot. `/health` reports `consecutiveFailures` and `lastError`. A hard crash still exits via `main().catch(() => process.exit(1))`.
 - **Local RPC diagnostics**: if `curl https://canonical.testnet.rpc.aztec-labs.com` fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` address, a local PAC/WPAD proxy (Clash/Surge fake-ip) is intercepting the domain — not an RPC outage. Pin the real IP via `dig @8.8.8.8` or disable the proxy to verify.
 - Event decode failures cause startup/polling to fail fast with logged error.
-- On restart, last persisted snapshot is restored and sync catches up from there.
+- On restart, the indexer rebuilds from `INDEXER_START_BLOCK` with an empty state. The previous snapshot stays available over HTTP until that sync finishes and `cache.buildFull()` replaces it.
 - Corrupted persisted JSON is skipped; fresh sync from `INDEXER_START_BLOCK`.
 - **Healthcheck**: Railway default 30s is too short for first-time sync (SQLite restore + catch-up). Raise to 300s via the Railway API.
 - **Memory**: 500 MB RAM (Railway free tier) may OOM on large block ranges; monitor and upgrade if sync crashes repeatedly.

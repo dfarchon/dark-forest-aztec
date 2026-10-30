@@ -510,6 +510,7 @@ export async function createIndexerConnection(
     debounceMs: config.debounceMs,
     pollIntervalMs: config.pollIntervalMs,
     maxBlocksPerRequest: config.maxBlocksPerRequest,
+    ...(config.bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
   };
 
   const indexer = new IndexerService(serviceOpts);

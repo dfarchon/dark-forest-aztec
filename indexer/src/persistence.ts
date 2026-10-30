@@ -4,8 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import type { IndexerSnapshot } from "@dfpunk/indexer-core";
-import { rawToState, TABLE_NAMES, type TableName } from "@dfpunk/indexer-core";
+import { TABLE_NAMES, type TableName } from "@dfpunk/indexer-core";
 
 // ---------------------------------------------------------------------------
 // v1 tables (existing)
@@ -156,6 +155,7 @@ export interface SnapshotStoreVersionOptions {
 export interface StoredChunkManifest {
   chunkRows: number;
   lastProcessedBlock: number;
+  lastProcessedBlockHash?: string;
   tables: Record<
     TableName,
     {
@@ -299,8 +299,9 @@ export class SnapshotStore {
   }
 
   /**
-   * Restore snapshot from SQLite. Returns parsed JSON object and block number,
-   * or null if no snapshot exists. Caller converts to IndexerSnapshot Maps.
+   * Restore snapshot JSON from SQLite. Returns the parsed object and block number,
+   * or null if no snapshot exists. The server serves this JSON while a fresh
+   * sync runs; it is not loaded into IndexerService.
    */
   restore(): { blockNumber: number; data: Record<string, unknown> } | null {
     const row = this.selectStmt.get() as
@@ -532,6 +533,15 @@ export class SnapshotStore {
 
     // Build in same key order as v1 JSON
     const reconstructed: Record<string, unknown> = { lastProcessedBlock };
+    const manifestRow = this.selectManifestByBlockStmt.get(activeBlock) as
+      | { chunk_rows: number; manifest_json: string }
+      | undefined;
+    const storedManifest = manifestRow
+      ? parseStoredManifest(manifestRow.manifest_json)
+      : null;
+    if (typeof storedManifest?.lastProcessedBlockHash === "string") {
+      reconstructed.lastProcessedBlockHash = storedManifest.lastProcessedBlockHash;
+    }
     for (const table of TABLE_NAMES) {
       reconstructed[table] = tableData[table] ?? {};
     }
@@ -631,6 +641,9 @@ export class SnapshotStore {
     const reconstructed: Record<string, unknown> = {
       lastProcessedBlock: manifest.lastProcessedBlock,
     };
+    if (typeof manifest.lastProcessedBlockHash === "string") {
+      reconstructed.lastProcessedBlockHash = manifest.lastProcessedBlockHash;
+    }
     for (const table of TABLE_NAMES) {
       reconstructed[table] = tableData[table];
     }
@@ -673,6 +686,10 @@ export class SnapshotStore {
     const data = JSON.parse(jsonString) as Record<string, unknown>;
     const lastProcessedBlock =
       typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
+    const lastProcessedBlockHash =
+      typeof data.lastProcessedBlockHash === "string"
+        ? data.lastProcessedBlockHash
+        : undefined;
 
     const manifestTables: Record<
       string,
@@ -730,6 +747,9 @@ export class SnapshotStore {
       version: 2,
       chunkRows: this.chunkRows,
       lastProcessedBlock,
+      ...(lastProcessedBlockHash
+        ? { lastProcessedBlockHash }
+        : {}),
       tables: manifestTables,
     });
     this.upsertManifestStmt.run(blockNumber, this.chunkRows, manifestJson);
@@ -926,55 +946,13 @@ function parseEncodedChunkPayload(
   }
 }
 
-/**
- * Convert a persisted JSON object back to IndexerSnapshot (with Maps).
- * Mirrors OffChainSource.parseSnapshot() logic.
- */
-export function jsonToSnapshot(data: Record<string, unknown>): IndexerSnapshot {
-  const lastProcessedBlock =
-    typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
-
-  const snapshot: IndexerSnapshot = {
-    lastProcessedBlock,
-    world: new Map(),
-    player: new Map(),
-    planet: new Map(),
-    planet_revealed_coords: new Map(),
-    planet_events: new Map(),
-    planet_artifacts: new Map(),
-    arrival: new Map(),
-    artifact: new Map(),
-    artifact_location: new Map(),
-  };
-
-  for (const table of TABLE_NAMES) {
-    const raw = data[table];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const map = snapshot[table] as Map<string, unknown>;
-    for (const [id, state] of Object.entries(raw as Record<string, unknown>)) {
-      if (state === null || typeof state !== "object" || Array.isArray(state)) {
-        continue;
-      }
-      try {
-        map.set(id, rawToState(table, state as Record<string, unknown>));
-      } catch (err) {
-        console.warn(
-          `[Persistence] Failed to rehydrate ${table}:${id} from snapshot:`,
-          err,
-        );
-      }
-    }
-  }
-
-  return snapshot;
-}
-
 function parseStoredManifest(raw: string): StoredChunkManifest | null {
   try {
     const value = JSON.parse(raw) as {
       version?: unknown;
       chunkRows?: unknown;
       lastProcessedBlock?: unknown;
+      lastProcessedBlockHash?: unknown;
       tables?: unknown;
     };
     if (value.version !== 2) return null;
@@ -1016,6 +994,9 @@ function parseStoredManifest(raw: string): StoredChunkManifest | null {
     return {
       chunkRows: value.chunkRows as number,
       lastProcessedBlock: value.lastProcessedBlock as number,
+      ...(typeof value.lastProcessedBlockHash === "string"
+        ? { lastProcessedBlockHash: value.lastProcessedBlockHash }
+        : {}),
       tables,
       version: 2,
     };

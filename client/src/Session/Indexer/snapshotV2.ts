@@ -19,6 +19,8 @@ import {
 export interface SnapshotV2Manifest {
   version: 2;
   lastProcessedBlock: number;
+  /** Absent on snapshots written before hash tracking. */
+  lastProcessedBlockHash?: string;
   chunkRows: number;
   tables: Record<TableName, { chunkCount: number; rowCount: number }>;
 }
@@ -76,6 +78,9 @@ export function parseSnapshotV2Manifest(
   return {
     version: 2,
     lastProcessedBlock: value.lastProcessedBlock,
+    ...(typeof value.lastProcessedBlockHash === "string"
+      ? { lastProcessedBlockHash: value.lastProcessedBlockHash }
+      : {}),
     chunkRows: value.chunkRows,
     tables,
   };
@@ -127,6 +132,9 @@ export class SnapshotV2Assembler {
   constructor(private readonly manifest: SnapshotV2Manifest) {
     this.snapshot = {
       lastProcessedBlock: manifest.lastProcessedBlock,
+      ...(manifest.lastProcessedBlockHash
+        ? { lastProcessedBlockHash: manifest.lastProcessedBlockHash }
+        : {}),
       world: new Map(),
       player: new Map(),
       planet: new Map(),

@@ -17,7 +17,7 @@ import type {
   PlayerState,
   WorldState,
 } from "./TableTypes/chain.ts";
-import type { TableName } from "./types.ts";
+import { TABLE_NAMES, type IndexerSnapshot, type TableName } from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -260,6 +260,69 @@ export function rawToState(
   const fn = converters[table];
   if (!fn) throw new Error(`Unknown table: ${table}`);
   return fn(raw) as ReturnType<typeof fn>;
+}
+
+/**
+ * Throws if converting `raw` changed any numeric or boolean value
+ * (bad string, missing field, or overflow that collapsed to a different number).
+ */
+function assertLossless(
+  table: TableName,
+  id: string,
+  raw: Raw,
+  typed: Raw,
+): void {
+  for (const [key, value] of Object.entries(typed)) {
+    const src = raw[key];
+    const fail = (why: string) => {
+      throw new Error(
+        `Indexer convert: ${table}:${id}.${key} ${why} (raw=${String(src)})`,
+      );
+    };
+    if (src === undefined || src === null) fail("missing");
+    if (typeof value === "bigint") {
+      const ok =
+        typeof src === "bigint"
+          ? src === value
+          : (typeof src === "string" || typeof src === "number") &&
+            /^-?(\d+|0x[0-9a-fA-F]+)$/.test(String(src)) &&
+            BigInt(src) === value;
+      if (!ok) fail("is not a valid integer");
+    } else if (typeof value === "number") {
+      if (src === "" || Number(src) !== value) fail("is not a valid number");
+    } else if (typeof value === "boolean") {
+      if (
+        !(
+          typeof src === "boolean" ||
+          src === 0 ||
+          src === 1 ||
+          src === "0" ||
+          src === "1"
+        )
+      ) {
+        fail("is not a valid boolean");
+      }
+    }
+  }
+}
+
+/**
+ * Convert every snapshot row to typed state in place.
+ * Throws on the first bad value so callers can discard the whole snapshot.
+ */
+export function normalizeSnapshot(snap: IndexerSnapshot): IndexerSnapshot {
+  for (const table of TABLE_NAMES) {
+    const map = snap[table] as Map<string, unknown>;
+    for (const [id, row] of map) {
+      if (row === null || typeof row !== "object" || Array.isArray(row)) {
+        throw new Error(`Indexer convert: ${table}:${id} is not an object`);
+      }
+      const typed = rawToState(table, row as Raw) as unknown as Raw;
+      assertLossless(table, id, row as Raw, typed);
+      map.set(id, typed);
+    }
+  }
+  return snap;
 }
 
 /** Normalize event id to TableId (world = "0", else string). */

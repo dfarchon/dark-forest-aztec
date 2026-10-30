@@ -10,9 +10,9 @@ function createTestConfig(): ServerRuntimeConfig {
   return {
     adminToken: "",
     aztecNodeUrl: "https://canonical.testnet.rpc.aztec-labs.com",
-    aztecNodeUrlBackups: [],
     corsOrigins: ["http://localhost:5173"],
     indexerStartBlock: 32202,
+    indexerTipTag: "proven",
     nodeKind: "remote",
     persistMinIntervalSec: 10,
     port: 3001,
@@ -61,9 +61,6 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
   });
 
   const indexer = {
-    applySnapshot: () => {
-      events.push("applySnapshot");
-    },
     destroy: () => {
       events.push("destroy");
     },
@@ -119,4 +116,77 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
 
   assert.equal(events.includes("subscribe"), true);
   assert.equal(events.includes("startPolling"), true);
+});
+
+test("runServerRuntime serves the stored snapshot and resyncs from an empty indexer", async () => {
+  const events: string[] = [];
+  let cache!: SnapshotCache;
+  const indexer = {
+    applySnapshot: () => {
+      events.push("applySnapshot");
+    },
+    destroy: () => undefined,
+    getProcessedBlockNumber: () => 0,
+    getStatus: () => ({
+      isSyncing: false,
+      lastProcessedBlock: 0,
+      latestKnownBlock: 0,
+      lifecycle: "idle",
+    }),
+    getTable: () => ({}),
+    start: async () => {
+      events.push("start");
+      assert.equal(cache.getProcessedBlockNumber(), 500);
+      return { syncedToBlock: 1 };
+    },
+    startPolling: () => undefined,
+    subscribe: () => undefined,
+  };
+
+  const stored = {
+    blockNumber: 500,
+    data: {
+      lastProcessedBlock: 500,
+      world: {},
+    },
+  };
+  const store = {
+    close: () => undefined,
+    createBackupBuffer: async () => Buffer.alloc(0),
+    forceSave: () => undefined,
+    restore: () => stored,
+    save: () => true,
+    verifyChunkConsistency: () => {
+      events.push("verifyChunkConsistency");
+      return true;
+    },
+  };
+
+  cache = new SnapshotCache(indexer as never);
+  const originalRestore = cache.restoreFrom.bind(cache);
+  cache.restoreFrom = (data) => {
+    events.push("restoreFrom");
+    originalRestore(data);
+  };
+
+  await runServerRuntime({
+    cache,
+    config: createTestConfig(),
+    contracts: createTestContracts(),
+    indexer: indexer as never,
+    registerShutdownHandlers: false,
+    serveFn: (_options, onListen) => {
+      onListen?.({ port: 3001 } as never);
+      return { close: () => undefined } as never;
+    },
+    store: store as never,
+  });
+
+  assert.deepEqual(events, [
+    "restoreFrom",
+    "verifyChunkConsistency",
+    "start",
+  ]);
+  assert.equal(events.includes("applySnapshot"), false);
+  assert.equal(indexer.getProcessedBlockNumber(), 0);
 });

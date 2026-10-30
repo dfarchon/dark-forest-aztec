@@ -235,6 +235,8 @@ export function createApp(deps: ApiDeps): Hono {
       lastProcessedBlock: status.lastProcessedBlock,
       latestKnownBlock: status.latestKnownBlock,
       isSyncing: status.isSyncing,
+      consecutiveFailures: status.consecutiveFailures ?? 0,
+      ...(status.lastError ? { lastError: status.lastError } : {}),
       metrics: {
         blockLag,
         snapshotBlock,

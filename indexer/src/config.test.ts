@@ -9,9 +9,9 @@ test("parseServerConfig defaults to testnet and known frontend origins", () => {
   const config = parseServerConfig({});
 
   assert.equal(config.aztecNodeUrl, "https://canonical.testnet.rpc.aztec-labs.com");
-  assert.deepEqual(config.aztecNodeUrlBackups, []);
+  assert.equal(config.indexerTipTag, "proven");
   assert.equal(config.nodeKind, "remote");
-  assert.equal(config.snapshotSchemaVersion, 1);
+  assert.equal(config.snapshotSchemaVersion, 2);
   assert.deepEqual(config.corsOrigins, [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -21,28 +21,24 @@ test("parseServerConfig defaults to testnet and known frontend origins", () => {
   ]);
 });
 
-test("parseServerConfig reads single AZTEC_NODE_URL_BACKUP", () => {
+test("parseServerConfig reads INDEXER_TIP_TAG", () => {
   const config = parseServerConfig({
     AZTEC_NODE_URL: "https://primary.example",
-    AZTEC_NODE_URL_BACKUP: "https://backup.example",
+    INDEXER_TIP_TAG: "finalized",
   });
 
-  assert.equal(config.aztecNodeUrl, "https://primary.example");
-  assert.deepEqual(config.aztecNodeUrlBackups, ["https://backup.example"]);
+  assert.equal(config.indexerTipTag, "finalized");
 });
 
-test("parseServerConfig reads comma-separated AZTEC_NODE_URL_BACKUP", () => {
-  const config = parseServerConfig({
-    AZTEC_NODE_URL: "https://primary.example",
-    AZTEC_NODE_URL_BACKUP:
-      "https://backup1.example, https://backup2.example",
-  });
-
-  assert.equal(config.aztecNodeUrl, "https://primary.example");
-  assert.deepEqual(config.aztecNodeUrlBackups, [
-    "https://backup1.example",
-    "https://backup2.example",
-  ]);
+test("parseServerConfig rejects an unknown INDEXER_TIP_TAG", () => {
+  assert.throws(
+    () =>
+      parseServerConfig({
+        AZTEC_NODE_URL: "https://primary.example",
+        INDEXER_TIP_TAG: "proposed",
+      }),
+    /INDEXER_TIP_TAG/,
+  );
 });
 
 test("parseServerConfig prefers INDEXER_START_BLOCK override", () => {

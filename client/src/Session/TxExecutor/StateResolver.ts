@@ -30,6 +30,7 @@ import { PlanetRevealedCoordsStorageContract } from "@dfpunk/contracts/artifacts
 import { PlanetStorageContract } from "@dfpunk/contracts/artifacts/PlanetStorage";
 import { PlayerStorageContract } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContract } from "@dfpunk/contracts/artifacts/WorldStorage";
+import { toBigInt } from "@dfpunk/indexer-core";
 import { locationIdToDecStr } from "@dfpunk/serde";
 import type {
   TxIntent,
@@ -902,24 +903,26 @@ export class StateResolver {
     );
     {
       const entityTimes: bigint[] = [];
-      if (sourcePlanetRaw) entityTimes.push(sourcePlanetRaw.last_updated);
+      if (sourcePlanetRaw)
+        entityTimes.push(toBigInt(sourcePlanetRaw.last_updated));
       if (sourcePlanetEventsRaw)
-        entityTimes.push(sourcePlanetEventsRaw.last_updated);
+        entityTimes.push(toBigInt(sourcePlanetEventsRaw.last_updated));
       if (sourcePlanetArtifactsRaw)
-        entityTimes.push(sourcePlanetArtifactsRaw.last_updated);
-      if (targetPlanetRaw) entityTimes.push(targetPlanetRaw.last_updated);
+        entityTimes.push(toBigInt(sourcePlanetArtifactsRaw.last_updated));
+      if (targetPlanetRaw)
+        entityTimes.push(toBigInt(targetPlanetRaw.last_updated));
       if (targetPlanetEventsRaw)
-        entityTimes.push(targetPlanetEventsRaw.last_updated);
+        entityTimes.push(toBigInt(targetPlanetEventsRaw.last_updated));
       if (targetPlanetArtifactsRaw)
-        entityTimes.push(targetPlanetArtifactsRaw.last_updated);
+        entityTimes.push(toBigInt(targetPlanetArtifactsRaw.last_updated));
       // Arrival departure_times (contract asserts timestamp >= departure_time)
       for (const arr of sourceArrivalData.arrivals) {
-        const dt = (arr as Record<string, unknown>).departure_time;
-        if (dt != null && dt !== 0) entityTimes.push(BigInt(dt as number));
+        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+        if (dt !== 0n) entityTimes.push(dt);
       }
       for (const arr of targetArrivalData.arrivals) {
-        const dt = (arr as Record<string, unknown>).departure_time;
-        if (dt != null && dt !== 0) entityTimes.push(BigInt(dt as number));
+        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+        if (dt !== 0n) entityTimes.push(dt);
       }
       let maxEntityTime = 0n;
       for (const t of entityTimes) {
@@ -1084,12 +1087,14 @@ export class StateResolver {
     );
     {
       const entityTimes: bigint[] = [];
-      if (planetRaw) entityTimes.push(planetRaw.last_updated);
-      if (planetEventsRaw) entityTimes.push(planetEventsRaw.last_updated);
-      if (planetArtifactsRaw) entityTimes.push(planetArtifactsRaw.last_updated);
+      if (planetRaw) entityTimes.push(toBigInt(planetRaw.last_updated));
+      if (planetEventsRaw)
+        entityTimes.push(toBigInt(planetEventsRaw.last_updated));
+      if (planetArtifactsRaw)
+        entityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
       for (const arr of arrivalData.arrivals) {
-        const dt = (arr as Record<string, unknown>).departure_time;
-        if (dt != null && dt !== 0) entityTimes.push(BigInt(String(dt)));
+        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+        if (dt !== 0n) entityTimes.push(dt);
       }
       let maxEntityTime = 0n;
       for (const t of entityTimes) {
@@ -1159,13 +1164,15 @@ export class StateResolver {
     );
     {
       const entityTimes: bigint[] = [];
-      if (planetRaw) entityTimes.push(planetRaw.last_updated);
-      if (planetEventsRaw) entityTimes.push(planetEventsRaw.last_updated);
-      if (planetArtifactsRaw) entityTimes.push(planetArtifactsRaw.last_updated);
-      if (playerRaw) entityTimes.push(playerRaw.last_updated);
+      if (planetRaw) entityTimes.push(toBigInt(planetRaw.last_updated));
+      if (planetEventsRaw)
+        entityTimes.push(toBigInt(planetEventsRaw.last_updated));
+      if (planetArtifactsRaw)
+        entityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
+      if (playerRaw) entityTimes.push(toBigInt(playerRaw.last_updated));
       for (const arr of arrivalData.arrivals) {
-        const dt = (arr as Record<string, unknown>).departure_time;
-        if (dt != null && dt !== 0) entityTimes.push(BigInt(String(dt)));
+        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+        if (dt !== 0n) entityTimes.push(dt);
       }
       let maxEntityTime = 0n;
       for (const t of entityTimes) {
@@ -1438,7 +1445,10 @@ export class StateResolver {
       const id = planetArtifacts.ids[i];
       if (!id || id === "0") continue;
       const art = this.indexer.getArtifact(id);
-      if (art && art.last_activated > art.last_deactivated) {
+      if (
+        art &&
+        toBigInt(art.last_activated) > toBigInt(art.last_deactivated)
+      ) {
         return BigInt(id);
       }
     }

@@ -153,8 +153,13 @@ export class OffChainBlockSource implements IBlockEventSource {
   private parseSnapshot(data: Record<string, unknown>): IndexerSnapshot {
     const lastProcessedBlock =
       typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
+    const lastProcessedBlockHash =
+      typeof data.lastProcessedBlockHash === "string"
+        ? data.lastProcessedBlockHash
+        : undefined;
     const snapshot: IndexerSnapshot = {
       lastProcessedBlock,
+      lastProcessedBlockHash,
       world: new Map(),
       player: new Map(),
       planet: new Map(),

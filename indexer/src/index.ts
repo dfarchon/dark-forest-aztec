@@ -10,7 +10,7 @@ import type { ServerRuntimeConfig } from "./config.ts";
 import { parseServerConfig } from "./config.ts";
 import type { ContractsRuntimeConfig } from "./contractsConfig.ts";
 import { validateContractsConfig } from "./contractsConfig.ts";
-import { jsonToSnapshot, SnapshotStore } from "./persistence.ts";
+import { SnapshotStore } from "./persistence.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 
 interface ServerRuntimeDeps {
@@ -34,13 +34,10 @@ export async function runServerRuntime({
 }: ServerRuntimeDeps): Promise<void> {
   const stored = store.restore();
   if (stored) {
-    const snapshot = jsonToSnapshot(stored.data);
-    indexer.applySnapshot(snapshot);
     cache.restoreFrom(stored.data);
     console.log(
-      `[Server] Restored to block ${stored.blockNumber}, catching up...`,
+      `[Server] Serving stored snapshot at block ${stored.blockNumber}; full resync from startBlock...`,
     );
-    // Phase 1 verification: compare v1 snapshot with v2 chunk reconstruction
     store.verifyChunkConsistency(JSON.stringify(stored.data));
   }
 
@@ -84,13 +81,8 @@ async function main(): Promise<void> {
   const contracts = validateContractsConfig();
   const config = parseServerConfig();
   console.log(
-    `[Server] Aztec node: ${config.aztecNodeUrl} (${config.nodeKind})`,
+    `[Server] Aztec node: ${config.aztecNodeUrl} (${config.nodeKind}, tip=${config.indexerTipTag})`,
   );
-  if (config.aztecNodeUrlBackups.length > 0) {
-    console.log(
-      `[Server] Aztec node backups: ${config.aztecNodeUrlBackups.join(", ")}`,
-    );
-  }
   console.log(`[Server] Start block: ${config.indexerStartBlock}`);
   console.log(`[Server] Contracts start block: ${contracts.startBlock}`);
   console.log(`[Server] Core contract: ${contracts.addresses.core}`);
@@ -123,19 +115,24 @@ async function main(): Promise<void> {
   );
 
   // 2. Create IndexerService
-  const source = createAztecNodeBlockSource(
-    config.aztecNodeUrl,
-    undefined,
-    config.aztecNodeUrlBackups.length > 0
-      ? config.aztecNodeUrlBackups
-      : undefined,
-  );
+  const source = createAztecNodeBlockSource(config.aztecNodeUrl, undefined, {
+    tipTag: config.indexerTipTag,
+    requestTimeoutMs: 30_000,
+  });
   const indexer = new IndexerService({
     source,
     startBlock: config.indexerStartBlock,
     debounceMs: 1000,
     pollIntervalMs: 2000,
     maxBlocksPerRequest: 100,
+    initialSyncMaxRetries: Infinity,
+    maxBackoffMs: 60_000,
+    verifyBlockHashes: true,
+    onReorgDetected: (info) => {
+      console.error(
+        `[Server] reorg detected at block ${info.blockNumber}: local=${info.localHash} source=${info.sourceHash}`,
+      );
+    },
   });
 
   const cache = new SnapshotCache(indexer);

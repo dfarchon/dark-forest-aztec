@@ -2,6 +2,7 @@ export type { StorageContractAddresses } from "./AztecNodeSource.ts";
 export { createAztecNodeBlockSource } from "./AztecNodeSource.ts";
 
 export {
+  normalizeSnapshot,
   rawIdToTableId,
   rawToArrivalState,
   rawToArtifactLocationState,
@@ -25,6 +26,7 @@ export type { IndexerServiceOptions } from "./IndexerService.ts";
 export { IndexerService } from "./IndexerService.ts";
 
 export type {
+  BlockTipTag,
   BlockUpdates,
   IBlockEventSource,
   IndexerChangePayload,

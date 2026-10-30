@@ -8,12 +8,14 @@ import { TABLE_NAMES } from "@dfpunk/indexer-core";
 
 type SnapshotJson = {
   lastProcessedBlock: number;
+  lastProcessedBlockHash?: string;
   [table: string]: unknown;
 };
 
 export interface SnapshotChunkManifest {
   chunkRows: number;
   lastProcessedBlock: number;
+  lastProcessedBlockHash?: string;
   tables: Record<
     TableName,
     {
@@ -55,6 +57,7 @@ export class SnapshotCache {
   /** Build full cache from current IndexerService state (used on startup). */
   buildFull(): void {
     this.jsonObject.lastProcessedBlock = this.indexer.getProcessedBlockNumber();
+    this.syncProcessedBlockHash();
     for (const table of TABLE_NAMES) {
       const map = this.indexer.getTable(table) as
         | Record<string, unknown>
@@ -67,6 +70,7 @@ export class SnapshotCache {
   /** Incrementally update cache from a change payload (called on each block). */
   applyChange(payload: IndexerChangePayload): void {
     this.jsonObject.lastProcessedBlock = this.indexer.getProcessedBlockNumber();
+    this.syncProcessedBlockHash();
 
     const { updatedIdsByTable } = payload;
     if (!updatedIdsByTable) {
@@ -96,6 +100,9 @@ export class SnapshotCache {
           ? data.lastProcessedBlock
           : 0,
     };
+    if (typeof data.lastProcessedBlockHash === "string") {
+      restored.lastProcessedBlockHash = data.lastProcessedBlockHash;
+    }
     for (const table of TABLE_NAMES) {
       const value = data[table];
       restored[table] =
@@ -150,6 +157,15 @@ export class SnapshotCache {
     return this.jsonObject.lastProcessedBlock;
   }
 
+  private syncProcessedBlockHash(): void {
+    const hash = this.indexer.getProcessedBlockHash?.();
+    if (typeof hash === "string") {
+      this.jsonObject.lastProcessedBlockHash = hash;
+    } else {
+      delete this.jsonObject.lastProcessedBlockHash;
+    }
+  }
+
   getChunkManifest(chunkRows: number): SnapshotChunkManifest {
     const normalizedChunkRows = normalizeChunkRows(chunkRows);
     const cached = this.chunkManifestCache.get(normalizedChunkRows);
@@ -171,6 +187,9 @@ export class SnapshotCache {
       tables,
       version: 2,
     };
+    if (typeof this.jsonObject.lastProcessedBlockHash === "string") {
+      manifest.lastProcessedBlockHash = this.jsonObject.lastProcessedBlockHash;
+    }
     this.chunkManifestCache.set(normalizedChunkRows, manifest);
     return manifest;
   }
