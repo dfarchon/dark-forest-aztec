@@ -37,12 +37,14 @@ contract ArtifactAction {
         assert_artifact_and_location_timestamp_freshness,
         assert_owned_artifacts_timestamp_freshness, assert_planet_timestamp_freshness,
         assert_public_timestamp, compute_artifact_and_location_hashes,
-        compute_owned_artifact_hashes, compute_planet_hashes, compute_world_hash,
+        compute_owned_artifact_hashes, compute_planet_artifact_hashes, compute_planet_hashes,
+        compute_planet_state_hash, compute_world_hash,
     };
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
         _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
-        artifact_rarity_from_planet_level, is_artifact_on_planet,
+        artifact_rarity_from_planet_level, assert_no_other_artifact_activated, is_activated,
+        is_artifact_on_planet,
     };
     use ::libs::planet::{refresh_planet_v1, refresh_planet_v2};
 
@@ -203,6 +205,10 @@ contract ArtifactAction {
         world: World,
         world_config: WorldConfig,
         planet_default_stats: PlanetDefaultStats,
+        // Artifacts currently on the planet, aligned with planet_artifacts_state.ids
+        planet_artifacts: [Artifact; 20],
+        // Destination planet state when activating a Wormhole; Planet::zero() otherwise
+        wormhole_to_planet: Planet,
     ) {
         let sender = self.msg_sender();
         assert(!world.paused, "Game is paused");
@@ -248,6 +254,18 @@ contract ArtifactAction {
         let world_hash = world_hash_result;
         let world_config_hash = poseidon2_hash(world_config.serialize());
         let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+
+        // planet_artifacts is caller-supplied; it is bound to on-chain state
+        // by verify_hashes_batch in activate_artifact_public, so the "no other artifact is
+        // active" check below cannot be faked.
+        let planet_artifact_ids = planet_artifacts_state.ids;
+        let planet_artifact_count = planet_artifacts_state.count;
+        let planet_artifact_hashes =
+            compute_planet_artifact_hashes(planet_artifacts_state, planet_artifacts);
+
+        // wormhole_to_planet is bound to on-chain state by verify_hash in
+        // activate_artifact_public (zero planet + wormhole_to = 0 for non-wormhole artifacts).
+        let wormhole_to_planet_hash = compute_planet_state_hash(wormhole_to_planet);
 
         let refresh_planet_result = refresh_planet_v2(
             timestamp,
@@ -331,6 +349,20 @@ contract ArtifactAction {
                 "you must own the planet you are activating an artifact on",
             );
 
+            // An already-active artifact must not be activated again.
+            // Otherwise _buff_planet runs twice but deactivation only debuffs once,
+            // leaving a permanent stat boost (several types have a 0h cooldown).
+            assert(!is_activated(new_artifact), "artifact is already activated");
+
+            // At most one active artifact per planet (checked against the
+            // pre-refresh planet artifacts, which are hash-bound in public).
+            assert_no_other_artifact_activated(
+                artifact_id,
+                planet_artifacts_state,
+                planet_artifacts,
+                timestamp,
+            );
+
             let artifact_cooldown_hours: [u64; 10] = [24, 0, 0, 0, 0, 4, 4, 24, 24, 24];
             let cooldown_hours = artifact_cooldown_hours[new_artifact.artifact_type as u32];
             assert(
@@ -344,11 +376,17 @@ contract ArtifactAction {
 
             if new_artifact.artifact_type == ArtifactType::Wormhole {
                 assert(wormhole_to != 0, "you must provide a wormholeTo to activate a wormhole");
+                // Check the destination planet (not the source). Without it a
+                // wormhole could point at any location, including enemy or destroyed planets.
                 assert(
-                    new_planet.owner == sender,
+                    wormhole_to_planet != Planet::zero(),
+                    "wormhole destination planet is not initialized",
+                );
+                assert(
+                    wormhole_to_planet.owner == sender,
                     "you can only create a wormhole to a planet you own",
                 );
-                assert(!new_planet.destroyed, "planet destroyed");
+                assert(!wormhole_to_planet.destroyed, "wormhole destination planet is destroyed");
                 new_artifact.wormhole_to = wormhole_to;
             } else if new_artifact.artifact_type == ArtifactType::BloomFilter {
                 assert(
@@ -433,6 +471,10 @@ contract ArtifactAction {
             change_artifact_locations,
             new_artifact,
             new_artifact_location,
+            planet_artifact_ids,
+            planet_artifact_hashes,
+            planet_artifact_count,
+            wormhole_to_planet_hash,
         );
     }
 
@@ -465,6 +507,10 @@ contract ArtifactAction {
         change_artifact_locations: [ArtifactLocation; 20],
         new_artifact: Artifact,
         new_artifact_location: ArtifactLocation,
+        planet_artifact_ids: [Field; 20],
+        planet_artifact_hashes: [Field; 20],
+        planet_artifact_count: u32,
+        wormhole_to_planet_hash: Field,
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
@@ -485,6 +531,26 @@ contract ArtifactAction {
         assert(
             self.view(planet_storage.verify_hash(location_id, planet_hash)),
             "planet hash mismatch",
+        );
+
+        // Verified unconditionally. For non-wormhole activations the caller
+        // passes wormhole_to = 0 and a zero planet (hash 0), and location 0 is always empty,
+        // so this passes without a conditional "skip" branch.
+        assert(
+            self.view(planet_storage.verify_hash(wormhole_to, wormhole_to_planet_hash)),
+            "wormhole destination planet hash mismatch",
+        );
+
+        // Binds the caller-supplied on-planet artifacts used for the
+        // "only one active artifact" check. ids/count come from planet_artifacts_state,
+        // whose hash is verified below.
+        assert(
+            self.view(artifact_storage.verify_hashes_batch(
+                planet_artifact_ids,
+                planet_artifact_hashes,
+                planet_artifact_count,
+            )),
+            "planet artifacts hash mismatch",
         );
         assert(
             self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),

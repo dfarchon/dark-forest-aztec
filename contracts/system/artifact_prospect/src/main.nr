@@ -248,6 +248,9 @@ contract ArtifactProspect {
         let owned_artifact_count = owned_artifact_hashes_result.3;
 
         let world_hash: Field = world_hash_result;
+        // spaceships_config is caller-supplied; verified in
+        // prospect_planet_public. Otherwise gear = false skips the Gear-ship requirement.
+        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
 
         let refresh_planet_result = refresh_planet_v2(
             timestamp,
@@ -325,6 +328,7 @@ contract ArtifactProspect {
             owned_artifact_hashes,
             owned_artifact_location_hashes,
             owned_artifact_count,
+            spaceships_config_hash,
         );
     }
 
@@ -353,10 +357,18 @@ contract ArtifactProspect {
         owned_artifact_hashes: [Field; 20],
         owned_artifact_location_hashes: [Field; 20],
         owned_artifact_count: u32,
+        spaceships_config_hash: Field,
     ) {
         let actual_timestamp = self.context.timestamp();
 
         assert_public_timestamp(timestamp, actual_timestamp);
+
+        // Binds the spaceships_config used for the Gear-ship check.
+        let config = Config::at(self.storage.config_storage_address.read());
+        assert(
+            self.view(config.verify_spaceships_config_hash(spaceships_config_hash)),
+            "spaceships config hash mismatch",
+        );
 
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());

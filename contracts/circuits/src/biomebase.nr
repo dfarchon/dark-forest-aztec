@@ -2,29 +2,12 @@
 // Converted from Circom to Noir
 // Proves that a planet at (x, y) has a specific biomebase value
 
+use crate::coords::{check_coordinate_range, get_abs_coord, is_coord_negative};
 use crate::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
 use ::types::config::game::{GameConfig, GameConfigCore};
 use ::types::config::snark::SnarkConfig;
 use ::types::storage::planet::{Biome, SpaceType};
-
-fn coord_offset() -> u128 {
-    2147483648 // 2^31
-}
-
-fn is_coord_negative(coord: Field) -> bool {
-    let offset = coord_offset();
-    let coord_with_offset = (coord + (offset as Field)) as u128;
-    coord_with_offset < offset
-}
-
-fn get_abs_coord(coord: Field, is_negative: bool) -> Field {
-    if is_negative {
-        coord * (0 - 1)
-    } else {
-        coord
-    }
-}
 
 pub fn get_biome(
     space_type: u8,
@@ -89,6 +72,11 @@ pub fn biomebase_proof(
     x: Field,
     y: Field,
 ) -> (Field, u8) {
+    // Same strict range check as init/move/reveal; is_coord_negative and
+    // the perlin inputs are only exact for coordinates in [-2^31, 2^31).
+    check_coordinate_range(x);
+    check_coordinate_range(y);
+
     let hash = poseidon2_hash([planet_hash_key, x, y]);
     let x_negative = is_coord_negative(x);
     let y_negative = is_coord_negative(y);

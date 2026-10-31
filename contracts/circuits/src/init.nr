@@ -6,45 +6,9 @@
 // - Generate a specific planet hash
 // - Generate a specific perlin value
 
+use crate::coords::{check_coordinate_range, get_abs_coord, is_coord_negative};
 use crate::perlin::multi_scale_perlin;
 use ::aztec::protocol::hash::poseidon2_hash;
-
-// Constants as functions
-fn coord_offset() -> u128 {
-    2147483648 // 2^31
-}
-
-fn max_coord() -> u128 {
-    4294967296 // 2^32
-}
-
-/// Range check: ensures abs(x), abs(y) <= 2^31
-/// Uses offset approach: x + (1 << 31) must be in [0, 2^32)
-fn check_coordinate_range(coord: Field) {
-    let offset = coord_offset() as Field;
-    let coord_offset_val = coord + offset;
-    // Ensure coord_offset is in valid range [0, 2^32)
-    // Cast to u128 for comparison
-    let coord_offset_u128 = coord_offset_val as u128;
-    let max_coord_val = max_coord();
-    assert(coord_offset_u128 < max_coord_val);
-}
-
-/// Detect if a coordinate is negative based on offset representation
-fn is_coord_negative(coord: Field) -> bool {
-    let offset = coord_offset();
-    let coord_with_offset = (coord + (offset as Field)) as u128;
-    coord_with_offset < offset
-}
-
-/// Get absolute value of coordinate for perlin calculation
-fn get_abs_coord(coord: Field, is_negative: bool) -> Field {
-    if is_negative {
-        coord * (0 - 1)
-    } else {
-        coord
-    }
-}
 
 /// Init circuit proof function
 /// Returns (planet_hash, perlin_value)
@@ -61,6 +25,8 @@ pub fn init_proof(
     // 1. Coordinate range check: abs(x), abs(y) <= 2^31
     check_coordinate_range(x);
     check_coordinate_range(y);
+
+    r.assert_max_bit_size::<32>();
 
     // 2. Radius upper bound check: x^2 + y^2 < r^2
     let x_sq = x * x;

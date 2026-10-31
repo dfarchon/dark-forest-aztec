@@ -6,7 +6,8 @@
  *   planet, planet_events_state,
  *   arrivals[20], arrival_artifacts[20], arrival_artifact_locations[20],
  *   planet_artifacts_state, artifact, artifact_location,
- *   world, world_config, planet_default_stats)
+ *   world, world_config, planet_default_stats,
+ *   planet_artifacts[20], wormhole_to_planet)
  */
 
 import { locationIdToDecStr } from "@dfpunk/serde";
@@ -18,6 +19,7 @@ import {
   collectEntityTimes,
   computeTimestamp,
   hexIdToField,
+  loadArtifactsForPlanet,
 } from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
 import {
@@ -71,6 +73,13 @@ export async function resolveActivateArtifact(
     planetEventsRaw
   );
 
+  // Artifacts currently on the planet (aligned with planet_artifacts_state.ids),
+  // used by the contract to check that no other artifact is active.
+  const planetArtifactsData = loadArtifactsForPlanet(
+    deps.indexer,
+    planetArtifactsRaw
+  );
+
   // Load the specific artifact and its location
   const artifactIdStr = String(rawArtifactId);
   const artifactRaw = deps.indexer.getArtifact(artifactIdStr);
@@ -81,6 +90,15 @@ export async function resolveActivateArtifact(
   const artifactLocation = artifactLocRaw
     ? artifactLocationToContract(artifactLocRaw)
     : artifactLocationZero();
+
+  // Wormhole destination planet; must be the zero planet when wormhole_to == 0
+  const wormholeToPlanetRaw =
+    wormholeTo !== 0n
+      ? deps.indexer.getPlanet(wormholeTo.toString())
+      : undefined;
+  const wormholeToPlanet = wormholeToPlanetRaw
+    ? planetToContract(wormholeToPlanetRaw)
+    : planetZero();
 
   // World state
   const worldRaw = deps.indexer.getWorld();
@@ -93,7 +111,14 @@ export async function resolveActivateArtifact(
 
   const timestamp = computeTimestamp(
     BigInt(Math.floor(intent.uiTimestamp ?? deps.chainClock.nowSec())),
-    collectEntityTimes(planetRaw, planetEventsRaw, planetArtifactsRaw)
+    collectEntityTimes(
+      planetRaw,
+      planetEventsRaw,
+      planetArtifactsRaw,
+      artifactRaw,
+      artifactLocRaw,
+      ...(planetArtifactsData.artifacts as { last_updated: number }[])
+    )
   );
 
   return [
@@ -112,5 +137,7 @@ export async function resolveActivateArtifact(
     world,
     config.worldConfig,
     planetDefaultStats,
+    planetArtifactsData.artifacts,
+    wormholeToPlanet,
   ];
 }

@@ -1,5 +1,6 @@
 // Circuits library: Perlin, init, move, reveal, biomebase proofs
 
+pub mod coords;
 pub mod perlin;
 pub mod init;
 pub mod reveal;

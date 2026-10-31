@@ -28,7 +28,9 @@ contract ArtifactValut {
         assert_public_timestamp, compute_artifact_and_location_hashes, compute_planet_hashes,
         compute_player_hash, compute_world_hash,
     };
-    use ::libs::game_utils::{_put_artifact_on_planet, _take_artifact_off_planet};
+    use ::libs::game_utils::{
+        _put_artifact_on_planet, _take_artifact_off_planet, is_artifact_in_inventory,
+    };
     use ::libs::planet::{apply_spaceship_arrive, refresh_planet_v1};
 
     use ::arrival_storage::ArrivalStorage;
@@ -308,6 +310,13 @@ contract ArtifactValut {
         );
 
         assert(artifact.owner == sender, "you can only deposit artifacts you own");
+        // The artifact must be in the player's inventory (not on a planet and
+        // not in transit). Otherwise an artifact already listed on a planet could be
+        // deposited again, duplicating its id across planet_artifacts entries.
+        assert(
+            is_artifact_in_inventory(artifact_location),
+            "artifact must be in your inventory to deposit",
+        );
         assert(new_planet.owner == sender, "you can only deposit on a planet you own");
 
         assert(artifact != Artifact::zero(), "artifact does not exist");
@@ -772,6 +781,9 @@ contract ArtifactValut {
         let origin_arrivals_count = planet_hashes_result.9;
 
         let player_hash = compute_player_hash(player);
+        // spaceships_config is caller-supplied; verified against the Config
+        // contract in give_spaceships_public so players cannot enable disabled ships.
+        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
 
         let refresh_planet_result = refresh_planet_v1(
             timestamp,
@@ -883,6 +895,7 @@ contract ArtifactValut {
             spaceships_ids,
             spaceships,
             spaceships_locations,
+            spaceships_config_hash,
         );
     }
 
@@ -910,9 +923,18 @@ contract ArtifactValut {
         spaceships_ids: [Field; 5],
         spaceships: [Artifact; 5],
         spaceships_locations: [ArtifactLocation; 5],
+        spaceships_config_hash: Field,
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
+
+        // Without this check the private side trusts any spaceships_config,
+        // letting a player mint every ship type even when it is disabled.
+        let config = Config::at(self.storage.config_storage_address.read());
+        assert(
+            self.view(config.verify_spaceships_config_hash(spaceships_config_hash)),
+            "spaceships config hash mismatch",
+        );
 
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());

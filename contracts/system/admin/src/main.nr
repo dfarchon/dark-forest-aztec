@@ -245,6 +245,9 @@ contract Admin {
             assert(expected_perlin == perlin, "ZK check: perlin mismatch");
             // Radius check: x^2 + y^2 < r^2
             let r_field = r as Field;
+            // Coordinates are already strictly range-checked by reveal_proof;
+            // bounding r keeps r^2 below 2^128 so the `as u128` cast below cannot truncate.
+            r_field.assert_max_bit_size::<32>();
             let dist_sq = (x * x + y * y) as u128;
             let r_sq = (r_field * r_field) as u128;
             assert(dist_sq < r_sq, "ZK check: coordinates outside radius");

@@ -275,6 +275,9 @@ contract ArtifactFind {
         let owned_artifact_location_hashes: [Field; 20] = owned_artifact_hashes_result.2;
         let owned_artifact_count = owned_artifact_hashes_result.3;
         let world_hash: Field = world_hash_result;
+        // spaceships_config is caller-supplied; verified in
+        // find_artifact_public. Otherwise gear = false skips the Gear-ship requirement.
+        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
 
         let refresh_planet_result = refresh_planet_v2(
             timestamp,
@@ -343,7 +346,10 @@ contract ArtifactFind {
             discoverer: sender,
             artifact_type: artifact_type,
             activations: 0,
-            owner: sender,
+            // The artifact is placed on the planet, not in the player's
+            // inventory. owner = sender let it be "deposited" again, duplicating its
+            // planet_artifacts entry (owner != 0 means "held in inventory").
+            owner: AztecAddress::zero(),
             last_activated: 0,
             last_deactivated: 0,
             wormhole_to: 0 as Field,
@@ -416,6 +422,7 @@ contract ArtifactFind {
             new_artifact,
             new_artifact_location,
             new_player,
+            spaceships_config_hash,
         );
     }
 
@@ -453,6 +460,7 @@ contract ArtifactFind {
         new_artifact: Artifact,
         new_artifact_location: ArtifactLocation,
         new_player: Player,
+        spaceships_config_hash: Field,
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
@@ -480,6 +488,12 @@ contract ArtifactFind {
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
         let player_storage = PlayerStorage::at(self.storage.player_storage_address.read());
         let config = Config::at(self.storage.config_storage_address.read());
+
+        // Binds the spaceships_config used for the Gear-ship check.
+        assert(
+            self.view(config.verify_spaceships_config_hash(spaceships_config_hash)),
+            "spaceships config hash mismatch",
+        );
 
         assert(
             self.view(planet_storage.verify_hash(location_id, planet_hash)),

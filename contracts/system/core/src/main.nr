@@ -862,6 +862,8 @@ contract Core {
         let world_hash = compute_world_hash(world);
 
         // Perform computation in private using the provided timestamp
+        // planet_state is caller-supplied; "uninitialized" is only trustworthy
+        // because reveal_location_public always verifies planet_state_hash.
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
         let player_state_is_initialized: bool = player_state != Player::zero();
         let planet_revealed_coords_is_initialized: bool =
@@ -872,7 +874,7 @@ contract Core {
         assert(!planet_revealed_coords_is_initialized, "Planet revealed coords");
         assert(world_is_initialized, "World is not valid");
 
-        let mut new_planet = if !planet_state_is_initialized {
+        let new_planet = if !planet_state_is_initialized {
             initialize_planet_with_defaults(
                 location,
                 perlin,
@@ -896,10 +898,11 @@ contract Core {
                 "Timestamp must be >= planet's last_updated",
             );
 
-            let mut new_planet_state = planet_state;
-            new_planet_state.last_updated = timestamp;
-
-            new_planet_state
+            // Revealing only publishes coordinates. Bumping last_updated
+            // here without a lazy update dropped the owner's growth and made later
+            // settlement of already-due arrivals underflow (update_to_time < last_updated),
+            // permanently bricking the planet.
+            planet_state
         };
 
         if !is_admin {
@@ -919,7 +922,6 @@ contract Core {
         new_planet_revealed_coords.y = y;
         new_planet_revealed_coords.revealer = sender;
 
-        new_planet.last_updated = timestamp;
         new_player_state.last_updated = timestamp;
 
         // Enqueue public function call with all hashes and new states
@@ -982,12 +984,13 @@ contract Core {
             "Config hash mismatch",
         );
 
-        if planet_state_hash != 0 {
-            assert(
-                self.view(planet_storage.verify_hash(location, planet_state_hash)),
-                "Planet state hash mismatch",
-            );
-        }
+        // Verify unconditionally. A zero hash means "slot must be empty";
+        // skipping the check let anyone reset an existing planet to defaults by
+        // passing Planet::zero().
+        assert(
+            self.view(planet_storage.verify_hash(location, planet_state_hash)),
+            "Planet state hash mismatch",
+        );
 
         assert(
             !self.view(planet_revealed_coords_storage.is_initialized(location)),
@@ -1003,7 +1006,12 @@ contract Core {
         assert(world_hash != 0, "World state must be initialized");
         assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
-        self.call(planet_storage.set(location, new_planet));
+        // Only create the planet when the (verified) slot is empty. An
+        // existing planet is left untouched so a reveal cannot alter its state or its
+        // hash (which would also invalidate the owner's in-flight transactions).
+        if planet_state_hash == 0 {
+            self.call(planet_storage.set(location, new_planet));
+        }
         self.call(planet_revealed_coords_storage.set(location, new_planet_revealed_coords));
         self.call(player_storage.set(sender, new_player_state));
     }
@@ -1097,6 +1105,8 @@ contract Core {
         let world_hash = compute_world_hash(world);
 
         // 5. Planet: create new or refresh existing
+        // planet_state is caller-supplied; "new" is only trustworthy because
+        // initialize_player_public verifies planet_state_hash (0 => slot must be empty).
         let planet_is_new = planet_state == Planet::zero();
 
         let mut planet_artifacts_state_hash: Field = 0;
@@ -1279,26 +1289,38 @@ contract Core {
         assert(world_hash != 0, "World state must be initialized");
         assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
 
-        // Planet: verify hashes and write states
+        let planet_artifacts_storage =
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
+        let planet_events_storage =
+            PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
+
+        // Verify unconditionally. A zero hash means "slot must be empty";
+        // writing without this check let a fresh account overwrite (and take over) an
+        // existing planet, e.g. another player's home planet, by passing Planet::zero().
+        assert(
+            self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
+            "Planet state hash mismatch",
+        );
+
         if planet_state_hash == 0 {
-            // New planet - just write it
+            // A brand-new planet must not inherit stale events or artifacts
+            // left at this location.
+            assert(
+                self.view(planet_events_storage.verify_hash(location_id, 0)),
+                "Planet events must be empty for a new planet",
+            );
+            assert(
+                self.view(planet_artifacts_storage.verify_hash(location_id, 0)),
+                "Planet artifacts must be empty for a new planet",
+            );
             self.call(planet_storage.set(location_id, new_planet));
         } else {
-            // Existing planet - verify all hashes then write refreshed states
-            let planet_artifacts_storage =
-                PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
-            let planet_events_storage =
-                PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
             let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
             let artifact_storage =
                 ArtifactStorage::at(self.storage.artifact_storage_address.read());
             let artifact_location_storage =
                 ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
 
-            assert(
-                self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
-                "Planet state hash mismatch",
-            );
             assert(
                 self.view(planet_artifacts_storage.verify_hash(
                     location_id,

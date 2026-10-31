@@ -185,6 +185,21 @@ pub fn compute_owned_artifact_hashes(
     (artifact_ids, artifact_hashes, artifact_location_hashes, planet_artifacts_state.count)
 }
 
+/// Hashes the artifacts currently on a planet, aligned with `planet_artifacts_state.ids`.
+/// Unlike `compute_owned_artifact_hashes`, artifact locations are not hashed.
+pub fn compute_planet_artifact_hashes(
+    planet_artifacts_state: PlanetArtifacts,
+    planet_artifacts: [Artifact; 20],
+) -> [Field; 20] {
+    let mut artifact_hashes: [Field; 20] = [0; 20];
+    for i in 0..20 {
+        if (i < planet_artifacts_state.count) & (planet_artifacts_state.ids[i] != 0) {
+            artifact_hashes[i] = poseidon2_hash(planet_artifacts[i].serialize());
+        }
+    }
+    artifact_hashes
+}
+
 pub fn compute_artifact_and_location_hashes(
     artifact_id: Field,
     artifact: Artifact,
@@ -290,4 +305,38 @@ pub fn compute_config_hashes(
         poseidon2_hash(planet_type_weights_tier_3.serialize()),
     ];
     (planet_default_stats_hash, config_hashes)
+}
+
+mod tests {
+    use super::{compute_planet_artifact_hashes, compute_planet_state_hash};
+    use ::aztec::protocol::{hash::poseidon2_hash, traits::Serialize};
+    use ::types::storage::{artifact::Artifact, planet::{Planet, PlanetArtifacts}};
+
+    // C1/C2/H2 rely on this: hash 0 means "slot must be empty" for verify_hash, and an
+    // existing planet can never produce hash 0, so Planet::zero() cannot impersonate it.
+    #[test]
+    fn zero_planet_hashes_to_zero_and_existing_planet_does_not() {
+        assert(compute_planet_state_hash(Planet::zero()) == 0);
+        let mut planet = Planet::zero();
+        planet.last_updated = 1;
+        assert(compute_planet_state_hash(planet) != 0);
+    }
+
+    #[test]
+    fn c3_planet_artifact_hashes_follow_ids_and_count() {
+        let mut state = PlanetArtifacts::zero();
+        state.ids[0] = 11;
+        state.ids[1] = 22;
+        state.ids[2] = 33;
+        state.count = 2;
+        let mut arts = [Artifact::zero(); 20];
+        arts[0].last_updated = 1;
+        arts[1].last_updated = 2;
+        arts[2].last_updated = 3;
+
+        let hashes = compute_planet_artifact_hashes(state, arts);
+        assert(hashes[0] == poseidon2_hash(arts[0].serialize()));
+        assert(hashes[1] == poseidon2_hash(arts[1].serialize()));
+        assert(hashes[2] == 0);
+    }
 }

@@ -534,6 +534,102 @@ pub fn is_activated(artifact: Artifact) -> bool {
     artifact.last_deactivated < artifact.last_activated
 }
 
+/// True when the artifact is held in a player's inventory (neither on a planet nor in transit).
+pub fn is_artifact_in_inventory(artifact_location: ArtifactLocation) -> bool {
+    (artifact_location.planet_id == 0) & (artifact_location.voyage_id == 0)
+}
+
+/// Asserts that no artifact on the planet other than `artifact_id` is activated.
+/// `planet_artifacts` must be aligned with `planet_artifacts_state.ids` and bound to on-chain
+/// state by the caller (verify_hashes_batch in public).
+// Enforces "at most one active artifact per planet" without a schema change.
+// Artifacts arriving in the same refresh are not checked: an activated artifact cannot be
+// taken off a planet, so anything in transit is inactive.
+pub fn assert_no_other_artifact_activated(
+    artifact_id: Field,
+    planet_artifacts_state: PlanetArtifacts,
+    planet_artifacts: [Artifact; 20],
+    timestamp: u64,
+) {
+    for i in 0..20 {
+        if (i < planet_artifacts_state.count)
+            & (planet_artifacts_state.ids[i] != 0)
+            & (planet_artifacts_state.ids[i] != artifact_id) {
+            assert(
+                timestamp >= planet_artifacts[i].last_updated,
+                "Timestamp must be >= planet artifact's last_updated",
+            );
+            assert(
+                !is_activated(planet_artifacts[i]),
+                "another artifact is already active on this planet",
+            );
+        }
+    }
+}
+
+mod tests {
+    use super::{assert_no_other_artifact_activated, is_artifact_in_inventory};
+    use ::types::storage::{artifact::{Artifact, ArtifactLocation}, planet::PlanetArtifacts};
+
+    fn active_artifact() -> Artifact {
+        let mut a = Artifact::zero();
+        a.last_activated = 100;
+        a.last_deactivated = 50;
+        a
+    }
+
+    fn planet_with(ids: [Field; 3]) -> PlanetArtifacts {
+        let mut state = PlanetArtifacts::zero();
+        for i in 0..3 {
+            state.ids[i] = ids[i];
+        }
+        state.count = 3;
+        state
+    }
+
+    #[test]
+    fn c3_allows_activation_when_no_other_artifact_active() {
+        let state = planet_with([11, 22, 33]);
+        assert_no_other_artifact_activated(22, state, [Artifact::zero(); 20], 200);
+    }
+
+    #[test]
+    fn c3_ignores_the_artifact_being_activated() {
+        let state = planet_with([11, 22, 33]);
+        let mut arts = [Artifact::zero(); 20];
+        arts[1] = active_artifact();
+        assert_no_other_artifact_activated(22, state, arts, 200);
+    }
+
+    #[test(should_fail_with = "another artifact is already active on this planet")]
+    fn c3_rejects_second_active_artifact() {
+        let state = planet_with([11, 22, 33]);
+        let mut arts = [Artifact::zero(); 20];
+        arts[2] = active_artifact();
+        assert_no_other_artifact_activated(22, state, arts, 200);
+    }
+
+    #[test]
+    fn c3_ignores_entries_beyond_count() {
+        let mut state = planet_with([11, 22, 33]);
+        state.count = 2;
+        let mut arts = [Artifact::zero(); 20];
+        arts[2] = active_artifact();
+        assert_no_other_artifact_activated(22, state, arts, 200);
+    }
+
+    #[test]
+    fn h1_inventory_requires_no_planet_and_no_voyage() {
+        assert(is_artifact_in_inventory(ArtifactLocation::zero()));
+        let mut on_planet = ArtifactLocation::zero();
+        on_planet.planet_id = 7;
+        assert(!is_artifact_in_inventory(on_planet));
+        let mut in_transit = ArtifactLocation::zero();
+        in_transit.voyage_id = 9;
+        assert(!is_artifact_in_inventory(in_transit));
+    }
+}
+
 /// Noir port of Solidity `LibGameUtils.isArtifactOnPlanet`.
 
 pub fn is_artifact_on_planet(
