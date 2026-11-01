@@ -2,9 +2,10 @@
 pub contract Config {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, view}, storage::storage},
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
 
     use ::types::config::{
         artifacts::ArtifactsConfig,
@@ -90,35 +91,35 @@ pub contract Config {
     fn set_world_config(config: WorldConfig) {
         self.internal.assert_admin();
         self.storage.world_config.write(config);
-        self.storage.world_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.world_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_snark_config(config: SnarkConfig) {
         self.internal.assert_admin();
         self.storage.snark_config.write(config);
-        self.storage.snark_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.snark_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_game_config_core(config: GameConfigCore) {
         self.internal.assert_admin();
         self.storage.game_config_core.write(config);
-        self.storage.game_config_core_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.game_config_core_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_planet_level_thresholds(config: PlanetLevelThresholds) {
         self.internal.assert_admin();
         self.storage.planet_level_thresholds.write(config);
-        self.storage.planet_level_thresholds_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.planet_level_thresholds_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_default_game_config_planet_type_weights_tier(tier: u8) {
         self.internal.assert_admin();
         let weights = PlanetTypeWeightsTier::zero(tier);
-        let hash = poseidon2_hash(weights.serialize());
+        let hash = weights.state_hash();
         if tier == 0 {
             self.storage.planet_type_weights_tier_0.write(weights);
             self.storage.planet_type_weights_tier_0_hash.write(hash);
@@ -139,7 +140,7 @@ pub contract Config {
     #[external("public")]
     fn set_planet_type_weights_tier(tier: u8, config: PlanetTypeWeightsTier) {
         self.internal.assert_admin();
-        let hash = poseidon2_hash(config.serialize());
+        let hash = config.state_hash();
         if tier == 0 {
             self.storage.planet_type_weights_tier_0.write(config);
             self.storage.planet_type_weights_tier_0_hash.write(hash);
@@ -161,28 +162,28 @@ pub contract Config {
     fn set_artifacts_config(config: ArtifactsConfig) {
         self.internal.assert_admin();
         self.storage.artifacts_config.write(config);
-        self.storage.artifacts_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.artifacts_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_spaceships_config(config: SpaceshipsConfig) {
         self.internal.assert_admin();
         self.storage.spaceships_config.write(config);
-        self.storage.spaceships_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.spaceships_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_space_junk_config(config: SpaceJunkConfig) {
         self.internal.assert_admin();
         self.storage.space_junk_config.write(config);
-        self.storage.space_junk_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.space_junk_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_capture_zones_config(config: CaptureZonesConfig) {
         self.internal.assert_admin();
         self.storage.capture_zones_config.write(config);
-        self.storage.capture_zones_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.capture_zones_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
@@ -190,14 +191,14 @@ pub contract Config {
         self.internal.assert_admin();
         let config = UpgradeConfig::zero();
         self.storage.upgrade_config.write(config);
-        self.storage.upgrade_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.upgrade_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
     fn set_upgrade_config(config: UpgradeConfig) {
         self.internal.assert_admin();
         self.storage.upgrade_config.write(config);
-        self.storage.upgrade_config_hash.write(poseidon2_hash(config.serialize()));
+        self.storage.upgrade_config_hash.write(config.state_hash());
     }
 
     #[external("public")]
@@ -213,7 +214,7 @@ pub contract Config {
             def_multiplier: 120,
         };
         self.storage.upgrades.at(0).write(def0);
-        self.storage.upgrades_hash.at(0).write(poseidon2_hash(def0.serialize()));
+        self.storage.upgrades_hash.at(0).write(def0.state_hash());
 
         let def1 = Upgrade {
             pop_cap_multiplier: 120,
@@ -223,7 +224,7 @@ pub contract Config {
             def_multiplier: 120,
         };
         self.storage.upgrades.at(1).write(def1);
-        self.storage.upgrades_hash.at(1).write(poseidon2_hash(def1.serialize()));
+        self.storage.upgrades_hash.at(1).write(def1.state_hash());
 
         let def2 = Upgrade {
             pop_cap_multiplier: 120,
@@ -233,7 +234,7 @@ pub contract Config {
             def_multiplier: 120,
         };
         self.storage.upgrades.at(2).write(def2);
-        self.storage.upgrades_hash.at(2).write(poseidon2_hash(def2.serialize()));
+        self.storage.upgrades_hash.at(2).write(def2.state_hash());
 
         let def3 = Upgrade {
             pop_cap_multiplier: 120,
@@ -243,7 +244,7 @@ pub contract Config {
             def_multiplier: 120,
         };
         self.storage.upgrades.at(3).write(def3);
-        self.storage.upgrades_hash.at(3).write(poseidon2_hash(def3.serialize()));
+        self.storage.upgrades_hash.at(3).write(def3.state_hash());
     }
 
     #[external("public")]
@@ -259,7 +260,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(10).write(rng0);
-        self.storage.upgrades_hash.at(10).write(poseidon2_hash(rng0.serialize()));
+        self.storage.upgrades_hash.at(10).write(rng0.state_hash());
 
         let rng1 = Upgrade {
             pop_cap_multiplier: 120,
@@ -269,7 +270,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(11).write(rng1);
-        self.storage.upgrades_hash.at(11).write(poseidon2_hash(rng1.serialize()));
+        self.storage.upgrades_hash.at(11).write(rng1.state_hash());
 
         let rng2 = Upgrade {
             pop_cap_multiplier: 120,
@@ -279,7 +280,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(12).write(rng2);
-        self.storage.upgrades_hash.at(12).write(poseidon2_hash(rng2.serialize()));
+        self.storage.upgrades_hash.at(12).write(rng2.state_hash());
 
         let rng3 = Upgrade {
             pop_cap_multiplier: 120,
@@ -289,7 +290,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(13).write(rng3);
-        self.storage.upgrades_hash.at(13).write(poseidon2_hash(rng3.serialize()));
+        self.storage.upgrades_hash.at(13).write(rng3.state_hash());
     }
 
     #[external("public")]
@@ -305,7 +306,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(20).write(spd0);
-        self.storage.upgrades_hash.at(20).write(poseidon2_hash(spd0.serialize()));
+        self.storage.upgrades_hash.at(20).write(spd0.state_hash());
 
         let spd1 = Upgrade {
             pop_cap_multiplier: 120,
@@ -315,7 +316,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(21).write(spd1);
-        self.storage.upgrades_hash.at(21).write(poseidon2_hash(spd1.serialize()));
+        self.storage.upgrades_hash.at(21).write(spd1.state_hash());
 
         let spd2 = Upgrade {
             pop_cap_multiplier: 120,
@@ -325,7 +326,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(22).write(spd2);
-        self.storage.upgrades_hash.at(22).write(poseidon2_hash(spd2.serialize()));
+        self.storage.upgrades_hash.at(22).write(spd2.state_hash());
 
         let spd3 = Upgrade {
             pop_cap_multiplier: 120,
@@ -335,7 +336,7 @@ pub contract Config {
             def_multiplier: 100,
         };
         self.storage.upgrades.at(23).write(spd3);
-        self.storage.upgrades_hash.at(23).write(poseidon2_hash(spd3.serialize()));
+        self.storage.upgrades_hash.at(23).write(spd3.state_hash());
     }
 
     #[external("public")]
@@ -359,7 +360,7 @@ pub contract Config {
     fn set_planet_default_stats(level: u8, stats: PlanetDefaultStats) {
         self.internal.assert_admin();
         self.storage.planet_default_stats.at(level).write(stats);
-        self.storage.planet_default_stats_hash.at(level).write(poseidon2_hash(stats.serialize()));
+        self.storage.planet_default_stats_hash.at(level).write(stats.state_hash());
     }
 
     /// Batch set planet default stats for up to 5 levels in a single transaction.
@@ -370,8 +371,7 @@ pub contract Config {
         for i in 0..5 {
             if (i as u8) < count {
                 self.storage.planet_default_stats.at(levels[i]).write(stats[i]);
-                self.storage.planet_default_stats_hash.at(levels[i]).write(poseidon2_hash(stats[i]
-                    .serialize()));
+                self.storage.planet_default_stats_hash.at(levels[i]).write(stats[i].state_hash());
             }
         }
     }
@@ -384,26 +384,26 @@ pub contract Config {
 
         let world = WorldConfig::zero();
         self.storage.world_config.write(world);
-        self.storage.world_config_hash.write(poseidon2_hash(world.serialize()));
+        self.storage.world_config_hash.write(world.state_hash());
 
         let snark = SnarkConfig::zero();
         self.storage.snark_config.write(snark);
-        self.storage.snark_config_hash.write(poseidon2_hash(snark.serialize()));
+        self.storage.snark_config_hash.write(snark.state_hash());
 
         let core = GameConfigCore::zero();
         let thresholds = PlanetLevelThresholds::zero();
         self.storage.game_config_core.write(core);
         self.storage.planet_level_thresholds.write(thresholds);
-        self.storage.game_config_core_hash.write(poseidon2_hash(core.serialize()));
-        self.storage.planet_level_thresholds_hash.write(poseidon2_hash(thresholds.serialize()));
+        self.storage.game_config_core_hash.write(core.state_hash());
+        self.storage.planet_level_thresholds_hash.write(thresholds.state_hash());
 
         let artifacts = ArtifactsConfig::zero();
         self.storage.artifacts_config.write(artifacts);
-        self.storage.artifacts_config_hash.write(poseidon2_hash(artifacts.serialize()));
+        self.storage.artifacts_config_hash.write(artifacts.state_hash());
 
         let spaceships = SpaceshipsConfig::zero();
         self.storage.spaceships_config.write(spaceships);
-        self.storage.spaceships_config_hash.write(poseidon2_hash(spaceships.serialize()));
+        self.storage.spaceships_config_hash.write(spaceships.state_hash());
     }
 
     /// Batch initialize default configs (part 2): space_junk, capture_zones.
@@ -414,18 +414,18 @@ pub contract Config {
 
         let space_junk = SpaceJunkConfig::zero();
         self.storage.space_junk_config.write(space_junk);
-        self.storage.space_junk_config_hash.write(poseidon2_hash(space_junk.serialize()));
+        self.storage.space_junk_config_hash.write(space_junk.state_hash());
 
         let capture_zones = CaptureZonesConfig::zero();
         self.storage.capture_zones_config.write(capture_zones);
-        self.storage.capture_zones_config_hash.write(poseidon2_hash(capture_zones.serialize()));
+        self.storage.capture_zones_config_hash.write(capture_zones.state_hash());
     }
 
     #[external("public")]
     fn set_upgrade(key: u128, upgrade: Upgrade) {
         self.internal.assert_admin();
         self.storage.upgrades.at(key).write(upgrade);
-        self.storage.upgrades_hash.at(key).write(poseidon2_hash(upgrade.serialize()));
+        self.storage.upgrades_hash.at(key).write(upgrade.state_hash());
     }
 
     #[external("public")]
@@ -433,7 +433,7 @@ pub contract Config {
         self.internal.assert_admin();
         let key = branch * 10 + level;
         self.storage.upgrades.at(key).write(upgrade);
-        self.storage.upgrades_hash.at(key).write(poseidon2_hash(upgrade.serialize()));
+        self.storage.upgrades_hash.at(key).write(upgrade.state_hash());
     }
 
     // ========== Config Getters (public, for cross-contract calls) ==========

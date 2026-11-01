@@ -3,9 +3,10 @@ contract ArtifactFind {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         oracle::block_header::get_block_header_at,
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
+        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Hash},
     };
     use ::aztec::state_vars::PublicMutable;
+    use ::macros::StateHash;
 
     use ::types::args::DFPFindArtifactArgs;
     use ::types::storage::{
@@ -254,11 +255,11 @@ contract ArtifactFind {
         );
         let world_hash_result = compute_world_hash(world);
 
-        let provided_snark_config_hash = poseidon2_hash(provided_snark_config.serialize());
-        let game_config_core_hash = poseidon2_hash(game_config_core.serialize());
-        let world_config_hash: Field = poseidon2_hash(world_config.serialize());
-        let artifacts_config_hash: Field = poseidon2_hash(artifacts_config.serialize());
-        let player_hash = poseidon2_hash(player.serialize());
+        let provided_snark_config_hash = provided_snark_config.state_hash();
+        let game_config_core_hash = game_config_core.state_hash();
+        let world_config_hash: Field = world_config.state_hash();
+        let artifacts_config_hash: Field = artifacts_config.state_hash();
+        let player_hash = player.state_hash();
 
         let planet_hash = planet_hashes_result.1;
         let planet_events_state_hash = planet_hashes_result.3;
@@ -277,7 +278,7 @@ contract ArtifactFind {
         let world_hash: Field = world_hash_result;
         // spaceships_config is caller-supplied; verified in
         // find_artifact_public. Otherwise gear = false skips the Gear-ship requirement.
-        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
+        let spaceships_config_hash = spaceships_config.state_hash();
 
         let refresh_planet_result = refresh_planet_v2(
             timestamp,

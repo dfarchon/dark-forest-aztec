@@ -2,6 +2,7 @@ use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 /// `# Space junk` section
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct SpaceJunkConfig {
     pub space_junk_enabled: bool,
     pub space_junk_limit: u128,

@@ -1,6 +1,7 @@
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct Upgrade {
     pub pop_cap_multiplier: u128,
     pub pop_gro_multiplier: u128,
@@ -22,6 +23,7 @@ impl Upgrade {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct UpgradeConfig {
     pub silver_cost_percent: u128,
     pub max_total_level_nebula: u8,

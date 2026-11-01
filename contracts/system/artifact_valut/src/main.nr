@@ -2,9 +2,10 @@
 contract ArtifactValut {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
     use ::aztec::state_vars::PublicMutable;
+    use ::macros::StateHash;
 
     use ::types::args::DFTCreateArtifactArgs;
     use ::types::config::{artifacts::ArtifactsConfig, spaceships::SpaceshipsConfig};
@@ -213,11 +214,11 @@ contract ArtifactValut {
             ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
 
         assert(
-            self.view(artifact_storage.verify_hash(id, poseidon2_hash(artifact.serialize()))),
+            self.view(artifact_storage.verify_hash(id, artifact.state_hash())),
             "artifact hash mismatch",
         );
         assert(
-            self.view(artifact_location_storage.verify_hash(id, poseidon2_hash(location.serialize()))),
+            self.view(artifact_location_storage.verify_hash(id, location.state_hash())),
             "artifact location hash mismatch",
         );
 
@@ -783,7 +784,7 @@ contract ArtifactValut {
         let player_hash = compute_player_hash(player);
         // spaceships_config is caller-supplied; verified against the Config
         // contract in give_spaceships_public so players cannot enable disabled ships.
-        let spaceships_config_hash = poseidon2_hash(spaceships_config.serialize());
+        let spaceships_config_hash = spaceships_config.state_hash();
 
         let refresh_planet_result = refresh_planet_v1(
             timestamp,
@@ -1023,7 +1024,7 @@ contract ArtifactValut {
         let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
             0
         } else {
-            poseidon2_hash(planet_artifacts_state.serialize())
+            planet_artifacts_state.state_hash()
         };
 
         assert(
@@ -1095,7 +1096,7 @@ contract ArtifactValut {
         let location_id = args.planet_id;
 
         // Verify planet state hash
-        let planet_state_hash = poseidon2_hash(planet.serialize());
+        let planet_state_hash = planet.state_hash();
         assert(
             self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
             "planet hash mismatch",
@@ -1106,7 +1107,7 @@ contract ArtifactValut {
         let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
             0
         } else {
-            poseidon2_hash(planet_artifacts_state.serialize())
+            planet_artifacts_state.state_hash()
         };
         assert(
             self.view(planet_artifacts_storage.verify_hash(location_id, planet_artifacts_state_hash)),

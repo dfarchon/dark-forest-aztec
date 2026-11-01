@@ -6,6 +6,9 @@ artifacts/
 scripts/artifacts/
 noir-*.json
 
+# Local bytecode size snapshots from `check:bytecode:snapshot`
+baselines/
+
 # Typechain / codegen
 typechain/
 typechain-types/

@@ -9,10 +9,11 @@ pub contract PlanetRevealedCoordsStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
 
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
     use ::types::storage::planet::PlanetRevealedCoords;
 
     #[storage]
@@ -28,6 +29,7 @@ pub contract PlanetRevealedCoordsStorage {
     }
 
     #[event]
+    #[::macros::state_update]
     struct PlanetRevealedCoordsUpdate {
         id: Field,
         block_number: u32,
@@ -51,9 +53,10 @@ pub contract PlanetRevealedCoordsStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -62,9 +65,11 @@ pub contract PlanetRevealedCoordsStorage {
     fn set(id: Field, state: PlanetRevealedCoords) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
+        let (root, log) = PlanetRevealedCoordsUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
-        self.emit(PlanetRevealedCoordsUpdate { id: id, block_number: block_number, state: state });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     // ================== ADMIN ==================
@@ -134,7 +139,7 @@ pub contract PlanetRevealedCoordsStorage {
         if stored_hash == 0 {
             state == PlanetRevealedCoords::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -145,7 +150,7 @@ pub contract PlanetRevealedCoordsStorage {
         if (state == PlanetRevealedCoords::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 
@@ -177,7 +182,7 @@ pub contract PlanetRevealedCoordsStorage {
         if stored_hash == 0 {
             state == PlanetRevealedCoords::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -187,7 +192,7 @@ pub contract PlanetRevealedCoordsStorage {
         if (state == PlanetRevealedCoords::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 

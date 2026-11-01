@@ -2,6 +2,7 @@ use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 /// SNARK keys & Perlin parameters.
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct SnarkConfig {
     pub disable_zk_checks: bool,
     pub planethash_key: u128,

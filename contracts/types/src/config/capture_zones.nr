@@ -1,6 +1,7 @@
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct CaptureZonesConfig {
     pub capture_zones_enabled: bool,
     pub capture_zone_change_block_interval: u128,

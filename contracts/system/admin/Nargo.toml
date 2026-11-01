@@ -9,6 +9,7 @@ aztec = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v6.0.0", di
 circuits = { path = "../../circuits" }
 config = { path = "../../config" }
 libs = { path = "../../libs" }
+macros = { path = "../../macros" }
 types = { path = "../../types" }
 
 arrival_storage = { path = "../../storage/arrival" }

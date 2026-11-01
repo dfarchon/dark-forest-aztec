@@ -1,6 +1,7 @@
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct ArtifactsConfig {
     pub token_mint_end_timestamp: u64,
     pub artifact_point_values: [u128; 6],

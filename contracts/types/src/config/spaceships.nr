@@ -2,6 +2,7 @@ use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 /// # Spaceships
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct SpaceshipsConfig {
     pub gear: bool,
     pub mothership: bool,

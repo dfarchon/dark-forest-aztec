@@ -27,6 +27,7 @@ This project explores a future where programmable privacy reshapes what fully on
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): environment, repo map, PR checklist.
 - [`docs/architecture.md`](docs/architecture.md): flow, contracts, state-hash model, packages.
 - [`docs/developer-guide.md`](docs/developer-guide.md): where to change code, module boundaries.
+- [`contracts/README.md`](contracts/README.md): contract layout, macros, checks and tests.
 - [`docs/external-wallet.md`](docs/external-wallet.md): Aztec external wallet with DFPunk.
 
 ## Project Status

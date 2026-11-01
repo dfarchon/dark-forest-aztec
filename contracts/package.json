@@ -23,6 +23,13 @@
         "build:codegen": "aztec codegen ./target -o ./target",
         "build:compile": "pnpm exec tsx scripts/build/compile-times.ts",
         "build:contracts": "pnpm fmt:aztec && pnpm build:compile && pnpm build:codegen && pnpm build:artifacts",
+        "check:aztec-upgrade": "pnpm check:style && pnpm check:hash",
+        "check:bytecode:compare": "pnpm exec tsx scripts/check/bytecode-snapshot.ts compare",
+        "check:bytecode:snapshot": "pnpm exec tsx scripts/check/bytecode-snapshot.ts snapshot",
+        "check:hash": "pnpm exec tsx scripts/check/state-hash-vectors.ts --check && pnpm check:hash:nr",
+        "check:hash:nr": "aztec-nargo test --package macros && aztec-nargo test --package types && aztec-nargo test --package state_hash_tests",
+        "check:hash:update": "pnpm exec tsx scripts/check/state-hash-vectors.ts",
+        "check:style": "pnpm exec tsx scripts/check/hash-style.ts",
         "clean": "pnpm clean:build && del-cli node_modules",
         "clean:build": "del-cli dist target codegenCache.json scripts/artifacts",
         "clean:runtime": "pnpm exec tsx scripts/clean/clean-runtime.ts",
@@ -42,7 +49,9 @@
         "format": "pnpm fmt:aztec & pnpm fmt:scripts",
         "format:check": "pnpm fmt:aztec:check & pnpm fmt:scripts:check",
         "net:local": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
-        "net:print": "pnpm exec tsx scripts/runtime/network.ts"
+        "net:print": "pnpm exec tsx scripts/runtime/network.ts",
+        "test:nr": "pnpm exec tsx scripts/test/noir.ts",
+        "test:nr:all": "aztec-nargo test --workspace"
     },
     "dependencies": {
         "@dfpunk/hashing": "workspace:*",

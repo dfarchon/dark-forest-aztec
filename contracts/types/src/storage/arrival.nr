@@ -4,6 +4,7 @@ use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct Arrival {
     pub id: Field,
     pub player: AztecAddress,

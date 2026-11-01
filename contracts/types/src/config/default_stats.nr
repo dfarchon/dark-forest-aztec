@@ -1,6 +1,7 @@
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetDefaultStats {
     pub population_cap: u128,
     pub population_growth: u128,

@@ -9,10 +9,11 @@ pub contract WorldStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
 
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
     use ::types::storage::world::World;
 
     #[storage]
@@ -28,6 +29,7 @@ pub contract WorldStorage {
     }
 
     #[event]
+    #[::macros::state_update]
     struct WorldUpdate {
         id: Field,
         block_number: u32,
@@ -41,9 +43,11 @@ pub contract WorldStorage {
         self.storage.authorized_count.write(0);
         let mut world = World::zero();
         world.misc_nonce = 1; // Activate: distinguish from World::zero()
-        let root = poseidon2_hash(world.serialize());
+        let (root, log) = WorldUpdate::encode_update(0, self.context.block_number(), world);
         self.storage.state_roots.at(0).write(root);
-        self.emit(WorldUpdate { id: 0, block_number: self.context.block_number(), state: world });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     // ================== INTERNAL AUTH ==================
@@ -56,9 +60,10 @@ pub contract WorldStorage {
     #[internal("public")]
     fn assert_authorized() {
         let caller = self.msg_sender();
-        let is_admin = caller == self.storage.admin.read();
         let is_authorized = self.storage.authorized_map.at(caller).read();
-        assert((is_admin as u8) | (is_authorized as u8) != 0, "Not authorized");
+        if !is_authorized {
+            assert(caller == self.storage.admin.read(), "Not authorized");
+        }
     }
 
     // ================== ADD / UPDATE ==================
@@ -67,9 +72,11 @@ pub contract WorldStorage {
     fn set(id: Field, state: World) {
         self.internal.assert_authorized();
         let block_number = self.context.block_number();
-        let root = poseidon2_hash(state.serialize());
+        let (root, log) = WorldUpdate::encode_update(id, block_number, state);
         self.storage.state_roots.at(id).write(root);
-        self.emit(WorldUpdate { id: id, block_number: block_number, state: state });
+        unsafe {
+            aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
     }
 
     // ================== ADMIN ==================
@@ -140,7 +147,7 @@ pub contract WorldStorage {
         if stored_hash == 0 {
             state == World::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -151,7 +158,7 @@ pub contract WorldStorage {
         if (state == World::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 
@@ -176,7 +183,7 @@ pub contract WorldStorage {
         if stored_hash == 0 {
             state == World::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -186,7 +193,7 @@ pub contract WorldStorage {
         if (state == World::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 

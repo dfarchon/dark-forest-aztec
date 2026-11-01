@@ -1,4 +1,4 @@
-use ::aztec::protocol::{hash::poseidon2_hash, traits::Serialize};
+use ::macros::StateHash;
 
 use ::types::config::{
     default_stats::PlanetDefaultStats,
@@ -17,14 +17,14 @@ use ::types::storage::{
 };
 
 pub fn compute_world_state_hash(world: World) -> Field {
-    poseidon2_hash(world.serialize())
+    world.state_hash()
 }
 
 pub fn compute_planet_state_hash(planet: Planet) -> Field {
     if planet == Planet::zero() {
         0
     } else {
-        poseidon2_hash(planet.serialize())
+        planet.state_hash()
     }
 }
 
@@ -117,17 +117,17 @@ pub fn compute_planet_hashes(
     let planet_hash = if planet == Planet::zero() {
         0
     } else {
-        poseidon2_hash(planet.serialize())
+        planet.state_hash()
     };
     let planet_artifacts_state_hash = if planet_artifacts_state == PlanetArtifacts::zero() {
         0
     } else {
-        poseidon2_hash(planet_artifacts_state.serialize())
+        planet_artifacts_state.state_hash()
     };
     let planet_events_state_hash = if planet_events_state == PlanetEvents::zero() {
         0
     } else {
-        poseidon2_hash(planet_events_state.serialize())
+        planet_events_state.state_hash()
     };
 
     let mut arrival_ids: [Field; 20] = [0; 20];
@@ -145,11 +145,11 @@ pub fn compute_planet_hashes(
             arrival_ids[i] = arrival_id;
             artifact_ids[i] = artifact_id;
             if arrival_id != 0 {
-                arrival_hashes[i] = poseidon2_hash(arrival.serialize());
+                arrival_hashes[i] = arrival.state_hash();
             }
             if artifact_id != 0 {
-                artifact_hashes[i] = poseidon2_hash(artifacts[i].serialize());
-                artifact_location_hashes[i] = poseidon2_hash(artifact_locations[i].serialize());
+                artifact_hashes[i] = artifacts[i].state_hash();
+                artifact_location_hashes[i] = artifact_locations[i].state_hash();
             }
         }
     }
@@ -175,9 +175,8 @@ pub fn compute_owned_artifact_hashes(
             let artifact_id = planet_artifacts_state.ids[i];
             artifact_ids[i] = artifact_id;
             if artifact_id != 0 {
-                artifact_hashes[i] = poseidon2_hash(owned_artifacts[i].serialize());
-                artifact_location_hashes[i] =
-                    poseidon2_hash(owned_artifact_locations[i].serialize());
+                artifact_hashes[i] = owned_artifacts[i].state_hash();
+                artifact_location_hashes[i] = owned_artifact_locations[i].state_hash();
             }
         }
     }
@@ -194,7 +193,7 @@ pub fn compute_planet_artifact_hashes(
     let mut artifact_hashes: [Field; 20] = [0; 20];
     for i in 0..20 {
         if (i < planet_artifacts_state.count) & (planet_artifacts_state.ids[i] != 0) {
-            artifact_hashes[i] = poseidon2_hash(planet_artifacts[i].serialize());
+            artifact_hashes[i] = planet_artifacts[i].state_hash();
         }
     }
     artifact_hashes
@@ -208,12 +207,12 @@ pub fn compute_artifact_and_location_hashes(
     let artifact_hash = if artifact == Artifact::zero() {
         0
     } else {
-        poseidon2_hash(artifact.serialize())
+        artifact.state_hash()
     };
     let artifact_location_hash = if artifact_location == ArtifactLocation::zero() {
         0
     } else {
-        poseidon2_hash(artifact_location.serialize())
+        artifact_location.state_hash()
     };
     (artifact_id, artifact_hash, artifact_location_hash)
 }
@@ -222,7 +221,7 @@ pub fn compute_artifact_hash(artifact_id: Field, artifact: Artifact) -> (Field) 
     let artifact_hash = if artifact == Artifact::zero() {
         0
     } else {
-        poseidon2_hash(artifact.serialize())
+        artifact.state_hash()
     };
 
     artifact_hash
@@ -232,7 +231,7 @@ pub fn compute_player_hash(player: Player) -> Field {
     if player == Player::zero() {
         0
     } else {
-        poseidon2_hash(player.serialize())
+        player.state_hash()
     }
 }
 
@@ -240,7 +239,7 @@ pub fn compute_planet_revealed_coords_hash(coords: PlanetRevealedCoords) -> Fiel
     if coords == PlanetRevealedCoords::zero() {
         0
     } else {
-        poseidon2_hash(coords.serialize())
+        coords.state_hash()
     }
 }
 
@@ -248,7 +247,7 @@ pub fn compute_world_hash(world: World) -> Field {
     if world == World::zero() {
         0
     } else {
-        poseidon2_hash(world.serialize())
+        world.state_hash()
     }
 }
 
@@ -292,17 +291,17 @@ pub fn compute_config_hashes(
     planet_type_weights_tier_2: PlanetTypeWeightsTier,
     planet_type_weights_tier_3: PlanetTypeWeightsTier,
 ) -> (Field, [Field; 9]) {
-    let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+    let planet_default_stats_hash = planet_default_stats.state_hash();
     let config_hashes: [Field; 9] = [
-        poseidon2_hash(snark_config.serialize()),
-        poseidon2_hash(world_config.serialize()),
-        poseidon2_hash(game_config_core.serialize()),
-        poseidon2_hash(planet_level_thresholds.serialize()),
-        poseidon2_hash(space_junk_config.serialize()),
-        poseidon2_hash(planet_type_weights_tier_0.serialize()),
-        poseidon2_hash(planet_type_weights_tier_1.serialize()),
-        poseidon2_hash(planet_type_weights_tier_2.serialize()),
-        poseidon2_hash(planet_type_weights_tier_3.serialize()),
+        snark_config.state_hash(),
+        world_config.state_hash(),
+        game_config_core.state_hash(),
+        planet_level_thresholds.state_hash(),
+        space_junk_config.state_hash(),
+        planet_type_weights_tier_0.state_hash(),
+        planet_type_weights_tier_1.state_hash(),
+        planet_type_weights_tier_2.state_hash(),
+        planet_type_weights_tier_3.state_hash(),
     ];
     (planet_default_stats_hash, config_hashes)
 }

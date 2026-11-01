@@ -21,4 +21,5 @@ members = [
     "system/artifact_valut",
     "system/core",
     "system/move",
+    "tests/state_hash",
 ]

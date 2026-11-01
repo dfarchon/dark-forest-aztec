@@ -1,6 +1,7 @@
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct WorldConfig {
     pub start_paused: bool,
     /// Speedup/slowdown factor in hundredths (e.g. 100 = 100%).

@@ -8,11 +8,12 @@ pub contract ArrivalStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
 
     use ::aztec::state_vars::{Map, PublicMutable, StateVariable};
     use ::libs::arrival::arrival_encoding;
+    use ::macros::StateHash;
     use ::types::storage::arrival::Arrival;
 
     #[storage]
@@ -174,7 +175,7 @@ pub contract ArrivalStorage {
         if stored_hash == 0 {
             state == Arrival::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -185,7 +186,7 @@ pub contract ArrivalStorage {
         if state == Arrival::zero() {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 
@@ -239,7 +240,7 @@ pub contract ArrivalStorage {
         if stored_hash == 0 {
             state == Arrival::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -249,7 +250,7 @@ pub contract ArrivalStorage {
         if state == Arrival::zero() {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 

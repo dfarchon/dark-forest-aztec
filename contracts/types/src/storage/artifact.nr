@@ -4,6 +4,7 @@ use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct Artifact {
     // pub id: Field,
     pub planet_discovered_on: Field,
@@ -43,6 +44,7 @@ impl Artifact {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct ArtifactLocation {
     // pub artifact_id: Field,
     pub planet_id: Field, // 0 if in transit

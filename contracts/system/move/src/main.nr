@@ -6,9 +6,10 @@ contract Move {
             functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
 
     use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
@@ -324,7 +325,7 @@ contract Move {
             planet_type_weights_tier_2,
             planet_type_weights_tier_3,
         );
-        let artifacts_config_hash = poseidon2_hash(artifacts_config.serialize());
+        let artifacts_config_hash = artifacts_config.state_hash();
 
         // Compute state hashes for public verification
         let (_, source_planet_hash, source_planet_artifacts_state_hash, source_planet_events_state_hash, source_arrival_ids, source_arrival_hashes, source_arrival_artifact_ids, source_arrival_artifact_hashes, source_arrival_artifact_location_hashes, original_source_arrivals_count) = compute_planet_hashes(

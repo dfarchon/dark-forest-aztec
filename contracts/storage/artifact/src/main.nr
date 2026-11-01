@@ -8,10 +8,11 @@ pub contract ArtifactStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
 
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
     use ::types::storage::artifact::Artifact;
 
     #[storage]
@@ -79,11 +80,11 @@ pub contract ArtifactStorage {
         let block_number = self.context.block_number();
         for i in 0..5 {
             if ((i as u32) < count) & (ids[i] != 0) {
-                let root = poseidon2_hash(states[i].serialize());
+                let (root, log) = ArtifactUpdate::encode_update(ids[i], block_number, states[i]);
                 self.storage.state_roots.at(ids[i]).write(root);
-                self.emit(
-                    ArtifactUpdate { id: ids[i], block_number: block_number, state: states[i] },
-                );
+                unsafe {
+                    aztec::oracle::avm::emit_public_log(log.as_vector());
+                }
             }
         }
     }
@@ -156,7 +157,7 @@ pub contract ArtifactStorage {
         if stored_hash == 0 {
             state == Artifact::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -167,7 +168,7 @@ pub contract ArtifactStorage {
         if state == Artifact::zero() {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 
@@ -215,7 +216,7 @@ pub contract ArtifactStorage {
         if stored_hash == 0 {
             state == Artifact::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -225,7 +226,7 @@ pub contract ArtifactStorage {
         if state == Artifact::zero() {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 

@@ -93,6 +93,7 @@ impl GameConfig {
 /// This is intentionally kept small to avoid hitting the public storage write limit.
 /// Aztec protocol: MAX_PUBLIC_DATA_UPDATE_REQUESTS_PER_TX = 63 (@aztec/constants).
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct GameConfigCore {
     pub max_natural_planet_level: u8,
     pub perlin_threshold_1: u8,
@@ -124,6 +125,7 @@ impl GameConfigCore {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetLevelThresholds {
     pub thresholds: [u128; 10],
 }
@@ -141,6 +143,7 @@ impl PlanetLevelThresholds {
 /// One "tier" of the planet type weights table.
 /// Dimensions: [10][5] = 50 entries.
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetTypeWeightsTier {
     pub weights: [[u128; 5]; 10],
 }

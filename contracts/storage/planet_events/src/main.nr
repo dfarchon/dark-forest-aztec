@@ -9,10 +9,11 @@ pub contract PlanetEventsStorage {
             functions::{external, initializer, internal, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
 
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
     use ::types::storage::planet::PlanetEvents;
 
     #[storage]
@@ -139,7 +140,7 @@ pub contract PlanetEventsStorage {
         if stored_hash == 0 {
             state == PlanetEvents::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -150,7 +151,7 @@ pub contract PlanetEventsStorage {
         if (state == PlanetEvents::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 
@@ -182,7 +183,7 @@ pub contract PlanetEventsStorage {
         if stored_hash == 0 {
             state == PlanetEvents::zero()
         } else {
-            let computed_hash = poseidon2_hash(state.serialize());
+            let computed_hash = state.state_hash();
             computed_hash == stored_hash
         }
     }
@@ -192,7 +193,7 @@ pub contract PlanetEventsStorage {
         if (state == PlanetEvents::zero()) {
             0
         } else {
-            poseidon2_hash(state.serialize())
+            state.state_hash()
         }
     }
 

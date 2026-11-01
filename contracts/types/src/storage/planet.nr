@@ -2,6 +2,7 @@ use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::traits::{Deserialize, Packable, Serialize};
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct Planet {
     // PlanetMeta
     // pub location_id: Field,
@@ -84,6 +85,7 @@ impl Planet {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetRevealedCoords {
     pub location_id: Field,
     pub x: Field,
@@ -122,6 +124,7 @@ impl PlanetEventMetadata {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetEvents {
     pub events: [PlanetEventMetadata; 20],
     pub count: u32,
@@ -135,6 +138,7 @@ impl PlanetEvents {
 }
 
 #[derive(Eq, Serialize, Deserialize, Packable)]
+#[::macros::state_hash]
 pub struct PlanetArtifacts {
     pub ids: [Field; 20],
     pub count: u32,

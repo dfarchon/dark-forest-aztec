@@ -27,24 +27,80 @@ pub comptime fn fixed_state_hash(fields: Quoted, width: u32) -> Quoted {
     quote { { $body state[0] } }
 }
 
+/// Equal to `poseidon2_hash(self.serialize())`, with the sponge unrolled for the type's width.
+pub trait StateHash {
+    fn state_hash(self) -> Field;
+}
+
+/// Struct attribute implementing `StateHash`. Place it after `#[derive(Serialize, Deserialize)]`.
+/// Also emits tests comparing `state_hash` against `poseidon2_hash(serialize())`.
+pub comptime fn state_hash(definition: TypeDefinition) -> Quoted {
+    let name = definition.name();
+    let typ = definition.as_type();
+    let fields = member_fields(typ, quote { self });
+    let width = fields.len();
+    let fields = fields.join(quote { , });
+    let root = fixed_state_hash(quote { fields }, width);
+    let test = f"state_hash_matches_poseidon2_hash_{name}".quoted_contents();
+    let test_unconstrained =
+        f"state_hash_matches_poseidon2_hash_{name}_unconstrained".quoted_contents();
+    let checks = quote {
+        let zero: $typ = std::mem::zeroed();
+        assert_eq(
+            ::macros::StateHash::state_hash(zero),
+            aztec::protocol::hash::poseidon2_hash(aztec::protocol::traits::Serialize::serialize(zero)),
+        );
+        let ones: $typ = aztec::protocol::traits::Deserialize::deserialize([1; $width]);
+        assert_eq(
+            ::macros::StateHash::state_hash(ones),
+            aztec::protocol::hash::poseidon2_hash(aztec::protocol::traits::Serialize::serialize(ones)),
+        );
+    };
+    quote {
+        impl ::macros::StateHash for $typ {
+            #[inline_always]
+            fn state_hash(self) -> Field {
+                let fields: [Field; $width] = [$fields];
+                $root
+            }
+        }
+
+        #[test]
+        fn $test() {
+            $checks
+        }
+
+        #[test]
+        unconstrained fn $test_unconstrained() {
+            $checks
+        }
+    }
+}
+
 pub comptime fn state_update(event: TypeDefinition) -> Quoted {
     let name = event.name();
-    let state = event.fields(@[])[2].typ();
-    let encoded = quote { [Field; <$state as aztec::protocol::traits::Serialize>::N] }.as_type();
-    let width = encoded.as_array().unwrap().length_type().as_constant().unwrap();
+    let members = event.fields(@[]);
+    let id = members[0].typ();
+    let state = members[2].typ();
+    let fields = state_fields(state, quote { state });
+    let width = fields.len();
     let tag = quote { comptime { aztec::protocol::hash::compute_log_tag(aztec::protocol::traits::ToField::to_field(<$name as aztec::event::event_interface::EventInterface>::get_event_type_id()), aztec::protocol::constants::DOM_SEP__EVENT_LOG_TAG) } };
-    let mut words: [Quoted] = @[tag, quote { id }, quote { block_number as Field }];
+    let mut words: [Quoted] = @[
+        tag,
+        quote { aztec::protocol::traits::ToField::to_field(id) },
+        quote { block_number as Field },
+    ];
     for i in 0..width {
         words = words.push_back(quote { fields[$i] });
     }
     let words = words.join(quote { , });
     let root = fixed_state_hash(quote { fields }, width);
-    let fields = serialize_state(state, quote { state });
+    let fields = fields.join(quote { , });
     quote {
         impl $name {
             #[inline_always]
-            fn encode_update(id: Field, block_number: u32, state: $state) -> (Field, [Field; $width + 3]) {
-                let fields = $fields;
+            fn encode_update(id: $id, block_number: u32, state: $state) -> (Field, [Field; $width + 3]) {
+                let fields: [Field; $width] = [$fields];
                 ($root, [$words])
             }
         }
@@ -65,27 +121,21 @@ comptime fn state_fields(typ: Type, value: Quoted) -> [Quoted] {
                 fields = fields.append(state_fields(element, quote { $value[$i] }));
             }
         } else {
-            let data = typ.as_data_type().unwrap();
-            let definition = data.definition();
-            let generics = data.generics();
-            for member in definition.fields(generics) {
-                let name = member.name();
-                let member_type = member.typ();
-                fields = fields.append(state_fields(member_type, quote { $value.$name }));
-            }
+            fields = member_fields(typ, value);
         }
         fields
     }
 }
 
-comptime fn serialize_state(typ: Type, value: Quoted) -> Quoted {
-    let fields = state_fields(typ, quote { state }).join(quote { , });
-    quote {
-        {
-            let state: $typ = $value;
-            [$fields]
-        }
+// Flattens struct members in declaration order, the same order #[derive(Serialize)] uses.
+comptime fn member_fields(typ: Type, value: Quoted) -> [Quoted] {
+    let data = typ.as_data_type().unwrap();
+    let mut fields: [Quoted] = @[];
+    for member in data.definition().fields(data.generics()) {
+        let name = member.name();
+        fields = fields.append(state_fields(member.typ(), quote { $value.$name }));
     }
+    fields
 }
 
 comptime fn is_batch(typ: Type) -> bool {
@@ -385,6 +435,39 @@ comptime fn rewrite_body(expr: Expr, rewritten: &mut u32) -> Quoted {
     } else {
         out
     }
+}
+
+// Covers every width remainder mod 3 and every state or config width in use.
+comptime fn fixed_state_hash_cases() -> Quoted {
+    let mut cases = quote {};
+    for width in 0..65 {
+        let mut values: [Quoted] = @[];
+        for i in 0..width {
+            let value = (width * 100 + i + 1) as Field;
+            values = values.push_back(quote { $value });
+        }
+        let values = values.join(quote { , });
+        let fixed = fixed_state_hash(quote { input }, width);
+        cases = quote {
+            $cases
+            {
+                let input: [Field; $width] = [$values];
+                assert_eq($fixed, aztec::protocol::hash::poseidon2_hash(input));
+            };
+        };
+    }
+    quote { { $cases } }
+}
+
+#[test]
+fn fixed_state_hash_matches_poseidon2_hash() {
+    fixed_state_hash_cases!();
+}
+
+// Public functions run the unconstrained branch of poseidon2_hash.
+#[test]
+unconstrained fn fixed_state_hash_matches_poseidon2_hash_unconstrained() {
+    fixed_state_hash_cases!();
 }
 
 #[test]

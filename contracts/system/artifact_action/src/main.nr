@@ -3,9 +3,10 @@ contract ArtifactAction {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         oracle::block_header::get_block_header_at,
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::{Hash, Serialize}},
+        protocol::{address::AztecAddress, traits::Hash},
     };
     use ::aztec::state_vars::PublicMutable;
+    use ::macros::StateHash;
 
     use ::types::args::DFPFindArtifactArgs;
     use ::types::storage::{
@@ -252,8 +253,8 @@ contract ArtifactAction {
         let artifact_hash = artifact_hashes_result.1;
         let artifact_location_hash = artifact_hashes_result.2;
         let world_hash = world_hash_result;
-        let world_config_hash = poseidon2_hash(world_config.serialize());
-        let planet_default_stats_hash = poseidon2_hash(planet_default_stats.serialize());
+        let world_config_hash = world_config.state_hash();
+        let planet_default_stats_hash = planet_default_stats.state_hash();
 
         // planet_artifacts is caller-supplied; it is bound to on-chain state
         // by verify_hashes_batch in activate_artifact_public, so the "no other artifact is

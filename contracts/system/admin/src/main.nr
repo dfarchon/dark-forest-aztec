@@ -1,6 +1,4 @@
-use ::aztec::macros::aztec;
-
-#[aztec]
+#[::macros::world_contract]
 contract Admin {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self}, storage::storage},

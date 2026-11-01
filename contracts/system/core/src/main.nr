@@ -6,9 +6,10 @@ contract Core {
             functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
-        protocol::{address::AztecAddress, hash::poseidon2_hash, traits::Serialize},
+        protocol::address::AztecAddress,
     };
     use ::aztec::state_vars::{Map, PublicMutable};
+    use ::macros::StateHash;
 
     use ::types::args::{
         AdminCreatePlanetArgs, DFPCreateArrivalArgs, DFPInitPlanetArgs, DFPMoveArgs,
@@ -402,8 +403,8 @@ contract Core {
             arrival_artifact_locations,
         );
 
-        let upgrade_config_hash = poseidon2_hash(upgrade_config.serialize());
-        let upgrade_hash = poseidon2_hash(upgrade.serialize());
+        let upgrade_config_hash = upgrade_config.state_hash();
+        let upgrade_hash = upgrade.state_hash();
         let world_hash = compute_world_hash(world);
 
         let refreshed_states = refresh_planet_v1(
@@ -622,7 +623,7 @@ contract Core {
         );
 
         let player_state_hash = compute_player_hash(player_state);
-        let world_config_hash = poseidon2_hash(world_config.serialize());
+        let world_config_hash = world_config.state_hash();
         let world_hash = compute_world_hash(world);
 
         let refreshed_states = refresh_planet_v1(
