@@ -1,0 +1,9 @@
+[package]
+name = "high_level_planet_tests"
+type = "lib"
+authors = [""]
+
+[dependencies]
+aztec = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v6.0.0", directory = "aztec" }
+libs = { path = "../../libs" }
+types = { path = "../../types" }

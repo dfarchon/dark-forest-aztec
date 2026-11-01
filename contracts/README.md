@@ -15,7 +15,7 @@ Read [`docs/architecture.md`](../docs/architecture.md#contracts) first for the s
 | `config/`        | Game configuration contract.                                                                 |
 | `libs/`          | Game logic shared by system contracts (planet updates, arrivals, artifacts, batching).       |
 | `circuits/`      | ZK checks for coordinates, perlin noise, init, move, and reveal.                             |
-| `tests/`         | Test-only crates. `tests/state_hash` checks Noir hashes against the TypeScript client.       |
+| `tests/`         | Test-only crates. `tests/state_hash` checks Noir hashes against the TypeScript client. `tests/high_level_planet` runs every action's math on upgraded high level planets and holds the move decay table. |
 | `scripts/`       | `build/`, `check/`, `deploy/`, `bootstrap/`, `admin/`, `runtime/`. Each script has a header. |
 | `baselines/`     | Local, git-ignored bytecode size snapshot used by `check:bytecode:compare`.                  |
 
@@ -88,10 +88,13 @@ Run every command below from `contracts/`.
 | `pnpm check:hash`             | No            | Noir struct layout, client serializer order, or Aztec Poseidon2 drifting apart. |
 | `pnpm check:aztec-upgrade`    | No            | `check:style` and `check:hash` together.                                        |
 | `pnpm test:nr`                | No            | All Noir tests in the workspace.                                                |
+| `pnpm test:decay-match`       | No            | Frontend and contract computing different move decay (UI offers a move that reverts). |
 | `pnpm check:bytecode:compare` | Yes           | Per-function bytecode size changes against `baselines/bytecode.json`.           |
 | `pnpm fmt:aztec:check`        | No            | Noir formatting.                                                                |
 
 `check:hash` works in two steps. `scripts/check/state-hash-vectors.ts --check` regenerates `tests/state_hash/src/vectors.nr` in memory from the struct definitions and the client serializers, and fails if the committed file differs. Then the Noir tests assert that `poseidon2_hash(serialize())`, `state_hash()`, and `encode_update` all reproduce those client-computed hashes.
+
+`test:decay-match` compares the move decay formula on both sides. `scripts/check/move-decay-vectors.ts --check` runs the frontend's `decayedPopArriving` (`client/src/Session/TxExecutor/MoveSimulation.ts`) over a fixed grid and fails if the committed table `tests/high_level_planet/src/move_decay_vectors.nr` differs. Then the Noir test `move_decay::matches_client_vectors` in the same crate asserts the contract returns the same number for every row. After an intended formula change, run `pnpm test:decay-match:regenerate`, review the diff, and update the other side until `test:decay-match` passes.
 
 Bytecode sizes are a proxy for deployment cost and contract size limits, not per-transaction gas. To compare:
 

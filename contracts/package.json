@@ -50,6 +50,8 @@
         "format:check": "pnpm fmt:aztec:check & pnpm fmt:scripts:check",
         "net:local": "SEQ_BLOCK_DURATION_MS=12000 aztec start --local-network",
         "net:print": "pnpm exec tsx scripts/runtime/network.ts",
+        "test:decay-match": "pnpm exec tsx scripts/check/move-decay-vectors.ts --check && aztec-nargo test --package high_level_planet_tests move_decay",
+        "test:decay-match:regenerate": "pnpm exec tsx scripts/check/move-decay-vectors.ts",
         "test:nr": "pnpm exec tsx scripts/test/noir.ts",
         "test:nr:all": "aztec-nargo test --workspace"
     },

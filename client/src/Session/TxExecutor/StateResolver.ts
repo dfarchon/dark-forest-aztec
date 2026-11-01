@@ -9,7 +9,6 @@
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { Wallet } from "@aztec-labs/aztec.js/wallet";
-import { CONTRACT_PRECISION } from "@dfpunk/constants";
 import {
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
@@ -85,6 +84,7 @@ import {
   planetRevealedCoordsToContract,
   planetToContract,
   playerToContract,
+  uiAmountToContract,
   worldToContract,
 } from "./stateConvert";
 import {
@@ -690,10 +690,8 @@ export class StateResolver {
     const x2 = signedCoordToField(rawX2 as number | bigint);
     const y2 = signedCoordToField(rawY2 as number | bigint);
 
-    // Frontend energy/silver values are divided by CONTRACT_PRECISION (1000).
-    // Contract expects raw u128 values, so multiply back.
-    const popMoved = BigInt(Math.round(intent.forces * CONTRACT_PRECISION));
-    const silverMoved = BigInt(Math.round(intent.silver * CONTRACT_PRECISION));
+    const popMoved = uiAmountToContract(intent.forces);
+    const silverMoved = uiAmountToContract(intent.silver);
     const movedArtifactId = intent.artifact
       ? BigInt(`0x${intent.artifact}`)
       : 0n;

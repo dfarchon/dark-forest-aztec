@@ -8,6 +8,7 @@ import {
 } from "@dfpunk/constants";
 import { Monomitter, monomitter, Subscription } from "@dfpunk/events";
 import {
+  estimateEnergyArriving,
   getDMaxFraction,
   getRange,
   isActivated,
@@ -3914,14 +3915,13 @@ class GameManager extends EventEmitter {
       }
     }
 
-    // Piecewise linear decay matching contract (move/src/main.nr)
-    const percent = (sentEnergy / from.energyCap) * 100;
-    const rangeBuff = this.getRangeBuff(abandoning);
-    const dMax =
-      from.range * rangeBuff * L_OVER_RANGE * getDMaxFraction(percent);
-
-    if (dist >= dMax || dMax <= 0) return 0;
-    return (sentEnergy * (dMax - dist)) / dMax;
+    return estimateEnergyArriving(
+      sentEnergy,
+      from.energyCap,
+      from.range,
+      dist,
+      this.getRangeBuff(abandoning)
+    );
   }
 
   /**

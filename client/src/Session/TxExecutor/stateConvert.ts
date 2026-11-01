@@ -12,6 +12,7 @@
  *   arrays            → pad to length 20 with zeros
  */
 
+import { CONTRACT_PRECISION } from "@dfpunk/constants";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -29,6 +30,11 @@ import { arrivalZero, artifactLocationZero, artifactZero } from "./stateZeros";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** UI energy or silver (contract value / CONTRACT_PRECISION) back to contract u128 units. */
+export function uiAmountToContract(amount: number): bigint {
+  return BigInt(Math.round(amount * CONTRACT_PRECISION));
+}
 
 function toBigint(v: unknown): bigint {
   if (typeof v === "bigint") return v;

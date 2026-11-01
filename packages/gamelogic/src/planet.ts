@@ -30,6 +30,23 @@ export function getDMaxFraction(p: number): number {
 }
 
 /**
+ * UI estimate of the energy that arrives, in UI units (contract units / CONTRACT_PRECISION).
+ * Float version of `libs::move_decay::decayed_pop_arriving`; `dist` is in coordinate units.
+ */
+export function estimateEnergyArriving(
+  sentEnergy: number,
+  energyCap: number,
+  range: number,
+  dist: number,
+  rangeBoost = 1,
+): number {
+  const percent = (sentEnergy / energyCap) * 100;
+  const dMax = range * rangeBoost * L_OVER_RANGE * getDMaxFraction(percent);
+  if (dist >= dMax || dMax <= 0) return 0;
+  return (sentEnergy * (dMax - dist)) / dMax;
+}
+
+/**
  * Max reachable distance for a given energy percentage.
  * Uses piecewise linear D_max matching the Noir move contract.
  * @param rangeBoost Multiplier applied to the resulting range (e.g. for abandon boost).

@@ -9,7 +9,7 @@ use ::types::storage::planet::{
 use ::types::storage::player::Player;
 use ::types::storage::world::World;
 
-pub fn planet() -> [(Planet, Field); 3] {
+pub fn planet() -> [(Planet, Field); 4] {
     [
         (
             Planet {
@@ -136,6 +136,43 @@ pub fn planet() -> [(Planet, Field); 3] {
                 has_tried_finding_artifact: true,
                 prospected_block_number: 1859310358,
             }, 0x122765d02627a317995f5607c0d35d7497aacda2fb10cad81d1bfa981c540e18,
+        ),
+        // level 8, dead space, rank 3 (defense x3)
+        (
+            Planet {
+                perlin: 30,
+                created_at: 1000000,
+                owner: AztecAddress::from_field(0xa11ce),
+                planet_level: 8,
+                planet_type: 0,
+                space_type: 3,
+                is_home_planet: false,
+                is_initialized: true,
+                destroyed: false,
+                invader: AztecAddress::from_field(0x0),
+                capturer: AztecAddress::from_field(0x0),
+                invade_start_block: 0,
+                population_cap: 2419200000,
+                population_growth: 12960,
+                range: 12612,
+                speed: 150,
+                defense: 51,
+                silver_cap: 600000000,
+                silver_growth: 0,
+                population: 2419200000,
+                silver: 123456789,
+                upgrade_state_0: 3,
+                upgrade_state_1: 0,
+                upgrade_state_2: 0,
+                last_updated: 1086400,
+                pausers: 0,
+                energy_gro_doublers: 0,
+                silver_gro_doublers: 0,
+                hat_level: 0,
+                space_junk: 60,
+                has_tried_finding_artifact: false,
+                prospected_block_number: 0,
+            }, 0x0dafe050dba7bd2d9c1ad8c74a81d383644f6e9afe83f7c4ca54fafdfb15916c,
         ),
     ]
 }
