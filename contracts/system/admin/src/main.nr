@@ -272,6 +272,8 @@ contract Admin {
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
 
         let new_planet = if !planet_state_is_initialized {
+            assert(world_config.admin_can_add_planets, "admin can no longer add planets");
+
             let mut planet: Planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,
@@ -437,6 +439,7 @@ contract Admin {
 
         let config = Config::at(self.storage.config_storage_address.read());
         let c: PlanetInitConfig = self.view(config.get_planet_init_config(level));
+        assert(c.world_config.admin_can_add_planets, "admin can no longer add planets");
 
         let planet: Planet = initialize_planet_with_defaults(
             location_id,
