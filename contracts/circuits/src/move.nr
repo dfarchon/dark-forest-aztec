@@ -53,6 +53,7 @@ pub fn move_proof(
     let dist_sq_u128 = dist_sq as u128;
     let dist_max_sq_u128 = dist_max_sq as u128;
     assert(dist_sq_u128 <= dist_max_sq_u128);
+    assert(dist_sq_u128 != 0);
 
     // 4. Source planet hash: Poseidon2(planet_hash_key, x1, y1) - matches client poseidon2Hash([planetHashKey, x, y])
     let pub1 = poseidon2_hash([planet_hash_key, x1, y1]);
@@ -113,6 +114,11 @@ fn test_move_proof_dist_max_over_bound() {
         3,
         4,
     );
+}
+
+#[test(should_fail)]
+fn test_move_proof_same_coords() {
+    let _ = move_proof(1000, 100, 1, 2, 4096, false, false, 3, 4, 3, 4);
 }
 
 #[test(should_fail)]
