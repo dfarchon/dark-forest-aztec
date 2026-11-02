@@ -243,6 +243,7 @@ export const dateMintedAt = (artifact: Artifact | undefined): string => {
 };
 
 export function canActivateArtifact(
+  account: EthAddress,
   artifact: Artifact,
   planet: Planet | undefined,
   artifactsOnPlanet: Artifact[],
@@ -250,7 +251,10 @@ export function canActivateArtifact(
   if (isSpaceShip(artifact.artifactType)) {
     return (
       !!planet &&
+      artifact.controller === account &&
       planet.owner === EMPTY_ADDRESS &&
+      planet.planetType !== PlanetType.SILVER_MINE &&
+      planet.planetLevel >= PlanetLevel.ONE &&
       artifact.artifactType === ArtifactType.ShipCrescent &&
       artifact.activations === 0
     );

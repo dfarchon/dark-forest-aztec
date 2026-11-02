@@ -63,7 +63,23 @@ pub fn create_and_place_spaceship(
 
 /// Noir port of Solidity `LibGameUtils.activateArtifact`.
 
-/// Noir port of Solidity `LibGameUtils.activateSpaceshipArtifact`.
+/// Noir port of Solidity `LibGameUtils.activateSpaceshipArtifact` (checks only).
+/// Only the Crescent has an activation effect; activating any other ship would just bump
+/// `activations` / `last_updated` and invalidate the controller's pending proofs.
+pub fn assert_can_activate_spaceship(artifact: Artifact, planet: Planet, sender: AztecAddress) {
+    assert(artifact.controller == sender, "you can only activate a spaceship you control");
+    assert(
+        artifact.artifact_type == ArtifactType::ShipCrescent,
+        "only the crescent can be activated",
+    );
+    assert(artifact.activations == 0, "crescent cannot be activated more than once");
+    assert(
+        planet.planet_type != PlanetType::SilverMine,
+        "cannot turn a silver mine into a silver mine",
+    );
+    assert(planet.owner == AztecAddress::zero(), "can only activate crescent on unowned planets");
+    assert(planet.planet_level >= 1, "planet level must be more than one");
+}
 
 /// Noir port of Solidity `LibGameUtils.activateNonSpaceshipArtifact`.
 

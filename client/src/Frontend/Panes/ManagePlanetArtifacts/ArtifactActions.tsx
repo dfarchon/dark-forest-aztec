@@ -204,7 +204,9 @@ export function ArtifactActions({
     });
   }
 
-  if (canActivateArtifact(artifact, onPlanet, otherArtifactsOnPlanet)) {
+  if (
+    canActivateArtifact(account, artifact, onPlanet, otherArtifactsOnPlanet)
+  ) {
     actions.unshift({
       name: TooltipName.ActivateArtifact,
       children: (

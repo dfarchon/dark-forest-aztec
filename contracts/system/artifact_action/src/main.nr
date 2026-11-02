@@ -31,7 +31,8 @@ contract ArtifactAction {
     };
 
     use ::libs::artifact_utils::{
-        artifact_from_create_args, contains_gear, create_and_place_spaceship, is_spaceship,
+        artifact_from_create_args, assert_can_activate_spaceship, contains_gear,
+        create_and_place_spaceship, is_spaceship,
     };
 
     use ::libs::batch_utils::{
@@ -311,39 +312,26 @@ contract ArtifactAction {
 
         if is_spaceship {
             // activateSpaceshipArtifact
-            let is_crescent = new_artifact.artifact_type == ArtifactType::ShipCrescent;
+            assert_can_activate_spaceship(new_artifact, new_planet, sender);
 
-            if is_crescent {
-                assert(
-                    new_artifact.activations == 0,
-                    "crescent cannot be activated more than once",
+            new_artifact.last_activated = timestamp;
+            new_artifact.last_deactivated = timestamp;
+
+            if new_planet.silver == 0 {
+                new_planet.silver = 1;
+
+                let default_planet = _default_planet(
+                    location_id,
+                    new_planet.planet_level,
+                    PlanetType::SilverMine,
+                    new_planet.space_type,
+                    world_config.time_factor_hundredths,
+                    planet_default_stats,
                 );
-                assert(new_planet.planet_type != 1, "cannot turn a silver mine into a silver mine");
-                assert(
-                    new_planet.owner == AztecAddress::zero(),
-                    "can only activate crescent on unowned planets",
-                );
-                assert(new_planet.planet_level >= 1, "planet level must be more than one");
 
-                new_artifact.last_activated = timestamp;
-                new_artifact.last_deactivated = timestamp;
-
-                if new_planet.silver == 0 {
-                    new_planet.silver = 1;
-
-                    let default_planet = _default_planet(
-                        location_id,
-                        new_planet.planet_level,
-                        PlanetType::SilverMine,
-                        new_planet.space_type,
-                        world_config.time_factor_hundredths,
-                        planet_default_stats,
-                    );
-
-                    new_planet.silver_growth = default_planet.silver_growth;
-                }
-                new_planet.planet_type = PlanetType::SilverMine;
+                new_planet.silver_growth = default_planet.silver_growth;
             }
+            new_planet.planet_type = PlanetType::SilverMine;
         } else {
             // activateNonSpaceshipArtifact
             assert(
