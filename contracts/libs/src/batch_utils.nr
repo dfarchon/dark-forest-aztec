@@ -257,6 +257,46 @@ pub fn assert_public_timestamp(timestamp: u64, actual_timestamp: u64) {
     assert(actual_timestamp - timestamp <= max_time_drift, "Timestamp too old");
 }
 
+/// Arrival times aligned with the `arrival_hashes` produced by `compute_planet_hashes`.
+/// Slots whose hash is not verified on-chain (beyond `count` or with id 0) stay 0.
+pub fn compute_arrival_times(
+    planet_events_state: PlanetEvents,
+    arrivals: [Arrival; 20],
+) -> [u64; 20] {
+    let mut arrival_times: [u64; 20] = [0; 20];
+    for i in 0..20 {
+        if (i < planet_events_state.count) & (planet_events_state.events[i].id != 0) {
+            arrival_times[i] = arrivals[i].arrival_time;
+        }
+    }
+    arrival_times
+}
+
+/// `arrival_times` must come from the same private execution as the batch-verified
+/// `arrival_hashes`. Settling at `timestamp` must not skip an arrival that is already
+/// due at the block time.
+pub fn assert_no_skipped_arrivals(
+    timestamp: u64,
+    actual_timestamp: u64,
+    arrival_times: [u64; 20],
+    count: u32,
+) {
+    for i in 0..20 {
+        if i < count {
+            let arrival_time = arrival_times[i];
+            assert(
+                (arrival_time <= timestamp) | (arrival_time > actual_timestamp),
+                "Due arrival skipped; settle at a later timestamp",
+            );
+        }
+    }
+}
+
+/// A newly created arrival must not already be due when the move lands on-chain.
+pub fn assert_new_arrival_not_due(arrival_time: u64, actual_timestamp: u64) {
+    assert(arrival_time > actual_timestamp, "New arrival already due");
+}
+
 pub fn compact_artifact_locations(
     artifact_ids: [Field; 20],
     artifact_locations: [ArtifactLocation; 20],
@@ -307,9 +347,90 @@ pub fn compute_config_hashes(
 }
 
 mod tests {
-    use super::{compute_planet_artifact_hashes, compute_planet_state_hash};
+    use super::{
+        assert_new_arrival_not_due, assert_no_skipped_arrivals, assert_public_timestamp,
+        compute_arrival_times, compute_planet_artifact_hashes, compute_planet_state_hash,
+    };
     use ::aztec::protocol::{hash::poseidon2_hash, traits::Serialize};
-    use ::types::storage::{artifact::Artifact, planet::{Planet, PlanetArtifacts}};
+    use ::types::storage::{
+        arrival::Arrival,
+        artifact::Artifact,
+        planet::{Planet, PlanetArtifacts, PlanetEvents},
+    };
+
+    global BLOCK_TIME: u64 = 1_000_000;
+
+    fn one_arrival_at(arrival_time: u64) -> [u64; 20] {
+        let mut times = [0; 20];
+        times[0] = arrival_time;
+        times
+    }
+
+    #[test(should_fail_with = "Due arrival skipped; settle at a later timestamp")]
+    fn h01_backdated_settlement_cannot_skip_due_arrival() {
+        let times = one_arrival_at(BLOCK_TIME - 10);
+        assert_no_skipped_arrivals(BLOCK_TIME - 300, BLOCK_TIME, times, 1);
+    }
+
+    #[test]
+    fn h01_settling_at_or_after_due_arrival_passes() {
+        let times = one_arrival_at(BLOCK_TIME - 10);
+        assert_no_skipped_arrivals(BLOCK_TIME - 10, BLOCK_TIME, times, 1);
+        assert_no_skipped_arrivals(BLOCK_TIME, BLOCK_TIME, times, 1);
+    }
+
+    #[test]
+    fn h01_future_arrival_may_stay_pending() {
+        let times = one_arrival_at(BLOCK_TIME + 1);
+        assert_no_skipped_arrivals(BLOCK_TIME - 300, BLOCK_TIME, times, 1);
+    }
+
+    #[test]
+    fn h01_slots_beyond_count_are_ignored() {
+        let mut times = one_arrival_at(BLOCK_TIME + 50);
+        times[1] = BLOCK_TIME - 10;
+        assert_no_skipped_arrivals(BLOCK_TIME - 300, BLOCK_TIME, times, 1);
+    }
+
+    #[test(should_fail_with = "Timestamp too old")]
+    fn proof_older_than_window_still_fails() {
+        assert_public_timestamp(BLOCK_TIME - 301, BLOCK_TIME);
+    }
+
+    #[test(should_fail_with = "New arrival already due")]
+    fn backdated_departure_cannot_land_on_arrival() {
+        let departure = BLOCK_TIME - 270;
+        let travel_time = 120;
+        assert_new_arrival_not_due(departure + travel_time, BLOCK_TIME);
+    }
+
+    #[test(should_fail_with = "New arrival already due")]
+    fn new_arrival_at_block_time_is_already_due() {
+        assert_new_arrival_not_due(BLOCK_TIME, BLOCK_TIME);
+    }
+
+    #[test]
+    fn new_arrival_after_block_time_passes() {
+        assert_new_arrival_not_due(BLOCK_TIME + 1, BLOCK_TIME);
+    }
+
+    #[test]
+    fn arrival_times_follow_verified_event_slots() {
+        let mut events = PlanetEvents::zero();
+        events.events[0].id = 7;
+        events.events[1].id = 0;
+        events.events[2].id = 9;
+        events.count = 2;
+        let mut arrivals = [Arrival::zero(); 20];
+        arrivals[0].arrival_time = 100;
+        arrivals[1].arrival_time = 200;
+        arrivals[2].arrival_time = 300;
+
+        let times = compute_arrival_times(events, arrivals);
+        assert(times[0] == 100);
+        assert(times[1] == 0);
+        assert(times[2] == 0);
+    }
 
     // C1/C2/H2 rely on this: hash 0 means "slot must be empty" for verify_hash, and an
     // existing planet can never produce hash 0, so Planet::zero() cannot impersonate it.

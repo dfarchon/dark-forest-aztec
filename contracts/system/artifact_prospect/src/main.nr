@@ -36,9 +36,10 @@ contract ArtifactProspect {
 
     use ::libs::batch_utils::{
         assert_artifact_and_location_timestamp_freshness, assert_artifact_timestamp_freshness,
-        assert_owned_artifacts_timestamp_freshness, assert_planet_timestamp_freshness,
-        assert_public_timestamp, compute_artifact_and_location_hashes,
-        compute_owned_artifact_hashes, compute_planet_hashes, compute_world_hash,
+        assert_no_skipped_arrivals, assert_owned_artifacts_timestamp_freshness,
+        assert_planet_timestamp_freshness, assert_public_timestamp, compute_arrival_times,
+        compute_artifact_and_location_hashes, compute_owned_artifact_hashes, compute_planet_hashes,
+        compute_world_hash,
     };
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
@@ -238,6 +239,7 @@ contract ArtifactProspect {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
+        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let artifact_ids: [Field; 20] = planet_hashes_result.6;
         let artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -315,6 +317,7 @@ contract ArtifactProspect {
             origin_arrivals_count,
             arrival_ids,
             arrival_hashes,
+            arrival_times,
             artifact_ids,
             artifact_hashes,
             artifact_location_hashes,
@@ -344,6 +347,7 @@ contract ArtifactProspect {
         origin_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
+        arrival_times: [u64; 20],
         artifact_ids: [Field; 20],
         artifact_hashes: [Field; 20],
         artifact_location_hashes: [Field; 20],
@@ -363,6 +367,12 @@ contract ArtifactProspect {
         let actual_timestamp = self.context.timestamp();
 
         assert_public_timestamp(timestamp, actual_timestamp);
+        assert_no_skipped_arrivals(
+            timestamp,
+            actual_timestamp,
+            arrival_times,
+            origin_arrivals_count,
+        );
 
         // Binds the spaceships_config used for the Gear-ship check.
         let config = Config::at(self.storage.config_storage_address.read());

@@ -89,6 +89,19 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
 
+/** Contract assertions that a re-proof at the latest block time and state can clear. */
+const STALE_PROOF_ERRORS = [
+  "Due arrival skipped",
+  "New arrival already due",
+  "Timestamp too old",
+  "hash mismatch",
+];
+
+function isStaleProofError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return STALE_PROOF_ERRORS.some((s) => message.includes(s));
+}
+
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
   invocationIntervalMs: 500,
   maxInvocationsPerIntervalMs: 1,
@@ -108,6 +121,7 @@ export class TxExecutor {
   private readonly walletManager: WalletManager;
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
+  private readonly chainClock: ChainClock;
 
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
@@ -127,6 +141,7 @@ export class TxExecutor {
   ) {
     this.node = node;
     this.walletManager = walletManager;
+    this.chainClock = chainClock;
     this.beforeQueued = beforeQueued;
     this.beforeTransaction = beforeTransaction;
     this.afterTransaction = afterTransaction;
@@ -293,6 +308,10 @@ export class TxExecutor {
           console.warn(
             `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
           );
+          // Re-proving at the click-time timestamp would skip arrivals that
+          // landed meanwhile and fail the same assertion again.
+          tx.intent.uiTimestamp =
+            await this.chainClock.syncAndGetBlockTimestamp();
         }
 
         // 1. Processing
@@ -406,6 +425,9 @@ export class TxExecutor {
             if ("cause" in simErr) {
               console.error(`[TxExecutor] error cause:`, simErr.cause);
             }
+          }
+          if (attempt < MAX_RETRIES && isStaleProofError(simErr)) {
+            continue;
           }
           throw simErr;
         }

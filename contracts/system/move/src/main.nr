@@ -45,9 +45,10 @@ contract Move {
     };
 
     use ::libs::batch_utils::{
-        assert_artifact_timestamp_freshness, assert_planet_timestamp_freshness,
-        assert_public_timestamp, compute_artifact_and_location_hashes, compute_artifact_hash,
-        compute_config_hashes, compute_planet_hashes, compute_world_hash,
+        assert_artifact_timestamp_freshness, assert_new_arrival_not_due, assert_no_skipped_arrivals,
+        assert_planet_timestamp_freshness, assert_public_timestamp, compute_arrival_times,
+        compute_artifact_and_location_hashes, compute_artifact_hash, compute_config_hashes,
+        compute_planet_hashes, compute_world_hash,
     };
     use ::libs::move_decay::decayed_pop_arriving;
     use ::libs::planet::{
@@ -349,6 +350,10 @@ contract Move {
             target_arrival_artifacts,
             target_arrival_artifact_locations,
         );
+        let source_arrival_times =
+            compute_arrival_times(source_planet_events_state, source_arrivals);
+        let target_arrival_times =
+            compute_arrival_times(target_planet_events_state, target_arrivals);
 
         let world_hash = compute_world_hash(world);
 
@@ -802,6 +807,7 @@ contract Move {
             source_planet_events_state_hash,
             source_arrival_ids,
             source_arrival_hashes,
+            source_arrival_times,
             source_arrival_artifact_ids,
             source_arrival_artifact_hashes,
             source_arrival_artifact_location_hashes,
@@ -811,6 +817,7 @@ contract Move {
             target_planet_events_state_hash,
             target_arrival_ids,
             target_arrival_hashes,
+            target_arrival_times,
             target_arrival_artifact_ids,
             target_arrival_artifact_hashes,
             target_arrival_artifact_location_hashes,
@@ -855,6 +862,7 @@ contract Move {
         source_planet_events_state_hash: Field,
         source_arrival_ids: [Field; 20],
         source_arrival_hashes: [Field; 20],
+        source_arrival_times: [u64; 20],
         source_arrival_artifact_ids: [Field; 20],
         source_arrival_artifact_hashes: [Field; 20],
         source_arrival_artifact_location_hashes: [Field; 20],
@@ -864,6 +872,7 @@ contract Move {
         target_planet_events_state_hash: Field,
         target_arrival_ids: [Field; 20],
         target_arrival_hashes: [Field; 20],
+        target_arrival_times: [u64; 20],
         target_arrival_artifact_ids: [Field; 20],
         target_arrival_artifact_hashes: [Field; 20],
         target_arrival_artifact_location_hashes: [Field; 20],
@@ -895,6 +904,19 @@ contract Move {
         // Verify timestamp
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
+        assert_no_skipped_arrivals(
+            timestamp,
+            actual_timestamp,
+            source_arrival_times,
+            original_source_arrivals_count,
+        );
+        assert_no_skipped_arrivals(
+            timestamp,
+            actual_timestamp,
+            target_arrival_times,
+            original_target_arrivals_count,
+        );
+        assert_new_arrival_not_due(new_arrival.arrival_time, actual_timestamp);
 
         let config = Config::at(self.storage.config_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
