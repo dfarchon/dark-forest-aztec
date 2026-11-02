@@ -37,12 +37,12 @@
   "dependencies": {
     "@dfpunk/contracts": "workspace:*",
     "@dfpunk/indexer-core": "workspace:*",
-    "@hono/node-server": "^1.13.8",
-    "better-sqlite3": "^11.8.1",
-    "hono": "^4.7.4"
+    "@hono/node-server": "1.19.18",
+    "better-sqlite3": "11.10.0",
+    "hono": "4.13.16"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "7.6.13",
     "prettier": "3.7.4",
     "typescript": "5.9.3"
   },
