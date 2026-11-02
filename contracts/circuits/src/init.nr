@@ -1,10 +1,12 @@
 // Init Circuit for Dark Forest v0.6
 // Converted from Circom to Noir
 // Proves knowledge of valid spawn coordinates (x, y) that:
-// - Are within the spawn radius r
-// - Are near the edge of the spawn area (between 98% and 100% of radius)
+// - Satisfy 0.98 * r^2 < x^2 + y^2 < r^2
 // - Generate a specific planet hash
 // - Generate a specific perlin value
+// r is not the world radius: it is a tight upper bound on the spawn point's own
+// distance from the origin. check_player_init uses it as that distance for the
+// world-radius and spawn_rim_area checks.
 
 use crate::coords::{check_coordinate_range, get_abs_coord, is_coord_negative};
 use crate::perlin::multi_scale_perlin;
