@@ -359,13 +359,11 @@ export class StateResolver {
   }
 
   // -------------------------------------------------------------------------
-  // initializePlayer — 25 args
+  // initializePlayer — 20 args
   // [x, y, radius, locationId, perlin, level, timestamp,
   //  snarkConfig, planetDefaultStats, worldConfig, gameConfigCore,
   //  planetLevelThresholds, spaceJunkConfig, tier0, tier1, tier2, tier3,
-  //  planetState, planetEventsState, planetArtifactsState,
-  //  arrivals[20], arrivalArtifacts[20], arrivalArtifactLocations[20],
-  //  playerState, world]
+  //  planetState, playerState, world]
   // -------------------------------------------------------------------------
 
   private async resolveInitializePlayer(
@@ -428,20 +426,9 @@ export class StateResolver {
     );
     const playerAddr = this.getPlayerAddress();
 
+    // The contract only accepts an empty slot as a home planet.
     const planetRaw = this.indexer.getPlanet(locationIdDec);
     const planetState = planetRaw ? planetToContract(planetRaw) : planetZero();
-
-    const planetEventsRaw = this.indexer.getPlanetEvents(locationIdDec);
-    const planetEventsState = planetEventsRaw
-      ? planetEventsToContract(planetEventsRaw)
-      : planetEventsZero();
-
-    const planetArtifactsRaw = this.indexer.getPlanetArtifacts(locationIdDec);
-    const planetArtifactsState = planetArtifactsRaw
-      ? planetArtifactsToContract(planetArtifactsRaw)
-      : planetArtifactsZero();
-
-    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
 
     const playerRaw = this.indexer.getPlayer(playerAddr);
     const playerState = playerRaw ? playerToContract(playerRaw) : playerZero();
@@ -449,18 +436,9 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    let timestamp = BigInt(
+    const timestamp = BigInt(
       Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
     );
-    if (planetRaw) {
-      const planetLastUpdated = BigInt(planetRaw.last_updated);
-      if (planetLastUpdated > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind planet last_updated=${planetLastUpdated}, advancing timestamp`
-        );
-        timestamp = planetLastUpdated;
-      }
-    }
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, level));
@@ -494,11 +472,6 @@ export class StateResolver {
       tier2,
       tier3,
       planetState,
-      planetEventsState,
-      planetArtifactsState,
-      arrivalData.arrivals,
-      arrivalData.artifacts,
-      arrivalData.artifactLocations,
       playerState,
       world,
     ];

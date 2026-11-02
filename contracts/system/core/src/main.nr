@@ -1066,13 +1066,8 @@ contract Core {
         planet_type_weights_tier_1: PlanetTypeWeightsTier,
         planet_type_weights_tier_2: PlanetTypeWeightsTier,
         planet_type_weights_tier_3: PlanetTypeWeightsTier,
-        // Planet state inputs (zeros when planet does not yet exist)
+        // Must be Planet::zero(): a home planet can only be created on an empty slot.
         planet_state: Planet,
-        planet_events_state: PlanetEvents,
-        planet_artifacts_state: PlanetArtifacts,
-        arrivals: [Arrival; 20],
-        arrival_artifacts: [Artifact; 20],
-        arrival_artifact_locations: [ArtifactLocation; 20],
         // Player & world state inputs
         player_state: Player,
         world: World,
@@ -1100,6 +1095,7 @@ contract Core {
         let sender = self.msg_sender();
         assert(!world.paused, "Game is paused");
         assert(player_state == Player::zero(), "Player already initialized");
+        assert(planet_state == Planet::zero(), "Home planet must be a new planet");
         assert(
             check_player_init(
                 location_id,
@@ -1129,108 +1125,29 @@ contract Core {
         );
 
         // 4. Compute state hashes
-        let planet_state_hash = compute_planet_state_hash(planet_state);
         let player_state_hash = compute_player_hash(player_state);
         let world_hash = compute_world_hash(world);
 
-        // 5. Planet: create new or refresh existing
-        // planet_state is caller-supplied; "new" is only trustworthy because
-        // initialize_player_public verifies planet_state_hash (0 => slot must be empty).
-        let planet_is_new = planet_state == Planet::zero();
-
-        let mut planet_artifacts_state_hash: Field = 0;
-        let mut planet_events_state_hash: Field = 0;
-        let mut arrival_ids: [Field; 20] = [0; 20];
-        let mut arrival_hashes: [Field; 20] = [0; 20];
-        let mut arrival_times: [u64; 20] = [0; 20];
-        let mut arrival_artifact_ids: [Field; 20] = [0; 20];
-        let mut arrival_artifact_hashes: [Field; 20] = [0; 20];
-        let mut arrival_artifact_location_hashes: [Field; 20] = [0; 20];
-        let mut original_arrivals_count: u32 = 0;
-        let mut new_planet_events_state = PlanetEvents::zero();
-        let mut new_planet_artifacts_state = PlanetArtifacts::zero();
-        let mut new_arrival_artifact_locations: [ArtifactLocation; 20] =
-            [ArtifactLocation::zero(); 20];
-
-        let new_planet = if planet_is_new {
-            let mut planet = initialize_planet_with_defaults(
-                location_id,
-                perlin,
-                true,
-                timestamp,
-                sender,
-                level,
-                planet_default_stats,
-                world_config,
-                planet_level_thresholds,
-                game_config_core,
-                space_junk_config,
-                planet_type_weights_tier_0,
-                planet_type_weights_tier_1,
-                planet_type_weights_tier_2,
-                planet_type_weights_tier_3,
-            );
-            planet.last_updated = timestamp;
-            planet
-        } else {
-            // Existing planet: validate timestamps, compute hashes, refresh
-            assert_planet_timestamp_freshness(
-                timestamp,
-                planet_state,
-                planet_artifacts_state,
-                planet_events_state,
-                arrivals,
-                arrival_artifacts,
-                arrival_artifact_locations,
-            );
-
-            let (_, _, pa_hash, pe_hash, a_ids, a_hashes, aa_ids, aa_hashes, aal_hashes, arr_count)
-                 = compute_planet_hashes(
-                    location_id,
-                    planet_state,
-                    planet_artifacts_state,
-                    planet_events_state,
-                    arrivals,
-                    arrival_artifacts,
-                    arrival_artifact_locations,
-                );
-            planet_artifacts_state_hash = pa_hash;
-            planet_events_state_hash = pe_hash;
-            arrival_ids = a_ids;
-            arrival_hashes = a_hashes;
-            arrival_times = compute_arrival_times(planet_events_state, arrivals);
-            arrival_artifact_ids = aa_ids;
-            arrival_artifact_hashes = aa_hashes;
-            arrival_artifact_location_hashes = aal_hashes;
-            original_arrivals_count = arr_count;
-
-            let refreshed = refresh_planet_v1(
-                timestamp,
-                location_id,
-                planet_state,
-                planet_events_state,
-                arrivals,
-                arrival_artifacts,
-                arrival_artifact_locations,
-                planet_artifacts_state,
-            );
-
-            let mut refreshed_planet = refreshed.0;
-            new_planet_events_state = refreshed.1;
-            new_planet_artifacts_state = refreshed.2;
-            new_arrival_artifact_locations = refreshed.3;
-
-            refreshed_planet.last_updated = timestamp;
-            new_planet_events_state.last_updated = timestamp;
-            new_planet_artifacts_state.last_updated = timestamp;
-            for i in 0..20 {
-                if i < original_arrivals_count & (arrivals[i].carried_artifact_id != 0) {
-                    new_arrival_artifact_locations[i].last_updated = timestamp;
-                }
-            }
-
-            refreshed_planet
-        };
+        // 5. Create the home planet. planet_state is caller-supplied, so "new" is
+        // only trustworthy because initialize_player_public checks the slot is empty.
+        let mut new_planet = initialize_planet_with_defaults(
+            location_id,
+            perlin,
+            true,
+            timestamp,
+            sender,
+            level,
+            planet_default_stats,
+            world_config,
+            planet_level_thresholds,
+            game_config_core,
+            space_junk_config,
+            planet_type_weights_tier_0,
+            planet_type_weights_tier_1,
+            planet_type_weights_tier_2,
+            planet_type_weights_tier_3,
+        );
+        new_planet.last_updated = timestamp;
 
         // 6. Create new player
         let new_player = Player {
@@ -1251,22 +1168,9 @@ contract Core {
             timestamp,
             config_hashes,
             planet_default_stats_hash,
-            planet_state_hash,
-            planet_artifacts_state_hash,
-            planet_events_state_hash,
-            original_arrivals_count,
-            arrival_ids,
-            arrival_hashes,
-            arrival_times,
-            arrival_artifact_ids,
-            arrival_artifact_hashes,
-            arrival_artifact_location_hashes,
             player_state_hash,
             world_hash,
             new_planet,
-            new_planet_events_state,
-            new_planet_artifacts_state,
-            new_arrival_artifact_locations,
             new_player,
         );
     }
@@ -1279,32 +1183,12 @@ contract Core {
         timestamp: u64,
         config_hashes: [Field; 9],
         planet_default_stats_hash: Field,
-        planet_state_hash: Field,
-        planet_artifacts_state_hash: Field,
-        planet_events_state_hash: Field,
-        original_arrivals_count: u32,
-        arrival_ids: [Field; 20],
-        arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
-        arrival_artifact_ids: [Field; 20],
-        arrival_artifact_hashes: [Field; 20],
-        arrival_artifact_location_hashes: [Field; 20],
         player_state_hash: Field,
         world_hash: Field,
         new_planet: Planet,
-        new_planet_events_state: PlanetEvents,
-        new_planet_artifacts_state: PlanetArtifacts,
-        new_arrival_artifact_locations: [ArtifactLocation; 20],
         new_player: Player,
     ) {
-        let actual_timestamp = self.context.timestamp();
-        assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            original_arrivals_count,
-        );
+        assert_public_timestamp(timestamp, self.context.timestamp());
 
         let config = Config::at(self.storage.config_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
@@ -1333,78 +1217,22 @@ contract Core {
         let planet_events_storage =
             PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
 
-        // Verify unconditionally. A zero hash means "slot must be empty";
-        // writing without this check let a fresh account overwrite (and take over) an
-        // existing planet, e.g. another player's home planet, by passing Planet::zero().
+        // The home planet must be created on an empty slot. Without this check a fresh
+        // account could overwrite (and take over) an existing planet, e.g. another
+        // player's home planet, and it must not inherit stale events or artifacts.
         assert(
-            self.view(planet_storage.verify_hash(location_id, planet_state_hash)),
-            "Planet state hash mismatch",
+            self.view(planet_storage.verify_hash(location_id, 0)),
+            "Home planet must be a new planet",
         );
-
-        if planet_state_hash == 0 {
-            // A brand-new planet must not inherit stale events or artifacts
-            // left at this location.
-            assert(
-                self.view(planet_events_storage.verify_hash(location_id, 0)),
-                "Planet events must be empty for a new planet",
-            );
-            assert(
-                self.view(planet_artifacts_storage.verify_hash(location_id, 0)),
-                "Planet artifacts must be empty for a new planet",
-            );
-            self.call(planet_storage.set(location_id, new_planet));
-        } else {
-            let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
-            let artifact_storage =
-                ArtifactStorage::at(self.storage.artifact_storage_address.read());
-            let artifact_location_storage =
-                ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
-
-            assert(
-                self.view(planet_artifacts_storage.verify_hash(
-                    location_id,
-                    planet_artifacts_state_hash,
-                )),
-                "Planet artifacts state hash mismatch",
-            );
-            assert(
-                self.view(planet_events_storage.verify_hash(location_id, planet_events_state_hash)),
-                "Planet events state hash mismatch",
-            );
-            assert(
-                self.view(arrival_storage.verify_hashes_batch(
-                    arrival_ids,
-                    arrival_hashes,
-                    original_arrivals_count,
-                )),
-                "Arrival hash mismatch",
-            );
-            assert(
-                self.view(artifact_storage.verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_hashes,
-                    original_arrivals_count,
-                )),
-                "Artifact hash mismatch",
-            );
-            assert(
-                self.view(artifact_location_storage.verify_hashes_batch(
-                    arrival_artifact_ids,
-                    arrival_artifact_location_hashes,
-                    original_arrivals_count,
-                )),
-                "Artifact location hash mismatch",
-            );
-
-            self.call(planet_storage.set(location_id, new_planet));
-            self.call(planet_events_storage.set(location_id, new_planet_events_state));
-            self.call(planet_artifacts_storage.set(location_id, new_planet_artifacts_state));
-            self.call(artifact_location_storage.set_arrival_locations_max20(
-                arrival_artifact_ids,
-                new_arrival_artifact_locations,
-                original_arrivals_count,
-            ));
-        }
+        assert(
+            self.view(planet_events_storage.verify_hash(location_id, 0)),
+            "Planet events must be empty for a new planet",
+        );
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(location_id, 0)),
+            "Planet artifacts must be empty for a new planet",
+        );
+        self.call(planet_storage.set(location_id, new_planet));
 
         // Write new player
         self.call(player_storage.set(sender, new_player));
