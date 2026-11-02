@@ -1,11 +1,14 @@
 // Lazy update functions for planets
 // Pure computation functions that update planet state based on time elapsed
 use ::types::storage::arrival::{Arrival, ArrivalType};
+use ::types::storage::artifact::Artifact;
 use ::types::storage::planet::{
     Planet, PlanetArtifacts, PlanetEventMetadata, PlanetEvents, PlanetType,
 };
 
 use ::aztec::protocol::address::AztecAddress;
+
+use crate::planet::apply_spaceship_arrive;
 
 /// Noir port of Solidity `LibLazyUpdate._updateSilver`.
 /// Updates silver for silver-producing planets using linear growth formula.
@@ -164,6 +167,8 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
 /// The caller should read Arrival from storage before calling this function.
 /// The arrivals array should have the same length as events, with each element
 /// corresponding to the event at the same index (or a zero-initialized Arrival if not applicable).
+/// artifacts[i] is the artifact carried by arrivals[i]. A carried spaceship takes effect as soon
+/// as its arrival lands, before any later arrival is settled.
 ///
 /// Returns (updated_planet, events_to_remove, artifacts_to_add)
 pub fn apply_pending_events(
@@ -171,6 +176,7 @@ pub fn apply_pending_events(
     mut planet: Planet,
     planet_events: PlanetEvents,
     arrivals: [Arrival; 20],
+    artifacts: [Artifact; 20],
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
     let mut events_to_remove: PlanetEvents = PlanetEvents::zero();
     let mut artifacts_to_add: PlanetArtifacts = PlanetArtifacts::zero();
@@ -235,6 +241,7 @@ pub fn apply_pending_events(
                         // if the arrival is carrying an artifact
                         artifacts_to_add.ids[artifacts_to_add.count] = new_artifact_id;
                         artifacts_to_add.count = artifacts_to_add.count + 1;
+                        planet = apply_spaceship_arrive(artifacts[earliest_event_index], planet);
                     }
                 } else {
                     should_continue = false;

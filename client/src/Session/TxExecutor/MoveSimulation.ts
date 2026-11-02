@@ -217,16 +217,16 @@ function getArtifactType(art: Record<string, unknown> | ArtifactState): number {
 /**
  * Apply pending events in chronological order (matches lazy_update.apply_pending_events).
  * arrivals[i] corresponds to planet_events.events[i]; only indices < count are valid.
- * Returns indices into arrivals/artifacts for each arrival that carried an artifact (for apply_spaceship_arrive).
+ * artifacts[i] is the artifact carried by arrivals[i]; a carried spaceship applies right after its arrival.
  */
 function applyPendingEvents(
   currentTimestamp: number,
   planet: MutablePlanet,
   planetEvents: PlanetEventsState,
-  arrivals: (Record<string, unknown> | ArrivalState)[]
-): { artifactArrivalIndices: number[] } {
+  arrivals: (Record<string, unknown> | ArrivalState)[],
+  artifacts?: (Record<string, unknown> | ArtifactState)[]
+): void {
   const eventsToRemove = new Set<string>();
-  const artifactArrivalIndices: number[] = [];
   const count = planetEvents.count ?? 0;
   const maxIter = 20;
 
@@ -259,12 +259,11 @@ function applyPendingEvents(
 
     const carried = arrivals[earliestIndex] as Record<string, unknown>;
     const carriedId = toBigint(carried?.carried_artifact_id ?? 0);
-    if (carriedId !== 0n) {
-      artifactArrivalIndices.push(earliestIndex);
+    const art = artifacts?.[earliestIndex];
+    if (carriedId !== 0n && art) {
+      applySpaceshipArrive(planet, getArtifactType(art));
     }
   }
-
-  return { artifactArrivalIndices };
 }
 
 /**
@@ -287,27 +286,9 @@ export function getRefreshedPopulationAndSilver(
   const inputCap = mut.population_cap;
   const eventCount = planetEvents.count ?? 0;
 
-  const { artifactArrivalIndices } = applyPendingEvents(
-    timestampSec,
-    mut,
-    planetEvents,
-    arrivals
-  );
+  applyPendingEvents(timestampSec, mut, planetEvents, arrivals, artifacts);
 
   const popAfterEvents = mut.population;
-
-  if (
-    artifactArrivalIndices.length > 0 &&
-    artifacts &&
-    artifacts.length >= 20
-  ) {
-    for (const j of artifactArrivalIndices) {
-      const art = artifacts[j];
-      if (art) {
-        applySpaceshipArrive(mut, getArtifactType(art));
-      }
-    }
-  }
 
   updatePlanet(timestampSec, mut);
 

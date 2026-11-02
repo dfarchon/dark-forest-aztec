@@ -7,6 +7,7 @@ mod move_decay;
 mod move_decay_vectors;
 mod pirate_cap;
 mod spaceship_activation;
+mod spaceship_timing;
 
 use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::traits::FromField;

@@ -295,27 +295,12 @@ pub fn get_refreshed_planet(
     artifacts: [Artifact; 20],
     planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
-    let res = apply_pending_events(timestamp, planet, planet_events, arrivals);
+    let res = apply_pending_events(timestamp, planet, planet_events, arrivals, artifacts);
 
     planet = res.0;
     let events_to_remove = res.1;
     let artifacts_to_add = res.2;
 
-    // Use fixed array size 20 as compile-time constant for loop bound
-    // Runtime count check is done inside the loop
-    for i in 0..20 {
-        if i < artifacts_to_add.count {
-            let artifact_id = artifacts_to_add.ids[i];
-            let mut artifact: Artifact = Artifact::zero();
-
-            for j in 0..20 {
-                if arrivals[j].carried_artifact_id == artifact_id {
-                    artifact = artifacts[j];
-                }
-            }
-            planet = apply_spaceship_arrive(artifact, planet);
-        }
-    }
     planet = update_planet(timestamp, planet);
 
     (planet, events_to_remove, artifacts_to_add)
