@@ -157,7 +157,9 @@ function toArrivalLike(r: Record<string, unknown> | ArrivalState): ArrivalLike {
 
 /** Noir apply_arrival: same-owner add pop/silver; enemy attack/conquer; wormhole skip. */
 function applyArrival(planet: MutablePlanet, arrival: ArrivalLike): void {
-  if (arrival.player === planet.owner) {
+  if (arrival.pop_arriving === 0n) {
+    // spaceship arrival: no battle, no conquest
+  } else if (arrival.player === planet.owner) {
     planet.population = planet.population + arrival.pop_arriving;
   } else {
     if (arrival.arrival_type === ArrivalTypeWormhole) {

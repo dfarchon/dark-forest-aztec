@@ -250,6 +250,49 @@ fn assert_arrivals_ok(location: Field, planet: Planet) {
     assert(captured.population <= captured.population_cap, "capture exceeded cap");
 }
 
+/// A ship arrival (0 energy) only delivers the ship. Arrivals stored before the fix
+/// carry the controller as `player`, so both zero and real players are checked.
+fn assert_ship_arrival_ok(location: Field, planet: Planet) {
+    let ship_id: Field = 0x5417;
+    let mut arrival = Arrival::zero();
+    arrival.to_planet = location;
+    arrival.arrival_type = ArrivalType::Normal;
+    arrival.carried_artifact_id = ship_id;
+
+    let mut empty = planet;
+    empty.owner = AztecAddress::zero();
+    empty.population = 0;
+    empty.silver = 0;
+
+    let players = [AztecAddress::zero(), enemy(), owner()];
+    for player in players {
+        arrival.player = player;
+
+        let (carried, unowned) = apply_arrival(empty, arrival);
+        assert_eq(carried, ship_id);
+        assert_eq(unowned.owner, AztecAddress::zero());
+        assert_eq(unowned.population, 0);
+        assert_eq(unowned.silver, 0);
+
+        let (carried, owned) = apply_arrival(planet, arrival);
+        assert_eq(carried, ship_id);
+        assert_eq(owned.owner, planet.owner);
+        assert_eq(owned.population, planet.population);
+        assert_eq(owned.silver, planet.silver);
+    }
+}
+
+#[test]
+unconstrained fn ship_arrival_never_conquers_or_adds_energy() {
+    let planet_types: [u8; 2] = [PlanetType::Planet, PlanetType::SilverBank];
+    for planet_type in planet_types {
+        for space_type in SPACE_TYPES {
+            let planet = new_planet(PLAIN_LOCATION, 8, planet_type, space_type);
+            assert_ship_arrival_ok(PLAIN_LOCATION, planet);
+        }
+    }
+}
+
 fn assert_next_upgrade_ok(planet: Planet, branch: u8) {
     let mut ready = planet;
     ready.silver = ready.silver_cap;

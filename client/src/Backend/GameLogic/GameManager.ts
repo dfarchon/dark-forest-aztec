@@ -1810,7 +1810,9 @@ class GameManager extends EventEmitter {
       const energyAfterGrowth = simEnergy;
 
       const isFriendly = a.player === simOwner;
-      if (isFriendly) {
+      if (a.energyArriving === 0) {
+        // spaceship arrival: no battle, no conquest
+      } else if (isFriendly) {
         simEnergy = Math.min(simEnergy + a.energyArriving, energyCap);
       } else {
         const effectiveAttack = (a.energyArriving * 100) / defense;

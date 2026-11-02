@@ -108,35 +108,38 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
     // ArrivalType enum values: Unknown=0, Normal=1, Photoid=2, Wormhole=3
     let wormhole_type: u8 = ArrivalType::Wormhole;
 
-    // checks whether the planet is owned by the player sending ships
-    if arrival.player == planet.owner {
-        // simply increase the population if so
-        planet.population = planet.population + arrival.pop_arriving;
-    } else {
-        if arrival.arrival_type == wormhole_type {
-            // if this is a wormhole arrival to a planet that isn't owned by the initiator of
-            // the move, then don't move any energy
-        } else if planet.population > (arrival.pop_arriving * 100) / planet.defense {
-            // handles if the planet population is bigger than the arriving ships
-            // simply reduce the amount of planet population by the arriving ships
-            planet.population = planet.population - ((arrival.pop_arriving * 100) / planet.defense);
+    // Spaceship arrivals carry 0 energy: they only deliver the ship and must
+    // never battle, conquer, or bump a 0-energy planet to 1.
+    if arrival.pop_arriving != 0 {
+        // checks whether the planet is owned by the player sending ships
+        if arrival.player == planet.owner {
+            // simply increase the population if so
+            planet.population = planet.population + arrival.pop_arriving;
         } else {
-            // handles if the planet population is equal or less the arriving ships
-            // reduce the arriving ships amount with the current population and the
-            // result is the new population of the planet now owned by the attacking
-            // player
-
-            // This is the zero address so that ships moving to an unowned planet with
-            // no barbarians don't cause the planet to be conquered by the ship's controller.
-            planet.owner = if arrival.player == AztecAddress::zero() {
-                planet.owner
+            if arrival.arrival_type == wormhole_type {
+                // if this is a wormhole arrival to a planet that isn't owned by the initiator of
+                // the move, then don't move any energy
+            } else if planet.population > (arrival.pop_arriving * 100) / planet.defense {
+                // handles if the planet population is bigger than the arriving ships
+                // simply reduce the amount of planet population by the arriving ships
+                planet.population =
+                    planet.population - ((arrival.pop_arriving * 100) / planet.defense);
             } else {
-                arrival.player
-            };
-            planet.population = arrival.pop_arriving - ((planet.population * planet.defense) / 100);
-            if planet.population == 0 {
-                // make sure pop is never 0
-                planet.population = 1;
+                // handles if the planet population is equal or less the arriving ships
+                // reduce the arriving ships amount with the current population and the
+                // result is the new population of the planet now owned by the attacking
+                // player
+                planet.owner = if arrival.player == AztecAddress::zero() {
+                    planet.owner
+                } else {
+                    arrival.player
+                };
+                planet.population =
+                    arrival.pop_arriving - ((planet.population * planet.defense) / 100);
+                if planet.population == 0 {
+                    // make sure pop is never 0
+                    planet.population = 1;
+                }
             }
         }
     }

@@ -520,7 +520,7 @@ contract Move {
             );
         }
 
-        let mut args: DFPMoveArgs = DFPMoveArgs {
+        let args: DFPMoveArgs = DFPMoveArgs {
             old_loc: source_loc,
             new_loc: target_loc,
             max_dist,
@@ -543,10 +543,6 @@ contract Move {
         } else {
             false
         };
-
-        if is_spaceship_move {
-            args.sender = AztecAddress::zero();
-        }
 
         // Check move validity
         if is_spaceship_move {
@@ -726,7 +722,12 @@ contract Move {
         // Create the new arrival (id is a placeholder; allocated in move_public)
         let new_arrival = Arrival {
             id: 0,
-            player: sender,
+            // Ship arrivals belong to no player, so they never count as the controller's attack.
+            player: if is_spaceship_move {
+                AztecAddress::zero()
+            } else {
+                sender
+            },
             from_planet: source_loc,
             to_planet: target_loc,
             pop_arriving,

@@ -205,7 +205,9 @@ export const arrive = (
   // apply energy
   const { energyArriving } = arrival;
 
-  if (arrival.player !== toPlanet.owner) {
+  if (energyArriving === 0) {
+    // spaceship arrival: no battle, no conquest
+  } else if (arrival.player !== toPlanet.owner) {
     if (arrival.arrivalType === ArrivalType.Wormhole) {
       // if this is a wormhole arrival to a planet that isn't owned by the initiator of
       // the move, then don't move any energy
