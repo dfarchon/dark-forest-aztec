@@ -76,6 +76,13 @@ const getSilverOverTime = (
 };
 
 /**
+ * Matches Noir lazy_update.is_population_capped: unowned planets keep their
+ * space-type-buffed pirates above energyCap, except quasars. Titans never cap pirates.
+ */
+const isEnergyCapped = (planet: Planet): boolean =>
+  hasOwner(planet) || planet.planetType === PlanetType.SILVER_BANK;
+
+/**
  * Linear energy growth (matches Noir lazy_update.update_population).
  * Contract uses: population_gained = population_growth * time_diff;
  * new_population = min(population + population_gained, population_cap)
@@ -84,22 +91,16 @@ const getEnergyAtTime = (planet: Planet, atTimeMillis: number): number => {
   if (planet.energy === 0) {
     return 0;
   }
-  if (!hasOwner(planet)) {
-    return planet.energy;
-  }
 
   let energy = planet.energy;
-  if (planet.pausers === 0 && energy < planet.energyCap) {
+  if (hasOwner(planet) && planet.pausers === 0 && energy < planet.energyCap) {
     const timeElapsed = Math.floor(atTimeMillis / 1000) - planet.lastUpdated;
     const energyGained = planet.energyGrowth * timeElapsed;
     energy = Math.min(energy + energyGained, planet.energyCap);
   }
 
-  // SilverBank and paused planets: cap at energyCap (no decay when growth is 0)
-  if (planet.planetType === PlanetType.SILVER_BANK || planet.pausers > 0) {
-    if (energy > planet.energyCap) {
-      return planet.energyCap;
-    }
+  if (isEnergyCapped(planet) && energy > planet.energyCap) {
+    return planet.energyCap;
   }
 
   return energy;
@@ -122,8 +123,8 @@ export const updatePlanetToTime = (
       planet.lastUpdated * 1000,
       atTimeMillis
     );
-    planet.energy = getEnergyAtTime(planet, atTimeMillis);
   }
+  planet.energy = getEnergyAtTime(planet, atTimeMillis);
 
   planet.lastUpdated = Math.floor(atTimeMillis / 1000);
 
@@ -245,7 +246,7 @@ export const arrive = (
     toPlanet.energy += energyArriving;
   }
 
-  if (toPlanet.energy > toPlanet.energyCap) {
+  if (isEnergyCapped(toPlanet) && toPlanet.energy > toPlanet.energyCap) {
     toPlanet.energy = toPlanet.energyCap;
   }
 

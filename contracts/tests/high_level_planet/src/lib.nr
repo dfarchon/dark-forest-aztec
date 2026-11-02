@@ -5,6 +5,7 @@
 //! below 16 double cap, growth, range, speed, and defense (`is_*_boost`).
 mod move_decay;
 mod move_decay_vectors;
+mod pirate_cap;
 mod spaceship_activation;
 
 use ::aztec::protocol::address::AztecAddress;

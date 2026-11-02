@@ -69,20 +69,17 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
     }
     // unowned planet doesn't increase in population
 
-    // quasars (SilverBank) have 0 energy growth, so they have 0 energy decay as well
-    // so don't allow them to become overful
-    // if (planet.planet_type == PlanetType::SilverBank) | (planet.pausers > 0) {
-    //     if planet.population > planet.population_cap {
-    //         planet.population = planet.population_cap;
-    //     }
-    // }
-
-    // If planet.population exceeds population_cap, cap it to population_cap
-    if planet.population > planet.population_cap {
+    if is_population_capped(planet) & (planet.population > planet.population_cap) {
         planet.population = planet.population_cap;
     }
 
     planet
+}
+
+/// Unowned planets keep their space-type-buffed pirates above `population_cap`,
+/// except quasars (SilverBank). A Titan must not weaken pirates, so `pausers` is ignored.
+pub fn is_population_capped(planet: Planet) -> bool {
+    (planet.owner != AztecAddress::zero()) | (planet.planet_type == PlanetType::SilverBank)
 }
 
 /// Noir port of Solidity `LibLazyUpdate.updatePlanet`.
@@ -144,7 +141,7 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
         }
     }
 
-    if planet.population > planet.population_cap {
+    if is_population_capped(planet) & (planet.population > planet.population_cap) {
         planet.population = planet.population_cap;
     }
 
