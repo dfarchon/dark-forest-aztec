@@ -89,6 +89,7 @@ pub fn is_population_capped(planet: Planet) -> bool {
 /// Updates planet population and silver based on time elapsed.
 /// This is the main function to call when updating a planet's state.
 pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
+    assert(update_to_time >= planet.last_updated, "Cannot update planet to an earlier time");
     planet = update_population(update_to_time, planet);
 
     if planet.planet_type == PlanetType::SilverMine {

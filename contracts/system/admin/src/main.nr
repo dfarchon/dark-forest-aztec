@@ -271,7 +271,7 @@ contract Admin {
 
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
 
-        let mut new_planet = if !planet_state_is_initialized {
+        let new_planet = if !planet_state_is_initialized {
             let mut planet: Planet = initialize_planet_with_defaults(
                 location_id,
                 perlin,
@@ -293,24 +293,17 @@ contract Admin {
             planet.silver = planet.silver_cap;
             planet.population = planet.population_cap;
             planet.owner = new_owner;
+            planet.last_updated = timestamp;
 
             planet
         } else {
-            assert(
-                timestamp >= planet_state.last_updated,
-                "Timestamp must be >= planet's last_updated",
-            );
-
+            // Pending arrivals may already be due. Moving last_updated past them without
+            // settling would make every later refresh underflow, so only the owner changes.
             let mut new_planet_state = planet_state;
             new_planet_state.owner = new_owner;
-            new_planet_state.population = new_planet_state.population_cap;
-            new_planet_state.silver = new_planet_state.silver_cap;
-            new_planet_state.last_updated = timestamp;
 
             new_planet_state
         };
-
-        new_planet.last_updated = timestamp;
 
         // Pass hashes and computed results to public for verification and storage
         self.enqueue_self.safe_set_owner_public(
