@@ -117,6 +117,10 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
             // simply increase the population if so
             planet.population = planet.population + arrival.pop_arriving;
         } else {
+            assert(
+                (arrival.arrival_type == wormhole_type) | (planet.defense != 0),
+                "Planet defense is 0",
+            );
             if arrival.arrival_type == wormhole_type {
                 // if this is a wormhole arrival to a planet that isn't owned by the initiator of
                 // the move, then don't move any energy
