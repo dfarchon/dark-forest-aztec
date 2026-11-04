@@ -14,11 +14,10 @@ export interface WalletManagerConfig {
   nodeUrl: string;
   storagePrefix?: string;
   balancePollIntervalMs?: number;
-  /** When enabled, use SponsoredFPC/SponsoredFeePaymentMethod for fees (local dev convenience). */
+  /** When enabled, use the project's Sponsored FPC for transaction fees. */
   sponsorMode?: boolean;
   /**
-   * Optional SponsoredFPC Aztec address (see `getEffectiveSponsoredFpcAddressOverride()`).
-   * When unset, uses canonical instance from `SPONSORED_FPC_SALT`.
+   * Deployed project Sponsored FPC address. Required when sponsorMode is enabled.
    */
   sponsoredFpcAddressOverride?: string;
   /** HTTP base URL for native accelerator (host:port), e.g. from getEffectiveProverUrl(). */

@@ -18,7 +18,6 @@ import {
   type NoWait,
   type SendInteractionOptions,
 } from "@aztec-labs/aztec.js/contracts";
-import { SponsoredFeePaymentMethod } from "@aztec-labs/aztec.js/fee";
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { waitForTx } from "@aztec-labs/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
@@ -39,6 +38,7 @@ import {
 } from "../../config/env";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
+import { SponsoredFpcSender } from "../SponsoredFpc/SponsoredFpcSender";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
@@ -122,6 +122,7 @@ export class TxExecutor {
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
   private readonly chainClock: ChainClock;
+  private readonly sponsoredFpc: SponsoredFpcSender;
 
   private readonly beforeQueued?: BeforeQueued;
   private readonly beforeTransaction?: BeforeTransaction;
@@ -151,6 +152,7 @@ export class TxExecutor {
     );
 
     const wallet = walletManager.getWallet();
+    this.sponsoredFpc = new SponsoredFpcSender(walletManager);
     this.contractResolver = new ContractResolver(wallet);
 
     this.stateResolver = new StateResolver(
@@ -372,23 +374,12 @@ export class TxExecutor {
             }
           }
         }
-        const sendOptsNoWait = useSponsoredFpc
-          ? ({
-              from: this.walletManager.getActiveAddress()!,
-              fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                  sponsoredFpcAddress!
-                ),
-              },
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>)
-          : ({
-              from: this.walletManager.getActiveAddress()!,
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>);
+        const sendOptsNoWait = {
+          from: this.walletManager.getActiveAddress()!,
+          wait: NO_WAIT,
+        } satisfies SendInteractionOptions<NoWait>;
         const simulateOpts = {
           from: sendOptsNoWait.from,
-          fee: sendOptsNoWait.fee,
         };
 
         // 5. Submit — send({ wait: NO_WAIT }) returns TxSendResultImmediate (txHash + offchain output)
@@ -432,12 +423,24 @@ export class TxExecutor {
           throw simErr;
         }
 
-        const sendResult = (await timeout(
-          invocation.send(sendOptsNoWait),
-          TX_SUBMIT_TIMEOUT,
-          `tx request ${tx.id} failed to submit: timed out`
-        )) as unknown as { txHash: TxHash };
-        const submitted: TxHash = sendResult.txHash;
+        const submitted: TxHash = useSponsoredFpc
+          ? await timeout(
+              this.sponsoredFpc.send(
+                contract,
+                method,
+                contractArgs,
+                this.walletManager.getActiveAddress()!
+              ),
+              TX_SUBMIT_TIMEOUT,
+              `sponsored tx request ${tx.id} failed to submit: timed out`
+            )
+          : (
+              (await timeout(
+                invocation.send(sendOptsNoWait),
+                TX_SUBMIT_TIMEOUT,
+                `tx request ${tx.id} failed to submit: timed out`
+              )) as unknown as { txHash: TxHash }
+            ).txHash;
 
         // 6. Submit state — v0.6 lines 376-383
         tx.state = "Submit";

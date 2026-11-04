@@ -29,6 +29,7 @@
     "@aztec-labs/noir-contracts.js": "6.0.0",
     "@aztec-labs/simulator": "6.0.0",
     "@aztec-labs/wallets": "6.0.0",
+    "@dfarchon/sponsored-fpc": "github:dfarchon/sponsored-fpc#1443403a2a35f6f387c4f03ca339e5dae9b90d8e",
     "@dfpunk/constants": "workspace:*",
     "@dfpunk/contracts": "workspace:*",
     "@dfpunk/events": "workspace:*",

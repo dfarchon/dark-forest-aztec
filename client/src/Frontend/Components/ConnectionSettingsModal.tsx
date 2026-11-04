@@ -187,9 +187,15 @@ export function ConnectionSettingsModal({
       return;
     }
     const sponsorTrimmed = sponsoredFpcInput.trim();
-    if (sponsorMode && useSponsoredFpc && sponsorTrimmed.length > 0) {
+    const effectiveSponsor =
+      sponsorTrimmed || getSponsoredFpcAddressFromEnv()?.trim() || "";
+    if (sponsorMode && useSponsoredFpc && effectiveSponsor.length === 0) {
+      setSaveMessage("error");
+      return;
+    }
+    if (sponsorMode && useSponsoredFpc) {
       try {
-        AztecAddress.fromStringUnsafe(sponsorTrimmed);
+        AztecAddress.fromStringUnsafe(effectiveSponsor);
       } catch {
         setSaveMessage("error");
         return;
@@ -322,13 +328,13 @@ export function ConnectionSettingsModal({
                   setSponsoredFpcInput((e.target as HTMLInputElement).value)
                 }
                 placeholder={
-                  getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
+                  getSponsoredFpcAddressFromEnv() ?? "Required Aztec address"
                 }
                 style={{ width: "100%", marginBottom: 7 }}
               />
               <FeePaymentHelp style={{ marginBottom: 0 }}>
-                Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code> or
-                the canonical instance. Address changes apply after refresh.
+                Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code>.
+                Address changes apply after refresh.
               </FeePaymentHelp>
             </FeePaymentDetails>
           ) : (
@@ -374,7 +380,7 @@ export function ConnectionSettingsModal({
         {saveMessage === "error" && (
           <Text style={{ color: dfstyles.colors.dfred, marginBottom: 8 }}>
             {sponsorMode
-              ? "Please enter valid HTTP(S) URLs and a valid Aztec SponsoredFPC address (or leave sponsor empty)."
+              ? "Please enter valid HTTP(S) URLs and configure a valid project Sponsored FPC address."
               : "Please enter valid HTTP(S) URLs."}
           </Text>
         )}
