@@ -170,41 +170,6 @@ contract ArtifactValut {
         }
     }
 
-    /// Noir port of Solidity `DFArtifactFacet.createArtifact`
-    #[external("public")]
-    fn create_artifact(args: DFTCreateArtifactArgs) {
-        self.internal.assert_admin();
-
-        let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
-        let artifact_location_storage =
-            ArtifactLocationStorage::at(self.storage.artifact_location_storage_address.read());
-
-        let timestamp = self.context.timestamp();
-
-        let artifact = Artifact {
-            planet_discovered_on: args.planet_id,
-            rarity: args.rarity,
-            planet_biome: args.biome,
-            minted_at_timestamp: timestamp,
-            discoverer: args.discoverer,
-            artifact_type: args.artifact_type,
-            activations: 0,
-            last_activated: 0,
-            last_deactivated: 0,
-            wormhole_to: 0 as Field,
-            owner: AztecAddress::zero(),
-            controller: args.controller,
-            last_updated: timestamp,
-        };
-
-        // By default the artifact is on the planet (not in transit).
-        let artifact_location =
-            ArtifactLocation { planet_id: args.planet_id, voyage_id: 0, last_updated: timestamp };
-
-        self.call(artifact_storage.set(args.id, artifact));
-        self.call(artifact_location_storage.set(args.id, artifact_location));
-    }
-
     /// Noir port of Solidity `DFArtifactFacet.updateArtifact`
     #[external("public")]
     fn update_artifact(id: Field, artifact: Artifact, location: ArtifactLocation) {
