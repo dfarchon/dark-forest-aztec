@@ -12,7 +12,7 @@ contract ArtifactAction {
     use ::types::storage::{
         arrival::Arrival,
         artifact::{Artifact, ArtifactLocation, ArtifactType},
-        planet::{Planet, PlanetArtifacts, PlanetEvents, PlanetType},
+        planet::{Planet, PlanetArtifacts, PlanetEvents},
         player::Player,
         world::World,
     };
@@ -31,7 +31,7 @@ contract ArtifactAction {
     };
 
     use ::libs::artifact_utils::{
-        artifact_from_create_args, assert_can_activate_spaceship, contains_gear,
+        apply_crescent, artifact_from_create_args, assert_can_activate_spaceship, contains_gear,
         create_and_place_spaceship, is_spaceship,
     };
 
@@ -43,7 +43,7 @@ contract ArtifactAction {
         compute_planet_state_hash, compute_world_hash,
     };
     use ::libs::game_utils::{
-        _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
+        _buff_planet, _debuff_planet, _get_biome, _get_upgrade_for_artifact,
         _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
         artifact_rarity_from_planet_level, assert_no_other_artifact_activated, is_activated,
         is_artifact_on_planet,
@@ -317,21 +317,12 @@ contract ArtifactAction {
             new_artifact.last_activated = timestamp;
             new_artifact.last_deactivated = timestamp;
 
-            if new_planet.silver == 0 {
-                new_planet.silver = 1;
-
-                let default_planet = _default_planet(
-                    location_id,
-                    new_planet.planet_level,
-                    PlanetType::SilverMine,
-                    new_planet.space_type,
-                    world_config.time_factor_hundredths,
-                    planet_default_stats,
-                );
-
-                new_planet.silver_growth = default_planet.silver_growth;
-            }
-            new_planet.planet_type = PlanetType::SilverMine;
+            new_planet = apply_crescent(
+                new_planet,
+                location_id,
+                world_config.time_factor_hundredths,
+                planet_default_stats,
+            );
         } else {
             // activateNonSpaceshipArtifact
             assert(

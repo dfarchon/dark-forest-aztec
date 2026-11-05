@@ -1,6 +1,8 @@
+use crate::game_utils::_default_planet;
 use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::hash::poseidon2_hash;
 use ::types::args::DFTCreateArtifactArgs;
+use ::types::config::default_stats::PlanetDefaultStats;
 use ::types::config::upgrade::Upgrade;
 use ::types::storage::arrival::Arrival;
 use ::types::storage::artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType};
@@ -79,6 +81,49 @@ pub fn assert_can_activate_spaceship(artifact: Artifact, planet: Planet, sender:
     );
     assert(planet.owner == AztecAddress::zero(), "can only activate crescent on unowned planets");
     assert(planet.planet_level >= 1, "planet level must be more than one");
+}
+
+/// Turns an unowned planet into a silver mine using the default mine of the same
+/// location, level, and space type. Diverges from Dark Forest v0.6, which copied
+/// `silverGrowth` only when `silver == 0` and left cap and defense unchanged.
+///
+/// Growth, cap, and defense are taken from that default mine. They already include
+/// location boosts, space-type multipliers, and the mine's cap doubling and defense
+/// halving, so they must not be applied again on top of the planet's current stats.
+/// A whale already on the planet (`silver_gro_doublers > 0`) doubled a zero growth
+/// rate when it arrived; double the copied rate once so its departure does not halve it.
+/// Existing silver is kept. Empty planets are seeded with 1. Silver above the new cap
+/// is clamped. Population, range, speed, and owner stay as they are.
+pub fn apply_crescent(
+    mut planet: Planet,
+    location_id: Field,
+    time_factor_hundredths: u16,
+    planet_default_stats: PlanetDefaultStats,
+) -> Planet {
+    let default_planet = _default_planet(
+        location_id,
+        planet.planet_level,
+        PlanetType::SilverMine,
+        planet.space_type,
+        time_factor_hundredths,
+        planet_default_stats,
+    );
+
+    planet.silver_growth = default_planet.silver_growth;
+    planet.silver_cap = default_planet.silver_cap;
+    planet.defense = default_planet.defense;
+    if planet.silver_gro_doublers > 0 {
+        planet.silver_growth *= 2;
+    }
+    if planet.silver == 0 {
+        planet.silver = 1;
+    }
+    if planet.silver > planet.silver_cap {
+        planet.silver = planet.silver_cap;
+    }
+    planet.planet_type = PlanetType::SilverMine;
+
+    planet
 }
 
 /// Noir port of Solidity `LibGameUtils.activateNonSpaceshipArtifact`.
