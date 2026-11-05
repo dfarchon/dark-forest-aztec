@@ -31,7 +31,8 @@ contract ArtifactFind {
     };
 
     use ::libs::artifact_utils::{
-        artifact_from_create_args, contains_gear, create_and_place_spaceship, is_spaceship,
+        artifact_from_create_args, assert_token_mint_open, contains_gear,
+        create_and_place_spaceship, is_spaceship,
     };
 
     use ::libs::batch_utils::{
@@ -228,6 +229,10 @@ contract ArtifactFind {
 
         let sender = self.msg_sender();
         assert(!world.paused, "Game is paused");
+        // Action time must be before the mint deadline. `find_artifact_public` checks
+        // block time against the same stored config, so a timestamp up to 300s early
+        // cannot keep minting open after the deadline.
+        assert_token_mint_open(timestamp, artifacts_config.token_mint_end_timestamp);
 
         assert_planet_timestamp_freshness(
             timestamp,
@@ -579,6 +584,9 @@ contract ArtifactFind {
             self.view(config.verify_artifacts_config_hash(artifacts_config_hash)),
             "artifacts config hash mismatch",
         );
+        // v0.6 `notTokenEnded` compares `block.timestamp`, not the caller timestamp.
+        let artifacts_config = self.view(config.get_artifacts_config());
+        assert_token_mint_open(actual_timestamp, artifacts_config.token_mint_end_timestamp);
 
         let sender = new_planet.owner;
         assert(self.view(player_storage.verify_hash(sender, player_hash)), "player hash mismatch");

@@ -8,6 +8,12 @@ use ::types::storage::arrival::Arrival;
 use ::types::storage::artifact::{Artifact, ArtifactLocation, ArtifactRarity, ArtifactType};
 use ::types::storage::planet::{Biome, Planet, PlanetArtifacts, PlanetEvents, PlanetType, SpaceType};
 
+/// Dark Forest `notTokenEnded`: minting is open only while `timestamp` is strictly
+/// before `token_mint_end_timestamp`. Equal to the deadline is closed.
+pub fn assert_token_mint_open(timestamp: u64, token_mint_end_timestamp: u64) {
+    assert(timestamp < token_mint_end_timestamp, "Token mint period has ended");
+}
+
 /// Noir port of Solidity `LibGameUtils.checkFindArtifact`.
 pub fn check_find_artifact(
     planet: Planet,
