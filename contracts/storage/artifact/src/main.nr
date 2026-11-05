@@ -63,6 +63,7 @@ pub contract ArtifactStorage {
     #[external("public")]
     fn set(id: Field, state: Artifact) {
         self.internal.assert_authorized();
+        assert(id != 0, "artifact id must not be 0");
         let block_number = self.context.block_number();
         let (root, log) = ArtifactUpdate::encode_update(id, block_number, state);
         if self.storage.state_roots.at(id).read() != root {

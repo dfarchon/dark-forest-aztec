@@ -1,4 +1,4 @@
-use crate::game_utils::_default_planet;
+use crate::game_utils::{_default_planet, assert_nonzero_artifact_id};
 use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::hash::poseidon2_hash;
 use ::types::args::DFTCreateArtifactArgs;
@@ -51,6 +51,7 @@ pub fn create_and_place_spaceship(
     assert(ship_type <= ArtifactType::ShipTitan, "ship type out of range");
 
     let artifact_id = poseidon2_hash([planet_id, miscNonce as Field]);
+    assert_nonzero_artifact_id(artifact_id);
 
     let create_artifact_args = DFTCreateArtifactArgs {
         id: artifact_id,

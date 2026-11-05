@@ -45,7 +45,7 @@ contract ArtifactFind {
     use ::libs::game_utils::{
         _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
         _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
-        artifact_rarity_from_planet_level, is_artifact_on_planet,
+        artifact_rarity_from_planet_level, assert_nonzero_artifact_id, is_artifact_on_planet,
     };
     use ::libs::planet::{refresh_planet_v1, refresh_planet_v2};
 
@@ -338,6 +338,7 @@ contract ArtifactFind {
         let header = get_block_header_at(new_planet.prospected_block_number, *self.context);
         let block_hash: Field = header.hash();
         let artifact_seed = poseidon2_hash([location_id, block_hash]);
+        assert_nonzero_artifact_id(artifact_seed);
 
         let (artifact_type, level_bonus) =
             _random_artifact_type_and_level_bonus(artifact_seed, biome, new_planet.space_type);

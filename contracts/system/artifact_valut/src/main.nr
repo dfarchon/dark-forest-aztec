@@ -31,7 +31,8 @@ contract ArtifactValut {
         compute_world_hash,
     };
     use ::libs::game_utils::{
-        _put_artifact_on_planet, _take_artifact_off_planet, is_artifact_in_inventory,
+        _put_artifact_on_planet, _take_artifact_off_planet, assert_nonzero_artifact_id,
+        is_artifact_in_inventory,
     };
     use ::libs::planet::{apply_spaceship_arrive, refresh_planet_v1};
 
@@ -1006,6 +1007,7 @@ contract ArtifactValut {
     #[external("public")]
     fn admin_give_artifact(args: DFTCreateArtifactArgs, planet_artifacts_state: PlanetArtifacts) {
         self.internal.assert_admin();
+        assert_nonzero_artifact_id(args.id);
 
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
         let artifact_location_storage =
@@ -1076,6 +1078,7 @@ contract ArtifactValut {
         planet_artifacts_state: PlanetArtifacts,
     ) {
         self.internal.assert_admin();
+        assert_nonzero_artifact_id(args.id);
 
         assert(is_spaceship(args.artifact_type), "artifact type must be a spaceship");
 

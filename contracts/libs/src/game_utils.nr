@@ -460,6 +460,11 @@ pub fn artifact_rarity_from_planet_level(planet_level: u8) -> u8 {
     }
 }
 
+/// Id 0 is the empty-slot sentinel. It is not a valid artifact id.
+pub fn assert_nonzero_artifact_id(artifact_id: Field) {
+    assert(artifact_id != 0, "artifact id must not be 0");
+}
+
 /// Noir port of Solidity `LibGameUtils._putArtifactOnPlanet`.
 ///
 /// planets can have multiple artifacts on them. this function updates all the
@@ -471,6 +476,7 @@ pub fn _put_artifact_on_planet(
     location_id: Field,
     mut planet_artifacts: PlanetArtifacts,
 ) -> (Field, ArtifactLocation, Field, PlanetArtifacts) {
+    assert_nonzero_artifact_id(artifact_id);
     artifact_location.planet_id = location_id;
     artifact_location.voyage_id = 0;
 
@@ -568,7 +574,10 @@ pub fn assert_no_other_artifact_activated(
 }
 
 mod tests {
-    use super::{assert_no_other_artifact_activated, is_artifact_in_inventory};
+    use super::{
+        _put_artifact_on_planet, assert_no_other_artifact_activated, assert_nonzero_artifact_id,
+        is_artifact_in_inventory,
+    };
     use ::types::storage::{artifact::{Artifact, ArtifactLocation}, planet::PlanetArtifacts};
 
     fn active_artifact() -> Artifact {
@@ -616,6 +625,26 @@ mod tests {
         let mut arts = [Artifact::zero(); 20];
         arts[2] = active_artifact();
         assert_no_other_artifact_activated(22, state, arts, 200);
+    }
+
+    #[test(should_fail_with = "artifact id must not be 0")]
+    fn mint_and_admin_give_reject_artifact_id_zero() {
+        assert_nonzero_artifact_id(0);
+    }
+
+    #[test(should_fail_with = "artifact id must not be 0")]
+    fn put_rejects_artifact_id_zero() {
+        let _ = _put_artifact_on_planet(0, ArtifactLocation::zero(), 1, PlanetArtifacts::zero());
+    }
+
+    #[test]
+    fn put_appends_nonzero_artifact_id() {
+        let result =
+            _put_artifact_on_planet(7, ArtifactLocation::zero(), 3, PlanetArtifacts::zero());
+        let state = result.3;
+        assert(state.count == 1);
+        assert(state.ids[0] == 7);
+        assert(result.1.planet_id == 3);
     }
 
     #[test]
