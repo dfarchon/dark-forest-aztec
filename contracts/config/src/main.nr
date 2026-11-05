@@ -88,6 +88,13 @@ pub contract Config {
     }
 
     #[external("public")]
+    fn transfer_admin(new_admin: AztecAddress) {
+        self.internal.assert_admin();
+        assert(new_admin != AztecAddress::zero(), "admin must not be zero");
+        self.storage.admin.write(new_admin);
+    }
+
+    #[external("public")]
     fn set_world_config(config: WorldConfig) {
         self.internal.assert_admin();
         self.storage.world_config.write(config);
