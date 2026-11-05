@@ -3305,6 +3305,14 @@ class GameManager extends EventEmitter {
         throw new Error("attempted to move from a planet not owned by player");
       }
 
+      const isShipMove = isSpaceShip(
+        this.getArtifactWithId(artifactMoved)?.artifactType
+      );
+      const newPlanet = this.entityStore.getPlanetWithId(to);
+      if (!isShipMove && (oldPlanet?.destroyed || newPlanet?.destroyed)) {
+        throw new Error("planet is destroyed");
+      }
+
       const getArgs = async (): Promise<unknown[]> => {
         const sourceLoc = oldLocation.hash;
         const targetLoc = newLocation.hash;

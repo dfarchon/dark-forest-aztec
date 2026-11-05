@@ -59,7 +59,7 @@ const getSilverOverTime = (
   startTimeMillis: number,
   endTimeMillis: number
 ): number => {
-  if (!hasOwner(planet)) {
+  if (!hasOwner(planet) || planet.destroyed) {
     return planet.silver;
   }
 
@@ -93,7 +93,12 @@ const getEnergyAtTime = (planet: Planet, atTimeMillis: number): number => {
   }
 
   let energy = planet.energy;
-  if (hasOwner(planet) && planet.pausers === 0 && energy < planet.energyCap) {
+  if (
+    hasOwner(planet) &&
+    !planet.destroyed &&
+    planet.pausers === 0 &&
+    energy < planet.energyCap
+  ) {
     const timeElapsed = Math.floor(atTimeMillis / 1000) - planet.lastUpdated;
     const energyGained = planet.energyGrowth * timeElapsed;
     energy = Math.min(energy + energyGained, planet.energyCap);
@@ -199,9 +204,6 @@ export const arrive = (
   );
 
   const prevPlanet = _.cloneDeep(toPlanet);
-  if (toPlanet.destroyed) {
-    return { arrival: arrival, previous: toPlanet, current: toPlanet };
-  }
 
   // apply energy
   const { energyArriving } = arrival;

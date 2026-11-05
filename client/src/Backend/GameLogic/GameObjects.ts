@@ -1581,7 +1581,7 @@ export class GameObjects {
     const g = planet.energyGrowth;
     const t0 = planet.lastUpdated;
 
-    if (g <= 0) return Infinity;
+    if (g <= 0 || planet.destroyed) return Infinity;
     return t0 + (p1 - p0) / g;
   }
 
@@ -1594,7 +1594,7 @@ export class GameObjects {
     planet: Planet,
     percent: number
   ): number | undefined {
-    if (planet.silverGrowth <= 0) {
+    if (planet.silverGrowth <= 0 || planet.destroyed) {
       return undefined;
     }
     const silverTarget = (percent / 100) * planet.silverCap;

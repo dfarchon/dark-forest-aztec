@@ -54,6 +54,7 @@ interface MutablePlanet {
   is_home_planet: boolean;
   energy_gro_doublers: bigint;
   silver_gro_doublers: bigint;
+  destroyed: boolean;
 }
 
 function cloneToMutable(p: PlanetState): MutablePlanet {
@@ -72,12 +73,13 @@ function cloneToMutable(p: PlanetState): MutablePlanet {
     is_home_planet: p.is_home_planet,
     energy_gro_doublers: p.energy_gro_doublers,
     silver_gro_doublers: p.silver_gro_doublers,
+    destroyed: p.destroyed,
   };
 }
 
 /** Noir update_population: linear growth, cap, pausers/SilverBank handling. */
 function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
-  if (planet.owner !== ZERO_ADDRESS) {
+  if (planet.owner !== ZERO_ADDRESS && !planet.destroyed) {
     if (planet.population < planet.population_cap) {
       const timeDiff = BigInt(Math.max(0, updateToTime - planet.last_updated));
       const populationGained = planet.population_growth * timeDiff;
@@ -106,7 +108,11 @@ function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
 /** Noir update_silver: only for SilverMine, linear growth and cap. */
 function updateSilver(updateToTime: number, planet: MutablePlanet): void {
   if (planet.planet_type !== PlanetTypeSilverMine) return;
-  if (planet.owner !== ZERO_ADDRESS && planet.silver < planet.silver_cap) {
+  if (
+    planet.owner !== ZERO_ADDRESS &&
+    !planet.destroyed &&
+    planet.silver < planet.silver_cap
+  ) {
     const timeDiff = BigInt(Math.max(0, updateToTime - planet.last_updated));
     const silverMined = planet.silver_growth * timeDiff;
     const currentSilver = planet.silver + silverMined;
@@ -317,19 +323,27 @@ export interface ValidateMoveForSubmitParams {
   sender: string;
   sourceOwner: string;
   sourceDestroyed: boolean;
+  targetDestroyed: boolean;
 }
 
 /**
  * Validates non-clampable move preconditions (owner, destroyed).
+ * Ships may enter and leave destroyed planets; energy moves may not.
  * Throws with a clear message if validation fails.
  */
 export function validateMoveForSubmit(
   params: ValidateMoveForSubmitParams
 ): void {
-  const { isSpaceshipMove, sender, sourceOwner, sourceDestroyed } = params;
+  const {
+    isSpaceshipMove,
+    sender,
+    sourceOwner,
+    sourceDestroyed,
+    targetDestroyed,
+  } = params;
 
   if (!isSpaceshipMove) {
-    if (sourceDestroyed) {
+    if (sourceDestroyed || targetDestroyed) {
       throw new Error("Planet is destroyed");
     }
     if (sourceOwner !== sender) {

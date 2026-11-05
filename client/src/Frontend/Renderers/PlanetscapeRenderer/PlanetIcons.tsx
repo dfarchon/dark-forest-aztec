@@ -160,8 +160,8 @@ export function PlanetIcons({ planet }: { planet: Planet | undefined }) {
           extraContent={
             <>
               This planet is destroyed. It does not generate energy or silver,
-              all incoming voyages are void, and you cannot send or receive
-              energy from it.
+              and you cannot send or receive energy from it. Ships can still
+              come and go, and voyages already in flight still arrive.
             </>
           }
         >

@@ -25,7 +25,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
         "Can only update silver on silver producing planet",
     );
 
-    if (planet.owner != AztecAddress::zero()) & (planet.pausers == 0) {
+    if (planet.owner != AztecAddress::zero()) & (planet.pausers == 0) & !planet.destroyed {
         if planet.silver < planet.silver_cap {
             let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
             let silver_mined: u128 = planet.silver_growth * time_diff;
@@ -39,7 +39,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
             };
         }
     }
-    // unowned planet doesn't gain silver; paused planet doesn't gain silver
+    // unowned, paused, or destroyed planets don't gain silver
 
     planet
 }
@@ -48,7 +48,7 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Updates population using linear growth formula (similar to silver growth).
 /// Uses simple linear growth instead of exponential formula from ABDKMath64x64.
 pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
-    if planet.owner != AztecAddress::zero() {
+    if (planet.owner != AztecAddress::zero()) & !planet.destroyed {
         // Use linear growth formula similar to silver growth
         if planet.population < planet.population_cap {
             let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
@@ -70,7 +70,7 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
             }
         }
     }
-    // unowned planet doesn't increase in population
+    // unowned or destroyed planets don't increase in population
 
     if is_population_capped(planet) & (planet.population > planet.population_cap) {
         planet.population = planet.population_cap;
@@ -196,7 +196,7 @@ pub fn apply_pending_events(
     for _ in 0..20 {
         if !should_continue {
             // Equivalent to break - do nothing
-        } else if (planet_events.count == 0) | planet.destroyed {
+        } else if planet_events.count == 0 {
             should_continue = false;
         } else {
             // set to the upperbound of u64

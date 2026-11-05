@@ -4,6 +4,7 @@
 //! Stats and multipliers mirror `scripts/bootstrap/classify.ts`. Location bytes 9..13
 //! below 16 double cap, growth, range, speed, and defense (`is_*_boost`).
 mod admin_owner;
+mod destroyed_arrivals;
 mod move_decay;
 mod move_decay_vectors;
 mod pirate_cap;
