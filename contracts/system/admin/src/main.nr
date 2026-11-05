@@ -275,6 +275,7 @@ contract Admin {
         let planet_state_is_initialized: bool = planet_state != Planet::zero();
 
         let new_planet = if !planet_state_is_initialized {
+            assert(location_id != 0, "planet id must not be 0");
             assert(world_config.admin_can_add_planets, "admin can no longer add planets");
 
             let mut planet: Planet = initialize_planet_with_defaults(
@@ -363,6 +364,11 @@ contract Admin {
             "Planet state hash mismatch",
         );
 
+        // Hash 0 is the empty slot. Creating into it must not use the sentinel id.
+        if planet_state_hash == 0 {
+            assert(location_id != 0, "planet id must not be 0");
+        }
+
         self.call(planet_storage.set(location_id, new_planet));
     }
 
@@ -384,6 +390,7 @@ contract Admin {
 
         let sender = self.msg_sender();
         let location_id = args.location;
+        assert(location_id != 0, "planet id must not be 0");
 
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_is_uninitialized: bool =
@@ -434,6 +441,7 @@ contract Admin {
     fn admin_initialize_planet(location_id: Field, perlin: u8, level: u8) {
         self.internal.assert_admin();
         let sender = self.msg_sender();
+        assert(location_id != 0, "planet id must not be 0");
 
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_is_uninitialized: bool =

@@ -266,8 +266,8 @@ contract ArtifactAction {
         let planet_artifact_hashes =
             compute_planet_artifact_hashes(planet_artifacts_state, planet_artifacts);
 
-        // wormhole_to_planet is bound to on-chain state by verify_hash in
-        // activate_artifact_public (zero planet + wormhole_to = 0 for non-wormhole artifacts).
+        // Destination hash. activate_artifact_public checks it only for wormholes.
+        // Other activations pass wormhole_to = 0 and Planet::zero(); that slot is not read.
         let wormhole_to_planet_hash = compute_planet_state_hash(wormhole_to_planet);
 
         let refresh_planet_result = refresh_planet_v2(
@@ -522,13 +522,19 @@ contract ArtifactAction {
             "planet hash mismatch",
         );
 
-        // Verified unconditionally. For non-wormhole activations the caller
-        // passes wormhole_to = 0 and a zero planet (hash 0), and location 0 is always empty,
-        // so this passes without a conditional "skip" branch.
-        assert(
-            self.view(planet_storage.verify_hash(wormhole_to, wormhole_to_planet_hash)),
-            "wormhole destination planet hash mismatch",
-        );
+        // Only a wormhole names a destination. Other activations pass wormhole_to = 0
+        // as "no target"; do not read storage at that sentinel.
+        if new_artifact.artifact_type == ArtifactType::Wormhole {
+            assert(wormhole_to != 0, "you must provide a wormholeTo to activate a wormhole");
+            assert(
+                new_artifact.wormhole_to == wormhole_to,
+                "wormhole destination does not match artifact",
+            );
+            assert(
+                self.view(planet_storage.verify_hash(wormhole_to, wormhole_to_planet_hash)),
+                "wormhole destination planet hash mismatch",
+            );
+        }
 
         // Binds the caller-supplied on-planet artifacts used for the
         // "only one active artifact" check. ids/count come from planet_artifacts_state,
