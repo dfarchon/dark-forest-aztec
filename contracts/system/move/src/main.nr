@@ -786,8 +786,8 @@ contract Move {
             }
         }
 
-        new_source_activated_artifact.last_updated = timestamp;
-        new_source_activated_artifact_location.last_updated = timestamp;
+        // A read-only activated artifact (wormhole, unfired photoid) keeps its
+        // last_updated. The photoid-fire branch above already stamps the burned one.
 
         // Pass hashes and computed results to public for verification and storage
         self.enqueue_self.move_public(
@@ -1103,26 +1103,34 @@ contract Move {
             self.call(artifact_location_storage.set(moved_artifact_id, new_moved_artifact_location));
         }
 
-        // Write back deactivated/burned source activated artifact
+        // Write the source activated artifact only when this move changed it.
+        // A wormhole or an unfired photoid is read for range and must keep its hash,
+        // so a pending proof that included it still verifies. set() emits a public
+        // log even when the stored root is unchanged, so skip the call entirely.
         if source_activated_artifact_id != 0 {
-            self.call(artifact_storage.set(
-                source_activated_artifact_id,
-                new_source_activated_artifact,
-            ));
-
-            // PhotoidCannon and PlanetaryShield are burned on deactivation
-            let is_burn_type = (
-                new_source_activated_artifact.artifact_type == ArtifactType::PhotoidCannon
-            )
-                | (new_source_activated_artifact.artifact_type == ArtifactType::PlanetaryShield);
-
-            let was_deactivated = new_source_activated_artifact.last_deactivated
-                >= new_source_activated_artifact.last_activated;
-            if is_burn_type & was_deactivated {
-                self.call(artifact_location_storage.set(
+            let new_source_activated_artifact_hash =
+                compute_artifact_hash(source_activated_artifact_id, new_source_activated_artifact);
+            if new_source_activated_artifact_hash != source_activated_artifact_hash {
+                self.call(artifact_storage.set(
                     source_activated_artifact_id,
-                    new_source_activated_artifact_location,
+                    new_source_activated_artifact,
                 ));
+
+                // PhotoidCannon and PlanetaryShield are burned on deactivation
+                let is_burn_type = (
+                    new_source_activated_artifact.artifact_type == ArtifactType::PhotoidCannon
+                )
+                    | (new_source_activated_artifact.artifact_type == ArtifactType::PlanetaryShield)
+                    ;
+
+                let was_deactivated = new_source_activated_artifact.last_deactivated
+                    >= new_source_activated_artifact.last_activated;
+                if is_burn_type & was_deactivated {
+                    self.call(artifact_location_storage.set(
+                        source_activated_artifact_id,
+                        new_source_activated_artifact_location,
+                    ));
+                }
             }
         }
     }
