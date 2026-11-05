@@ -8,6 +8,7 @@ mod destroyed_arrivals;
 mod move_decay;
 mod move_decay_vectors;
 mod pirate_cap;
+mod landing_artifact_index;
 mod spaceship_activation;
 mod spaceship_timing;
 mod token_mint;

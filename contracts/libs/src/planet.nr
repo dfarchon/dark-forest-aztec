@@ -352,6 +352,25 @@ pub fn apply_spaceship_depart(artifact: Artifact, mut planet: Planet, timestamp:
     planet
 }
 
+/// Index of the in-range arrival carrying `artifact_id`.
+/// `count` is the event count from before settled events are removed: removal
+/// reorders `PlanetEvents` but leaves `arrivals` in its original order.
+/// Slots at and after `count` are not hash-checked and must not match.
+fn arrival_index_for_artifact(arrivals: [Arrival; 20], artifact_id: Field, count: u32) -> u32 {
+    let mut artifact_loc_idx: u32 = 0;
+    let mut found: bool = false;
+    for j in 0..20 {
+        if (j < count) & !found {
+            if arrivals[j].carried_artifact_id == artifact_id {
+                artifact_loc_idx = j;
+                found = true;
+            }
+        }
+    }
+    assert(found, "landing artifact arrival not found");
+    artifact_loc_idx
+}
+
 /// Noir port of Solidity `LibPlanet.refreshPlanet`.
 /// artifacts[i] and artifact_locations[i] correspond to arrivals[i].carried_artifact_id.
 pub fn refresh_planet_v1(
@@ -406,13 +425,8 @@ pub fn refresh_planet_v1(
     for i in 0..20 {
         if i < artifacts_to_add.count {
             let artifact_id = artifacts_to_add.ids[i];
-
-            let mut artifact_loc_idx: u32 = 0;
-            for j in 0..20 {
-                if arrivals[j].carried_artifact_id == artifact_id {
-                    artifact_loc_idx = j;
-                }
-            }
+            let artifact_loc_idx =
+                arrival_index_for_artifact(arrivals, artifact_id, original_event_count);
             artifact_locations[artifact_loc_idx].voyage_id = 0;
             let res = _put_artifact_on_planet(
                 artifact_id,
@@ -455,6 +469,8 @@ pub fn refresh_planet_v2(
     new_planet = result.0;
     let events_to_remove = result.1;
     let artifacts_to_add = result.2;
+    // Captured before swap-and-pop. The arrival array is not reordered with the events.
+    let original_event_count = planet_events_state.count;
 
     for i in 0..20 {
         if i < events_to_remove.count {
@@ -485,12 +501,8 @@ pub fn refresh_planet_v2(
     for i in 0..20 {
         if i < artifacts_to_add.count {
             let artifact_id = artifacts_to_add.ids[i];
-            let mut artifact_loc_idx: u32 = 0;
-            for j in 0..20 {
-                if arrivals[j].carried_artifact_id == artifact_id {
-                    artifact_loc_idx = j;
-                }
-            }
+            let artifact_loc_idx =
+                arrival_index_for_artifact(arrivals, artifact_id, original_event_count);
             let mut artifact_location = arrival_artifact_locations[artifact_loc_idx];
             artifact_location.voyage_id = 0;
             let res = _put_artifact_on_planet(
