@@ -12,6 +12,7 @@
         "admin:config": "pnpm exec tsx scripts/admin/config.ts",
         "admin:preset": "pnpm exec tsx scripts/admin/preset.ts",
         "admin:tick": "pnpm exec tsx scripts/admin/tick.ts",
+        "admin:transfer-admin": "pnpm exec tsx scripts/admin/transfer-admin.ts",
         "admin:zk-checks": "pnpm exec tsx scripts/admin/zk-checks.ts",
         "bootstrap": "pnpm exec tsx scripts/bootstrap/bootstrap.ts",
         "bootstrap:status": "pnpm exec tsx scripts/bootstrap/status.ts",

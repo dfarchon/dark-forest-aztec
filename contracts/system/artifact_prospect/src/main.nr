@@ -172,6 +172,11 @@ contract ArtifactProspect {
     // ================== UTILITY (UNCONSTRAINED) ==================
 
     #[external("utility")]
+    unconstrained fn get_admin_unconstrained() -> pub AztecAddress {
+        self.storage.admin.read()
+    }
+
+    #[external("utility")]
     unconstrained fn get_all_storage_addresses_unconstrained() -> pub ArtifactFacetSystemStorageAddresses {
         ArtifactFacetSystemStorageAddresses {
             config_storage_address: self.storage.config_storage_address.read(),
