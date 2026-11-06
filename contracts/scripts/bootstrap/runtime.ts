@@ -117,7 +117,7 @@ export function buildBootstrapSteps(
     const artifactAction = requiredContract(contracts, 'ArtifactAction');
     const artifactFind = requiredContract(contracts, 'ArtifactFind');
     const artifactProspect = requiredContract(contracts, 'ArtifactProspect');
-    const artifactValut = requiredContract(contracts, 'ArtifactValut');
+    const artifactVault = requiredContract(contracts, 'ArtifactVault');
 
     const storageByName: Record<StorageContractName, ContractBase> = {
         WorldStorage: requiredContract(contracts, 'WorldStorage'),
@@ -146,7 +146,7 @@ export function buildBootstrapSteps(
         ArtifactAction: artifactAction,
         ArtifactFind: artifactFind,
         ArtifactProspect: artifactProspect,
-        ArtifactValut: artifactValut,
+        ArtifactVault: artifactVault,
     };
     const opts = buildSendOpts(session.deployer, session.feeCtx);
     const simOpts = { from: session.deployer };
@@ -289,7 +289,7 @@ export function buildBootstrapSteps(
         artifactAction,
         artifactFind,
         artifactProspect,
-        artifactValut,
+        artifactVault,
     ] as const;
     const artifactStorageArgs = [
         config.address,

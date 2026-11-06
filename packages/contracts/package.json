@@ -92,10 +92,10 @@
       "import": "./src/artifacts/ArtifactProspect.ts",
       "default": "./src/artifacts/ArtifactProspect.ts"
     },
-    "./artifacts/ArtifactValut": {
-      "types": "./src/artifacts/ArtifactValut.ts",
-      "import": "./src/artifacts/ArtifactValut.ts",
-      "default": "./src/artifacts/ArtifactValut.ts"
+    "./artifacts/ArtifactVault": {
+      "types": "./src/artifacts/ArtifactVault.ts",
+      "import": "./src/artifacts/ArtifactVault.ts",
+      "default": "./src/artifacts/ArtifactVault.ts"
     }
   },
   "main": "src/index.ts",

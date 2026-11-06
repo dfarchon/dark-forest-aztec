@@ -356,7 +356,7 @@ contract ArtifactAction {
                 "this artifact is on a cooldown",
             );
 
-            let mut shoud_deactivate_and_burn = false;
+            let mut should_deactivate_and_burn = false;
 
             new_artifact.last_activated = timestamp;
 
@@ -381,17 +381,17 @@ contract ArtifactAction {
                 );
                 new_planet.population = new_planet.population_cap;
                 new_planet.silver = new_planet.silver_cap;
-                shoud_deactivate_and_burn = true;
+                should_deactivate_and_burn = true;
             } else if new_artifact.artifact_type == ArtifactType::BlackDomain {
                 assert(
                     2 * (new_artifact.rarity as u32) >= (new_planet.planet_level as u32),
                     "artifact is not powerful enough to apply effect to this planet level",
                 );
                 new_planet.destroyed = true;
-                shoud_deactivate_and_burn = true;
+                should_deactivate_and_burn = true;
             }
 
-            if shoud_deactivate_and_burn {
+            if should_deactivate_and_burn {
                 new_artifact.last_deactivated = timestamp;
 
                 let take_artifact_off_planet_result = _take_artifact_off_planet(

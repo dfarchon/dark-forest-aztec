@@ -165,7 +165,7 @@ async function main(): Promise<void> {
                 'ArtifactAction',
                 'ArtifactFind',
                 'ArtifactProspect',
-                'ArtifactValut',
+                'ArtifactVault',
             ] as const
         ).map((name) => ({
             name,

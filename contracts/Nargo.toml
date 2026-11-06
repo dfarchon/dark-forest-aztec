@@ -18,7 +18,7 @@ members = [
     "system/artifact_action",
     "system/artifact_find",
     "system/artifact_prospect",
-    "system/artifact_valut",
+    "system/artifact_vault",
     "system/core",
     "system/move",
     "tests/high_level_planet",

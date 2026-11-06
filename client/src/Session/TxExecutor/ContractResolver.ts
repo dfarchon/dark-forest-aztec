@@ -20,7 +20,7 @@ import { AdminContract } from "@dfpunk/contracts/artifacts/Admin";
 import { ArtifactActionContract } from "@dfpunk/contracts/artifacts/ArtifactAction";
 import { ArtifactFindContract } from "@dfpunk/contracts/artifacts/ArtifactFind";
 import { ArtifactProspectContract } from "@dfpunk/contracts/artifacts/ArtifactProspect";
-import { ArtifactValutContract } from "@dfpunk/contracts/artifacts/ArtifactValut";
+import { ArtifactVaultContract } from "@dfpunk/contracts/artifacts/ArtifactVault";
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { CoreContract } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContract } from "@dfpunk/contracts/artifacts/Move";
@@ -69,7 +69,7 @@ export class ContractResolver {
       AztecAddress.fromStringUnsafe(ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );
-    this.artifactVault = ArtifactValutContract.at(
+    this.artifactVault = ArtifactVaultContract.at(
       AztecAddress.fromStringUnsafe(ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS),
       wallet
     );

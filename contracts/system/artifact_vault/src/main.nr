@@ -1,5 +1,5 @@
 #[::macros::world_contract]
-contract ArtifactValut {
+contract ArtifactVault {
     use ::aztec::{
         macros::{functions::{external, initializer, internal, only_self, view}, storage::storage},
         protocol::address::AztecAddress,
@@ -814,7 +814,6 @@ contract ArtifactValut {
             ArtifactType::ShipTitan,
         ];
 
-        let mut nonce: u32 = 1;
         for i in 0..5 {
             if ship_enabled[i] {
                 let result = create_and_place_spaceship(location_id, sender, ship_types[i], nonce);

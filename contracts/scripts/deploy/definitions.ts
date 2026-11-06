@@ -123,10 +123,10 @@ export const DEPLOY_DEFINITIONS: DeployDefinition[] = [
         'ArtifactProspectContract'
     ),
     def(
-        'ArtifactValut',
+        'ArtifactVault',
         'ARTIFACT_VAULT_SYSTEM',
-        'ArtifactValut.ts',
-        'ArtifactValutContract'
+        'ArtifactVault.ts',
+        'ArtifactVaultContract'
     ),
 ];
 

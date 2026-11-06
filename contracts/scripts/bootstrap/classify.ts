@@ -227,10 +227,10 @@ export const CONFIGURE_STEP_META: readonly ConfigureStepMeta[] = [
         isConfig: false,
     },
     {
-        id: 'ArtifactValut.set_storage',
+        id: 'ArtifactVault.set_storage',
         index: 29,
         phase: 4,
-        label: 'ArtifactValut.set_all_storage_addresses()',
+        label: 'ArtifactVault.set_all_storage_addresses()',
         isConfig: false,
     },
     {

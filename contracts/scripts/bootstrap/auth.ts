@@ -6,7 +6,7 @@ export type SystemContractName =
     | 'ArtifactAction'
     | 'ArtifactFind'
     | 'ArtifactProspect'
-    | 'ArtifactValut';
+    | 'ArtifactVault';
 
 export type StorageContractName =
     | 'WorldStorage'
@@ -48,7 +48,7 @@ export const ARTIFACT_SYSTEM_NAMES: readonly SystemContractName[] = [
     'ArtifactAction',
     'ArtifactFind',
     'ArtifactProspect',
-    'ArtifactValut',
+    'ArtifactVault',
 ] as const;
 
 export function bootstrapExpectsAuthorized(

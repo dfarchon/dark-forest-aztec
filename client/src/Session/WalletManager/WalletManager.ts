@@ -62,7 +62,7 @@ import { ArtifactFindContractArtifact } from "@dfpunk/contracts/artifacts/Artifa
 import { ArtifactLocationStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactLocationStorage";
 import { ArtifactProspectContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactProspect";
 import { ArtifactStorageContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactStorage";
-import { ArtifactValutContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactValut";
+import { ArtifactVaultContractArtifact } from "@dfpunk/contracts/artifacts/ArtifactVault";
 import { ConfigContractArtifact } from "@dfpunk/contracts/artifacts/Config";
 import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
@@ -368,7 +368,7 @@ async function registerGameContractsWithPxe(
     {
       deployer: ARTIFACT_VAULT_SYSTEM_DEPLOYER_ADDRESS,
       salt: ARTIFACT_VAULT_SYSTEM_DEPLOYMENT_SALT,
-      artifact: ArtifactValutContractArtifact,
+      artifact: ArtifactVaultContractArtifact,
       name: "ArtifactVault",
     },
   ];
