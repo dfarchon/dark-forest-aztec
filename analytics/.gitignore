@@ -1,0 +1,10 @@
+data/
+
+deployments/
+
+.env
+.env.*
+!.env.example
+
+networks/*.env
+!networks/*.env.example
