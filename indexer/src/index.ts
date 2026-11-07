@@ -5,7 +5,7 @@ import {
   createAztecNodeBlockSource,
   IndexerService,
 } from "@dfpunk/indexer-core";
-import { createApp } from "./api.ts";
+import { createApp, type SnapshotPublication } from "./api.ts";
 import type { ServerRuntimeConfig } from "./config.ts";
 import { parseServerConfig } from "./config.ts";
 import type { ContractsRuntimeConfig } from "./contractsConfig.ts";
@@ -15,19 +15,31 @@ import { SnapshotCache } from "./snapshotCache.ts";
 
 interface ServerRuntimeDeps {
   cache: SnapshotCache;
+  captureShutdown?: (shutdown: () => void) => void;
   config: ServerRuntimeConfig;
   contracts: ContractsRuntimeConfig;
   indexer: IndexerService;
+  publication?: SnapshotPublication;
   registerShutdownHandlers?: boolean;
   serveFn?: typeof serve;
   store: SnapshotStore;
 }
 
+/** Persist only a finished sync that is not in the middle of a reorg replay. */
+export function shouldSaveSnapshotOnShutdown(state: {
+  reorgRecovering: boolean;
+  syncCompleted: boolean;
+}): boolean {
+  return state.syncCompleted && !state.reorgRecovering;
+}
+
 export async function runServerRuntime({
   cache,
+  captureShutdown,
   config,
   contracts,
   indexer,
+  publication = { published: false },
   registerShutdownHandlers = true,
   serveFn = serve,
   store,
@@ -41,35 +53,74 @@ export async function runServerRuntime({
     store.verifyChunkConsistency(JSON.stringify(stored.data));
   }
 
+  let syncCompleted = false;
+  let acceptRecoveryPublish = false;
+  const publishSyncedSnapshot = () => {
+    cache.buildFull();
+    try {
+      store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
+    } catch (err) {
+      console.error("[Server] Failed to publish snapshot:", err);
+    }
+    publication.published = true;
+    syncCompleted = true;
+  };
+
   const app = createApp({
     adminToken: config.adminToken,
     cache,
     corsOrigins: config.corsOrigins,
     indexer,
+    publication,
     store,
   });
   serveFn({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`[Server] HTTP listening on port ${info.port}`);
   });
 
-  const shutdown = () => {
+  const shutdown = (exit: boolean) => {
     console.log("[Server] Shutting down...");
-    store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
+    if (
+      shouldSaveSnapshotOnShutdown({
+        reorgRecovering: indexer.getStatus().reorgRecovering,
+        syncCompleted,
+      })
+    ) {
+      store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
+    } else {
+      console.log(
+        "[Server] Skipping snapshot save until sync and reorg recovery finish",
+      );
+    }
     indexer.destroy();
     store.close();
-    process.exit(0);
+    if (exit) process.exit(0);
   };
   if (registerShutdownHandlers) {
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", () => shutdown(true));
+    process.on("SIGTERM", () => shutdown(true));
   }
+  captureShutdown?.(() => shutdown(false));
+
+  indexer.setOnReorgRecovered?.(() => {
+    if (!acceptRecoveryPublish) return;
+    console.log("[Server] Reorg replay finished; publishing snapshot");
+    publishSyncedSnapshot();
+  });
 
   const { syncedToBlock } = await indexer.start();
   console.log(`[Server] Synced to block ${syncedToBlock}`);
 
-  cache.buildFull();
+  if (!indexer.getStatus().reorgRecovering) {
+    publishSyncedSnapshot();
+  } else {
+    cache.buildFull();
+    syncCompleted = true;
+  }
+  acceptRecoveryPublish = true;
   indexer.subscribe((payload) => {
     cache.applyChange(payload);
+    if (indexer.getStatus().reorgRecovering) return;
     store.save(cache.getProcessedBlockNumber(), cache.getJsonString());
   });
 

@@ -566,16 +566,17 @@ test("a clamped toBlock is committed and the next round resumes after it", async
   indexer.destroy();
 });
 
-test("verifyBlockHashes stops syncing after the stored hash no longer matches", async () => {
+test("verifyBlockHashes replays from the start block when the stored hash no longer matches", async () => {
   let sourceHash = "a";
   const calls: number[] = [];
   const reorgs: string[] = [];
+  let recoveries = 0;
   const source: IBlockEventSource = {
     getLatestBlockNumber: async () => 100,
     getBlockHash: async () => sourceHash,
     getBlockUpdates: async (fromBlock, toBlock) => {
       calls.push(fromBlock);
-      return { fromBlock, toBlock, toBlockHash: "a", updates: [] };
+      return { fromBlock, toBlock, toBlockHash: sourceHash, updates: [] };
     },
   };
   const indexer = new IndexerService({
@@ -585,6 +586,9 @@ test("verifyBlockHashes stops syncing after the stored hash no longer matches", 
     onReorgDetected: (info) => {
       reorgs.push(`${info.blockNumber}:${info.localHash}->${info.sourceHash}`);
     },
+    onReorgRecovered: () => {
+      recoveries += 1;
+    },
   });
 
   await indexer.start();
@@ -592,12 +596,59 @@ test("verifyBlockHashes stops syncing after the stored hash no longer matches", 
   assert.equal(indexer.getProcessedBlockHash(), "a");
 
   sourceHash = "b";
-  const callsBefore = calls.length;
-  await indexer.start();
   await indexer.start();
 
   assert.deepEqual(reorgs, ["100:a->b"]);
-  assert.equal(calls.length, callsBefore);
+  assert.equal(indexer.getProcessedBlockNumber(), 100);
+  assert.equal(indexer.getProcessedBlockHash(), "b");
+  assert.equal(indexer.getStatus().reorgRecovering, false);
+  assert.equal(recoveries, 1);
+  assert.equal(calls[calls.length - 1], 1);
+  indexer.destroy();
+});
+
+test("a hash change between chunks discards the fork and replays", async () => {
+  let phase: "fork" | "canonical" = "fork";
+  const reorgs: number[] = [];
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 150,
+    getBlockHash: async () => (phase === "fork" ? "a" : "b"),
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      if (phase === "fork") {
+        phase = "canonical";
+        return {
+          fromBlock,
+          toBlock,
+          toBlockHash: "a",
+          updates: [arrivalUpdate("0xfork")],
+        };
+      }
+      return {
+        fromBlock,
+        toBlock,
+        toBlockHash: "b",
+        updates: fromBlock === 1 ? [arrivalUpdate("0xcanonical")] : [],
+      };
+    },
+  };
+  const indexer = new IndexerService({
+    source,
+    startBlock: 1,
+    maxBlocksPerRequest: 100,
+    verifyBlockHashes: true,
+    onReorgDetected: (info) => {
+      reorgs.push(info.blockNumber);
+    },
+  });
+
+  await indexer.start();
+
+  assert.deepEqual(reorgs, [100]);
+  assert.equal(indexer.getArrival("0xfork"), undefined);
+  assert.ok(indexer.getArrival("0xcanonical"));
+  assert.equal(indexer.getProcessedBlockHash(), "b");
+  assert.equal(indexer.getProcessedBlockNumber(), 150);
+  assert.equal(indexer.getStatus().reorgRecovering, false);
   indexer.destroy();
 });
 
@@ -660,6 +711,8 @@ test("a missing node block hash pauses sync without clearing the local hash or r
   assert.equal(calls.length, callsBefore);
   assert.equal(indexer.getProcessedBlockNumber(), 100);
   assert.equal(indexer.getProcessedBlockHash(), "a");
+  assert.match(indexer.getStatus().lastError ?? "", /hash unavailable on node/);
+  assert.equal(indexer.getStatus().reorgRecovering, false);
   indexer.destroy();
 });
 
@@ -784,7 +837,7 @@ test("verifyBootstrapSnapshot keeps a matching snapshot and drops a mismatch", a
   dropped.destroy();
 });
 
-test("verifyBootstrapSnapshot accepts a snapshot that cannot be checked", async () => {
+test("verifyBootstrapSnapshot discards a snapshot that cannot be checked", async () => {
   const cases: Array<{
     snap: IndexerSnapshot;
     blockHash?: (n: number) => string | undefined;
@@ -812,10 +865,106 @@ test("verifyBootstrapSnapshot accepts a snapshot that cannot be checked", async 
       bootstrapSource: source,
       startBlock: 1,
       verifyBootstrapSnapshot: true,
+      maxBlocksPerRequest: 1000,
     });
     await indexer.start();
-    assert.equal(source.calls[0]?.fromBlock, 501);
-    assert.equal(indexer.getPlanet("0xplanet")?.population, 123n);
+    assert.equal(source.calls[0]?.fromBlock, 1);
+    assert.equal(indexer.getPlanet("0xplanet"), undefined);
+    assert.equal(indexer.getPublicEventStats().complete, true);
+    assert.equal(indexer.getPublicEventStats().fromBlock, 1);
     indexer.destroy();
   }
+});
+
+test("a bootstrap snapshot below startBlock is ignored", async () => {
+  const source = sourceWithSnapshot(snapshotWithStringRows(10), {
+    latestBlock: 20,
+  });
+  const indexer = new IndexerService({
+    source,
+    bootstrapSource: source,
+    startBlock: 15,
+  });
+
+  await indexer.start();
+
+  assert.equal(source.calls[0]?.fromBlock, 15);
+  assert.equal(indexer.getPlanet("0xplanet"), undefined);
+  assert.equal(indexer.getPublicEventStats().complete, true);
+  assert.equal(indexer.getPublicEventStats().fromBlock, 15);
+  indexer.destroy();
+});
+
+test("a rejected bootstrap resets event stats to startBlock", async () => {
+  const source = sourceWithSnapshot(snapshotWithStringRows(10_000, "a"), {
+    latestBlock: 10_000,
+    blockHash: () => "b",
+  });
+  const indexer = new IndexerService({
+    source,
+    bootstrapSource: source,
+    startBlock: 500,
+    verifyBootstrapSnapshot: true,
+    maxBlocksPerRequest: 20_000,
+  });
+
+  await indexer.start();
+
+  const stats = indexer.getPublicEventStats();
+  assert.equal(stats.complete, true);
+  assert.equal(stats.fromBlock, 500);
+  assert.equal(indexer.getProcessedBlockNumber(), 10_000);
+  assert.equal(indexer.getPlanet("0xplanet"), undefined);
+  indexer.destroy();
+});
+
+test("a live row with a bad integer is not committed", async () => {
+  const source = createMockSource({
+    latestBlock: 4,
+    updatesFor: () => [
+      {
+        table: "planet",
+        id: "0xplanet",
+        state: { ...stringPlanet, population: "abc" },
+      },
+    ],
+  });
+  const indexer = new IndexerService({ source });
+
+  await assert.rejects(() => indexer.start(), /not a valid integer/);
+  assert.equal(indexer.getPlanet("0xplanet"), undefined);
+  assert.equal(indexer.getProcessedBlockNumber(), 0);
+  indexer.destroy();
+});
+
+test("destroy during an in-flight chunk does not apply that chunk", async () => {
+  let entered!: () => void;
+  let release!: () => void;
+  const enteredGate = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const releaseGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 5,
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      entered();
+      await releaseGate;
+      return {
+        fromBlock,
+        toBlock,
+        updates: [arrivalUpdate("0xlate")],
+      };
+    },
+  };
+  const indexer = new IndexerService({ source });
+  const pending = indexer.start();
+  await enteredGate;
+  indexer.destroy();
+  release();
+  await pending;
+
+  assert.equal(indexer.getArrival("0xlate"), undefined);
+  assert.equal(indexer.getLifecycle(), "destroyed");
 });

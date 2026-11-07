@@ -12,16 +12,28 @@ import {
 import type { SnapshotStore } from "./persistence.ts";
 import type { SnapshotCache } from "./snapshotCache.ts";
 
+/** Flipped to true once the initial sync has a snapshot the cache may serve. */
+export interface SnapshotPublication {
+  published: boolean;
+}
+
 export interface ApiDeps {
   indexer: IndexerService;
   cache: SnapshotCache;
   store: SnapshotStore;
   adminToken: string;
   corsOrigins: string[];
+  /**
+   * When omitted, the cache may be served (tests and callers that already
+   * built a snapshot). The server passes `{ published: false }` until sync
+   * finishes so an empty cache is not a bootstrap cursor.
+   */
+  publication?: SnapshotPublication;
 }
 
 export function createApp(deps: ApiDeps): Hono {
-  const { indexer, cache, store, adminToken, corsOrigins } = deps;
+  const { indexer, cache, store, adminToken, corsOrigins, publication } = deps;
+  const cacheReady = () => publication == null || publication.published;
   const app = new Hono();
   const snapshotExposeHeaders = [
     "Content-Length",
@@ -83,6 +95,10 @@ export function createApp(deps: ApiDeps): Hono {
       });
     }
 
+    if (!cacheReady()) {
+      return c.json({ error: "Snapshot not published" }, 404);
+    }
+
     const accept = c.req.header("accept-encoding") ?? "";
     const useBrotli = accept.includes("br");
     const buf = useBrotli ? cache.getBrotliBuffer() : cache.getGzipBuffer();
@@ -111,6 +127,9 @@ export function createApp(deps: ApiDeps): Hono {
     if (storedManifest) {
       return c.json(storedManifest);
     }
+    if (!cacheReady()) {
+      return c.json({ error: "Snapshot not published" }, 404);
+    }
     return c.json(cache.getChunkManifest(chunkRows));
   });
 
@@ -132,6 +151,9 @@ export function createApp(deps: ApiDeps): Hono {
       chunkIndex,
       chunkRows,
     );
+    if (storedChunk === "invalid") {
+      return c.json({ error: "Chunk not found" }, 404);
+    }
     if (storedChunk) {
       return new Response(Uint8Array.from(storedChunk.payload), {
         status: 200,
@@ -149,6 +171,9 @@ export function createApp(deps: ApiDeps): Hono {
       });
     }
 
+    if (!cacheReady()) {
+      return c.json({ error: "Snapshot not published" }, 404);
+    }
     const chunk = cache.getEncodedChunk(table, chunkIndex, chunkRows);
     if (!chunk) {
       return c.json({ error: "Chunk not found" }, 404);
@@ -184,6 +209,10 @@ export function createApp(deps: ApiDeps): Hono {
         hash,
         lastProcessedBlock: storedSnapshot.blockNumber,
       });
+    }
+
+    if (!cacheReady()) {
+      return c.json({ error: "Snapshot not published" }, 404);
     }
 
     const jsonStr = cache.getJsonString();
@@ -237,6 +266,7 @@ export function createApp(deps: ApiDeps): Hono {
       isSyncing: status.isSyncing,
       consecutiveFailures: status.consecutiveFailures ?? 0,
       ...(status.lastError ? { lastError: status.lastError } : {}),
+      reorgRecovering: status.reorgRecovering === true,
       metrics: {
         blockLag,
         snapshotBlock,

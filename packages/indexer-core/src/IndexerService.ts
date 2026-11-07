@@ -7,7 +7,11 @@
  * callers never receive partial state during initial catch-up.
  */
 
-import { normalizeSnapshot, rawIdToTableId, rawToState } from "./convert.ts";
+import {
+  convertLiveRow,
+  normalizeSnapshot,
+  rawIdToTableId,
+} from "./convert.ts";
 import { debounce } from "./debounce.ts";
 import type {
   ArrivalState,
@@ -88,7 +92,7 @@ export interface IndexerServiceOptions {
   maxBlocksPerRequest?: number;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
-  /** Check lastProcessedBlock's hash against the source before each sync. Default false. */
+  /** Check the committed tip hash against the source before each chunk. Default false. */
   verifyBlockHashes?: boolean;
   /** Called when the block hash at lastProcessedBlock no longer matches the source chain. */
   onReorgDetected?: (info: {
@@ -96,6 +100,8 @@ export interface IndexerServiceOptions {
     localHash: string;
     sourceHash: string | undefined;
   }) => void;
+  /** Called after a hash mismatch has been replayed from startBlock up to the known tip. */
+  onReorgRecovered?: () => void;
   /** Max wait between background retries after failures; 0 = no backoff (current behavior). */
   maxBackoffMs?: number;
   /** Attempts for the initial sync in start(); 1 = no retry (current behavior). */
@@ -116,6 +122,7 @@ export class IndexerService {
   private readonly maxBlocksPerRequest: number;
   private readonly verifyBlockHashes: boolean;
   private readonly onReorgDetected?: IndexerServiceOptions["onReorgDetected"];
+  private onReorgRecovered?: IndexerServiceOptions["onReorgRecovered"];
   private readonly maxBackoffMs: number;
   private readonly initialSyncMaxRetries: number;
   private readonly verifyBootstrapSnapshot: boolean;
@@ -131,8 +138,10 @@ export class IndexerService {
   private eventStatsToBlock: number;
   private eventCounts = emptyPublicEventCounts();
   private eventStatsComplete = true;
-  /** Once set, syncing stops so bad data is not stacked on top of a reorg. */
-  private reorgDetected = false;
+  /** True until a hash mismatch has been replayed from startBlock to the known tip. */
+  private reorgRecovering = false;
+  /** When set, a paused hash check must stay visible instead of looking like a clean sync. */
+  private keepLastError = false;
   private consecutiveFailures = 0;
   private nextRetryAt = 0;
   private lastError: string | undefined;
@@ -154,6 +163,7 @@ export class IndexerService {
     this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
     this.verifyBlockHashes = options.verifyBlockHashes ?? false;
     this.onReorgDetected = options.onReorgDetected;
+    this.onReorgRecovered = options.onReorgRecovered;
     this.maxBackoffMs = Math.max(0, options.maxBackoffMs ?? 0);
     this.initialSyncMaxRetries = Math.max(
       1,
@@ -172,6 +182,7 @@ export class IndexerService {
         if (Date.now() < this.nextRetryAt) return;
         this.processNewBlocks()
           .then(() => {
+            if (this.keepLastError) return;
             this.consecutiveFailures = 0;
             this.lastError = undefined;
             this.nextRetryAt = 0;
@@ -187,6 +198,7 @@ export class IndexerService {
 
     /** Called when we learn of a new latest block (poll or push). */
     this.onLatestBlock = (latest: number) => {
+      if (this.stopped()) return;
       this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
       debouncedProcess();
     };
@@ -199,11 +211,17 @@ export class IndexerService {
     this.onBlockProcessed = cb;
   }
 
+  /** Override the reorg-recovered callback after construction. */
+  setOnReorgRecovered(cb: () => void): void {
+    this.onReorgRecovered = cb;
+  }
+
   /**
    * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
    * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
    */
   private async processNewBlocks(): Promise<void> {
+    if (this.stopped()) return;
     if (this.syncPromise) {
       return this.syncPromise;
     }
@@ -240,21 +258,39 @@ export class IndexerService {
   }
 
   private async processPendingBlocks(): Promise<void> {
-    if (this.reorgDetected) return;
-    if (!(await this.verifyChainContinuity())) return;
+    if (this.stopped()) return;
 
     let fromBlock = this.snapshot.lastProcessedBlock + 1;
-    const toBlock = this.latestKnownBlock;
-    if (fromBlock > toBlock) return;
+    let toBlock = this.latestKnownBlock;
 
-    this.isSyncing = true;
+    let recoveredThisPass = false;
     try {
-      while (fromBlock <= toBlock) {
+      while (true) {
+        if (this.stopped()) return;
+        const continuity = await this.verifyChainContinuity();
+        if (continuity === "paused") return;
+        if (continuity !== "ok") {
+          if (recoveredThisPass) {
+            this.keepLastError = true;
+            this.lastError = `reorg at block ${continuity.blockNumber} recurred during recovery; pausing sync`;
+            console.error(`[IndexerService] ${this.lastError}`);
+            return;
+          }
+          recoveredThisPass = true;
+          this.beginReorgRecovery(continuity);
+          fromBlock = this.snapshot.lastProcessedBlock + 1;
+          toBlock = this.latestKnownBlock;
+          continue;
+        }
+        if (fromBlock > toBlock) break;
+        this.isSyncing = true;
+
         const chunkEnd = Math.min(
           fromBlock + this.maxBlocksPerRequest - 1,
           toBlock,
         );
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
+        if (this.stopped()) return;
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
         if (this.verifyBlockHashes && committedTo > 0 && !updates.toBlockHash) {
@@ -285,32 +321,83 @@ export class IndexerService {
       // background syncs log via the debounce catch boundary. Fully committed
       // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
       this.isSyncing = false;
+      this.finishRecoveryIfCaughtUp();
     }
   }
 
   /**
-   * Returns false when the stored tip hash no longer matches the node, or when
-   * the node cannot return that hash yet. Only a mismatch latches reorgDetected.
+   * Returns "paused" when the node cannot return the committed tip hash yet.
+   * A mismatch is returned to the caller, which discards state and replays.
    */
-  private async verifyChainContinuity(): Promise<boolean> {
+  private async verifyChainContinuity(): Promise<
+    | "ok"
+    | "paused"
+    | { blockNumber: number; localHash: string; sourceHash: string }
+  > {
     const localHash = this.snapshot.lastProcessedBlockHash;
     const n = this.snapshot.lastProcessedBlock;
-    if (!this.verifyBlockHashes) return true;
-    if (!localHash || n <= 0 || !this.source.getBlockHash) return true;
+    if (!this.verifyBlockHashes) return "ok";
+    if (!localHash || n <= 0 || !this.source.getBlockHash) return "ok";
     const sourceHash = await this.source.getBlockHash(n);
+    if (this.stopped()) return "paused";
     if (sourceHash === undefined) {
-      console.warn(
-        `[IndexerService] block ${n} hash unavailable on node; pausing sync`,
-      );
-      return false;
+      this.keepLastError = true;
+      this.lastError = `block ${n} hash unavailable on node; pausing sync`;
+      console.warn(`[IndexerService] ${this.lastError}`);
+      return "paused";
     }
-    if (sourceHash === localHash) return true;
-    this.reorgDetected = true;
+    if (sourceHash === localHash) {
+      this.keepLastError = false;
+      return "ok";
+    }
+    return { blockNumber: n, localHash, sourceHash };
+  }
+
+  /** Drop forked rows and rewind to the block before startBlock. */
+  private beginReorgRecovery(info: {
+    blockNumber: number;
+    localHash: string;
+    sourceHash: string;
+  }): void {
     console.error(
-      `[IndexerService] reorg detected at block ${n}: local=${localHash} source=${sourceHash}`,
+      `[IndexerService] reorg detected at block ${info.blockNumber}: local=${info.localHash} source=${info.sourceHash}; replaying from startBlock`,
     );
-    this.onReorgDetected?.({ blockNumber: n, localHash, sourceHash });
-    return false;
+    this.snapshot = emptySnapshot();
+    if (this.startBlock > 0) {
+      this.snapshot.lastProcessedBlock = this.startBlock - 1;
+    }
+    this.rebuildArtifactIndexes();
+    this.resetEventStatsForFullSync();
+    this.reorgRecovering = true;
+    this.keepLastError = false;
+    this.onReorgDetected?.(info);
+    this.notifyListeners({
+      tables: [...TABLE_NAMES],
+      fromBlock: this.snapshot.lastProcessedBlock,
+      toBlock: this.snapshot.lastProcessedBlock,
+    });
+  }
+
+  private finishRecoveryIfCaughtUp(): void {
+    if (this.stopped()) return;
+    if (!this.reorgRecovering) return;
+    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) return;
+    this.reorgRecovering = false;
+    this.onReorgRecovered?.();
+  }
+
+  private resetEventStatsForFullSync(): void {
+    this.eventCounts = emptyPublicEventCounts();
+    this.eventStatsFromBlock = Math.max(1, this.startBlock);
+    this.eventStatsToBlock = Math.max(0, this.eventStatsFromBlock - 1);
+    this.eventStatsComplete = true;
+  }
+
+  private discardBootstrapSnapshot(reason: string): void {
+    console.warn(`[IndexerService] ${reason}`);
+    this.snapshot = emptySnapshot();
+    this.rebuildArtifactIndexes();
+    this.latestKnownBlock = 0;
   }
 
   /**
@@ -362,7 +449,7 @@ export class IndexerService {
       pending.push({
         table: u.table,
         id,
-        state: rawToState(u.table, rawState),
+        state: convertLiveRow(u.table, id, rawState),
       });
     }
 
@@ -515,46 +602,64 @@ export class IndexerService {
     if (snapshotLoaded && this.verifyBootstrapSnapshot) {
       const ok = await this.verifyBootstrapHash();
       if (!ok) {
-        this.snapshot = emptySnapshot();
-        this.rebuildArtifactIndexes();
-        this.latestKnownBlock = 0;
+        this.discardBootstrapSnapshot(
+          "bootstrap snapshot rejected, falling back to full sync",
+        );
         snapshotLoaded = false;
       }
     }
-    if (!snapshotLoaded && this.startBlock > 0) {
+    if (
+      snapshotLoaded &&
+      this.snapshot.lastProcessedBlock < Math.max(0, this.startBlock - 1)
+    ) {
+      this.discardBootstrapSnapshot(
+        `bootstrap snapshot block ${this.snapshot.lastProcessedBlock} is below startBlock ${this.startBlock}; discarding`,
+      );
+      snapshotLoaded = false;
+    }
+    if (
+      !snapshotLoaded &&
+      this.startBlock > 0 &&
+      this.snapshot.lastProcessedBlock < this.startBlock
+    ) {
       this.snapshot.lastProcessedBlock = this.startBlock - 1;
     }
-    if (!snapshotLoaded && this.snapshot.lastProcessedBlock === 0) {
-      this.eventStatsFromBlock = Math.max(1, this.startBlock);
-      this.eventStatsComplete = true;
+    const initialCursor = this.startBlock > 0 ? this.startBlock - 1 : 0;
+    if (!snapshotLoaded && this.snapshot.lastProcessedBlock === initialCursor) {
+      this.resetEventStatsForFullSync();
     }
 
     this.lifecycle = "syncing";
     for (let attempt = 1; ; attempt++) {
       try {
+        if (this.stopped()) {
+          return { syncedToBlock: this.snapshot.lastProcessedBlock };
+        }
         this.latestKnownBlock = await this.source.getLatestBlockNumber();
         await this.processNewBlocks();
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
+        if (this.stopped()) {
+          return { syncedToBlock: this.snapshot.lastProcessedBlock };
+        }
+        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
           // The node may have been behind the previously observed tip. Refresh once.
           this.latestKnownBlock = await this.source.getLatestBlockNumber();
           await this.processNewBlocks();
         }
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
+        if (this.stopped()) {
+          return { syncedToBlock: this.snapshot.lastProcessedBlock };
+        }
+        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
           console.warn(
             `[IndexerService] initial sync incomplete: processed up to block ` +
               `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}. ` +
               `Will continue from the next poll.`,
           );
         }
-        this.consecutiveFailures = 0;
-        this.lastError = undefined;
-        this.nextRetryAt = 0;
+        if (!this.keepLastError) {
+          this.consecutiveFailures = 0;
+          this.lastError = undefined;
+          this.nextRetryAt = 0;
+        }
         break;
       } catch (err) {
         this.consecutiveFailures = attempt;
@@ -570,6 +675,9 @@ export class IndexerService {
     }
 
     const syncedToBlock = this.snapshot.lastProcessedBlock;
+    if (this.stopped()) {
+      return { syncedToBlock };
+    }
 
     this.lifecycle = "ready";
 
@@ -578,20 +686,25 @@ export class IndexerService {
 
   /**
    * Compare the bootstrap snapshot's last block hash with the chain source.
-   * Missing hash, a missing block, or a failed request accepts the snapshot.
-   * A present hash that differs discards it.
+   * A missing hash, a missing block, or a failed request discards the snapshot.
+   * Only an equal hash accepts it.
    */
   private async verifyBootstrapHash(): Promise<boolean> {
     const n = this.snapshot.lastProcessedBlock;
     const expected = this.snapshot.lastProcessedBlockHash;
-    if (!expected || n <= 0 || !this.source.getBlockHash) return true;
+    if (!expected || n <= 0 || !this.source.getBlockHash) {
+      console.warn(
+        `[IndexerService] bootstrap snapshot at block ${n} cannot be verified; discarding`,
+      );
+      return false;
+    }
     try {
       const actual = await this.source.getBlockHash(n);
       if (actual === undefined) {
         console.warn(
-          `[IndexerService] snapshot block ${n} not found on node yet; accepting snapshot`,
+          `[IndexerService] snapshot block ${n} not found on node; discarding snapshot`,
         );
-        return true;
+        return false;
       }
       if (actual === expected) return true;
       console.error(
@@ -600,10 +713,10 @@ export class IndexerService {
       return false;
     } catch (err) {
       console.warn(
-        "[IndexerService] snapshot hash check failed; accepting snapshot:",
+        "[IndexerService] snapshot hash check failed; discarding snapshot:",
         err,
       );
-      return true;
+      return false;
     }
   }
 
@@ -623,15 +736,20 @@ export class IndexerService {
     this.lifecycle = "live";
 
     this.pollTimer = setInterval(async () => {
-      if (this.lifecycle === "destroyed") return;
+      if (this.stopped()) return;
       if (Date.now() < this.nextRetryAt) return;
       try {
         const next = await this.source.getLatestBlockNumber();
+        if (this.stopped()) return;
         this.onLatestBlock(next);
       } catch (err) {
         this.noteSyncFailure(err);
       }
     }, this.pollIntervalMs);
+  }
+
+  private stopped(): boolean {
+    return this.lifecycle === "destroyed";
   }
 
   /** Stop polling and clear timer. */
@@ -676,6 +794,7 @@ export class IndexerService {
       lifecycle: this.lifecycle,
       consecutiveFailures: this.consecutiveFailures,
       lastError: this.lastError,
+      reorgRecovering: this.reorgRecovering,
     };
   }
 

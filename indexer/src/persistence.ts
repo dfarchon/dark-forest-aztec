@@ -141,6 +141,8 @@ const DELETE_OLD_MANIFESTS_SQL = `
 
 const DELETE_ALL_CHUNKS_SQL = `DELETE FROM snapshot_chunks`;
 const DELETE_ALL_MANIFESTS_SQL = `DELETE FROM snapshot_manifests`;
+const DELETE_METADATA_SQL = `DELETE FROM metadata WHERE key = ?`;
+const METADATA_KEY_ACTIVE_SNAPSHOT_BLOCK = "active_snapshot_block";
 
 const DEFAULT_CHUNK_ROWS = 1000;
 
@@ -201,6 +203,7 @@ export class SnapshotStore {
   private readonly deleteAllChunksStmt: Database.Statement;
   private readonly deleteAllManifestsStmt: Database.Statement;
   private readonly selectMetadataStmt: Database.Statement;
+  private readonly deleteMetadataStmt: Database.Statement;
   private readonly upsertMetadataStmt: Database.Statement;
   private readonly upsertStmt: Database.Statement;
   private readonly selectStmt: Database.Statement;
@@ -250,6 +253,7 @@ export class SnapshotStore {
     this.deleteAllChunksStmt = this.db.prepare(DELETE_ALL_CHUNKS_SQL);
     this.deleteAllManifestsStmt = this.db.prepare(DELETE_ALL_MANIFESTS_SQL);
     this.selectMetadataStmt = this.db.prepare(SELECT_METADATA_SQL);
+    this.deleteMetadataStmt = this.db.prepare(DELETE_METADATA_SQL);
     this.upsertMetadataStmt = this.db.prepare(UPSERT_METADATA_SQL);
     this.upsertStmt = this.db.prepare(UPSERT_SQL);
     this.selectStmt = this.db.prepare(SELECT_SQL);
@@ -272,7 +276,9 @@ export class SnapshotStore {
     this.ensureSchemaVersions();
 
     // Initialize previousActiveBlock from metadata so cleanup survives restarts
-    this.previousActiveBlock = this.getMetadataInt("active_snapshot_block");
+    this.previousActiveBlock = this.getMetadataInt(
+      METADATA_KEY_ACTIVE_SNAPSHOT_BLOCK,
+    );
   }
 
   /**
@@ -415,7 +421,7 @@ export class SnapshotStore {
     table: TableName,
     chunkIndex: number,
     requestedChunkRows: number,
-  ): StoredEncodedChunk | null {
+  ): StoredEncodedChunk | "invalid" | null {
     if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return null;
     const manifest = this.getActiveChunkManifest(requestedChunkRows);
     if (!manifest) return null;
@@ -449,9 +455,9 @@ export class SnapshotStore {
       parsedChunk.chunkRows !== manifest.chunkRows
     ) {
       console.warn(
-        `[Persistence] Ignoring invalid stored chunk ${table}/${chunkIndex} for chunkRows=${manifest.chunkRows}; falling back to SnapshotCache`,
+        `[Persistence] Ignoring invalid stored chunk ${table}/${chunkIndex} for chunkRows=${manifest.chunkRows}`,
       );
-      return null;
+      return "invalid";
     }
     const jsonByteLength =
       row.encoding === "gzip"
@@ -495,6 +501,15 @@ export class SnapshotStore {
    * Logs a warning on mismatch. Returns true if consistent (or no chunks yet).
    */
   verifyChunkConsistency(v1JsonString: string): boolean {
+    try {
+      return this.verifyChunkConsistencyUnchecked(v1JsonString);
+    } catch (err) {
+      console.warn("[Persistence] Chunk consistency check failed:", err);
+      return false;
+    }
+  }
+
+  private verifyChunkConsistencyUnchecked(v1JsonString: string): boolean {
     const activeBlock = this.getMetadataInt("active_snapshot_block");
     if (activeBlock == null) return true; // no chunks written yet
 
@@ -540,7 +555,8 @@ export class SnapshotStore {
       ? parseStoredManifest(manifestRow.manifest_json)
       : null;
     if (typeof storedManifest?.lastProcessedBlockHash === "string") {
-      reconstructed.lastProcessedBlockHash = storedManifest.lastProcessedBlockHash;
+      reconstructed.lastProcessedBlockHash =
+        storedManifest.lastProcessedBlockHash;
     }
     for (const table of TABLE_NAMES) {
       reconstructed[table] = tableData[table] ?? {};
@@ -747,9 +763,7 @@ export class SnapshotStore {
       version: 2,
       chunkRows: this.chunkRows,
       lastProcessedBlock,
-      ...(lastProcessedBlockHash
-        ? { lastProcessedBlockHash }
-        : {}),
+      ...(lastProcessedBlockHash ? { lastProcessedBlockHash } : {}),
       tables: manifestTables,
     });
     this.upsertManifestStmt.run(blockNumber, this.chunkRows, manifestJson);
@@ -839,6 +853,8 @@ export class SnapshotStore {
     this.deleteSnapshotsStmt.run();
     this.deleteAllChunksStmt.run();
     this.deleteAllManifestsStmt.run();
+    this.deleteMetadataStmt.run(METADATA_KEY_ACTIVE_SNAPSHOT_BLOCK);
+    this.previousActiveBlock = null;
     this.lastPersistTime = 0;
     console.warn(`[Persistence] Cleared stored snapshot: ${reason}`);
   }

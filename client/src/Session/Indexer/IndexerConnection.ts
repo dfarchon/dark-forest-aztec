@@ -494,7 +494,8 @@ export async function createIndexerConnection(
 ): Promise<{ connection: IndexerConnection; syncedToBlock: number }> {
   const source = createAztecNodeBlockSource(
     config.nodeUrl,
-    config.contractAddresses
+    config.contractAddresses,
+    { tipTag: "proven" }
   );
   const bootstrapSource = config.bootstrapUrl
     ? new OffChainBlockSource({
@@ -510,6 +511,7 @@ export async function createIndexerConnection(
     debounceMs: config.debounceMs,
     pollIntervalMs: config.pollIntervalMs,
     maxBlocksPerRequest: config.maxBlocksPerRequest,
+    verifyBlockHashes: true,
     ...(config.bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
   };
 

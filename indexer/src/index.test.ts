@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { ContractsRuntimeConfig } from "./contractsConfig.ts";
 import type { ServerRuntimeConfig } from "./config.ts";
-import { runServerRuntime } from "./index.ts";
+import { runServerRuntime, shouldSaveSnapshotOnShutdown } from "./index.ts";
 import { SnapshotCache } from "./snapshotCache.ts";
 
 function createTestConfig(): ServerRuntimeConfig {
@@ -87,7 +87,9 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
   const store = {
     close: () => undefined,
     createBackupBuffer: async () => Buffer.alloc(0),
-    forceSave: () => undefined,
+    forceSave: () => {
+      events.push("forceSave");
+    },
     restore: () => null,
     save: () => true,
   };
@@ -114,8 +116,94 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
   resolveStart({ syncedToBlock: 42 });
   await runtimePromise;
 
-  assert.equal(events.includes("subscribe"), true);
-  assert.equal(events.includes("startPolling"), true);
+  assert.deepEqual(events, [
+    "serve",
+    "start",
+    "forceSave",
+    "subscribe",
+    "startPolling",
+  ]);
+});
+
+test("shutdown before initial sync does not write a snapshot", async () => {
+  let resolveStart!: (value: { syncedToBlock: number }) => void;
+  const startPromise = new Promise<{ syncedToBlock: number }>((resolve) => {
+    resolveStart = resolve;
+  });
+  const saved: number[] = [];
+  let shutdown!: () => void;
+
+  const indexer = {
+    destroy: () => undefined,
+    getProcessedBlockNumber: () => 0,
+    getStatus: () => ({
+      isSyncing: true,
+      lastProcessedBlock: 0,
+      latestKnownBlock: 0,
+      lifecycle: "syncing",
+      reorgRecovering: false,
+    }),
+    getTable: () => ({}),
+    start: async () => startPromise,
+    startPolling: () => undefined,
+    subscribe: () => undefined,
+  };
+  const store = {
+    close: () => undefined,
+    createBackupBuffer: async () => Buffer.alloc(0),
+    forceSave: (blockNumber: number) => {
+      saved.push(blockNumber);
+    },
+    restore: () => null,
+    save: () => true,
+  };
+
+  const runtimePromise = runServerRuntime({
+    cache: new SnapshotCache(indexer as never),
+    captureShutdown: (fn) => {
+      shutdown = fn;
+    },
+    config: createTestConfig(),
+    contracts: createTestContracts(),
+    indexer: indexer as never,
+    registerShutdownHandlers: false,
+    serveFn: (_options, onListen) => {
+      onListen?.({ port: 3001 } as never);
+      return { close: () => undefined } as never;
+    },
+    store: store as never,
+  });
+
+  await Promise.resolve();
+  shutdown();
+  assert.deepEqual(saved, []);
+
+  resolveStart({ syncedToBlock: 42 });
+  await runtimePromise;
+});
+
+test("shouldSaveSnapshotOnShutdown waits for a finished sync outside reorg recovery", () => {
+  assert.equal(
+    shouldSaveSnapshotOnShutdown({
+      reorgRecovering: false,
+      syncCompleted: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSaveSnapshotOnShutdown({
+      reorgRecovering: true,
+      syncCompleted: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSaveSnapshotOnShutdown({
+      reorgRecovering: false,
+      syncCompleted: true,
+    }),
+    true,
+  );
 });
 
 test("runServerRuntime serves the stored snapshot and resyncs from an empty indexer", async () => {
@@ -182,11 +270,7 @@ test("runServerRuntime serves the stored snapshot and resyncs from an empty inde
     store: store as never,
   });
 
-  assert.deepEqual(events, [
-    "restoreFrom",
-    "verifyChunkConsistency",
-    "start",
-  ]);
+  assert.deepEqual(events, ["restoreFrom", "verifyChunkConsistency", "start"]);
   assert.equal(events.includes("applySnapshot"), false);
   assert.equal(indexer.getProcessedBlockNumber(), 0);
 });

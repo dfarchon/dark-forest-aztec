@@ -218,7 +218,7 @@ test("getActiveEncodedChunk ignores legacy stored chunks missing chunkRows", () 
     db.close();
 
     const chunk = store.getActiveEncodedChunk("world", 0, 1000);
-    assert.equal(chunk, null);
+    assert.equal(chunk, "invalid");
     store.close();
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -427,6 +427,81 @@ test("cleanup after restart preserves last active block, not incomplete crash bl
 
     db.close();
     store2.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("verifyChunkConsistency returns false for a corrupt gzip chunk", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-bad-gzip-"));
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0);
+    const jsonString = JSON.stringify({
+      lastProcessedBlock: 7,
+      world: { "0": { paused: false } },
+      player: {},
+      planet: {},
+      planet_revealed_coords: {},
+      planet_events: {},
+      planet_artifacts: {},
+      arrival: {},
+      artifact: {},
+      artifact_location: {},
+    });
+    store.save(7, jsonString);
+    const db = new Database(dbPath);
+    db.prepare(
+      `UPDATE snapshot_chunks SET payload = ? WHERE snapshot_block = ? AND table_name = 'world'`,
+    ).run(Buffer.from("not-gzip"), 7);
+    db.close();
+
+    assert.equal(store.verifyChunkConsistency(jsonString), false);
+    store.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("schema mismatch clears the active snapshot pointer", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-schema-ptr-"));
+  const dbPath = path.join(tempDir, "indexer.db");
+
+  try {
+    const store = new SnapshotStore(dbPath, 0, {
+      dbSchemaVersion: 1,
+      snapshotSchemaVersion: 1,
+    });
+    store.save(
+      9,
+      JSON.stringify({
+        lastProcessedBlock: 9,
+        world: {},
+        player: {},
+        planet: {},
+        planet_revealed_coords: {},
+        planet_events: {},
+        planet_artifacts: {},
+        arrival: {},
+        artifact: {},
+        artifact_location: {},
+      }),
+    );
+    store.close();
+
+    const reopened = new SnapshotStore(dbPath, 0, {
+      dbSchemaVersion: 2,
+      snapshotSchemaVersion: 1,
+    });
+    assert.equal(reopened.getActiveSnapshotPayload(), null);
+    const db = new Database(dbPath, { readonly: true });
+    const pointer = db
+      .prepare("SELECT value FROM metadata WHERE key = 'active_snapshot_block'")
+      .get() as { value: string } | undefined;
+    assert.equal(pointer, undefined);
+    db.close();
+    reopened.close();
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

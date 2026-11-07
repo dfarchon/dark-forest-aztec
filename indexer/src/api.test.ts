@@ -370,6 +370,81 @@ test("GET /snapshot/chunks prefers SQLite chunk payload when available even if c
   assert.ok(body.rows.p_db);
 });
 
+test("snapshot routes return 404 until a snapshot is published", async () => {
+  const indexer = createFakeIndexer({ player: { p1: { score: "1" } } }, 0);
+  const cache = new SnapshotCache(indexer);
+  cache.buildFull();
+  const app = createApp({
+    adminToken: "",
+    cache,
+    corsOrigins: [],
+    indexer,
+    publication: { published: false },
+    store: createStoreStub() as never,
+  });
+
+  for (const path of [
+    "/snapshot",
+    "/snapshot/hash",
+    "/snapshot/manifest",
+    "/snapshot/chunks/player/0",
+  ]) {
+    const response = await app.request(`http://localhost${path}`);
+    assert.equal(response.status, 404, path);
+  }
+});
+
+test("GET /snapshot/chunks does not fall back to cache for an invalid stored chunk", async () => {
+  const indexer = createFakeIndexer({ player: { p1: { score: "1" } } }, 123);
+  const cache = new SnapshotCache(indexer);
+  cache.buildFull();
+  const store = createStoreStub({
+    getActiveEncodedChunk: () => "invalid" as never,
+  });
+  const app = createApp({
+    adminToken: "",
+    cache,
+    corsOrigins: [],
+    indexer,
+    store: store as never,
+  });
+
+  const response = await app.request(
+    "http://localhost/snapshot/chunks/player/0?chunkRows=1000",
+  );
+  assert.equal(response.status, 404);
+});
+
+test("GET /health reports reorg recovery without failing the check", async () => {
+  const indexer = createFakeIndexer({}, 10);
+  indexer.getStatus = () =>
+    ({
+      isSyncing: true,
+      lastProcessedBlock: 4,
+      latestKnownBlock: 10,
+      lifecycle: "live",
+      reorgRecovering: true,
+    }) as never;
+  const cache = new SnapshotCache(indexer);
+  cache.buildFull();
+  const app = createApp({
+    adminToken: "",
+    cache,
+    corsOrigins: [],
+    indexer,
+    store: createStoreStub() as never,
+  });
+
+  const response = await app.request("http://localhost/health");
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as {
+    reorgRecovering: boolean;
+    status: string;
+  };
+  assert.equal(body.status, "ok");
+  assert.equal(body.reorgRecovering, true);
+});
+
 test("GET /snapshot/chunks falls back to cache when store chunk unavailable", async () => {
   const indexer = createFakeIndexer({ player: { p1: { score: "1" } } }, 123);
   const cache = new SnapshotCache(indexer);

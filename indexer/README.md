@@ -51,10 +51,10 @@ In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBl
 4. Create `SnapshotCache` bound to the indexer.
 5. Run `runServerRuntime()`:
    - Restore the last snapshot into `SnapshotCache` so HTTP can keep serving it. Do not load it into `IndexerService`; the indexer resyncs from `startBlock` with an empty state. Verify v1 JSON against v2 chunk reconstruction.
-   - Start HTTP listener (so `/health` responds while sync runs).
+   - Start HTTP listener (so `/health` responds while sync runs). Until the sync is published, snapshot routes serve the stored snapshot, or 404 when there is none.
    - `await indexer.start()` — full resync up to the proven tip. RPC failures retry with backoff instead of exiting.
-   - `cache.buildFull()` from current indexer state.
-   - `indexer.subscribe(...)`: incremental cache updates + throttled persistence.
+   - `cache.buildFull()` and `forceSave` publish that synced snapshot. A hash mismatch replays from `startBlock` and is not persisted until the replay finishes.
+   - `indexer.subscribe(...)`: incremental cache updates + throttled persistence. Saves are skipped while a reorg replay is in progress.
    - `indexer.startPolling()` for new blocks.
 6. On shutdown (`SIGINT`/`SIGTERM`), force-save snapshot and close DB.
 
@@ -65,7 +65,7 @@ TLS terminates at the edge or reverse proxy in production.
 Uses **IndexerService** from `@dfpunk/indexer-core`:
 
 - **Lifecycle**: `start()` → `subscribe(cb)` → `startPolling()` → `destroy()`. Restart does not call `applySnapshot`; the indexer rebuilds from `startBlock`.
-- **API**: `getProcessedBlockNumber()`, `getProcessedBlockHash()`, `getStatus()`, `getTable()`.
+- **API**: `getProcessedBlockNumber()`, `getProcessedBlockHash()`, `getStatus()` (includes `reorgRecovering`), `getTable()`.
 - **Polling**: checks `getLatestBlockNumber()` every `pollIntervalMs` (2 s); skips `getBlockUpdates` when caught up.
 
 **Source adapter**: `AztecNodeSource` calls Aztec `getPublicEvents` with contract metadata from `@dfpunk/contracts/artifacts/*`.
@@ -92,7 +92,7 @@ Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snap
 | `GET /snapshot/manifest?chunkRows=`                  | v2 chunk metadata: `{ version: 2, lastProcessedBlock, lastProcessedBlockHash?, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`.                                  |
 | `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`.                     |
 | `GET /blocks/latest`                                 | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }`                                                                                   |
-| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, consecutiveFailures, lastError?, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
+| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, consecutiveFailures, lastError?, reorgRecovering, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
 | `GET /admin/backup`                                  | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty.                                              |
 
 ## Configuration
@@ -251,7 +251,7 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 - **RPC retry**: a single Aztec node is used. Each request times out after 30s. Initial sync retries with backoff (2s, 4s, 8s, … capped at 60s) until the node responds, and background sync uses the same cap. The process stays up and keeps serving the last SQLite snapshot. `/health` reports `consecutiveFailures` and `lastError`. A hard crash still exits via `main().catch(() => process.exit(1))`.
 - **Local RPC diagnostics**: if `curl https://canonical.testnet.rpc.aztec-labs.com` fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` address, a local PAC/WPAD proxy (Clash/Surge fake-ip) is intercepting the domain — not an RPC outage. Pin the real IP via `dig @8.8.8.8` or disable the proxy to verify.
 - Event decode failures cause startup/polling to fail fast with logged error.
-- On restart, the indexer rebuilds from `INDEXER_START_BLOCK` with an empty state. The previous snapshot stays available over HTTP until that sync finishes and `cache.buildFull()` replaces it.
+- On restart, the indexer rebuilds from `INDEXER_START_BLOCK` with an empty state. The previous snapshot stays available over HTTP until that sync finishes and is force-saved. Shutdown before the sync finishes does not overwrite it. A proven-hash mismatch clears memory and replays from `startBlock`; `/health` stays HTTP 200 with `reorgRecovering: true` until that replay is published.
 - Corrupted persisted JSON is skipped; fresh sync from `INDEXER_START_BLOCK`.
 - **Healthcheck**: Railway default 30s is too short for first-time sync (SQLite restore + catch-up). Raise to 300s via the Railway API.
 - **Memory**: 500 MB RAM (Railway free tier) may OOM on large block ranges; monitor and upgrade if sync crashes repeatedly.

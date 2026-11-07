@@ -154,6 +154,8 @@ export interface IndexerStatus {
   consecutiveFailures: number;
   /** Message from the most recent sync failure, if any. */
   lastError?: string;
+  /** True while a hash mismatch is being repaired by replaying from startBlock. */
+  reorgRecovering: boolean;
 }
 
 /**

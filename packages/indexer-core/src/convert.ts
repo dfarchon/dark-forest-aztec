@@ -307,6 +307,20 @@ function assertLossless(
 }
 
 /**
+ * Convert one live row and reject values that collapsed (bad integer, NaN, overflow).
+ * Throws before the caller commits the row, so the chunk can be retried.
+ */
+export function convertLiveRow(
+  table: TableName,
+  id: string,
+  raw: Raw,
+): ReturnType<typeof rawToState> {
+  const state = rawToState(table, raw);
+  assertLossless(table, id, raw, state as unknown as Raw);
+  return state;
+}
+
+/**
  * Convert every snapshot row to typed state in place.
  * Throws on the first bad value so callers can discard the whole snapshot.
  */
