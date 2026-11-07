@@ -4,11 +4,18 @@
  */
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
-import { type EventCursor, getPublicEvents } from "@aztec-labs/aztec.js/events";
 import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { DomainSeparator } from "@aztec-labs/constants";
 import { BlockNumber } from "@aztec-labs/foundation/branded-types";
-import type { EventMetadataDefinition } from "@aztec-labs/stdlib/abi";
+import {
+  decodeFromAbi,
+  type EventMetadataDefinition,
+} from "@aztec-labs/stdlib/abi";
+import type { BlockHash } from "@aztec-labs/stdlib/block";
+import { computeLogTag } from "@aztec-labs/stdlib/hash";
+import { MAX_LOGS_PER_TAG } from "@aztec-labs/stdlib/interfaces/api-limit";
 import type { AztecNode } from "@aztec-labs/stdlib/interfaces/client";
+import { LogCursor, Tag, type PublicLogsQuery } from "@aztec-labs/stdlib/logs";
 import {
   ARRIVAL_STORAGE_CONTRACT_ADDRESS,
   ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
@@ -132,6 +139,79 @@ function toIdStr(v: unknown): string {
   return String(v);
 }
 
+type StorageSpec = (typeof STORAGE_SPECS)[number] & { address: AztecAddress };
+
+/** Every storage contract must resolve to a 32-byte hex address. */
+function resolveStorageSpecs(
+  addresses: StorageContractAddresses,
+): StorageSpec[] {
+  const invalid: string[] = [];
+  const specs: StorageSpec[] = [];
+  for (const spec of STORAGE_SPECS) {
+    const addr = addresses[spec.contractKey];
+    if (!addr || !AztecAddress.isAddress(addr)) {
+      invalid.push(spec.contractKey);
+      continue;
+    }
+    specs.push({ ...spec, address: AztecAddress.fromStringUnsafe(addr) });
+  }
+  if (invalid.length > 0) {
+    throw new Error(
+      `[AztecNodeSource] invalid storage contract address for: ${invalid.join(", ")}`,
+    );
+  }
+  return specs;
+}
+
+type AnchoredBlock = {
+  number: ReturnType<typeof BlockNumber>;
+  hash: BlockHash;
+};
+
+/**
+ * One page of public logs for an event type, pinned to `referenceBlock` when the caller has a hash.
+ * The node rejects the query if that block is no longer on its fork.
+ */
+async function fetchAnchoredPublicEvents(
+  node: AztecNode,
+  eventDef: EventMetadataDefinition,
+  query: {
+    contractAddress: AztecAddress;
+    fromBlock: ReturnType<typeof BlockNumber>;
+    toBlock: ReturnType<typeof BlockNumber>;
+    referenceBlock?: AnchoredBlock;
+    afterLog?: LogCursor;
+  },
+): Promise<{ events: DecodedUpdate[]; nextCursor?: LogCursor }> {
+  const logTagField = await computeLogTag(
+    eventDef.eventSelector.toField(),
+    DomainSeparator.EVENT_LOG_TAG,
+  );
+  const logTag = new Tag(logTagField);
+  const logsQuery: PublicLogsQuery = {
+    contractAddress: query.contractAddress,
+    tags: [
+      query.afterLog !== undefined
+        ? { tag: logTag, afterLog: query.afterLog }
+        : logTag,
+    ],
+    fromBlock: query.fromBlock,
+    toBlock: query.toBlock,
+    referenceBlock: query.referenceBlock,
+  };
+  const [logsForTag] = await node.getPublicLogsByTags(logsQuery);
+  const events = logsForTag.map(
+    (log) =>
+      decodeFromAbi(eventDef.abiType, log.logData.slice(1)) as DecodedUpdate,
+  );
+  const last = logsForTag[logsForTag.length - 1];
+  const nextCursor =
+    logsForTag.length === MAX_LOGS_PER_TAG && last !== undefined
+      ? LogCursor.fromLog(last)
+      : undefined;
+  return { events, nextCursor };
+}
+
 export interface AztecNodeBlockSourceOptions {
   /** L2 tip to follow. Default "proposed", matching getBlockNumber() with no argument. */
   tipTag?: BlockTipTag;
@@ -181,20 +261,13 @@ export function createAztecNodeBlockSource(
   const call = <T>(p: Promise<T>, label: string): Promise<T> =>
     timeoutMs !== undefined ? withTimeout(p, timeoutMs, label) : p;
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
+  const specsWithArtifacts = resolveStorageSpecs(addresses);
 
-  const specsWithArtifacts = STORAGE_SPECS.filter((spec) => {
-    const addr = addresses[spec.contractKey];
-    return addr && addr.length >= 10;
-  }).map((spec) => ({
-    ...spec,
-    address: AztecAddress.fromStringUnsafe(addresses[spec.contractKey]!),
-  }));
+  const loadBlockData = (n: number) =>
+    call(node.getBlockData(BlockNumber(n)), `getBlockData(${n})`);
 
   const blockHash = async (n: number): Promise<string | undefined> => {
-    const data = await call(
-      node.getBlockData(BlockNumber(n)),
-      `getBlockData(${n})`,
-    );
+    const data = await loadBlockData(n);
     return data?.blockHash.toString();
   };
 
@@ -218,6 +291,17 @@ export function createAztecNodeBlockSource(
         };
       }
 
+      const anchorData = await loadBlockData(end);
+      const anchorHash = anchorData?.blockHash;
+      if (end > 0 && !anchorHash) {
+        throw new Error(
+          `[AztecNodeSource] block ${end} has no hash; refusing to read unanchored logs`,
+        );
+      }
+      const referenceBlock = anchorHash
+        ? { number: BlockNumber(end), hash: anchorHash }
+        : undefined;
+
       const updates: BlockUpdates["updates"] = [];
       const eventCounts: PublicEventBatchCounts = {};
 
@@ -227,31 +311,41 @@ export function createAztecNodeBlockSource(
         eventDef,
         address,
       } of specsWithArtifacts) {
-        let afterEvent: EventCursor | undefined;
+        let afterLog: LogCursor | undefined;
         do {
           const page = await call(
-            getPublicEvents(node, eventDef, {
+            fetchAnchoredPublicEvents(node, eventDef, {
               fromBlock: BlockNumber(fromBlock),
               toBlock: BlockNumber(end + 1), // exclusive
               contractAddress: address,
-              afterEvent,
+              referenceBlock,
+              afterLog,
             }),
-            `getPublicEvents(${eventName})`,
+            `getPublicLogsByTags(${eventName})`,
           );
           eventCounts[eventName] =
             (eventCounts[eventName] ?? 0) + page.events.length;
-          const events = page.events.map((e) => e.event) as DecodedUpdate[];
-          for (const ev of events) {
-            if (ev?.state == null) continue;
+          for (const ev of page.events) {
+            if (ev?.state == null) {
+              throw new Error(`[AztecNodeSource] ${eventName} missing state`);
+            }
             const id = table === "world" ? "0" : toIdStr(ev.id);
+            if (table !== "world" && id === "") {
+              throw new Error(`[AztecNodeSource] ${eventName} missing id`);
+            }
             updates.push({ table, id, state: ev.state });
           }
-          afterEvent = page.nextCursor;
-        } while (afterEvent);
+          afterLog = page.nextCursor;
+        } while (afterLog);
       }
 
-      const toBlockHash = await blockHash(end);
-      return { fromBlock, toBlock: end, toBlockHash, updates, eventCounts };
+      return {
+        fromBlock,
+        toBlock: end,
+        toBlockHash: anchorHash?.toString(),
+        updates,
+        eventCounts,
+      };
     },
   };
 }

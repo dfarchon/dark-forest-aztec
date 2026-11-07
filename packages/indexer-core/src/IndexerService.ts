@@ -257,6 +257,11 @@ export class IndexerService {
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
+        if (this.verifyBlockHashes && committedTo > 0 && !updates.toBlockHash) {
+          throw new Error(
+            `[IndexerService] block ${committedTo} has no hash; refusing to commit`,
+          );
+        }
         this.applyUpdates(updates);
         this.applyEventCounts(updates, committedTo);
         this.snapshot.lastProcessedBlock = committedTo;
@@ -283,14 +288,23 @@ export class IndexerService {
     }
   }
 
-  /** Returns false (and fires onReorgDetected once) if our tip was reorged away. */
+  /**
+   * Returns false when the stored tip hash no longer matches the node, or when
+   * the node cannot return that hash yet. Only a mismatch latches reorgDetected.
+   */
   private async verifyChainContinuity(): Promise<boolean> {
     const localHash = this.snapshot.lastProcessedBlockHash;
     const n = this.snapshot.lastProcessedBlock;
     if (!this.verifyBlockHashes) return true;
     if (!localHash || n <= 0 || !this.source.getBlockHash) return true;
     const sourceHash = await this.source.getBlockHash(n);
-    if (sourceHash === undefined || sourceHash === localHash) return true;
+    if (sourceHash === undefined) {
+      console.warn(
+        `[IndexerService] block ${n} hash unavailable on node; pausing sync`,
+      );
+      return false;
+    }
+    if (sourceHash === localHash) return true;
     this.reorgDetected = true;
     console.error(
       `[IndexerService] reorg detected at block ${n}: local=${localHash} source=${sourceHash}`,

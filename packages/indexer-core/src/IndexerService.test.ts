@@ -601,6 +601,68 @@ test("verifyBlockHashes stops syncing after the stored hash no longer matches", 
   indexer.destroy();
 });
 
+test("verifyBlockHashes does not commit a chunk that has no block hash", async () => {
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 20,
+    getBlockHash: async () => "h1",
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      if (fromBlock === 1) {
+        return { fromBlock, toBlock, toBlockHash: "h1", updates: [] };
+      }
+      return { fromBlock, toBlock, updates: [] };
+    },
+  };
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 10,
+    verifyBlockHashes: true,
+  });
+
+  await assert.rejects(() => indexer.start(), /refusing to commit/);
+  assert.equal(indexer.getProcessedBlockNumber(), 10);
+  assert.equal(indexer.getProcessedBlockHash(), "h1");
+  assert.notEqual(indexer.getLifecycle(), "ready");
+  indexer.destroy();
+});
+
+test("a missing node block hash pauses sync without clearing the local hash or reporting a reorg", async () => {
+  let sourceHash: string | undefined = "a";
+  let latest = 100;
+  const calls: number[] = [];
+  let reorgs = 0;
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => latest,
+    getBlockHash: async () => sourceHash,
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      calls.push(fromBlock);
+      return { fromBlock, toBlock, toBlockHash: "a", updates: [] };
+    },
+  };
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    verifyBlockHashes: true,
+    onReorgDetected: () => {
+      reorgs += 1;
+    },
+  });
+
+  await indexer.start();
+  assert.equal(indexer.getProcessedBlockNumber(), 100);
+  assert.equal(indexer.getProcessedBlockHash(), "a");
+
+  sourceHash = undefined;
+  latest = 150;
+  const callsBefore = calls.length;
+  await indexer.start();
+
+  assert.equal(reorgs, 0);
+  assert.equal(calls.length, callsBefore);
+  assert.equal(indexer.getProcessedBlockNumber(), 100);
+  assert.equal(indexer.getProcessedBlockHash(), "a");
+  indexer.destroy();
+});
+
 test("initial sync retries then succeeds without advancing on the failed attempts", async () => {
   let failuresLeft = 2;
   const source = createMockSource({
