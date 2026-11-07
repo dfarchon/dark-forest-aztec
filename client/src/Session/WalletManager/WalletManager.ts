@@ -16,10 +16,9 @@ import { createAztecNodeClient, waitForNode } from "@aztec-labs/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
 import { type Wallet } from "@aztec-labs/aztec.js/wallet";
 import { BBLazyPrivateKernelProver } from "@aztec-labs/bb-prover/client/lazy";
-import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
-import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
 import { WASMSimulator } from "@aztec-labs/simulator/client";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
+import { SponsoredFpcClient } from "@dfarchon/sponsored-fpc";
 import {
   ACCOUNT_ADDRESS,
   ADMIN_DEPLOYER_ADDRESS,
@@ -75,6 +74,7 @@ import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
+import { DARK_FOREST_SPONSORED_GAS_PROFILE } from "../SponsoredFpc/config";
 import { KeyStore } from "./KeyStore";
 import type {
   AccountRecord,
@@ -397,44 +397,47 @@ async function registerGameContractsWithPxe(
 }
 
 /**
- * Register SponsoredFPC with the wallet for sponsor mode: optional address override
- * (fetched from node) or canonical salt-derived instance.
+ * Register the project's Sponsored FPC. Unlike the protocol SponsoredFPC,
+ * this contract has no canonical salt-derived instance: its deployed address
+ * is explicit project configuration.
  */
 async function registerSponsoredFpcWithWallet(
   node: AztecNode,
   wallet: Wallet,
   config: WalletManagerConfig,
   onRegisterProgress?: (message: string) => void
-): Promise<AztecAddress | undefined> {
+): Promise<SponsoredFpcClient | undefined> {
   if (!config.sponsorMode) return undefined;
 
-  const override = config.sponsoredFpcAddressOverride?.trim();
-  if (override) {
-    const addr = AztecAddress.fromStringUnsafe(override);
-    const instance = await node.getContract(addr);
-    if (!instance) {
-      throw new Error(
-        `SponsoredFPC not found on node at ${override}. Check Aztec node URL and address, or clear the override in Connection settings.`
-      );
-    }
-    onRegisterProgress?.("Registering Sponsored FPC (custom address)");
-    await wallet.registerContract(instance, SponsoredFPCContractArtifact);
-    return instance.address;
+  const configured = config.sponsoredFpcAddressOverride?.trim();
+  if (!configured) {
+    throw new Error(
+      "Sponsored FPC mode requires VITE_SPONSORED_FPC_ADDRESS or a Connection settings address."
+    );
   }
-
-  const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContractArtifact,
-    { salt: new Fr(SPONSORED_FPC_SALT) }
-  );
-  onRegisterProgress?.("Registering Sponsored FPC");
-  await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-  return sponsoredFPC.address;
+  const address = AztecAddress.fromStringUnsafe(configured);
+  const instance = await node.getContract(address);
+  if (!instance) {
+    throw new Error(
+      `Sponsored FPC not found on node at ${configured}. Check the node URL and project deployment address.`
+    );
+  }
+  onRegisterProgress?.("Registering project Sponsored FPC");
+  const client = new SponsoredFpcClient({
+    node,
+    wallet,
+    address,
+    gasProfile: DARK_FOREST_SPONSORED_GAS_PROFILE,
+    nodeUrl: config.nodeUrl,
+  });
+  await client.register();
+  return client;
 }
 
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: Wallet;
-  private readonly sponsoredFpcAddress: AztecAddress | undefined;
+  private readonly sponsoredFpcClient: SponsoredFpcClient | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
   private activeAddress: AztecAddress | undefined;
@@ -448,13 +451,13 @@ export class WalletManager {
   private constructor(
     node: AztecNode,
     wallet: Wallet,
-    sponsoredFpcAddress: AztecAddress | undefined,
+    sponsoredFpcClient: SponsoredFpcClient | undefined,
     keyStore: KeyStore,
     isExternal: boolean
   ) {
     this.node = node;
     this.wallet = wallet;
-    this.sponsoredFpcAddress = sponsoredFpcAddress;
+    this.sponsoredFpcClient = sponsoredFpcClient;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
     this.walletChanged$ = monomitter(true);
@@ -534,20 +537,11 @@ export class WalletManager {
     const node = createAztecNodeClient(config.nodeUrl);
     await waitForNode(node);
 
-    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+    const sponsoredFpcClient: SponsoredFpcClient | undefined = undefined;
     if (config.sponsorMode) {
-      try {
-        sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
-          node,
-          wallet,
-          config
-        );
-      } catch (err) {
-        console.warn(
-          "[WalletManager] Failed to register SponsoredFPC on external wallet:",
-          err
-        );
-      }
+      console.warn(
+        "[WalletManager] Project Sponsored FPC currently requires the built-in wallet; external wallets use account FeeJuice."
+      );
     }
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
@@ -560,7 +554,7 @@ export class WalletManager {
     const mgr = new WalletManager(
       node,
       wallet,
-      sponsoredFpcAddress,
+      sponsoredFpcClient,
       keyStore,
       true
     );
@@ -656,10 +650,10 @@ export class WalletManager {
     });
 
     const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
-    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+    let sponsoredFpcClient: SponsoredFpcClient | undefined = undefined;
 
     if (config.sponsorMode) {
-      sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
+      sponsoredFpcClient = await registerSponsoredFpcWithWallet(
         node,
         wallet,
         config,
@@ -675,13 +669,7 @@ export class WalletManager {
       (step, name) => onProgress?.(step, total, `Registering ${name}`)
     );
 
-    return new WalletManager(
-      node,
-      wallet,
-      sponsoredFpcAddress,
-      keyStore,
-      false
-    );
+    return new WalletManager(node, wallet, sponsoredFpcClient, keyStore, false);
   }
 
   // ---------------------------------------------------------------------------
@@ -794,11 +782,14 @@ export class WalletManager {
   }
 
   /**
-   * When sponsorMode is enabled, returns the SponsoredFPC address so gameplay
-   * txs can pay fees via SponsoredFeePaymentMethod.
+   * When sponsorMode is enabled, returns the project Sponsored FPC address.
    */
   getSponsoredFpcAddress(): AztecAddress | undefined {
-    return this.sponsoredFpcAddress;
+    return this.sponsoredFpcClient?.address;
+  }
+
+  getSponsoredFpcClient(): SponsoredFpcClient | undefined {
+    return this.sponsoredFpcClient;
   }
 
   getActiveAddress(): AztecAddress | undefined {
@@ -851,13 +842,13 @@ export class WalletManager {
    * @returns `undefined` when not using sponsored fees; `0n` when depleted or on query failure.
    */
   async getSponsoredFpcFeeJuiceBalance(): Promise<bigint | undefined> {
-    if (!this.sponsoredFpcAddress) return undefined;
+    if (!this.sponsoredFpcClient) return undefined;
     try {
-      return await getFeeJuiceBalance(this.sponsoredFpcAddress, this.node);
+      return await this.sponsoredFpcClient.balance();
     } catch (err) {
       console.error(
         "[WalletManager] getSponsoredFpcFeeJuiceBalance failed for",
-        this.sponsoredFpcAddress.toString(),
+        this.sponsoredFpcClient.address.toString(),
         err
       );
       return 0n;
@@ -871,11 +862,11 @@ export class WalletManager {
   async getSponsorFeeJuicePreflight(): Promise<
     SponsorFeeJuicePreflight | undefined
   > {
-    if (!this.sponsoredFpcAddress) return undefined;
+    if (!this.sponsoredFpcClient) return undefined;
 
     const minWei = getSponsoredFpcMinBalanceFjWei();
     const balanceWei = await getFeeJuiceBalance(
-      this.sponsoredFpcAddress,
+      this.sponsoredFpcClient.address,
       this.node
     );
 

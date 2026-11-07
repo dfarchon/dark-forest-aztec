@@ -37,6 +37,7 @@
         "deploy:check": "pnpm exec tsx scripts/deploy/check.ts",
         "deploy:publish": "pnpm exec tsx scripts/deploy/sync.ts",
         "deploy:run": "pnpm exec tsx scripts/deploy/deploy.ts",
+        "deploy:sponsored-fpc": "pnpm exec tsx ./node_modules/@dfarchon/sponsored-fpc/dist/cli.js deploy --config ./fpc/config/dark-forest.json --context ./sponsored-fpc.deploy-context.ts",
         "deploy:start": "pnpm build && pnpm deploy:run && pnpm bootstrap && pnpm deploy:publish",
         "fmt:aztec": "aztec-nargo fmt --workspace",
         "fmt:aztec:check": "aztec-nargo fmt --workspace --check",
@@ -57,6 +58,7 @@
         "test:nr:all": "aztec-nargo test --workspace"
     },
     "dependencies": {
+        "@dfarchon/sponsored-fpc": "github:dfarchon/sponsored-fpc#1443403a2a35f6f387c4f03ca339e5dae9b90d8e",
         "@dfpunk/hashing": "workspace:*",
         "@dfpunk/utils": "workspace:*"
     },

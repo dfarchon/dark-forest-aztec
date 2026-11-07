@@ -27,7 +27,7 @@ export interface ConnectionOverrides {
   proverUrl?: string;
   /**
    * SponsoredFPC Aztec address override for sponsor mode.
-   * Empty string clears local override (falls back to env / default derivation).
+   * Empty string clears local override and falls back to the environment.
    */
   sponsoredFpcAddress?: string | null;
   /**
@@ -69,7 +69,7 @@ export function getEffectiveProverUrl(): string {
 
 /**
  * Effective SponsoredFPC address string for sponsor mode: localStorage override,
- * else `VITE_SPONSORED_FPC_ADDRESS`, else undefined (WalletManager derives canonical address from salt).
+ * else `VITE_SPONSORED_FPC_ADDRESS`, else undefined.
  */
 export function getEffectiveSponsoredFpcAddressOverride(): string | undefined {
   const stored = localStorage.getItem(STORAGE_KEY_SPONSORED_FPC_ADDRESS);

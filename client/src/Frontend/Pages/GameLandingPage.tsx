@@ -1,11 +1,7 @@
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
-import { getContractInstanceFromInstantiationParams } from "@aztec-labs/aztec.js/contracts";
-import { Fr } from "@aztec-labs/aztec.js/fields";
 import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
 import { getFeeJuiceBalance } from "@aztec-labs/aztec.js/utils";
 import type { Aliased } from "@aztec-labs/aztec.js/wallet";
-import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
-import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
 import { hashToEmoji } from "@aztec-labs/wallet-sdk/crypto";
 import { APP_VERSION, CHAIN_DISPLAY_NAME, GAME_NAME } from "@dfpunk/constants";
 import {
@@ -156,7 +152,7 @@ function printGameLandingDebugConfig({
     sponsorMode: getSponsorMode(),
     useSponsoredFpc: getEffectiveUseSponsoredFpc(),
     sponsoredFpcAddress:
-      getEffectiveSponsoredFpcAddressOverride() ?? "(default from salt)",
+      getEffectiveSponsoredFpcAddressOverride() ?? "(not configured)",
     sponsoredFpcMinBalanceFjWei: getSponsoredFpcMinBalanceFjWei().toString(),
     accountMinBalanceFjWei: getAccountMinBalanceFjWei().toString(),
   });
@@ -271,14 +267,11 @@ function printSponsorFeeJuicePreflight(
 }
 
 async function resolveInitialSponsoredFpcAddress(): Promise<AztecAddress> {
-  const override = getEffectiveSponsoredFpcAddressOverride();
-  if (override) return AztecAddress.fromStringUnsafe(override);
-
-  const instance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContractArtifact,
-    { salt: new Fr(SPONSORED_FPC_SALT) }
-  );
-  return instance.address;
+  const configured = getEffectiveSponsoredFpcAddressOverride();
+  if (!configured) {
+    throw new Error("Project Sponsored FPC address is not configured");
+  }
+  return AztecAddress.fromStringUnsafe(configured);
 }
 
 async function printInitialSponsorStatus(

@@ -82,7 +82,7 @@ function getBoolean(key: string, defaultValue: boolean): boolean {
 }
 
 /**
- * Whether to use SponsoredFeePaymentMethod/SponsoredFPC for local development.
+ * Whether to use the project's Sponsored FPC.
  * Env:
  * - preferred: VITE_SPONSOR_MODE=true
  * - compatibility: VITE_SPONSER_MODE=true (typo)
@@ -97,8 +97,7 @@ export function getSponsorMode(): boolean {
 }
 
 /**
- * Optional SponsoredFPC contract address (Aztec address string) when it differs
- * from the default salt-derived instance (e.g. public testnet). Used only in sponsor mode.
+ * Project Sponsored FPC contract address. Required when sponsor mode is enabled.
  * Build-time: `VITE_SPONSORED_FPC_ADDRESS`.
  */
 export function getSponsoredFpcAddressFromEnv(): string | undefined {

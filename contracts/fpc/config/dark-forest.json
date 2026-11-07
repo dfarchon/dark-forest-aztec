@@ -1,0 +1,32 @@
+{
+  "name": "dark-forest",
+  "description": "Unlimited project Sponsored FPC restricted to player-facing Dark Forest contracts.",
+  "maxFeeWei": "25000000000000000000",
+  "allowedTargets": [
+    { "name": "Core", "address": "env:CORE_CONTRACT_ADDRESS" },
+    { "name": "Move", "address": "env:MOVE_CONTRACT_ADDRESS" },
+    {
+      "name": "ArtifactProspect",
+      "address": "env:ARTIFACT_PROSPECT_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactFind",
+      "address": "env:ARTIFACT_FIND_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactAction",
+      "address": "env:ARTIFACT_ACTION_SYSTEM_CONTRACT_ADDRESS"
+    },
+    {
+      "name": "ArtifactVault",
+      "address": "env:ARTIFACT_VAULT_SYSTEM_CONTRACT_ADDRESS"
+    }
+  ],
+  "allowedAccountClasses": [
+    {
+      "name": "SchnorrInitializerlessAccount",
+      "classId": "0x222287bfcd04411264393983dd8d01ca5ea9ae305d1a10a1e6d8deef7f17659b"
+    }
+  ],
+  "requireUnpublishedAccounts": true
+}

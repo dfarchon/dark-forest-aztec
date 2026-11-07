@@ -355,7 +355,7 @@ export function SettingsPane({
                   }}
                 >
                   {getEffectiveSponsoredFpcAddressOverride() ??
-                    "(none — canonical)"}
+                    "(not configured)"}
                 </span>
               </Row>
               <Row>
