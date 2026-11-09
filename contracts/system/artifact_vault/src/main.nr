@@ -737,6 +737,12 @@ contract ArtifactVault {
         assert(!player.claimed_ships, "player already claimed ships");
         assert(planet.owner == sender, "you can only spawn ships on your home planet");
         assert(planet.is_home_planet, "you can only spawn ships on your home planet");
+        // is_home_planet stays set after capture. Bind the claim to the planet
+        // this player was initialized on, which is written once and never updated.
+        assert(
+            player.home_planet_id == location_id,
+            "you can only spawn ships on your own home planet",
+        );
 
         assert(planet_events_state.count == 0, "planet events must be empty");
         assert(planet_artifacts_state.count == 0, "planet artifacts must be empty");
