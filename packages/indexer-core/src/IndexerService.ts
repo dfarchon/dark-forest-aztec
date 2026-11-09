@@ -30,6 +30,7 @@ import type {
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
+  SnapshotIdentity,
   IndexerStatus,
   PublicEventName,
   PublicEventStats,
@@ -38,7 +39,11 @@ import type {
   TableRowType,
   TableUpdate,
 } from "./types.ts";
-import { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
+import {
+  PUBLIC_EVENT_NAMES,
+  TABLE_NAMES,
+  sameSnapshotIdentity,
+} from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -70,6 +75,8 @@ export interface IndexerServiceOptions {
    * Typical: off-chain indexer API (e.g. OffChainBlockSource).
    */
   bootstrapSource?: IBlockEventSource;
+  /** Reject a bootstrap from a different chain, start block, tip or contract set. */
+  expectedSnapshotIdentity?: SnapshotIdentity;
   /**
    * Chain data source: used for getLatestBlockNumber and getBlockUpdates for the entire
    * lifecycle. All blocks after the bootstrap (or after startBlock) are maintained by the
@@ -115,6 +122,7 @@ export interface IndexerServiceOptions {
 
 export class IndexerService {
   private readonly bootstrapSource: IBlockEventSource | undefined;
+  private readonly expectedSnapshotIdentity: SnapshotIdentity | undefined;
   private readonly source: IBlockEventSource;
   private readonly startBlock: number;
   private readonly debounceMs: number;
@@ -156,6 +164,7 @@ export class IndexerService {
 
   constructor(options: IndexerServiceOptions) {
     this.bootstrapSource = options.bootstrapSource;
+    this.expectedSnapshotIdentity = options.expectedSnapshotIdentity;
     this.source = options.source;
     this.startBlock = Math.max(0, options.startBlock ?? 0);
     this.debounceMs = options.debounceMs ?? 1000;
@@ -264,6 +273,7 @@ export class IndexerService {
     let toBlock = this.latestKnownBlock;
 
     let recoveredThisPass = false;
+    let completedPass = false;
     try {
       while (true) {
         if (this.stopped()) return;
@@ -307,21 +317,23 @@ export class IndexerService {
           ...new Set(updates.updates.map((u) => u.table)),
         ] as TableName[];
         const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
-        this.notifyListeners({
-          tables,
-          fromBlock,
-          toBlock: committedTo,
-          updatedIdsByTable,
-        });
+        if (!this.reorgRecovering)
+          this.notifyListeners({
+            tables,
+            fromBlock,
+            toBlock: committedTo,
+            updatedIdsByTable,
+          });
         if (committedTo < chunkEnd) break;
         fromBlock = committedTo + 1;
       }
+      completedPass = true;
     } finally {
       // Errors propagate to the caller: start() rejects during initial sync,
       // background syncs log via the debounce catch boundary. Fully committed
       // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
       this.isSyncing = false;
-      this.finishRecoveryIfCaughtUp();
+      if (completedPass) this.finishRecoveryIfCaughtUp();
     }
   }
 
@@ -372,9 +384,10 @@ export class IndexerService {
     this.keepLastError = false;
     this.onReorgDetected?.(info);
     this.notifyListeners({
-      tables: [...TABLE_NAMES],
+      tables: [],
       fromBlock: this.snapshot.lastProcessedBlock,
       toBlock: this.snapshot.lastProcessedBlock,
+      reorgStarted: true,
     });
   }
 
@@ -384,6 +397,12 @@ export class IndexerService {
     if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) return;
     this.reorgRecovering = false;
     this.onReorgRecovered?.();
+    this.notifyListeners({
+      tables: [...TABLE_NAMES],
+      fromBlock: this.startBlock,
+      toBlock: this.snapshot.lastProcessedBlock,
+      fullRefresh: true,
+    });
   }
 
   private resetEventStatsForFullSync(): void {
@@ -580,6 +599,16 @@ export class IndexerService {
       try {
         const snap = await this.bootstrapSource.getSnapshot();
         if (snap) {
+          if (
+            this.expectedSnapshotIdentity &&
+            (!snap.identity ||
+              !sameSnapshotIdentity(
+                snap.identity,
+                this.expectedSnapshotIdentity,
+              ))
+          ) {
+            throw new Error("bootstrap snapshot identity mismatch");
+          }
           this.snapshot = normalizeSnapshot(snap);
           this.rebuildArtifactIndexes();
           this.latestKnownBlock = snap.lastProcessedBlock;
@@ -969,7 +998,10 @@ export class IndexerService {
     console.log(
       `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
     );
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+    if (
+      !this.reorgRecovering &&
+      this.snapshot.lastProcessedBlock >= blockNumber
+    ) {
       console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
       return;
     }
@@ -980,7 +1012,10 @@ export class IndexerService {
       console.warn("[IndexerService] immediate sync failed:", err);
     }
 
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+    if (
+      !this.reorgRecovering &&
+      this.snapshot.lastProcessedBlock >= blockNumber
+    ) {
       console.log(`[DEBUG waitForBlock] immediate sync reached ${blockNumber}`);
       return;
     }
@@ -996,7 +1031,10 @@ export class IndexerService {
       }, timeoutMs);
 
       const unsub = this.subscribe(() => {
-        if (this.snapshot.lastProcessedBlock >= blockNumber) {
+        if (
+          !this.reorgRecovering &&
+          this.snapshot.lastProcessedBlock >= blockNumber
+        ) {
           console.log(
             `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
           );

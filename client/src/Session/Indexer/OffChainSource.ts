@@ -3,25 +3,18 @@
  *
  * When used as IndexerService's bootstrapSource, only getSnapshot() is called: the off-chain
  * service provides initial state up to block X; blocks after X are maintained by the frontend
- * via the chain source. The off-chain indexer only needs to expose GET /snapshot (and optionally
- * /snapshot?toBlock=N). getBlockUpdates and getLatestBlockNumber are not used in that case.
+ * via the chain source. Only the identity-verified v3 snapshot is accepted for bootstrap.
  */
 
 import type {
   BlockUpdates,
   IBlockEventSource,
   IndexerSnapshot,
+  SnapshotIdentity,
   TableName,
   TableUpdate,
 } from "@dfpunk/indexer-core";
 import { TABLE_NAMES } from "@dfpunk/indexer-core";
-
-import {
-  parseSnapshotV2ChunkPayload,
-  parseSnapshotV2Manifest,
-  SnapshotV2Assembler,
-  type SnapshotV2ChunkPayload,
-} from "./snapshotV2";
 
 export interface SnapshotDownloadProgress {
   loadedBytes: number;
@@ -40,23 +33,13 @@ export interface OffChainSourceOptions {
   onSnapshotProgress?: (progress: SnapshotDownloadProgress) => void;
 }
 
-const V2_CHUNK_ROWS = 1000;
-const V2_CONCURRENCY = 6;
-const V2_TIMEOUT_MS = 10_000;
-const V2_MAX_RETRIES = 2;
+const SNAPSHOT_CONCURRENCY = 6;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Expected API shape (implement on the indexer):
  *
- * For bootstrap only (IndexerService bootstrapSource), one of these is required:
- *
- * v2 preferred:
- * - GET {baseUrl}/snapshot/manifest?chunkRows=N
- * - GET {baseUrl}/snapshot/chunks/:table/:chunkIndex?chunkRows=N
- *
- * v1 fallback:
- * - GET {baseUrl}/snapshot?toBlock=N
- *   -> { lastProcessedBlock: number, world: Record<id, state>, player: ..., planet: ..., ... }
+ * For bootstrap, the server must provide a v3 manifest and version-addressed chunks.
  *
  * Optional (only if using this source for ongoing sync; not used when passed as bootstrapSource):
  *
@@ -93,29 +76,146 @@ export class OffChainBlockSource implements IBlockEventSource {
   }
 
   async getSnapshot(toBlock?: number): Promise<IndexerSnapshot | null> {
-    // Server v2 manifest/chunks currently represent latest snapshot only.
-    // If toBlock is explicitly requested, keep using v1 endpoint.
-    if (toBlock === undefined) {
-      try {
-        const v2 = await this.getSnapshotV2();
-        if (v2) {
-          console.info(
-            "[OffChainBlockSource] bootstrap snapshot mode: v2_manifest_chunks"
-          );
-          return v2;
-        }
-      } catch (err) {
-        console.warn(
-          "[OffChainBlockSource] v2 bootstrap failed, fallback to v1 /snapshot:",
-          err
-        );
+    if (toBlock !== undefined)
+      throw new Error("Historical snapshots are not identity-verified");
+    try {
+      return await this.getSnapshotV3();
+    } catch (err) {
+      // A retained publication may expire during a long download. Restart from
+      // a fresh manifest once; never mix chunks from the two publications.
+      if (
+        err instanceof Error &&
+        /Indexer v3 chunk .*: 404/.test(err.message)
+      ) {
+        return this.getSnapshotV3();
+      }
+      throw err;
+    }
+  }
+
+  private async getSnapshotV3(): Promise<IndexerSnapshot | null> {
+    const response = await this.fetchWithTimeout(
+      `${this.baseUrl}/snapshot/v3/manifest`
+    );
+    if (response.status === 404) return null;
+    if (!response.ok)
+      throw new Error(`Indexer v3 manifest: ${response.status}`);
+    const manifest = (await response.json()) as {
+      version?: unknown;
+      snapshotId?: unknown;
+      lastProcessedBlock?: unknown;
+      lastProcessedBlockHash?: unknown;
+      identity?: SnapshotIdentity;
+      chunkRows?: unknown;
+      tables?: Record<string, { rowCount?: number; hashes?: string[] }>;
+    };
+    if (
+      manifest.version !== 3 ||
+      typeof manifest.snapshotId !== "string" ||
+      !/^[0-9a-f-]{36}$/.test(manifest.snapshotId) ||
+      !Number.isSafeInteger(manifest.lastProcessedBlock) ||
+      typeof manifest.lastProcessedBlockHash !== "string" ||
+      !manifest.identity ||
+      !Number.isSafeInteger(manifest.chunkRows) ||
+      (manifest.chunkRows as number) <= 0 ||
+      !manifest.tables ||
+      typeof manifest.tables !== "object"
+    ) {
+      throw new Error("Indexer v3 manifest: invalid shape");
+    }
+    const data: Record<string, unknown> = {
+      lastProcessedBlock: manifest.lastProcessedBlock,
+      lastProcessedBlockHash: manifest.lastProcessedBlockHash,
+    };
+    let loadedBytes = 0;
+    const tasks: Array<() => Promise<void>> = [];
+    for (const table of TABLE_NAMES) {
+      const spec = manifest.tables[table];
+      if (
+        !spec ||
+        !Number.isSafeInteger(spec.rowCount) ||
+        spec.rowCount! < 0 ||
+        !Array.isArray(spec.hashes) ||
+        spec.hashes.length !==
+          Math.ceil(spec.rowCount! / (manifest.chunkRows as number)) ||
+        !spec.hashes.every(
+          (hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)
+        )
+      ) {
+        throw new Error(`Indexer v3 manifest: invalid ${table}`);
+      }
+      data[table] = {};
+      for (let index = 0; index < spec.hashes!.length; index++) {
+        const chunkIndex = index;
+        tasks.push(async () => {
+          const url = `${this.baseUrl}/snapshot/v3/chunks/${manifest.snapshotId}/${table}/${chunkIndex}`;
+          const chunkResponse = await this.fetchWithTimeout(url);
+          if (!chunkResponse.ok)
+            throw new Error(
+              `Indexer v3 chunk ${table}/${chunkIndex}: ${chunkResponse.status}`
+            );
+          const bytes = new Uint8Array(await chunkResponse.arrayBuffer());
+          const digest = await crypto.subtle.digest("SHA-256", bytes);
+          const hash = Array.from(new Uint8Array(digest), (b) =>
+            b.toString(16).padStart(2, "0")
+          ).join("");
+          if (hash !== spec.hashes![chunkIndex])
+            throw new Error(
+              `Indexer v3 chunk ${table}/${chunkIndex}: hash mismatch`
+            );
+          const chunk = JSON.parse(new TextDecoder().decode(bytes)) as Record<
+            string,
+            unknown
+          >;
+          if (
+            chunk.version !== 3 ||
+            chunk.snapshotId !== manifest.snapshotId ||
+            chunk.table !== table ||
+            chunk.chunkIndex !== chunkIndex ||
+            !chunk.rows ||
+            typeof chunk.rows !== "object" ||
+            Array.isArray(chunk.rows)
+          ) {
+            throw new Error(
+              `Indexer v3 chunk ${table}/${chunkIndex}: identity mismatch`
+            );
+          }
+          const target = data[table] as Record<string, unknown>;
+          for (const [id, row] of Object.entries(chunk.rows)) {
+            if (Object.hasOwn(target, id))
+              throw new Error(`Indexer v3 duplicate ${table}:${id}`);
+            target[id] = row;
+          }
+          loadedBytes += bytes.byteLength;
+          this.emitSnapshotProgress({
+            loadedBytes,
+            totalBytes: null,
+            percent: null,
+            phase: "downloading",
+            done: false,
+          });
+        });
       }
     }
-
-    const data = await this.getSnapshotJsonV1(toBlock);
-    if (!data) return null;
-    console.info("[OffChainBlockSource] bootstrap snapshot mode: v1_snapshot");
-    return this.parseSnapshot(data);
+    await this.runConcurrent(tasks);
+    for (const table of TABLE_NAMES) {
+      if (
+        Object.keys(data[table] as object).length !==
+        manifest.tables[table].rowCount
+      ) {
+        throw new Error(`Indexer v3 ${table}: row count mismatch`);
+      }
+    }
+    const snapshot = this.parseSnapshot(data);
+    snapshot.identity = manifest.identity;
+    this.emitSnapshotProgress({
+      loadedBytes,
+      totalBytes: null,
+      percent: null,
+      phase: "complete",
+      done: true,
+    });
+    return snapshot;
   }
 
   async getBlockUpdates(
@@ -136,14 +236,17 @@ export class OffChainBlockSource implements IBlockEventSource {
       }>;
     };
     const updates = Array.isArray(data.updates) ? data.updates : [];
+    for (const update of updates) {
+      if (!TABLE_NAMES.includes(update.table as TableName)) {
+        throw new Error(`Indexer updates: unknown table ${update.table}`);
+      }
+    }
     return {
       fromBlock:
         typeof data.fromBlock === "number" ? data.fromBlock : fromBlock,
       toBlock: typeof data.toBlock === "number" ? data.toBlock : toBlock,
       updates: updates.map((u) => ({
-        table: (TABLE_NAMES.includes(u.table as TableName)
-          ? u.table
-          : "world") as TableName,
+        table: u.table as TableName,
         id: String(u.id ?? ""),
         state: (u.state ?? {}) as TableUpdate["state"],
       })),
@@ -173,12 +276,21 @@ export class OffChainBlockSource implements IBlockEventSource {
 
     for (const table of TABLE_NAMES) {
       const raw = data[table];
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new Error(`Indexer snapshot: missing ${table} table`);
+      }
       const map = snapshot[table] as Map<string, unknown>;
       for (const [id, state] of Object.entries(
         raw as Record<string, unknown>
       )) {
-        if (state !== null && typeof state === "object") map.set(id, state);
+        if (
+          state === null ||
+          typeof state !== "object" ||
+          Array.isArray(state)
+        ) {
+          throw new Error(`Indexer snapshot: invalid ${table}:${id}`);
+        }
+        map.set(id, state);
       }
     }
     return snapshot;
@@ -205,234 +317,14 @@ export class OffChainBlockSource implements IBlockEventSource {
     }
   }
 
-  private toPercent(loaded: number, total: number | null): number | null {
-    if (!total || total <= 0) return null;
-    const raw = Math.floor((loaded / total) * 100);
-    return Math.max(0, Math.min(100, raw));
-  }
-
-  private async readSnapshotJsonWithProgress(
-    res: Response
-  ): Promise<Record<string, unknown>> {
-    const totalHeader =
-      res.headers.get("x-snapshot-uncompressed-length") ??
-      res.headers.get("content-length");
-    const parsedTotal = totalHeader ? Number.parseInt(totalHeader, 10) : NaN;
-    const totalBytes =
-      Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : null;
-
-    if (!this.onSnapshotProgress) {
-      return (await res.json()) as Record<string, unknown>;
-    }
-
-    this.emitSnapshotProgress({
-      loadedBytes: 0,
-      totalBytes,
-      percent: this.toPercent(0, totalBytes),
-      phase: "downloading",
-      done: false,
-    });
-
-    if (!res.body) {
-      const buf = new Uint8Array(await res.arrayBuffer());
-      this.emitSnapshotProgress({
-        loadedBytes: buf.byteLength,
-        totalBytes,
-        percent: this.toPercent(buf.byteLength, totalBytes),
-        phase: "downloading",
-        done: false,
-      });
-
-      this.emitSnapshotProgress({
-        loadedBytes: buf.byteLength,
-        totalBytes,
-        percent: this.toPercent(buf.byteLength, totalBytes),
-        phase: "parsing",
-        done: false,
-      });
-
-      const text = new TextDecoder().decode(buf);
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      this.emitSnapshotProgress({
-        loadedBytes: buf.byteLength,
-        totalBytes,
-        percent: this.toPercent(buf.byteLength, totalBytes),
-        phase: "complete",
-        done: true,
-      });
-      return parsed;
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let loadedBytes = 0;
-    let text = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      loadedBytes += value.byteLength;
-      text += decoder.decode(value, { stream: true });
-      this.emitSnapshotProgress({
-        loadedBytes,
-        totalBytes,
-        percent: this.toPercent(loadedBytes, totalBytes),
-        phase: "downloading",
-        done: false,
-      });
-    }
-    text += decoder.decode();
-
-    this.emitSnapshotProgress({
-      loadedBytes,
-      totalBytes,
-      percent: this.toPercent(loadedBytes, totalBytes),
-      phase: "parsing",
-      done: false,
-    });
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    this.emitSnapshotProgress({
-      loadedBytes,
-      totalBytes,
-      percent: this.toPercent(loadedBytes, totalBytes),
-      phase: "complete",
-      done: true,
-    });
-    return parsed;
-  }
-
-  private async getSnapshotJsonV1(
-    toBlock?: number
-  ): Promise<Record<string, unknown> | null> {
-    const url =
-      toBlock !== undefined
-        ? `${this.baseUrl}/snapshot?toBlock=${toBlock}`
-        : `${this.baseUrl}/snapshot`;
-    const res = await this.fetchWithTimeout(url);
-    if (!res.ok) {
-      if (res.status === 404) return null;
-      throw new Error(`Indexer snapshot: ${res.status}`);
-    }
-    return this.readSnapshotJsonWithProgress(res);
-  }
-
-  private async getSnapshotV2(): Promise<IndexerSnapshot | null> {
-    const manifestRes = await this.fetchWithTimeout(
-      `${this.baseUrl}/snapshot/manifest?chunkRows=${V2_CHUNK_ROWS}`
-    );
-    if (!manifestRes.ok) {
-      if (manifestRes.status === 404) return null;
-      throw new Error(`Indexer snapshot manifest: ${manifestRes.status}`);
-    }
-    const manifest = parseSnapshotV2Manifest(await manifestRes.json());
-    if (!manifest) {
-      throw new Error("Indexer snapshot manifest: invalid shape");
-    }
-
-    const assembler = new SnapshotV2Assembler(manifest);
-    let loadedBytes = 0;
-
-    this.emitSnapshotProgress({
-      loadedBytes: 0,
-      totalBytes: null,
-      percent: null,
-      phase: "downloading",
-      done: false,
-    });
-
-    const tasks: Array<() => Promise<void>> = [];
-    for (const table of TABLE_NAMES) {
-      const chunkCount = manifest.tables[table].chunkCount;
-      for (let ci = 0; ci < chunkCount; ci += 1) {
-        const chunkIndex = ci;
-        tasks.push(async () => {
-          const { chunk, bytes } = await this.fetchChunk(
-            table,
-            chunkIndex,
-            manifest.chunkRows
-          );
-          assembler.addChunk(chunk);
-          loadedBytes += bytes;
-          this.emitSnapshotProgress({
-            loadedBytes,
-            totalBytes: null,
-            percent: null,
-            phase: "downloading",
-            done: false,
-          });
-        });
-      }
-    }
-
-    await this.runConcurrent(tasks);
-
-    this.emitSnapshotProgress({
-      loadedBytes,
-      totalBytes: null,
-      percent: null,
-      phase: "parsing",
-      done: false,
-    });
-    const snapshot = assembler.finalize();
-    this.emitSnapshotProgress({
-      loadedBytes,
-      totalBytes: null,
-      percent: null,
-      phase: "complete",
-      done: true,
-    });
-    return snapshot;
-  }
-
-  private async fetchChunk(
-    table: TableName,
-    chunkIndex: number,
-    chunkRows: number
-  ): Promise<{ chunk: SnapshotV2ChunkPayload; bytes: number }> {
-    const url = `${this.baseUrl}/snapshot/chunks/${table}/${chunkIndex}?chunkRows=${chunkRows}`;
-    let lastError: unknown;
-    for (let attempt = 0; attempt <= V2_MAX_RETRIES; attempt += 1) {
-      try {
-        const res = await this.fetchWithTimeout(url);
-        if (!res.ok) {
-          throw new Error(
-            `snapshot chunk ${table}/${chunkIndex}: ${res.status}`
-          );
-        }
-        const buf = new Uint8Array(await res.arrayBuffer());
-        const chunk = parseSnapshotV2ChunkPayload(
-          JSON.parse(new TextDecoder().decode(buf))
-        );
-        if (!chunk) {
-          throw new Error(
-            `snapshot chunk ${table}/${chunkIndex}: invalid shape`
-          );
-        }
-        if (chunk.table !== table || chunk.chunkIndex !== chunkIndex) {
-          throw new Error(
-            `snapshot chunk ${table}/${chunkIndex}: identity mismatch`
-          );
-        }
-        return { chunk, bytes: buf.byteLength };
-      } catch (err) {
-        lastError = err;
-        if (attempt < V2_MAX_RETRIES) {
-          await new Promise((r) => setTimeout(r, attempt === 0 ? 300 : 1000));
-        }
-      }
-    }
-    throw lastError;
-  }
-
   private async fetchWithTimeout(url: string): Promise<Response> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), V2_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       return await this.doFetch(url, { signal: controller.signal });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        throw new Error(`request timeout after ${V2_TIMEOUT_MS}ms`);
+        throw new Error(`request timeout after ${REQUEST_TIMEOUT_MS}ms`);
       }
       throw err;
     } finally {
@@ -446,7 +338,7 @@ export class OffChainBlockSource implements IBlockEventSource {
     if (tasks.length === 0) return;
     let nextIndex = 0;
     const workers = Array.from(
-      { length: Math.min(tasks.length, V2_CONCURRENCY) },
+      { length: Math.min(tasks.length, SNAPSHOT_CONCURRENCY) },
       async () => {
         while (nextIndex < tasks.length) {
           const i = nextIndex++;

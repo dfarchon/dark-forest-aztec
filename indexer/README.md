@@ -4,14 +4,18 @@ Indexes DFPunk Aztec public storage updates block-by-block, keeps an in-memory t
 
 ## Architecture
 
+The current client bootstrap path is `Aztec node → server IndexerService → SQLite v3 publication → HTTP manifest/chunks → client OffChainSource → client IndexerService → GameManager`. The direct path is `Aztec node → client IndexerService → GameManager`. After bootstrap, both clients read subsequent blocks from the node.
+
+The v3 publication identity contains L1 chain ID and rollup address, indexer start block, tip, schema version, and the nine storage contract addresses. The client verifies this identity and the manifest's block hash against its node. Every v3 chunk is addressed by an immutable `snapshotId` and checked against its SHA-256 hash and table row count. Any missing or invalid v3 data causes a full node replay.
+
 ```text
 Aztec Node (public events)
   → AztecNodeSource (getBlockUpdates → getPublicEvents)
   → IndexerService (typed Maps + sync lifecycle)
   → SnapshotCache (JSON mirror + cached Brotli/gzip)
-  → HTTP API (/snapshot, /snapshot/hash, /snapshot/manifest, /snapshot/chunks/*, /blocks/latest, /health)
+  → HTTP API (/snapshot/v3/manifest, /snapshot/v3/chunks/*, /blocks/latest, /health)
                      \
-                      → SnapshotStore (SQLite WAL: v1 snapshot row + v2 chunk/manifest tables)
+                      → SnapshotStore (SQLite WAL: v1/v2 compatibility + v3 publications)
 ```
 
 ### Directory Layout
@@ -23,7 +27,7 @@ indexer/
     api.ts                      # Hono routes
     config.ts                   # env parsing and startup validation
     contractsConfig.ts          # contract addresses + START_BLOCK validation
-    persistence.ts              # SQLite store + restore + v2 chunk persistence
+    persistence.ts              # SQLite store + atomic v1/v2/v3 publication
     snapshotCache.ts            # incremental JSON + Brotli/gzip cache
 packages/
   indexer-core/
@@ -53,7 +57,8 @@ In-memory storage is `Map<TableId, TableState>` per table, plus `lastProcessedBl
    - Restore the last snapshot into `SnapshotCache` so HTTP can keep serving it. Do not load it into `IndexerService`; the indexer resyncs from `startBlock` with an empty state. Verify v1 JSON against v2 chunk reconstruction.
    - Start HTTP listener (so `/health` responds while sync runs). Until the sync is published, snapshot routes serve the stored snapshot, or 404 when there is none.
    - `await indexer.start()` — full resync up to the proven tip. RPC failures retry with backoff instead of exiting.
-   - `cache.buildFull()` and `forceSave` publish that synced snapshot. A hash mismatch replays from `startBlock` and is not persisted until the replay finishes.
+   - Read the node's L1 chain ID and rollup address for the publication identity; retry while HTTP continues serving the last committed version.
+   - `cache.buildFull()` and `forceSave` publish that synced snapshot only after the SQLite transaction commits. A hash mismatch replays from `startBlock` and is not persisted until the replay finishes.
    - `indexer.subscribe(...)`: incremental cache updates + throttled persistence. Saves are skipped while a reorg replay is in progress.
    - `indexer.startPolling()` for new blocks.
 6. On shutdown (`SIGINT`/`SIGTERM`), force-save snapshot and close DB.
@@ -72,16 +77,21 @@ Uses **IndexerService** from `@dfpunk/indexer-core`:
 
 ## Snapshot & Persistence
 
+`SnapshotStore` writes the v1 row, v2 compatibility chunks, v3 immutable chunks and manifest, and active pointers in one SQLite transaction. Failed writes leave the previous published snapshot active. Same-height reorganization publications receive a new UUID. Old v3 generations remain for at least 24 hours, with at least three generations retained. The `/health` response distinguishes the in-memory block from `metrics.publishedV3Block`.
+
 **SnapshotCache** — JSON-serializable mirror of all tables. Incremental updates via changed IDs. Caches both Brotli and gzip buffers for `/snapshot` and chunk routes.
 
 **SnapshotStore** — `better-sqlite3` with WAL mode:
 
 - **v1**: single-row `snapshots(id=1)` — `block_number`, `data` (JSON), `updated_at`.
 - **v2**: `snapshot_chunks` + `snapshot_manifests` for persisted encoded chunks.
+- **v3**: `snapshot_v3_chunks` + `snapshot_v3_manifests` keyed by publication UUID, plus an active ID pointer.
 - Throttled saves (`PERSIST_MIN_INTERVAL_SEC`); force-save on shutdown.
 - Admin backup via SQLite backup API.
 
 ## HTTP API
+
+Updated clients use `GET /snapshot/v3/manifest` and `GET /snapshot/v3/chunks/:snapshotId/:table/:chunkIndex`. Chunks are gzip encoded and cacheable by their immutable ID. The v1 and v2 routes remain for older clients; they do not offer v3's publication pinning.
 
 Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snapshot` and `/snapshot/chunks/*`.
 
@@ -91,8 +101,10 @@ Compression: `Accept-Encoding: br` → Brotli; otherwise gzip. Applies to `/snap
 | `GET /snapshot/hash`                                 | `{ hash, lastProcessedBlock }` — SHA-256 hex of canonical snapshot JSON.                                                                            |
 | `GET /snapshot/manifest?chunkRows=`                  | v2 chunk metadata: `{ version: 2, lastProcessedBlock, lastProcessedBlockHash?, chunkRows, tables }`. Default `chunkRows=1000`, max `20000`.                                  |
 | `GET /snapshot/chunks/:table/:chunkIndex?chunkRows=` | One compressed chunk. Headers: `X-Snapshot-Chunk-Count`, `X-Snapshot-Chunk-Index`, `X-Snapshot-Chunk-Rows`, `X-Snapshot-Block`.                     |
+| `GET /snapshot/v3/manifest` | Current immutable publication ID, chain identity, block hash, and chunk hashes. |
+| `GET /snapshot/v3/chunks/:snapshotId/:table/:chunkIndex` | Gzip chunk pinned to a publication ID. |
 | `GET /blocks/latest`                                 | `{ blockNumber, snapshotBlock, snapshotBytes, snapshotEncoding }`                                                                                   |
-| `GET /health`                                        | `{ status, lifecycle, lastProcessedBlock, latestKnownBlock, isSyncing, consecutiveFailures, lastError?, reorgRecovering, metrics: { blockLag, snapshotBlock, snapshotBytes } }` |
+| `GET /health`                                        | Status and sync diagnostics; `metrics` includes `snapshotBlock` and `publishedV3Block` alongside the in-memory `lastProcessedBlock`. |
 | `GET /admin/backup`                                  | SQLite DB file download. Requires `Authorization: Bearer <ADMIN_TOKEN>`. Disabled when token is empty.                                              |
 
 ## Configuration
@@ -122,7 +134,7 @@ Run via `pnpm --filter indexer <script>`:
 | Script                                                                          | Purpose                                                           |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `dev` / `start`                                                                 | Run the indexer (`tsx src/index.ts`); Docker uses `node --experimental-transform-types` |
-| `compare:snapshot`                                                              | Compare snapshot JSON to indexer `/snapshot` and v2 reconstruction |
+| `compare:snapshot`                                                              | Compare snapshots only at the same block and hash; verify v3 chunks |
 | `docker:build`                                                                  | Build indexer image (`scripts/build-indexer-image.sh`)              |
 | `docker:publish`                                                                | Build and push image (`IMAGE_PUSH=1`)                             |
 | `docker:publish:testnet`                                                        | Publish devnet/testnet image (`scripts/publish-devnet-image.sh`)  |
@@ -248,6 +260,8 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 
 ## Failure & Recovery
 
+A live reorganization stops incremental notifications while replay runs. On completion, the server publishes the rebuilt state and emits one full refresh. The frontend enters safe mode at reorg detection, rejects transaction submission during replay, and reloads after recovery to remove fork-only entities.
+
 - **RPC retry**: a single Aztec node is used. Each request times out after 30s. Initial sync retries with backoff (2s, 4s, 8s, … capped at 60s) until the node responds, and background sync uses the same cap. The process stays up and keeps serving the last SQLite snapshot. `/health` reports `consecutiveFailures` and `lastError`. A hard crash still exits via `main().catch(() => process.exit(1))`.
 - **Local RPC diagnostics**: if `curl https://canonical.testnet.rpc.aztec-labs.com` fails with `SSL_ERROR_SYSCALL` and resolves to a `198.18.0.0/15` address, a local PAC/WPAD proxy (Clash/Surge fake-ip) is intercepting the domain — not an RPC outage. Pin the real IP via `dig @8.8.8.8` or disable the proxy to verify.
 - Event decode failures cause startup/polling to fail fast with logged error.
@@ -260,5 +274,5 @@ The Docker build context is the monorepo root; deploy ignore rules live in [`.do
 
 - No auth or application-level rate limiting on public read endpoints today. For the expected app + indexer traffic this is usually enough; if snapshot scraping or abuse shows up, add limits at the edge (CDN/proxy) or in the Hono app.
 - Backup endpoint is Bearer-protected; keep `ADMIN_TOKEN` secret.
-- No pruning/versioning for historical snapshots (latest state only).
+- v3 retains recent immutable publications for in-flight downloads; older publications are pruned after 24 hours, keeping at least three.
 - No explicit metrics endpoint.

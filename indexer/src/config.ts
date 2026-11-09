@@ -1,8 +1,10 @@
 import { START_BLOCK } from "@dfpunk/contracts";
+import { SNAPSHOT_SCHEMA_VERSION } from "@dfpunk/indexer-core";
 
-export const DEFAULT_AZTEC_NODE_URL = "https://canonical.testnet.rpc.aztec-labs.com";
+export const DEFAULT_AZTEC_NODE_URL =
+  "https://canonical.testnet.rpc.aztec-labs.com";
 
-export const DEFAULT_SNAPSHOT_SCHEMA_VERSION = 2;
+export const DEFAULT_SNAPSHOT_SCHEMA_VERSION = SNAPSHOT_SCHEMA_VERSION;
 
 const INDEXER_TIP_TAGS = ["checkpointed", "proven", "finalized"] as const;
 type IndexerTipTag = (typeof INDEXER_TIP_TAGS)[number];

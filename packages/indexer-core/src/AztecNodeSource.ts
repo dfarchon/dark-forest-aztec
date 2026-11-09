@@ -68,6 +68,17 @@ const DEFAULT_ADDRESSES: StorageContractAddresses = {
   ArtifactLocationStorage: ARTIFACT_LOCATION_STORAGE_CONTRACT_ADDRESS,
 };
 
+/** The storage contracts whose public events are indexed. */
+export function resolveStorageContractAddresses(
+  overrides: StorageContractAddresses = {},
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries({ ...DEFAULT_ADDRESSES, ...overrides })
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, address]) => [name, address!.toLowerCase()]),
+  );
+}
+
 const STORAGE_SPECS: Array<{
   contractKey: string;
   table: TableName;

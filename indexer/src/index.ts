@@ -1,9 +1,11 @@
 import { serve } from "@hono/node-server";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
 import { pathToFileURL } from "node:url";
 
 import {
   createAztecNodeBlockSource,
   IndexerService,
+  resolveStorageContractAddresses,
 } from "@dfpunk/indexer-core";
 import { createApp, type SnapshotPublication } from "./api.ts";
 import type { ServerRuntimeConfig } from "./config.ts";
@@ -19,6 +21,7 @@ interface ServerRuntimeDeps {
   config: ServerRuntimeConfig;
   contracts: ContractsRuntimeConfig;
   indexer: IndexerService;
+  loadSnapshotIdentity?: () => Promise<void>;
   publication?: SnapshotPublication;
   registerShutdownHandlers?: boolean;
   serveFn?: typeof serve;
@@ -39,6 +42,7 @@ export async function runServerRuntime({
   config,
   contracts,
   indexer,
+  loadSnapshotIdentity,
   publication = { published: false },
   registerShutdownHandlers = true,
   serveFn = serve,
@@ -59,11 +63,11 @@ export async function runServerRuntime({
     cache.buildFull();
     try {
       store.forceSave(cache.getProcessedBlockNumber(), cache.getJsonString());
+      publication.published = true;
+      syncCompleted = true;
     } catch (err) {
       console.error("[Server] Failed to publish snapshot:", err);
     }
-    publication.published = true;
-    syncCompleted = true;
   };
 
   const app = createApp({
@@ -111,6 +115,21 @@ export async function runServerRuntime({
   const { syncedToBlock } = await indexer.start();
   console.log(`[Server] Synced to block ${syncedToBlock}`);
 
+  if (loadSnapshotIdentity) {
+    for (;;) {
+      try {
+        await loadSnapshotIdentity();
+        break;
+      } catch (err) {
+        console.warn(
+          "[Server] Could not read snapshot chain identity; retrying:",
+          err,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
+  }
+
   if (!indexer.getStatus().reorgRecovering) {
     publishSyncedSnapshot();
   } else {
@@ -119,9 +138,18 @@ export async function runServerRuntime({
   }
   acceptRecoveryPublish = true;
   indexer.subscribe((payload) => {
+    if (payload.reorgStarted) return;
+    if (payload.fullRefresh) return; // onReorgRecovered already published the complete replay
     cache.applyChange(payload);
     if (indexer.getStatus().reorgRecovering) return;
-    store.save(cache.getProcessedBlockNumber(), cache.getJsonString());
+    try {
+      if (store.save(cache.getProcessedBlockNumber(), cache.getJsonString())) {
+        publication.published = true;
+        syncCompleted = true;
+      }
+    } catch (err) {
+      console.error("[Server] Failed to persist live snapshot:", err);
+    }
   });
 
   indexer.startPolling();
@@ -192,6 +220,18 @@ async function main(): Promise<void> {
     config,
     contracts,
     indexer,
+    loadSnapshotIdentity: async () => {
+      const nodeInfo = await createAztecNodeClient(
+        config.aztecNodeUrl,
+      ).getNodeInfo();
+      store.setSnapshotIdentity({
+        networkId: `${nodeInfo.l1ChainId}:${nodeInfo.l1ContractAddresses.rollupAddress.toString()}`,
+        startBlock: config.indexerStartBlock,
+        tipTag: config.indexerTipTag,
+        schemaVersion: config.snapshotSchemaVersion,
+        storageAddresses: resolveStorageContractAddresses(),
+      });
+    },
     store,
   });
 }

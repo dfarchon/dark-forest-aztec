@@ -125,6 +125,38 @@ test("runServerRuntime starts HTTP before initial sync completes", async () => {
   ]);
 });
 
+test("failed persistence never marks a fresh snapshot as published", async () => {
+  const publication = { published: false };
+  const indexer = {
+    destroy: () => undefined,
+    getProcessedBlockNumber: () => 7,
+    getProcessedBlockHash: () => "hash-7",
+    getStatus: () => ({ reorgRecovering: false }),
+    getTable: () => ({}),
+    start: async () => ({ syncedToBlock: 7 }),
+    startPolling: () => undefined,
+    subscribe: () => undefined,
+  };
+  const store = {
+    restore: () => null,
+    forceSave: () => {
+      throw new Error("disk full");
+    },
+    close: () => undefined,
+  };
+  await runServerRuntime({
+    cache: new SnapshotCache(indexer as never),
+    publication,
+    config: createTestConfig(),
+    contracts: createTestContracts(),
+    indexer: indexer as never,
+    store: store as never,
+    registerShutdownHandlers: false,
+    serveFn: () => ({ close: () => undefined }) as never,
+  });
+  assert.equal(publication.published, false);
+});
+
 test("shutdown before initial sync does not write a snapshot", async () => {
   let resolveStart!: (value: { syncedToBlock: number }) => void;
   const startPromise = new Promise<{ syncedToBlock: number }>((resolve) => {

@@ -1623,6 +1623,12 @@ export function GameLandingPage() {
     const bootstrapUrl = getEffectiveIndexerBootstrapUrl();
     const indexerConfig: IndexerConnectionConfig = {
       nodeUrl: getEffectiveNodeUrl(),
+      onReorgStart: () =>
+        gameUIManagerRef.current?.getGameManager()?.setSafeMode(true),
+      onFullRefresh: () => {
+        gameUIManagerRef.current?.getGameManager()?.setSafeMode(true);
+        void playRefreshPageTransition();
+      },
       startBlock: START_BLOCK,
       debounceMs: 1000,
       pollIntervalMs: 2000,
@@ -1683,7 +1689,7 @@ export function GameLandingPage() {
 
     setLoadingPhase({ step: "done" });
     return connection;
-  }, []);
+  }, [playRefreshPageTransition]);
 
   const promptForExternalAccountSelection = useCallback(
     async (

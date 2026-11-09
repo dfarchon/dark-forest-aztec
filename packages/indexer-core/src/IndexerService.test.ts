@@ -14,7 +14,9 @@ import type {
   BlockUpdates,
   IBlockEventSource,
   IndexerSnapshot,
+  SnapshotIdentity,
   PublicEventBatchCounts,
+  TableName,
   TableUpdate,
 } from "./types.ts";
 
@@ -607,6 +609,42 @@ test("verifyBlockHashes replays from the start block when the stored hash no lon
   indexer.destroy();
 });
 
+test("live reorg emits one full refresh after replay and removes fork-only rows", async () => {
+  let hash = "fork";
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 1,
+    getBlockHash: async () => hash,
+    getBlockUpdates: async (fromBlock, toBlock) => ({
+      fromBlock,
+      toBlock,
+      toBlockHash: hash,
+      updates: [arrivalUpdate(hash === "fork" ? "0xfork" : "0xcanonical")],
+    }),
+  };
+  const indexer = new IndexerService({
+    source,
+    startBlock: 1,
+    verifyBlockHashes: true,
+    pollIntervalMs: 100_000,
+  });
+  await indexer.start();
+  indexer.startPolling();
+  const notifications: string[] = [];
+  indexer.subscribe((payload) =>
+    notifications.push(
+      payload.reorgStarted ? "start" : payload.fullRefresh ? "full" : "rows",
+    ),
+  );
+  hash = "canonical";
+  await (
+    indexer as unknown as { syncToLatest(): Promise<void> }
+  ).syncToLatest();
+  assert.deepEqual(notifications, ["start", "full"]);
+  assert.equal(indexer.getArrival("0xfork"), undefined);
+  assert.ok(indexer.getArrival("0xcanonical"));
+  indexer.destroy();
+});
+
 test("a hash change between chunks discards the fork and replays", async () => {
   let phase: "fork" | "canonical" = "fork";
   const reorgs: number[] = [];
@@ -835,6 +873,136 @@ test("verifyBootstrapSnapshot keeps a matching snapshot and drops a mismatch", a
   assert.equal(mismatched.calls[0]?.fromBlock, 1);
   assert.equal(dropped.getPlanet("0xplanet"), undefined);
   dropped.destroy();
+});
+
+test("bootstrap identity rejects a different start block even with the same tip hash", async () => {
+  const identity: SnapshotIdentity = {
+    networkId: "1:rollup",
+    startBlock: 1,
+    tipTag: "proven",
+    schemaVersion: 2,
+    storageAddresses: { WorldStorage: "0x1" },
+  };
+  const snap: IndexerSnapshot = {
+    lastProcessedBlock: 500,
+    lastProcessedBlockHash: "same-hash",
+    identity: { ...identity, startBlock: 200 },
+    world: new Map(),
+    player: new Map(),
+    planet: new Map(),
+    planet_revealed_coords: new Map(),
+    planet_events: new Map(),
+    planet_artifacts: new Map(),
+    arrival: new Map(),
+    artifact: new Map(),
+    artifact_location: new Map(),
+  };
+  const source = sourceWithSnapshot(snap, {
+    latestBlock: 500,
+    blockHash: () => "same-hash",
+  });
+  const indexer = new IndexerService({
+    source,
+    bootstrapSource: source,
+    startBlock: 1,
+    expectedSnapshotIdentity: identity,
+    verifyBootstrapSnapshot: true,
+  });
+  await indexer.start();
+  assert.equal(source.calls[0]?.fromBlock, 1);
+  indexer.destroy();
+});
+
+test("direct replay and verified bootstrap converge at the same block across all nine tables", async () => {
+  const identity: SnapshotIdentity = {
+    networkId: "1:rollup",
+    startBlock: 1,
+    tipTag: "proven",
+    schemaVersion: 2,
+    storageAddresses: { WorldStorage: "0x1" },
+  };
+  const fixture = normalizeSnapshot(snapshotWithStringRows(1, "h1"));
+  fixture.identity = identity;
+  const tables: TableName[] = [
+    "world",
+    "player",
+    "planet",
+    "planet_revealed_coords",
+    "planet_events",
+    "planet_artifacts",
+    "arrival",
+    "artifact",
+    "artifact_location",
+  ];
+  const firstBlock = tables.flatMap((table) =>
+    [...fixture[table]].map(([id, state]) => ({ table, id, state })),
+  );
+  const secondBlock = [
+    {
+      table: "planet" as const,
+      id: "0xplanet",
+      state: { ...fixture.planet.get("0xplanet"), population: 200n },
+    },
+  ];
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 2,
+    getBlockHash: async (block) => (block === 1 ? "h1" : "h2"),
+    getBlockUpdates: async (fromBlock, toBlock) => ({
+      fromBlock,
+      toBlock,
+      toBlockHash: toBlock === 1 ? "h1" : "h2",
+      updates: fromBlock === 1 ? firstBlock : secondBlock,
+    }),
+  };
+  const direct = new IndexerService({
+    source,
+    startBlock: 1,
+    maxBlocksPerRequest: 1,
+    verifyBlockHashes: true,
+  });
+  const bootstrapped = new IndexerService({
+    source,
+    bootstrapSource: { ...source, getSnapshot: async () => fixture },
+    expectedSnapshotIdentity: identity,
+    startBlock: 1,
+    maxBlocksPerRequest: 1,
+    verifyBlockHashes: true,
+    verifyBootstrapSnapshot: true,
+  });
+  await Promise.all([direct.start(), bootstrapped.start()]);
+  assert.equal(direct.getProcessedBlockHash(), "h2");
+  assert.deepEqual(
+    JSON.parse(bootstrapped.getSnapshotAsJsonString()),
+    JSON.parse(direct.getSnapshotAsJsonString()),
+  );
+  direct.destroy();
+  bootstrapped.destroy();
+});
+
+test("v3 snapshot rejects truncated nested arrays", () => {
+  const snap: IndexerSnapshot = {
+    lastProcessedBlock: 1,
+    lastProcessedBlockHash: "hash",
+    identity: {
+      networkId: "1:rollup",
+      startBlock: 1,
+      tipTag: "proven",
+      schemaVersion: 2,
+      storageAddresses: {},
+    },
+    world: new Map(),
+    player: new Map(),
+    planet: new Map(),
+    planet_revealed_coords: new Map(),
+    planet_events: new Map([
+      ["planet", { events: [{ id: "arrival" }], count: 2, last_updated: 1n }],
+    ]),
+    planet_artifacts: new Map(),
+    arrival: new Map(),
+    artifact: new Map(),
+    artifact_location: new Map(),
+  };
+  assert.throws(() => normalizeSnapshot(snap), /invalid nested array/);
 });
 
 test("verifyBootstrapSnapshot discards a snapshot that cannot be checked", async () => {

@@ -1,10 +1,24 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { TABLE_NAMES, type TableName } from "@dfpunk/indexer-core";
+import {
+  TABLE_NAMES,
+  type SnapshotIdentity,
+  type TableName,
+} from "@dfpunk/indexer-core";
+
+export interface SnapshotV3Manifest {
+  version: 3;
+  snapshotId: string;
+  lastProcessedBlock: number;
+  lastProcessedBlockHash: string;
+  identity: SnapshotIdentity;
+  chunkRows: number;
+  tables: Record<TableName, { rowCount: number; hashes: string[] }>;
+}
 
 // ---------------------------------------------------------------------------
 // v1 tables (existing)
@@ -189,6 +203,7 @@ export interface StoredSnapshotSummary {
 }
 
 export class SnapshotStore {
+  private snapshotIdentity: SnapshotIdentity | undefined;
   private db: Database.Database;
   private cachedActiveSnapshotPayload: StoredSnapshotPayload | null = null;
   private cachedActiveSnapshotPayloadBlock: number | null = null;
@@ -239,6 +254,12 @@ export class SnapshotStore {
     this.db.exec(CREATE_SNAPSHOT_CHUNKS_TABLE_SQL);
     this.db.exec(CREATE_SNAPSHOT_CHUNKS_INDEX_SQL);
     this.db.exec(CREATE_SNAPSHOT_MANIFESTS_TABLE_SQL);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS snapshot_v3_manifests (
+      snapshot_id TEXT PRIMARY KEY, manifest_json TEXT NOT NULL,
+      published_at INTEGER NOT NULL)`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS snapshot_v3_chunks (
+      snapshot_id TEXT NOT NULL, table_name TEXT NOT NULL, chunk_index INTEGER NOT NULL,
+      payload BLOB NOT NULL, PRIMARY KEY(snapshot_id, table_name, chunk_index))`);
 
     this.dbSchemaVersion = Math.max(1, versionOptions.dbSchemaVersion ?? 1);
     this.snapshotSchemaVersion = Math.max(
@@ -279,6 +300,118 @@ export class SnapshotStore {
     this.previousActiveBlock = this.getMetadataInt(
       METADATA_KEY_ACTIVE_SNAPSHOT_BLOCK,
     );
+  }
+
+  setSnapshotIdentity(identity: SnapshotIdentity): void {
+    this.snapshotIdentity = identity;
+  }
+
+  getActiveV3Manifest(): SnapshotV3Manifest | null {
+    const id = this.getMetadataString("active_snapshot_v3_id");
+    if (!id) return null;
+    const row = this.db
+      .prepare(
+        "SELECT manifest_json FROM snapshot_v3_manifests WHERE snapshot_id = ?",
+      )
+      .get(id) as { manifest_json: string } | undefined;
+    if (!row) return null;
+    try {
+      return JSON.parse(row.manifest_json) as SnapshotV3Manifest;
+    } catch (err) {
+      console.warn("[Persistence] Invalid v3 manifest:", err);
+      return null;
+    }
+  }
+
+  getV3Chunk(id: string, table: TableName, index: number): Buffer | null {
+    const row = this.db
+      .prepare(
+        `SELECT payload FROM snapshot_v3_chunks
+      WHERE snapshot_id = ? AND table_name = ? AND chunk_index = ?`,
+      )
+      .get(id, table, index) as { payload: Buffer } | undefined;
+    return row?.payload ?? null;
+  }
+
+  private getMetadataString(key: string): string | null {
+    const row = this.selectMetadataStmt.get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  private writeV3(blockNumber: number, jsonString: string): void {
+    if (!this.snapshotIdentity) return;
+    const data = JSON.parse(jsonString) as Record<string, unknown>;
+    if (
+      data.lastProcessedBlock !== blockNumber ||
+      typeof data.lastProcessedBlockHash !== "string" ||
+      !data.lastProcessedBlockHash
+    ) {
+      throw new Error(
+        "Cannot publish v3 snapshot without matching block and hash",
+      );
+    }
+    const id = randomUUID();
+    const tables = {} as SnapshotV3Manifest["tables"];
+    const insert = this.db.prepare(`INSERT INTO snapshot_v3_chunks
+      (snapshot_id, table_name, chunk_index, payload) VALUES (?, ?, ?, ?)`);
+    for (const table of TABLE_NAMES) {
+      const rows = data[table];
+      if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
+        throw new Error(`Cannot publish v3 snapshot without ${table}`);
+      }
+      const entries = Object.entries(rows).sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+      const hashes: string[] = [];
+      for (let i = 0; i < entries.length; i += this.chunkRows) {
+        const chunkIndex = hashes.length;
+        const payload = JSON.stringify({
+          version: 3,
+          snapshotId: id,
+          table,
+          chunkIndex,
+          rows: Object.fromEntries(entries.slice(i, i + this.chunkRows)),
+        });
+        hashes.push(createHash("sha256").update(payload).digest("hex"));
+        insert.run(id, table, chunkIndex, gzipSync(Buffer.from(payload)));
+      }
+      tables[table] = { rowCount: entries.length, hashes };
+    }
+    const manifest: SnapshotV3Manifest = {
+      version: 3,
+      snapshotId: id,
+      lastProcessedBlock: blockNumber,
+      lastProcessedBlockHash: data.lastProcessedBlockHash,
+      identity: this.snapshotIdentity,
+      chunkRows: this.chunkRows,
+      tables,
+    };
+    this.db
+      .prepare(
+        `INSERT INTO snapshot_v3_manifests (snapshot_id, manifest_json, published_at)
+      VALUES (?, ?, ?)`,
+      )
+      .run(id, JSON.stringify(manifest), Date.now());
+    this.upsertMetadataStmt.run("active_snapshot_v3_id", id);
+    // Keep recent generations for in-flight downloads; old clients fall back to node replay.
+    const expired = this.db
+      .prepare(
+        `SELECT snapshot_id FROM snapshot_v3_manifests
+      WHERE published_at < ? AND snapshot_id NOT IN (
+        SELECT snapshot_id FROM snapshot_v3_manifests ORDER BY published_at DESC LIMIT 3
+      )`,
+      )
+      .all(Date.now() - 24 * 60 * 60 * 1000) as Array<{ snapshot_id: string }>;
+    for (const old of expired) {
+      this.db
+        .prepare("DELETE FROM snapshot_v3_chunks WHERE snapshot_id = ?")
+        .run(old.snapshot_id);
+      this.db
+        .prepare("DELETE FROM snapshot_v3_manifests WHERE snapshot_id = ?")
+        .run(old.snapshot_id);
+    }
   }
 
   /**
@@ -682,23 +815,23 @@ export class SnapshotStore {
    *   Phase B — commit pointer switch atomically
    */
   private dualWrite(blockNumber: number, jsonString: string): void {
-    this.invalidateActiveSnapshotCache();
-    // v1: single-row upsert (unchanged)
-    this.upsertStmt.run(blockNumber, jsonString);
-
-    // v2: chunked write
-    try {
+    this.db.transaction(() => {
+      this.upsertStmt.run(blockNumber, jsonString);
+      this.writeV3(blockNumber, jsonString);
       this.writeChunks(blockNumber, jsonString);
-    } catch (err) {
-      // Non-fatal during Phase 1: v1 is still the source of truth
-      console.warn("[Persistence] v2 chunk write failed (non-fatal):", err);
-    }
+    })();
+    this.previousActiveBlock = blockNumber;
+    this.invalidateActiveSnapshotCache();
   }
 
   /**
    * Phase A + B: stage chunks then atomically switch pointer.
    */
   private writeChunks(blockNumber: number, jsonString: string): void {
+    // A reorg can republish the same height with fewer rows.
+    this.db
+      .prepare("DELETE FROM snapshot_chunks WHERE snapshot_block = ?")
+      .run(blockNumber);
     const data = JSON.parse(jsonString) as Record<string, unknown>;
     const lastProcessedBlock =
       typeof data.lastProcessedBlock === "number" ? data.lastProcessedBlock : 0;
@@ -807,7 +940,6 @@ export class SnapshotStore {
     const keepB = this.previousActiveBlock ?? currentBlock;
     this.deleteOldChunksStmt.run(keepA, keepB);
     this.deleteOldManifestsStmt.run(keepA, keepB);
-    this.previousActiveBlock = currentBlock;
   }
 
   private ensureSchemaVersions(): void {
@@ -853,6 +985,10 @@ export class SnapshotStore {
     this.deleteSnapshotsStmt.run();
     this.deleteAllChunksStmt.run();
     this.deleteAllManifestsStmt.run();
+    this.db.exec(
+      "DELETE FROM snapshot_v3_chunks; DELETE FROM snapshot_v3_manifests",
+    );
+    this.deleteMetadataStmt.run("active_snapshot_v3_id");
     this.deleteMetadataStmt.run(METADATA_KEY_ACTIVE_SNAPSHOT_BLOCK);
     this.previousActiveBlock = null;
     this.lastPersistTime = 0;

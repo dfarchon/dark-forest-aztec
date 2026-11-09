@@ -18,6 +18,9 @@ import type {
 /** Which Aztec L2 tip an indexer follows. */
 export type BlockTipTag = "proposed" | "checkpointed" | "proven" | "finalized";
 
+/** Schema of the snapshot JSON and v3 publication identity. */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
+
 /** Table names matching contract storage and client types. */
 export const TABLE_NAMES = [
   "world",
@@ -80,11 +83,38 @@ export type TableId = string;
 /** Per-table state: id -> state. World is singleton with id "0". */
 export type TableStateMap<T> = Map<TableId, T>;
 
+/** Inputs that determine whether two indexers index the same history. */
+export interface SnapshotIdentity {
+  networkId: string;
+  startBlock: number;
+  tipTag: BlockTipTag;
+  schemaVersion: number;
+  storageAddresses: Record<string, string>;
+}
+
+export function sameSnapshotIdentity(
+  a: SnapshotIdentity,
+  b: SnapshotIdentity,
+): boolean {
+  const addresses = (value: SnapshotIdentity) =>
+    Object.entries(value.storageAddresses).sort(([x], [y]) =>
+      x.localeCompare(y),
+    );
+  return (
+    a.networkId === b.networkId &&
+    a.startBlock === b.startBlock &&
+    a.tipTag === b.tipTag &&
+    a.schemaVersion === b.schemaVersion &&
+    JSON.stringify(addresses(a)) === JSON.stringify(addresses(b))
+  );
+}
+
 /** Full snapshot: all tables + last processed block. */
 export interface IndexerSnapshot {
   lastProcessedBlock: number;
   /** Hash of lastProcessedBlock; undefined for legacy snapshots. */
   lastProcessedBlockHash?: string;
+  identity?: SnapshotIdentity;
   world: TableStateMap<WorldState>;
   player: TableStateMap<PlayerState>;
   planet: TableStateMap<PlanetState>;
@@ -163,6 +193,10 @@ export interface IndexerStatus {
  * Lets the upper layer know which tables (and which row ids) were updated for incremental state updates.
  */
 export interface IndexerChangePayload {
+  /** A hash mismatch was detected; consumers should pause derived-state reads. */
+  reorgStarted?: boolean;
+  /** A completed reorg replay replaced the entire state, including deleted rows. */
+  fullRefresh?: boolean;
   /** Tables that had at least one row updated in this batch. */
   tables: readonly TableName[];
   /** Block range that was just applied (inclusive). */

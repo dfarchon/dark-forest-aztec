@@ -9,6 +9,77 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 import { SnapshotStore } from "./persistence.ts";
 
+test("v3 snapshot publication is immutable and an invalid replacement keeps the active version", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-v3-"));
+  try {
+    const store = new SnapshotStore(path.join(dir, "indexer.db"), 0);
+    store.setSnapshotIdentity({
+      networkId: "1:rollup",
+      startBlock: 1,
+      tipTag: "proven",
+      schemaVersion: 2,
+      storageAddresses: { WorldStorage: "0x1" },
+    });
+    const tables = Object.fromEntries(
+      [
+        "world",
+        "player",
+        "planet",
+        "planet_revealed_coords",
+        "planet_events",
+        "planet_artifacts",
+        "arrival",
+        "artifact",
+        "artifact_location",
+      ].map((name) => [name, {}]),
+    );
+    const snapshot = (value: number) =>
+      JSON.stringify({
+        lastProcessedBlock: 42,
+        lastProcessedBlockHash: `hash-${value}`,
+        ...tables,
+        world: { "0": { value } },
+      });
+    store.forceSave(42, snapshot(1));
+    const first = store.getActiveV3Manifest();
+    assert.ok(first);
+    const firstChunk = store.getV3Chunk(first.snapshotId, "world", 0);
+    assert.ok(firstChunk);
+    assert.equal(
+      JSON.parse(gunzipSync(firstChunk).toString()).rows["0"].value,
+      1,
+    );
+    store.forceSave(42, snapshot(2));
+    const second = store.getActiveV3Manifest();
+    assert.ok(second);
+    assert.notEqual(second.snapshotId, first.snapshotId);
+    assert.equal(
+      JSON.parse(
+        gunzipSync(store.getV3Chunk(first.snapshotId, "world", 0)!).toString(),
+      ).rows["0"].value,
+      1,
+    );
+    assert.throws(
+      () => store.forceSave(43, JSON.stringify({ lastProcessedBlock: 43 })),
+      /hash/,
+    );
+    (store as unknown as { writeChunks: () => void }).writeChunks = () => {
+      throw new Error("chunk write failed");
+    };
+    assert.throws(() => store.forceSave(42, snapshot(3)), /chunk write failed/);
+    assert.equal(store.getActiveV3Manifest()?.snapshotId, second.snapshotId);
+    assert.equal(store.restore()?.blockNumber, 42);
+    assert.equal(
+      (store.restore()?.data.world as Record<string, { value: number }>)["0"]
+        .value,
+      2,
+    );
+    store.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("SnapshotStore.createBackupBuffer returns a readable SQLite backup", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dfpunk-store-test-"));
   const dbPath = path.join(tempDir, "indexer.db");

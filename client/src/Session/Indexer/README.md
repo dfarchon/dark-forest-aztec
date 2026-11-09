@@ -56,9 +56,11 @@ This is enforced by the IndexerService lifecycle:
 - `notifyListeners()` is gated: it only dispatches callbacks in the **live** phase
 - `start()` awaits full catch-up before transitioning to **live** and starting the poll timer
 
-JavaScript's single-threaded execution ensures the in-memory snapshot is consistent between `processNewBlocks()` calls. For the off-chain bootstrap, the `/snapshot` endpoint must return a consistent snapshot (indexer responsibility).
+JavaScript's single-threaded execution ensures the in-memory snapshot is consistent between `processNewBlocks()` calls. The off-chain bootstrap uses immutable v3 chunks and verifies their hashes and chain identity before accepting them.
 
 ## Data flow
+
+Bootstrap accepts only a v3 manifest and immutable chunks. The client checks chain identity, start block, tip, schema, storage addresses, block hash, each chunk hash, and all nine table row counts. Missing or invalid v3 data falls back to node replay. On a live reorganization the game enters safe mode, suppresses transactions, and reloads after the replay to rebuild derived game state.
 
 - **With off-chain service**: At start, load a snapshot from `bootstrapSource` (e.g. off-chain API) so state is synced up to block X. From block X+1 onward, only `source` (chain) is used: the frontend fetches `getLatestBlockNumber()` and `getBlockUpdates()` from the chain and maintains state itself.
 - **Without off-chain service**: Omit `bootstrapSource`. Use `source` (chain) and `startBlock` (e.g. contract deployment block); the frontend processes all blocks from startBlock to latest from the chain.

@@ -1,5 +1,8 @@
 export type { StorageContractAddresses } from "./AztecNodeSource.ts";
-export { createAztecNodeBlockSource } from "./AztecNodeSource.ts";
+export {
+  createAztecNodeBlockSource,
+  resolveStorageContractAddresses,
+} from "./AztecNodeSource.ts";
 
 export {
   normalizeSnapshot,
@@ -32,6 +35,7 @@ export type {
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
+  SnapshotIdentity,
   IndexerStatus,
   PublicEventBatchCounts,
   PublicEventName,
@@ -42,7 +46,12 @@ export type {
   TableStateMap,
   TableUpdate,
 } from "./types.ts";
-export { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
+export {
+  PUBLIC_EVENT_NAMES,
+  SNAPSHOT_SCHEMA_VERSION,
+  TABLE_NAMES,
+  sameSnapshotIdentity,
+} from "./types.ts";
 
 export * from "./TableTypes/chain.ts";
 export * from "./TableTypes/enums.ts";

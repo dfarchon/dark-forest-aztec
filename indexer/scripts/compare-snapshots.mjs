@@ -5,7 +5,7 @@
  * Compares a client-side snapshot JSON file against the indexer's live snapshot.
  *
  * Usage:
- *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]
+ *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL]
  *
  * The client snapshot file can be obtained from the browser console:
  *   dfDebug.downloadSnapshot()
@@ -13,7 +13,6 @@
  * Examples:
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --indexer-url http://localhost:3001
- *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json --ignore-block-mismatch
  */
 
 import { createHash } from "node:crypto";
@@ -39,24 +38,31 @@ const TABLE_NAMES = [
 function parseArgs() {
   const args = process.argv.slice(2);
   let clientFile = null;
-  let serverUrl = process.env.INDEXER_URL ?? process.env.SERVER_URL ?? "http://localhost:3001";
-  let ignoreBlockMismatch = false;
+  let serverUrl =
+    process.env.INDEXER_URL ??
+    process.env.SERVER_URL ??
+    "http://localhost:3001";
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "-h" || args[i] === "--help") {
       console.log(
-        "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
+        "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL]",
       );
       console.log("");
       console.log("Get the client snapshot from browser console:");
       console.log("  dfDebug.downloadSnapshot()");
       process.exit(0);
     }
-    if ((args[i] === "--indexer-url" || args[i] === "--server-url") && args[i + 1]) {
+    if (
+      (args[i] === "--indexer-url" || args[i] === "--server-url") &&
+      args[i + 1]
+    ) {
       serverUrl = args[i + 1];
       i++;
     } else if (args[i] === "--ignore-block-mismatch") {
-      ignoreBlockMismatch = true;
+      throw new Error(
+        "--ignore-block-mismatch is unsafe: snapshots must have the same block and hash",
+      );
     } else if (!args[i].startsWith("--")) {
       clientFile = args[i];
     }
@@ -64,7 +70,7 @@ function parseArgs() {
 
   if (!clientFile) {
     console.error(
-      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
+      "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL]",
     );
     console.error("");
     console.error("Get the client snapshot from browser console:");
@@ -72,7 +78,7 @@ function parseArgs() {
     process.exit(1);
   }
 
-  return { clientFile, serverUrl, ignoreBlockMismatch };
+  return { clientFile, serverUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -103,13 +109,8 @@ function normalizeSnapshot(snap) {
 
 function canonicalJson(obj) {
   return JSON.stringify(obj, (_key, value) =>
-    typeof value === "bigint" ? value.toString() : value
+    typeof value === "bigint" ? value.toString() : value,
   );
-}
-
-function tableContentOnly(snap) {
-  const { lastProcessedBlock: _ignored, ...tables } = snap;
-  return tables;
 }
 
 function rowCount(snap) {
@@ -122,48 +123,70 @@ function rowCount(snap) {
 }
 
 // ---------------------------------------------------------------------------
-// v2 chunk helpers
+// v3 immutable chunk helpers
 // ---------------------------------------------------------------------------
 
-/** Fetch v2 manifest + all chunks from the indexer and reconstruct a snapshot. */
-async function fetchV2Snapshot(serverUrl) {
-  const manifestRes = await fetch(`${serverUrl}/snapshot/manifest`);
+/** Fetch one immutable publication and verify every chunk before comparing. */
+async function fetchV3Snapshot(serverUrl) {
+  const manifestRes = await fetch(`${serverUrl}/snapshot/v3/manifest`);
   if (!manifestRes.ok) return null;
   const manifest = await manifestRes.json();
-  if (manifest.version !== 2) return null;
+  if (
+    manifest.version !== 3 ||
+    !manifest.snapshotId ||
+    !Number.isSafeInteger(manifest.chunkRows) ||
+    manifest.chunkRows <= 0
+  ) {
+    throw new Error("Invalid v3 manifest");
+  }
 
-  const snap = { lastProcessedBlock: manifest.lastProcessedBlock };
+  const snap = {
+    lastProcessedBlock: manifest.lastProcessedBlock,
+    lastProcessedBlockHash: manifest.lastProcessedBlockHash,
+  };
   for (const table of TABLE_NAMES) {
     const info = manifest.tables[table];
-    if (!info || info.chunkCount === 0) {
+    if (
+      !info ||
+      !Number.isSafeInteger(info.rowCount) ||
+      info.rowCount < 0 ||
+      !Array.isArray(info.hashes) ||
+      info.hashes.length !== Math.ceil(info.rowCount / manifest.chunkRows)
+    ) {
+      throw new Error(`Invalid v3 manifest table ${table}`);
+    }
+    if (info.hashes.length === 0) {
       snap[table] = {};
       continue;
     }
     const merged = {};
-    for (let i = 0; i < info.chunkCount; i++) {
+    for (let i = 0; i < info.hashes.length; i++) {
       const chunkRes = await fetch(
-        `${serverUrl}/snapshot/chunks/${table}/${i}?chunkRows=${manifest.chunkRows}`
+        `${serverUrl}/snapshot/v3/chunks/${manifest.snapshotId}/${table}/${i}`,
       );
       if (!chunkRes.ok) {
-        console.warn(`   ⚠️  Failed to fetch chunk ${table}/${i}: ${chunkRes.status}`);
-        return null;
+        throw new Error(
+          `Failed to fetch chunk ${table}/${i}: ${chunkRes.status}`,
+        );
       }
-      let chunkJson;
-      try {
-        chunkJson = await chunkRes.json();
-      } catch {
-        const buf = Buffer.from(await chunkRes.arrayBuffer());
-        const enc = chunkRes.headers.get("content-encoding");
-        const decompressed =
-          enc === "br"
-            ? zlib.brotliDecompressSync(buf)
-            : enc === "gzip"
-              ? zlib.gunzipSync(buf)
-              : buf;
-        chunkJson = JSON.parse(decompressed.toString("utf8"));
+      const bytes = Buffer.from(await chunkRes.arrayBuffer());
+      if (sha256(bytes) !== info.hashes[i])
+        throw new Error(`Chunk hash mismatch: ${table}/${i}`);
+      const chunkJson = JSON.parse(bytes.toString("utf8"));
+      if (
+        chunkJson.snapshotId !== manifest.snapshotId ||
+        chunkJson.table !== table ||
+        chunkJson.chunkIndex !== i
+      )
+        throw new Error(`Chunk identity mismatch: ${table}/${i}`);
+      for (const [id, row] of Object.entries(chunkJson.rows)) {
+        if (Object.hasOwn(merged, id))
+          throw new Error(`Duplicate row: ${table}:${id}`);
+        merged[id] = row;
       }
-      Object.assign(merged, chunkJson.rows);
     }
+    if (Object.keys(merged).length !== info.rowCount)
+      throw new Error(`Row count mismatch: ${table}`);
     snap[table] = merged;
   }
   return snap;
@@ -205,30 +228,30 @@ function diffSnapshots(label, snapA, snapB, nameA, nameB) {
 
     totalDiffs += diffs;
     console.log(
-      `  ❌ ${table}: ${diffs} difference(s) (${nameA}=${aKeys.size}, ${nameB}=${bKeys.size})`
+      `  ❌ ${table}: ${diffs} difference(s) (${nameA}=${aKeys.size}, ${nameB}=${bKeys.size})`,
     );
 
     if (missing.length > 0) {
       console.log(
-        `     🔴 Missing on ${nameA} (${missing.length}): ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` ... +${missing.length - 5} more` : ""}`
+        `     🔴 Missing on ${nameA} (${missing.length}): ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` ... +${missing.length - 5} more` : ""}`,
       );
     }
     if (extra.length > 0) {
       console.log(
-        `     🟡 Extra on ${nameA} (${extra.length}): ${extra.slice(0, 5).join(", ")}${extra.length > 5 ? ` ... +${extra.length - 5} more` : ""}`
+        `     🟡 Extra on ${nameA} (${extra.length}): ${extra.slice(0, 5).join(", ")}${extra.length > 5 ? ` ... +${extra.length - 5} more` : ""}`,
       );
     }
     if (different.length > 0) {
       console.log(
-        `     🔵 Value mismatch (${different.length}): ${different.slice(0, 5).join(", ")}${different.length > 5 ? ` ... +${different.length - 5} more` : ""}`
+        `     🔵 Value mismatch (${different.length}): ${different.slice(0, 5).join(", ")}${different.length > 5 ? ` ... +${different.length - 5} more` : ""}`,
       );
       const firstKey = different[0];
       console.log(`        Example (${firstKey}):`);
       console.log(
-        `          ${nameA}: ${JSON.stringify(aTable[firstKey]).slice(0, 200)}`
+        `          ${nameA}: ${JSON.stringify(aTable[firstKey]).slice(0, 200)}`,
       );
       console.log(
-        `          ${nameB}: ${JSON.stringify(bTable[firstKey]).slice(0, 200)}`
+        `          ${nameB}: ${JSON.stringify(bTable[firstKey]).slice(0, 200)}`,
       );
     }
   }
@@ -240,7 +263,7 @@ function diffSnapshots(label, snapA, snapB, nameA, nameB) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const { clientFile, serverUrl, ignoreBlockMismatch } = parseArgs();
+  const { clientFile, serverUrl } = parseArgs();
 
   // 1. Load client snapshot
   console.log(`📂 Loading client snapshot: ${clientFile}`);
@@ -273,34 +296,48 @@ async function main() {
   }
   const serverSnap = normalizeSnapshot(serverJson);
   const serverBlock = serverSnap.lastProcessedBlock;
-  console.log(`   Indexer v1 block: ${serverBlock}, rows: ${rowCount(serverSnap)}`);
+  console.log(
+    `   Indexer v1 block: ${serverBlock}, rows: ${rowCount(serverSnap)}`,
+  );
+  if (
+    clientBlock !== serverBlock ||
+    !clientRaw.lastProcessedBlockHash ||
+    clientRaw.lastProcessedBlockHash !== serverJson.lastProcessedBlockHash
+  ) {
+    console.error(
+      "Inconclusive: client and indexer snapshots must have the same block and block hash.",
+    );
+    process.exit(2);
+  }
 
-  // 3. Fetch indexer v2 snapshot (from chunks)
-  console.log(`🌐 Fetching indexer v2 snapshot from ${serverUrl}/snapshot/manifest + chunks ...`);
-  const v2Raw = await fetchV2Snapshot(serverUrl);
-  const v2Snap = v2Raw ? normalizeSnapshot(v2Raw) : null;
-  if (v2Snap) {
-    console.log(`   Indexer v2 block: ${v2Snap.lastProcessedBlock}, rows: ${rowCount(v2Snap)}`);
+  // 3. Fetch one immutable v3 publication.
+  console.log(
+    `🌐 Fetching indexer v3 snapshot from ${serverUrl}/snapshot/v3/manifest + chunks ...`,
+  );
+  const v3Raw = await fetchV3Snapshot(serverUrl);
+  const v3Snap =
+    v3Raw &&
+    v3Raw.lastProcessedBlock === serverBlock &&
+    v3Raw.lastProcessedBlockHash === serverJson.lastProcessedBlockHash
+      ? normalizeSnapshot(v3Raw)
+      : null;
+  if (v3Snap) {
+    console.log(
+      `   Indexer v3 block: ${v3Snap.lastProcessedBlock}, rows: ${rowCount(v3Snap)}`,
+    );
   } else {
-    console.log(`   Indexer v2: not available (no manifest or fetch failed)`);
+    console.log(`   Indexer v3: not available (no manifest or fetch failed)`);
   }
 
   // 4. Block mismatch warnings
-  if (clientBlock !== serverBlock) {
-    console.log("");
+  if (v3Raw && !v3Snap)
     console.warn(
-      `⚠️  Block mismatch: client=${clientBlock}, indexer-v1=${serverBlock}`
+      "Indexer v3 was fetched at a different block/hash; comparison skipped.",
     );
-    console.warn(
-      `   Differences may be due to block lag.`
-    );
-  }
 
   // 5. Client vs Indexer v1
   const clientHash = sha256(canonicalJson(clientSnap));
   const serverHash = sha256(canonicalJson(serverSnap));
-  const clientContentHash = sha256(canonicalJson(tableContentOnly(clientSnap)));
-  const serverContentHash = sha256(canonicalJson(tableContentOnly(serverSnap)));
 
   console.log("");
   console.log("═══════════════════════════════════════════════════════");
@@ -309,78 +346,72 @@ async function main() {
   console.log(`🔑 Client hash: ${clientHash}`);
   console.log(`🔑 Indexer v1 hash: ${serverHash}`);
 
-  const clientV1Same =
-    clientHash === serverHash ||
-    (ignoreBlockMismatch && clientContentHash === serverContentHash);
+  const clientV1Same = clientHash === serverHash;
   if (clientV1Same) {
     console.log(`✅ Client vs Indexer v1: IDENTICAL`);
   } else {
     console.log("");
-    const diffs = diffSnapshots("client-vs-v1", clientSnap, serverSnap, "client", "indexer-v1");
+    const diffs = diffSnapshots(
+      "client-vs-v1",
+      clientSnap,
+      serverSnap,
+      "client",
+      "indexer-v1",
+    );
     console.log("");
     console.log(`Total differences (client vs v1): ${diffs}`);
   }
 
-  // 6. Indexer v1 vs Indexer v2
-  if (v2Snap) {
-    const v2Hash = sha256(canonicalJson(v2Snap));
-    const v2ContentHash = sha256(canonicalJson(tableContentOnly(v2Snap)));
+  // 6. Indexer v1 vs Indexer v3
+  if (v3Snap) {
+    const v3Hash = sha256(canonicalJson(v3Snap));
 
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
-    console.log("  Indexer v1 (/snapshot) vs Indexer v2 (chunks)");
+    console.log("  Indexer v1 (/snapshot) vs Indexer v3 (chunks)");
     console.log("═══════════════════════════════════════════════════════");
     console.log(`🔑 Indexer v1 hash: ${serverHash}`);
-    console.log(`🔑 Indexer v2 hash: ${v2Hash}`);
+    console.log(`🔑 Indexer v3 hash: ${v3Hash}`);
 
-    const v1V2Same =
-      serverHash === v2Hash ||
-      (ignoreBlockMismatch && serverContentHash === v2ContentHash);
-    if (v1V2Same) {
-      console.log(`✅ Indexer v1 vs v2: IDENTICAL`);
+    const v1V3Same = serverHash === v3Hash;
+    if (v1V3Same) {
+      console.log(`✅ Indexer v1 vs v3: IDENTICAL`);
     } else {
       console.log("");
-      if (serverBlock !== v2Snap.lastProcessedBlock) {
-        console.warn(
-          `⚠️  Block mismatch: v1=${serverBlock}, v2=${v2Snap.lastProcessedBlock} (data may have changed between fetches)`
-        );
-      }
-      const diffs = diffSnapshots("v1-vs-v2", serverSnap, v2Snap, "v1", "v2");
+      const diffs = diffSnapshots("v1-vs-v3", serverSnap, v3Snap, "v1", "v3");
       console.log("");
-      console.log(`Total differences (v1 vs v2): ${diffs}`);
+      console.log(`Total differences (v1 vs v3): ${diffs}`);
     }
 
-    // 7. Client vs Indexer v2
-    const clientV2Hash = v2Hash;
+    // 7. Client vs Indexer v3
     console.log("");
     console.log("═══════════════════════════════════════════════════════");
-    console.log("  Client vs Indexer v2 (chunks)");
+    console.log("  Client vs Indexer v3 (chunks)");
     console.log("═══════════════════════════════════════════════════════");
     console.log(`🔑 Client hash: ${clientHash}`);
-    console.log(`🔑 Indexer v2 hash: ${clientV2Hash}`);
+    console.log(`🔑 Indexer v3 hash: ${v3Hash}`);
 
-    const clientV2Same =
-      clientHash === clientV2Hash ||
-      (ignoreBlockMismatch && clientContentHash === v2ContentHash);
-    if (clientV2Same) {
-      console.log(`✅ Client vs Indexer v2: IDENTICAL`);
+    const clientV3Same = clientHash === v3Hash;
+    if (clientV3Same) {
+      console.log(`✅ Client vs Indexer v3: IDENTICAL`);
     } else {
       console.log("");
-      const diffs = diffSnapshots("client-vs-v2", clientSnap, v2Snap, "client", "indexer-v2");
+      const diffs = diffSnapshots(
+        "client-vs-v3",
+        clientSnap,
+        v3Snap,
+        "client",
+        "indexer-v3",
+      );
       console.log("");
-      console.log(`Total differences (client vs v2): ${diffs}`);
+      console.log(`Total differences (client vs v3): ${diffs}`);
     }
   }
 
   console.log("");
   const allMatch =
-    (ignoreBlockMismatch
-      ? clientContentHash === serverContentHash
-      : clientHash === serverHash) &&
-    (!v2Snap ||
-      (ignoreBlockMismatch
-        ? serverContentHash === sha256(canonicalJson(tableContentOnly(v2Snap)))
-        : serverHash === sha256(canonicalJson(v2Snap))));
+    clientHash === serverHash &&
+    (!v3Snap || serverHash === sha256(canonicalJson(v3Snap)));
   if (allMatch) {
     console.log("🎉 All snapshots are consistent!");
     process.exit(0);

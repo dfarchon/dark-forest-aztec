@@ -118,6 +118,7 @@ export class TxExecutor {
   private diagnosticsUpdater?: DiagnosticUpdater;
 
   private readonly node: AztecNode;
+  private readonly indexer: IndexerConnection;
   private readonly walletManager: WalletManager;
   private readonly contractResolver: ContractResolver;
   private readonly stateResolver: StateResolver;
@@ -140,6 +141,7 @@ export class TxExecutor {
     stateResolverOptions?: StateResolverOptions
   ) {
     this.node = node;
+    this.indexer = indexer;
     this.walletManager = walletManager;
     this.chainClock = chainClock;
     this.beforeQueued = beforeQueued;
@@ -163,6 +165,14 @@ export class TxExecutor {
     );
   }
 
+  private assertIndexerStable(): void {
+    if (!this.indexer.isStateStable()) {
+      throw new Error(
+        "Chain reorganization in progress; wait for state to rebuild"
+      );
+    }
+  }
+
   // -------------------------------------------------------------------------
   // queueTransaction — v0.6 lines 212-277
   // -------------------------------------------------------------------------
@@ -170,6 +180,7 @@ export class TxExecutor {
   async queueTransaction<T extends TxIntent>(
     intent: T
   ): Promise<Transaction<T>> {
+    this.assertIndexerStable();
     this.diagnosticsUpdater?.updateDiagnostics((d) => {
       d.transactionsInQueue++;
     });
@@ -304,6 +315,7 @@ export class TxExecutor {
 
     try {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        this.assertIndexerStable();
         if (attempt > 0) {
           console.warn(
             `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
@@ -323,6 +335,7 @@ export class TxExecutor {
 
         // 2. Resolve full contract args from indexer state + config + timestamp
         const contractArgs = await this.stateResolver.resolve(tx.intent);
+        this.assertIndexerStable();
 
         // 3. Get contract + method
         const { contract, method } = this.contractResolver.resolve(
@@ -432,6 +445,7 @@ export class TxExecutor {
           throw simErr;
         }
 
+        this.assertIndexerStable();
         const sendResult = (await timeout(
           invocation.send(sendOptsNoWait),
           TX_SUBMIT_TIMEOUT,

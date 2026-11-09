@@ -327,9 +327,31 @@ export function convertLiveRow(
 export function normalizeSnapshot(snap: IndexerSnapshot): IndexerSnapshot {
   for (const table of TABLE_NAMES) {
     const map = snap[table] as Map<string, unknown>;
+    if (!(map instanceof Map))
+      throw new Error(`Indexer convert: missing ${table} table`);
     for (const [id, row] of map) {
       if (row === null || typeof row !== "object" || Array.isArray(row)) {
         throw new Error(`Indexer convert: ${table}:${id} is not an object`);
+      }
+      if (
+        snap.identity &&
+        (table === "planet_events" || table === "planet_artifacts")
+      ) {
+        const raw = row as Raw;
+        const values = table === "planet_events" ? raw.events : raw.ids;
+        const count = raw.count;
+        if (
+          !Array.isArray(values) ||
+          typeof count !== "number" ||
+          !Number.isInteger(count) ||
+          count < 0 ||
+          count > values.length ||
+          values.length > 20
+        ) {
+          throw new Error(
+            `Indexer convert: invalid nested array at ${table}:${id}`,
+          );
+        }
       }
       const typed = rawToState(table, row as Raw) as unknown as Raw;
       assertLossless(table, id, row as Raw, typed);

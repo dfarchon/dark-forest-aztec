@@ -18,6 +18,7 @@
  * reading directly from the IndexerService in-memory snapshot.
  */
 
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
 import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 import type {
@@ -41,6 +42,8 @@ import type {
 import {
   createAztecNodeBlockSource,
   IndexerService,
+  resolveStorageContractAddresses,
+  SNAPSHOT_SCHEMA_VERSION,
 } from "@dfpunk/indexer-core";
 
 import {
@@ -59,6 +62,9 @@ export interface IndexerConnectionConfig {
   nodeUrl: string;
   /** Optional off-chain indexer URL for bootstrap snapshot. */
   bootstrapUrl?: string;
+  /** Called after a chain reorg has been fully replayed. Recreate cached UI state. */
+  onFullRefresh?: () => void;
+  onReorgStart?: () => void;
   /** Optional callback for bootstrap snapshot download progress. */
   onSnapshotProgress?: (progress: SnapshotDownloadProgress) => void;
   /** Optional callback for block sync progress during initial catch-up. */
@@ -92,6 +98,7 @@ export class IndexerConnection {
 
   private blockNumber: number;
   private readonly indexer: IndexerService;
+  private rebuildRequired = false;
 
   /** Handler map set by subscribeToContractEvents; undefined when not subscribed. */
   private eventHandlers:
@@ -101,7 +108,11 @@ export class IndexerConnection {
   /** Teardown returned by IndexerService.subscribe(). */
   private unsubscribeIndexer: (() => void) | undefined;
 
-  constructor(indexer: IndexerService) {
+  constructor(
+    indexer: IndexerService,
+    private readonly onFullRefresh?: () => void,
+    private readonly onReorgStart?: () => void
+  ) {
     this.indexer = indexer;
     this.blockNumber = indexer.getProcessedBlockNumber();
     this.blockNumber$ = monomitter<number>(true);
@@ -188,6 +199,14 @@ export class IndexerConnection {
    *  3. Dispatch domain events via processEvents
    */
   private onNewBlock(payload: IndexerChangePayload): void {
+    if (payload.reorgStarted) {
+      this.onReorgStart?.();
+      return;
+    }
+    if (payload.fullRefresh) {
+      this.rebuildRequired = true;
+      this.onFullRefresh?.();
+    }
     this.blockNumber = payload.toBlock;
     this.blockNumber$.publish(payload.toBlock);
 
@@ -282,6 +301,11 @@ export class IndexerConnection {
 
   public getStatus(): IndexerStatus {
     return this.indexer.getStatus();
+  }
+
+  /** Transactions require a complete replay and a rebuilt game session. */
+  public isStateStable(): boolean {
+    return !this.indexer.getStatus().reorgRecovering && !this.rebuildRequired;
   }
 
   public getLifecycle(): IndexerLifecycle {
@@ -497,9 +521,31 @@ export async function createIndexerConnection(
     config.contractAddresses,
     { tipTag: "proven" }
   );
-  const bootstrapSource = config.bootstrapUrl
+  let bootstrapUrl = config.bootstrapUrl;
+  let expectedSnapshotIdentity: IndexerServiceOptions["expectedSnapshotIdentity"];
+  if (bootstrapUrl) {
+    try {
+      const info = await createAztecNodeClient(config.nodeUrl).getNodeInfo();
+      expectedSnapshotIdentity = {
+        networkId: `${info.l1ChainId}:${info.l1ContractAddresses.rollupAddress.toString()}`,
+        startBlock: config.startBlock ?? 0,
+        tipTag: "proven",
+        schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+        storageAddresses: resolveStorageContractAddresses(
+          config.contractAddresses
+        ),
+      };
+    } catch (err) {
+      console.warn(
+        "[IndexerConnection] Could not verify snapshot identity; syncing from node:",
+        err
+      );
+      bootstrapUrl = undefined;
+    }
+  }
+  const bootstrapSource = bootstrapUrl
     ? new OffChainBlockSource({
-        baseUrl: config.bootstrapUrl,
+        baseUrl: bootstrapUrl,
         onSnapshotProgress: config.onSnapshotProgress,
       })
     : undefined;
@@ -507,12 +553,13 @@ export async function createIndexerConnection(
   const serviceOpts: IndexerServiceOptions & { source: typeof source } = {
     source,
     bootstrapSource,
+    expectedSnapshotIdentity,
     startBlock: config.startBlock,
     debounceMs: config.debounceMs,
     pollIntervalMs: config.pollIntervalMs,
     maxBlocksPerRequest: config.maxBlocksPerRequest,
     verifyBlockHashes: true,
-    ...(config.bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
+    ...(bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
   };
 
   const indexer = new IndexerService(serviceOpts);
@@ -524,7 +571,11 @@ export async function createIndexerConnection(
     persistPublicEventStats(statsStorageKey, stats);
     if (!initializing) logPublicEventStats(statsStorageKey, stats);
   });
-  const connection = new IndexerConnection(indexer);
+  const connection = new IndexerConnection(
+    indexer,
+    config.onFullRefresh,
+    config.onReorgStart
+  );
   const { syncedToBlock } = await connection.initialize();
   initializing = false;
   const stats = connection.getPublicEventStats();

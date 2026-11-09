@@ -67,6 +67,36 @@ export function createApp(deps: ApiDeps): Hono {
   app.use("/blocks/*", compress());
   app.use("/health", compress());
 
+  app.get("/snapshot/v3/manifest", (c) => {
+    const manifest = store.getActiveV3Manifest();
+    c.header("Cache-Control", "no-store");
+    return manifest
+      ? c.json(manifest)
+      : c.json({ error: "Snapshot not published" }, 404);
+  });
+
+  app.get("/snapshot/v3/chunks/:snapshotId/:table/:chunkIndex", (c) => {
+    const { snapshotId, table, chunkIndex: rawIndex } = c.req.param();
+    const chunkIndex = Number(rawIndex);
+    if (
+      !isTableName(table) ||
+      !Number.isInteger(chunkIndex) ||
+      chunkIndex < 0
+    ) {
+      return c.json({ error: "Invalid chunk" }, 400);
+    }
+    const payload = store.getV3Chunk(snapshotId, table, chunkIndex);
+    if (!payload) return c.json({ error: "Chunk not found" }, 404);
+    return new Response(Uint8Array.from(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Encoding": "gzip",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  });
+
   // GET /snapshot — returns pre-compressed snapshot Buffer (Brotli preferred, gzip fallback)
   app.get("/snapshot", (c) => {
     const storedSnapshot = store.getActiveSnapshotPayload();
@@ -271,6 +301,8 @@ export function createApp(deps: ApiDeps): Hono {
         blockLag,
         snapshotBlock,
         snapshotBytes,
+        publishedV3Block:
+          store.getActiveV3Manifest?.()?.lastProcessedBlock ?? null,
       },
     });
   });
