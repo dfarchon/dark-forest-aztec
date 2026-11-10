@@ -25,6 +25,8 @@ import type {
   PlayerState,
   WorldState,
 } from "./TableTypes/chain.ts";
+import { ArtifactIndex } from "./service/ArtifactIndex.ts";
+import { EventStats } from "./service/EventStats.ts";
 import type {
   BlockUpdates,
   IBlockEventSource,
@@ -32,14 +34,13 @@ import type {
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
-  PublicEventName,
   PublicEventStats,
   TableId,
   TableName,
   TableRowType,
   TableUpdate,
 } from "./types.ts";
-import { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
+import { TABLE_NAMES } from "./types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -56,12 +57,6 @@ function emptySnapshot(): IndexerSnapshot {
     artifact: new Map(),
     artifact_location: new Map(),
   };
-}
-
-function emptyPublicEventCounts(): Record<PublicEventName, number> {
-  return Object.fromEntries(
-    PUBLIC_EVENT_NAMES.map((eventName) => [eventName, 0]),
-  ) as Record<PublicEventName, number>;
 }
 
 export interface IndexerServiceOptions {
@@ -133,18 +128,13 @@ export class IndexerService {
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private readonly debouncedProcess: DebouncedFunc<() => void>;
   private lifecycle: IndexerLifecycle = "idle";
-  private eventStatsFromBlock: number;
-  private eventStatsToBlock: number;
-  private eventCounts = emptyPublicEventCounts();
-  private eventStatsComplete = true;
+  private readonly eventStats: EventStats;
   private consecutiveFailures = 0;
   private nextRetryAt = 0;
   private lastError: string | undefined;
 
-  /** Secondary index: artifact owner -> set of artifact ids. */
-  private ownerArtifactIndex = new Map<string, Set<string>>();
-  /** Secondary index: artifact controller -> set of artifact ids. */
-  private controllerArtifactIndex = new Map<string, Set<string>>();
+  /** Secondary index: artifact owner and controller -> artifact ids. */
+  private readonly artifactIndex = new ArtifactIndex();
 
   /** Subscribers notified when state changes (after applying updates). */
   private listeners = new Set<(payload: IndexerChangePayload) => void>();
@@ -164,8 +154,7 @@ export class IndexerService {
     this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
     this.onBlockProcessed = options.onBlockProcessed;
-    this.eventStatsFromBlock = Math.max(1, this.startBlock);
-    this.eventStatsToBlock = this.eventStatsFromBlock - 1;
+    this.eventStats = new EventStats(this.startBlock);
 
     // Background (poll/push) syncs are fire-and-forget: log failures here so
     // rethrown sync errors never become unhandled rejections. The next poll
@@ -357,7 +346,7 @@ export class IndexerService {
 
       if (p.table === "artifact") {
         const oldState = tableMap.get(p.id) as ArtifactState | undefined;
-        this.updateArtifactIndexes(p.id, oldState, p.state as ArtifactState);
+        this.artifactIndex.onUpsert(p.id, oldState, p.state as ArtifactState);
       }
 
       tableMap.set(p.id, p.state);
@@ -366,76 +355,13 @@ export class IndexerService {
 
   /** Commit event counts only after every row in the range converted successfully. */
   private applyEventCounts(updates: BlockUpdates, toBlock: number): void {
-    for (const eventName of PUBLIC_EVENT_NAMES) {
-      this.eventCounts[eventName] += updates.eventCounts?.[eventName] ?? 0;
-    }
-    this.eventStatsToBlock = toBlock;
+    this.eventStats.add(updates.eventCounts, toBlock);
   }
 
-  /**
-   * Maintain ownerArtifactIndex and controllerArtifactIndex when an artifact
-   * row is inserted or updated. Handles removal from old owner/controller sets
-   * and insertion into new ones.
-   */
-  private updateArtifactIndexes(
-    artifactId: string,
-    oldState: ArtifactState | undefined,
-    newState: ArtifactState,
-  ): void {
-    if (oldState?.owner !== newState.owner) {
-      if (oldState) {
-        this.ownerArtifactIndex.get(oldState.owner)?.delete(artifactId);
-      }
-      if (newState.owner) {
-        let set = this.ownerArtifactIndex.get(newState.owner);
-        if (!set) {
-          set = new Set();
-          this.ownerArtifactIndex.set(newState.owner, set);
-        }
-        set.add(artifactId);
-      }
-    }
-
-    if (oldState?.controller !== newState.controller) {
-      if (oldState) {
-        this.controllerArtifactIndex
-          .get(oldState.controller)
-          ?.delete(artifactId);
-      }
-      if (newState.controller) {
-        let set = this.controllerArtifactIndex.get(newState.controller);
-        if (!set) {
-          set = new Set();
-          this.controllerArtifactIndex.set(newState.controller, set);
-        }
-        set.add(artifactId);
-      }
-    }
-  }
-
-  /** Rebuild both artifact secondary indexes from the current snapshot. */
   private rebuildArtifactIndexes(): void {
-    this.ownerArtifactIndex.clear();
-    this.controllerArtifactIndex.clear();
-    const artifactMap = this.snapshot.artifact as Map<string, ArtifactState>;
-    for (const [id, state] of artifactMap) {
-      if (state.owner) {
-        let set = this.ownerArtifactIndex.get(state.owner);
-        if (!set) {
-          set = new Set();
-          this.ownerArtifactIndex.set(state.owner, set);
-        }
-        set.add(id);
-      }
-      if (state.controller) {
-        let set = this.controllerArtifactIndex.get(state.controller);
-        if (!set) {
-          set = new Set();
-          this.controllerArtifactIndex.set(state.controller, set);
-        }
-        set.add(id);
-      }
-    }
+    this.artifactIndex.rebuild(
+      this.snapshot.artifact as Map<string, ArtifactState>,
+    );
   }
 
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
@@ -443,10 +369,7 @@ export class IndexerService {
     this.snapshot = normalizeSnapshot(snapshot);
     this.rebuildArtifactIndexes();
     const block = snapshot.lastProcessedBlock;
-    this.eventCounts = emptyPublicEventCounts();
-    this.eventStatsFromBlock = block + 1;
-    this.eventStatsToBlock = block;
-    this.eventStatsComplete = false;
+    this.eventStats.resetAfterSnapshot(block);
     this.notifyListeners({
       tables: [...TABLE_NAMES],
       fromBlock: block,
@@ -482,10 +405,7 @@ export class IndexerService {
           this.snapshot = normalizeSnapshot(snap);
           this.rebuildArtifactIndexes();
           this.latestKnownBlock = snap.lastProcessedBlock;
-          this.eventCounts = emptyPublicEventCounts();
-          this.eventStatsFromBlock = snap.lastProcessedBlock + 1;
-          this.eventStatsToBlock = snap.lastProcessedBlock;
-          this.eventStatsComplete = false;
+          this.eventStats.resetAfterSnapshot(snap.lastProcessedBlock);
           snapshotLoaded = true;
         }
       } catch (err) {
@@ -511,8 +431,7 @@ export class IndexerService {
       this.snapshot.lastProcessedBlock = this.startBlock - 1;
     }
     if (!snapshotLoaded && this.snapshot.lastProcessedBlock === 0) {
-      this.eventStatsFromBlock = Math.max(1, this.startBlock);
-      this.eventStatsComplete = true;
+      this.eventStats.markComplete(Math.max(1, this.startBlock));
     }
 
     this.lifecycle = "syncing";
@@ -677,17 +596,7 @@ export class IndexerService {
 
   /** Public events fetched from the node, counted before same-id rows overwrite. */
   getPublicEventStats(): PublicEventStats {
-    const counts = { ...this.eventCounts };
-    return {
-      fromBlock: this.eventStatsFromBlock,
-      toBlock: this.eventStatsToBlock,
-      counts,
-      total: PUBLIC_EVENT_NAMES.reduce(
-        (sum, eventName) => sum + counts[eventName],
-        0,
-      ),
-      complete: this.eventStatsComplete,
-    };
+    return this.eventStats.get();
   }
 
   getWorld(): WorldState | undefined {
@@ -789,14 +698,12 @@ export class IndexerService {
 
   /** Artifact ids owned by the given address (via owner field). */
   getArtifactIdsByOwner(ownerId: string): string[] {
-    const set = this.ownerArtifactIndex.get(ownerId);
-    return set ? Array.from(set) : [];
+    return this.artifactIndex.byOwner(ownerId);
   }
 
   /** Artifact ids controlled by the given address (via controller field). */
   getArtifactIdsByController(controllerId: string): string[] {
-    const set = this.controllerArtifactIndex.get(controllerId);
-    return set ? Array.from(set) : [];
+    return this.artifactIndex.byController(controllerId);
   }
 
   /** Full player map (id → PlayerState). */
