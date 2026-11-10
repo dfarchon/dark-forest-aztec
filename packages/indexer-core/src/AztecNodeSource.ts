@@ -45,13 +45,42 @@ import type {
   PublicEventName,
   TableName,
 } from "./types.ts";
+import { callWithBoundedRetry } from "./utils/callWithBoundedRetry.ts";
 
 /** Decoded storage event shape: id, optional block_number, state. */
 type DecodedUpdate = {
   id: unknown;
-  block_number?: number | bigint;
+  block_number?: bigint;
   state: Record<string, unknown>;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Narrow a `decodeFromAbi` result to a storage update.
+ * A short log throws inside the decoder; this catches a result with no `id` or `state`.
+ */
+export function readDecodedUpdate(
+  eventName: string,
+  decoded: unknown,
+): DecodedUpdate {
+  if (!isRecord(decoded) || !isRecord(decoded.state)) {
+    throw new Error(`[AztecNodeSource] ${eventName} missing state`);
+  }
+  if (decoded.id == null) {
+    throw new Error(`[AztecNodeSource] ${eventName} missing id`);
+  }
+  const update: DecodedUpdate = { id: decoded.id, state: decoded.state };
+  const blockNumber = decoded.block_number;
+  if (typeof blockNumber === "bigint") {
+    update.block_number = blockNumber;
+  } else if (typeof blockNumber === "number") {
+    update.block_number = BigInt(blockNumber);
+  }
+  return update;
+}
 
 /** Contract address map: key = storage contract name, value = hex address. */
 export type StorageContractAddresses = Partial<Record<string, string>>;
@@ -174,6 +203,7 @@ type AnchoredBlock = {
  */
 async function fetchAnchoredPublicEvents(
   node: AztecNode,
+  eventName: string,
   eventDef: EventMetadataDefinition,
   query: {
     contractAddress: AztecAddress;
@@ -200,9 +230,11 @@ async function fetchAnchoredPublicEvents(
     referenceBlock: query.referenceBlock,
   };
   const [logsForTag] = await node.getPublicLogsByTags(logsQuery);
-  const events = logsForTag.map(
-    (log) =>
-      decodeFromAbi(eventDef.abiType, log.logData.slice(1)) as DecodedUpdate,
+  const events = logsForTag.map((log) =>
+    readDecodedUpdate(
+      eventName,
+      decodeFromAbi(eventDef.abiType, log.logData.slice(1)),
+    ),
   );
   const last = logsForTag[logsForTag.length - 1];
   const nextCursor =
@@ -215,33 +247,11 @@ async function fetchAnchoredPublicEvents(
 export interface AztecNodeBlockSourceOptions {
   /** L2 tip to follow. Default "proposed", matching getBlockNumber() with no argument. */
   tipTag?: BlockTipTag;
-  /** Per-request timeout. Unset means wait for the node (previous behavior). */
+  /**
+   * Per-request timeout. A timeout or network error is retried twice (1s, then 2s)
+   * before the error is thrown. Unset means wait for the node.
+   */
   requestTimeoutMs?: number;
-}
-
-/**
- * Rejects if `p` does not settle within `ms`. A late rejection of `p` is swallowed
- * so it cannot surface as an unhandled rejection after the timeout already won.
- */
-async function withTimeout<T>(
-  p: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(new Error(`[AztecNodeSource] ${label} timed out after ${ms}ms`)),
-      ms,
-    );
-  });
-  p.catch(() => {});
-  try {
-    return await Promise.race([p, timeout]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
 }
 
 /**
@@ -258,13 +268,13 @@ export function createAztecNodeBlockSource(
   const node = createAztecNodeClient(nodeUrl) as AztecNode;
   const tipTag = options?.tipTag ?? "proposed";
   const timeoutMs = options?.requestTimeoutMs;
-  const call = <T>(p: Promise<T>, label: string): Promise<T> =>
-    timeoutMs !== undefined ? withTimeout(p, timeoutMs, label) : p;
+  const call = <T>(fn: () => Promise<T>, label: string): Promise<T> =>
+    callWithBoundedRetry(fn, { label, timeoutMs });
   const addresses = { ...DEFAULT_ADDRESSES, ...contractAddresses };
   const specsWithArtifacts = resolveStorageSpecs(addresses);
 
   const loadBlockData = (n: number) =>
-    call(node.getBlockData(BlockNumber(n)), `getBlockData(${n})`);
+    call(() => node.getBlockData(BlockNumber(n)), `getBlockData(${n})`);
 
   const blockHash = async (n: number): Promise<string | undefined> => {
     const data = await loadBlockData(n);
@@ -273,13 +283,13 @@ export function createAztecNodeBlockSource(
 
   return {
     getLatestBlockNumber: async () =>
-      Number(await call(node.getBlockNumber(tipTag), "getBlockNumber")),
+      Number(await call(() => node.getBlockNumber(tipTag), "getBlockNumber")),
 
     getBlockHash: blockHash,
 
     async getBlockUpdates(fromBlock, toBlock): Promise<BlockUpdates> {
       const tip = Number(
-        await call(node.getBlockNumber(tipTag), "getBlockNumber"),
+        await call(() => node.getBlockNumber(tipTag), "getBlockNumber"),
       );
       const end = Math.min(toBlock, tip);
       if (end < fromBlock) {
@@ -314,25 +324,20 @@ export function createAztecNodeBlockSource(
         let afterLog: LogCursor | undefined;
         do {
           const page = await call(
-            fetchAnchoredPublicEvents(node, eventDef, {
-              fromBlock: BlockNumber(fromBlock),
-              toBlock: BlockNumber(end + 1), // exclusive
-              contractAddress: address,
-              referenceBlock,
-              afterLog,
-            }),
+            () =>
+              fetchAnchoredPublicEvents(node, eventName, eventDef, {
+                fromBlock: BlockNumber(fromBlock),
+                toBlock: BlockNumber(end + 1), // exclusive
+                contractAddress: address,
+                referenceBlock,
+                afterLog,
+              }),
             `getPublicLogsByTags(${eventName})`,
           );
           eventCounts[eventName] =
             (eventCounts[eventName] ?? 0) + page.events.length;
           for (const ev of page.events) {
-            if (ev?.state == null) {
-              throw new Error(`[AztecNodeSource] ${eventName} missing state`);
-            }
             const id = table === "world" ? "0" : toIdStr(ev.id);
-            if (table !== "world" && id === "") {
-              throw new Error(`[AztecNodeSource] ${eventName} missing id`);
-            }
             updates.push({ table, id, state: ev.state });
           }
           afterLog = page.nextCursor;

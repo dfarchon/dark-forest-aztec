@@ -17,10 +17,7 @@ export {
   toBigInt,
   toSafeNum,
   toStr,
-} from "./convert.ts";
-
-export type { DebouncedFn } from "./debounce.ts";
-export { debounce } from "./debounce.ts";
+} from "./utils/convert.ts";
 
 export type { IndexerServiceOptions } from "./IndexerService.ts";
 export { IndexerService } from "./IndexerService.ts";

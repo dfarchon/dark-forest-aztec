@@ -7,8 +7,13 @@
  * callers never receive partial state during initial catch-up.
  */
 
-import { normalizeSnapshot, rawIdToTableId, rawToState } from "./convert.ts";
-import { debounce } from "./debounce.ts";
+import lodash from "lodash";
+import type { DebouncedFunc } from "lodash";
+import {
+  convertRow,
+  normalizeSnapshot,
+  rawIdToTableId,
+} from "./utils/convert.ts";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -88,18 +93,19 @@ export interface IndexerServiceOptions {
   maxBlocksPerRequest?: number;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
-  /** Check lastProcessedBlock's hash against the source before each sync. Default false. */
-  verifyBlockHashes?: boolean;
-  /** Called when the block hash at lastProcessedBlock no longer matches the source chain. */
-  onReorgDetected?: (info: {
-    blockNumber: number;
-    localHash: string;
-    sourceHash: string | undefined;
-  }) => void;
   /** Max wait between background retries after failures; 0 = no backoff (current behavior). */
   maxBackoffMs?: number;
   /** Attempts for the initial sync in start(); 1 = no retry (current behavior). */
   initialSyncMaxRetries?: number;
+  /**
+   * Called before waiting to retry a failed initial sync. Not called on the
+   * attempt that exhausts initialSyncMaxRetries and rejects start().
+   */
+  onInitialSyncRetry?: (
+    attempt: number,
+    waitMs: number,
+    error: unknown,
+  ) => void;
   /**
    * Before using a bootstrap snapshot, check its last block hash on the source;
    * discard it on mismatch. Default false.
@@ -114,10 +120,9 @@ export class IndexerService {
   private readonly debounceMs: number;
   private readonly pollIntervalMs: number;
   private readonly maxBlocksPerRequest: number;
-  private readonly verifyBlockHashes: boolean;
-  private readonly onReorgDetected?: IndexerServiceOptions["onReorgDetected"];
   private readonly maxBackoffMs: number;
   private readonly initialSyncMaxRetries: number;
+  private readonly onInitialSyncRetry?: IndexerServiceOptions["onInitialSyncRetry"];
   private readonly verifyBootstrapSnapshot: boolean;
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
@@ -126,13 +131,12 @@ export class IndexerService {
   private isSyncing: boolean = false;
   private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly debouncedProcess: DebouncedFunc<() => void>;
   private lifecycle: IndexerLifecycle = "idle";
   private eventStatsFromBlock: number;
   private eventStatsToBlock: number;
   private eventCounts = emptyPublicEventCounts();
   private eventStatsComplete = true;
-  /** Once set, syncing stops so bad data is not stacked on top of a reorg. */
-  private reorgDetected = false;
   private consecutiveFailures = 0;
   private nextRetryAt = 0;
   private lastError: string | undefined;
@@ -152,13 +156,12 @@ export class IndexerService {
     this.debounceMs = options.debounceMs ?? 1000;
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
-    this.verifyBlockHashes = options.verifyBlockHashes ?? false;
-    this.onReorgDetected = options.onReorgDetected;
     this.maxBackoffMs = Math.max(0, options.maxBackoffMs ?? 0);
     this.initialSyncMaxRetries = Math.max(
       1,
       options.initialSyncMaxRetries ?? 1,
     );
+    this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
     this.onBlockProcessed = options.onBlockProcessed;
     this.eventStatsFromBlock = Math.max(1, this.startBlock);
@@ -167,8 +170,9 @@ export class IndexerService {
     // Background (poll/push) syncs are fire-and-forget: log failures here so
     // rethrown sync errors never become unhandled rejections. The next poll
     // cycle retries from lastProcessedBlock + 1, after the backoff if one is set.
-    const debouncedProcess = debounce(
+    this.debouncedProcess = lodash.debounce(
       () => {
+        if (this.isDestroyed()) return;
         if (Date.now() < this.nextRetryAt) return;
         this.processNewBlocks()
           .then(() => {
@@ -181,14 +185,13 @@ export class IndexerService {
           });
       },
       this.debounceMs,
-      true,
-      true,
+      { leading: true, trailing: true },
     );
 
     /** Called when we learn of a new latest block (poll or push). */
     this.onLatestBlock = (latest: number) => {
       this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-      debouncedProcess();
+      this.debouncedProcess();
     };
   }
 
@@ -203,12 +206,14 @@ export class IndexerService {
    * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
    * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
    */
-  private async processNewBlocks(): Promise<void> {
+  private async processNewBlocks(options?: {
+    ignoreBackoff?: boolean;
+  }): Promise<void> {
     if (this.syncPromise) {
       return this.syncPromise;
     }
 
-    const syncPromise = this.processPendingBlocks();
+    const syncPromise = this.processPendingBlocks(options);
     this.syncPromise = syncPromise;
     try {
       await syncPromise;
@@ -239,9 +244,15 @@ export class IndexerService {
     );
   }
 
-  private async processPendingBlocks(): Promise<void> {
-    if (this.reorgDetected) return;
-    if (!(await this.verifyChainContinuity())) return;
+  private isDestroyed(): boolean {
+    return this.lifecycle === "destroyed";
+  }
+
+  private async processPendingBlocks(options?: {
+    ignoreBackoff?: boolean;
+  }): Promise<void> {
+    if (this.isDestroyed()) return;
+    if (!options?.ignoreBackoff && Date.now() < this.nextRetryAt) return;
 
     let fromBlock = this.snapshot.lastProcessedBlock + 1;
     const toBlock = this.latestKnownBlock;
@@ -250,18 +261,15 @@ export class IndexerService {
     this.isSyncing = true;
     try {
       while (fromBlock <= toBlock) {
+        if (this.isDestroyed()) return;
         const chunkEnd = Math.min(
           fromBlock + this.maxBlocksPerRequest - 1,
           toBlock,
         );
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
+        if (this.isDestroyed()) return;
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
-        if (this.verifyBlockHashes && committedTo > 0 && !updates.toBlockHash) {
-          throw new Error(
-            `[IndexerService] block ${committedTo} has no hash; refusing to commit`,
-          );
-        }
         this.applyUpdates(updates);
         this.applyEventCounts(updates, committedTo);
         this.snapshot.lastProcessedBlock = committedTo;
@@ -289,41 +297,19 @@ export class IndexerService {
   }
 
   /**
-   * Returns false when the stored tip hash no longer matches the node, or when
-   * the node cannot return that hash yet. Only a mismatch latches reorgDetected.
-   */
-  private async verifyChainContinuity(): Promise<boolean> {
-    const localHash = this.snapshot.lastProcessedBlockHash;
-    const n = this.snapshot.lastProcessedBlock;
-    if (!this.verifyBlockHashes) return true;
-    if (!localHash || n <= 0 || !this.source.getBlockHash) return true;
-    const sourceHash = await this.source.getBlockHash(n);
-    if (sourceHash === undefined) {
-      console.warn(
-        `[IndexerService] block ${n} hash unavailable on node; pausing sync`,
-      );
-      return false;
-    }
-    if (sourceHash === localHash) return true;
-    this.reorgDetected = true;
-    console.error(
-      `[IndexerService] reorg detected at block ${n}: local=${localHash} source=${sourceHash}`,
-    );
-    this.onReorgDetected?.({ blockNumber: n, localHash, sourceHash });
-    return false;
-  }
-
-  /**
    * Immediately fetches the node's latest L2 tip and processes any missing blocks.
    * Concurrent callers share the in-flight processing work.
    */
   private async syncToLatest(): Promise<void> {
     const latest = await this.source.getLatestBlockNumber();
     this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-    await this.processNewBlocks();
+    await this.processNewBlocks({ ignoreBackoff: true });
     if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
-      await this.processNewBlocks();
+      await this.processNewBlocks({ ignoreBackoff: true });
     }
+    this.consecutiveFailures = 0;
+    this.lastError = undefined;
+    this.nextRetryAt = 0;
   }
 
   /** Build per-table list of row ids that were updated in this batch. */
@@ -358,11 +344,11 @@ export class IndexerService {
       [];
     for (const u of updates.updates) {
       const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
-      const rawState = (u as TableUpdate<Raw>).state as Raw;
+      const rawState = (u as TableUpdate<Raw>).state;
       pending.push({
         table: u.table,
         id,
-        state: rawToState(u.table, rawState),
+        state: convertRow(u.table, id, rawState),
       });
     }
 
@@ -534,18 +520,12 @@ export class IndexerService {
       try {
         this.latestKnownBlock = await this.source.getLatestBlockNumber();
         await this.processNewBlocks();
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
+        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
           // The node may have been behind the previously observed tip. Refresh once.
           this.latestKnownBlock = await this.source.getLatestBlockNumber();
           await this.processNewBlocks();
         }
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
+        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
           console.warn(
             `[IndexerService] initial sync incomplete: processed up to block ` +
               `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}. ` +
@@ -561,6 +541,7 @@ export class IndexerService {
         this.lastError = err instanceof Error ? err.message : String(err);
         if (attempt >= this.initialSyncMaxRetries) throw err;
         const wait = Math.min(60_000, 2_000 * 2 ** (attempt - 1));
+        this.onInitialSyncRetry?.(attempt, wait, err);
         console.warn(
           `[IndexerService] initial sync failed (attempt ${attempt}), retry in ${wait}ms:`,
           err,
@@ -637,6 +618,7 @@ export class IndexerService {
   /** Stop polling and clear timer. */
   destroy(): void {
     this.lifecycle = "destroyed";
+    this.debouncedProcess.cancel();
     if (this.pollTimer !== undefined) {
       clearInterval(this.pollTimer);
       this.pollTimer = undefined;
@@ -847,11 +829,7 @@ export class IndexerService {
    * at least up to the given block number.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
-    console.log(
-      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
-    );
     if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
       return;
     }
 
@@ -862,12 +840,23 @@ export class IndexerService {
     }
 
     if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] immediate sync reached ${blockNumber}`);
       return;
     }
 
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let settled = false;
+      let unsub = () => {};
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsub();
+        resolve();
+      };
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         unsub();
         reject(
           new Error(
@@ -876,16 +865,10 @@ export class IndexerService {
         );
       }, timeoutMs);
 
-      const unsub = this.subscribe(() => {
-        if (this.snapshot.lastProcessedBlock >= blockNumber) {
-          console.log(
-            `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
-          );
-          clearTimeout(timer);
-          unsub();
-          resolve();
-        }
+      unsub = this.subscribe(() => {
+        if (this.snapshot.lastProcessedBlock >= blockNumber) finish();
       });
+      if (this.snapshot.lastProcessedBlock >= blockNumber) finish();
     });
   }
 }

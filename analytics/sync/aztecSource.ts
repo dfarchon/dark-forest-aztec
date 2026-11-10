@@ -42,6 +42,29 @@ interface DecodedUpdate {
   state: Record<string, unknown>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Narrow a `decodeFromAbi` result. A short log throws in the decoder; this catches a missing id or state. */
+function readDecodedUpdate(
+  eventName: string,
+  blockNumber: number,
+  decoded: unknown,
+): DecodedUpdate {
+  if (!isRecord(decoded) || !isRecord(decoded.state)) {
+    throw new Error(
+      `[analytics] ${eventName} missing state in block ${blockNumber}`,
+    );
+  }
+  if (decoded.id == null) {
+    throw new Error(
+      `[analytics] ${eventName} missing id in block ${blockNumber}`,
+    );
+  }
+  return { id: decoded.id, state: decoded.state };
+}
+
 interface EventSpec {
   table: EventTableName;
   indexerTable: TableName;
@@ -204,15 +227,11 @@ export function createAztecChainSource(
           for (const log of page) {
             const blockNumber = Number(log.blockNumber);
             if (blockNumber < from || blockNumber > toInclusive) continue;
-            const decoded = decodeFromAbi(
-              spec.eventDef.abiType,
-              log.logData.slice(1),
-            ) as unknown as DecodedUpdate;
-            if (decoded?.state == null) {
-              throw new Error(
-                `[analytics] ${spec.eventName} missing state in block ${blockNumber}`,
-              );
-            }
+            const decoded = readDecodedUpdate(
+              spec.eventName,
+              blockNumber,
+              decodeFromAbi(spec.eventDef.abiType, log.logData.slice(1)),
+            );
             const typed = rawToState(spec.indexerTable, decoded.state);
             logs.push({
               table: spec.table,

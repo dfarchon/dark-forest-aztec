@@ -127,12 +127,6 @@ async function main(): Promise<void> {
     maxBlocksPerRequest: 100,
     initialSyncMaxRetries: Infinity,
     maxBackoffMs: 60_000,
-    verifyBlockHashes: true,
-    onReorgDetected: (info) => {
-      console.error(
-        `[Server] reorg detected at block ${info.blockNumber}: local=${info.localHash} source=${info.sourceHash}`,
-      );
-    },
   });
 
   const cache = new SnapshotCache(indexer);

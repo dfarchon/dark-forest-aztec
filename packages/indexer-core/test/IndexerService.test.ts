@@ -8,15 +8,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { IndexerService } from "./IndexerService.ts";
-import { normalizeSnapshot, rawToState } from "./convert.ts";
+import { IndexerService } from "../src/IndexerService.ts";
+import { normalizeSnapshot, rawToState } from "../src/utils/convert.ts";
 import type {
   BlockUpdates,
   IBlockEventSource,
   IndexerSnapshot,
   PublicEventBatchCounts,
   TableUpdate,
-} from "./types.ts";
+} from "../src/types.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -159,6 +159,54 @@ test("applyUpdates is atomic: a bad row prevents all rows of the chunk from bein
   assert.equal(indexer.getArrival("0xarr"), undefined);
   assert.equal(indexer.getProcessedBlockNumber(), 0);
   indexer.destroy();
+});
+
+test("applyUpdates rejects bad strings, unsigned values, and event lists", async () => {
+  const badRows: TableUpdate<Raw>[] = [
+    arrivalUpdate("0xarr", { player: { a: 1 } }),
+    arrivalUpdate("0xarr", { pop_arriving: -1n }),
+    arrivalUpdate("0xarr", { pop_arriving: "1.5" }),
+    arrivalUpdate("0xarr", { arrival_type: 256 }),
+    {
+      table: "planet_events",
+      id: "0xplanet",
+      state: {
+        events: [{ id: "0xev" }],
+        count: 2,
+        last_updated: 1n,
+      },
+    },
+    {
+      table: "planet_events",
+      id: "0xplanet",
+      state: {
+        events: [{ id: "" }],
+        count: 1,
+        last_updated: 1n,
+      },
+    },
+    {
+      table: "planet_artifacts",
+      id: "0xplanet",
+      state: {
+        ids: Array.from({ length: 21 }, () => "0xart"),
+        count: 21,
+        last_updated: 1n,
+      },
+    },
+  ];
+  for (const bad of badRows) {
+    const source = createMockSource({
+      latestBlock: 1,
+      updatesFor: () => [planetEventsUpdate("0xplanet", "0xkeep"), bad],
+    });
+    const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+    await assert.rejects(() => indexer.start());
+    assert.equal(indexer.getPlanetEvents("0xplanet"), undefined);
+    assert.equal(indexer.getArrival("0xarr"), undefined);
+    assert.equal(indexer.getPlanetArtifacts("0xplanet"), undefined);
+    indexer.destroy();
+  }
 });
 
 test("a failed sync resumes from the last committed chunk and recovers", async () => {
@@ -566,103 +614,6 @@ test("a clamped toBlock is committed and the next round resumes after it", async
   indexer.destroy();
 });
 
-test("verifyBlockHashes stops syncing after the stored hash no longer matches", async () => {
-  let sourceHash = "a";
-  const calls: number[] = [];
-  const reorgs: string[] = [];
-  const source: IBlockEventSource = {
-    getLatestBlockNumber: async () => 100,
-    getBlockHash: async () => sourceHash,
-    getBlockUpdates: async (fromBlock, toBlock) => {
-      calls.push(fromBlock);
-      return { fromBlock, toBlock, toBlockHash: "a", updates: [] };
-    },
-  };
-  const indexer = new IndexerService({
-    source,
-    maxBlocksPerRequest: 100,
-    verifyBlockHashes: true,
-    onReorgDetected: (info) => {
-      reorgs.push(`${info.blockNumber}:${info.localHash}->${info.sourceHash}`);
-    },
-  });
-
-  await indexer.start();
-  assert.equal(indexer.getProcessedBlockNumber(), 100);
-  assert.equal(indexer.getProcessedBlockHash(), "a");
-
-  sourceHash = "b";
-  const callsBefore = calls.length;
-  await indexer.start();
-  await indexer.start();
-
-  assert.deepEqual(reorgs, ["100:a->b"]);
-  assert.equal(calls.length, callsBefore);
-  indexer.destroy();
-});
-
-test("verifyBlockHashes does not commit a chunk that has no block hash", async () => {
-  const source: IBlockEventSource = {
-    getLatestBlockNumber: async () => 20,
-    getBlockHash: async () => "h1",
-    getBlockUpdates: async (fromBlock, toBlock) => {
-      if (fromBlock === 1) {
-        return { fromBlock, toBlock, toBlockHash: "h1", updates: [] };
-      }
-      return { fromBlock, toBlock, updates: [] };
-    },
-  };
-  const indexer = new IndexerService({
-    source,
-    maxBlocksPerRequest: 10,
-    verifyBlockHashes: true,
-  });
-
-  await assert.rejects(() => indexer.start(), /refusing to commit/);
-  assert.equal(indexer.getProcessedBlockNumber(), 10);
-  assert.equal(indexer.getProcessedBlockHash(), "h1");
-  assert.notEqual(indexer.getLifecycle(), "ready");
-  indexer.destroy();
-});
-
-test("a missing node block hash pauses sync without clearing the local hash or reporting a reorg", async () => {
-  let sourceHash: string | undefined = "a";
-  let latest = 100;
-  const calls: number[] = [];
-  let reorgs = 0;
-  const source: IBlockEventSource = {
-    getLatestBlockNumber: async () => latest,
-    getBlockHash: async () => sourceHash,
-    getBlockUpdates: async (fromBlock, toBlock) => {
-      calls.push(fromBlock);
-      return { fromBlock, toBlock, toBlockHash: "a", updates: [] };
-    },
-  };
-  const indexer = new IndexerService({
-    source,
-    maxBlocksPerRequest: 100,
-    verifyBlockHashes: true,
-    onReorgDetected: () => {
-      reorgs += 1;
-    },
-  });
-
-  await indexer.start();
-  assert.equal(indexer.getProcessedBlockNumber(), 100);
-  assert.equal(indexer.getProcessedBlockHash(), "a");
-
-  sourceHash = undefined;
-  latest = 150;
-  const callsBefore = calls.length;
-  await indexer.start();
-
-  assert.equal(reorgs, 0);
-  assert.equal(calls.length, callsBefore);
-  assert.equal(indexer.getProcessedBlockNumber(), 100);
-  assert.equal(indexer.getProcessedBlockHash(), "a");
-  indexer.destroy();
-});
-
 test("initial sync retries then succeeds without advancing on the failed attempts", async () => {
   let failuresLeft = 2;
   const source = createMockSource({
@@ -675,14 +626,27 @@ test("initial sync retries then succeeds without advancing on the failed attempt
       return [arrivalUpdate("0xok")];
     },
   });
+  const retries: Array<{ attempt: number; waitMs: number; message: string }> =
+    [];
   const indexer = new IndexerService({
     source,
     maxBlocksPerRequest: 100,
     initialSyncMaxRetries: 3,
+    onInitialSyncRetry: (attempt, waitMs, error) => {
+      retries.push({
+        attempt,
+        waitMs,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    },
   });
 
   await indexer.start();
 
+  assert.deepEqual(retries, [
+    { attempt: 1, waitMs: 2_000, message: "rpc down" },
+    { attempt: 2, waitMs: 4_000, message: "rpc down" },
+  ]);
   assert.equal(indexer.getProcessedBlockNumber(), 10);
   assert.ok(indexer.getArrival("0xok"));
   assert.equal(indexer.getStatus().consecutiveFailures, 0);
@@ -711,10 +675,41 @@ test("initial sync stops when the retry limit is reached", async () => {
   indexer.destroy();
 });
 
-test("hash mismatches and the first RPC failure keep the default behavior", async () => {
+test("waitForBlock fetches updates while a retry backoff is still active", async () => {
+  const options: MockSourceOptions = { latestBlock: 10 };
+  const source = createMockSource(options);
+  const indexer = new IndexerService({
+    source,
+    maxBlocksPerRequest: 100,
+    maxBackoffMs: 60_000,
+  });
+  await indexer.start();
+  const callsBefore = source.calls.length;
+  const internal = indexer as unknown as {
+    consecutiveFailures: number;
+    lastError?: string;
+    nextRetryAt: number;
+  };
+  internal.consecutiveFailures = 3;
+  internal.lastError = "rpc down";
+  internal.nextRetryAt = Date.now() + 60_000;
+  options.latestBlock = 20;
+
+  await indexer.waitForBlock(20, 1_000);
+
+  assert.equal(indexer.getProcessedBlockNumber(), 20);
+  assert.ok(
+    source.calls.slice(callsBefore).some((call) => call.fromBlock === 11),
+  );
+  assert.equal(indexer.getStatus().consecutiveFailures, 0);
+  assert.equal(indexer.getStatus().lastError, undefined);
+  assert.ok(internal.nextRetryAt <= Date.now());
+  indexer.destroy();
+});
+
+test("a changed tip hash does not rewind, and the first RPC failure is not retried", async () => {
   let sourceHash = "a";
   const calls: number[] = [];
-  let reorgs = 0;
   const source: IBlockEventSource = {
     getLatestBlockNumber: async () => 100,
     getBlockHash: async () => sourceHash,
@@ -726,16 +721,13 @@ test("hash mismatches and the first RPC failure keep the default behavior", asyn
   const indexer = new IndexerService({
     source,
     maxBlocksPerRequest: 100,
-    onReorgDetected: () => {
-      reorgs += 1;
-    },
   });
   await indexer.start();
   sourceHash = "b";
   source.getLatestBlockNumber = async () => 150;
   await indexer.start();
-  assert.equal(reorgs, 0);
   assert.equal(calls[calls.length - 1], 101);
+  assert.equal(indexer.getProcessedBlockHash(), "a");
   indexer.destroy();
 
   let attempts = 0;

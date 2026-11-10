@@ -31,16 +31,18 @@
     "clean": "del-cli dist node_modules",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\"",
-    "test": "node --test --experimental-transform-types src/*.test.ts"
+    "test": "node --test --experimental-transform-types test/*.test.ts"
   },
   "dependencies": {
     "@aztec-labs/aztec.js": "6.0.0",
     "@aztec-labs/constants": "6.0.0",
     "@aztec-labs/foundation": "6.0.0",
     "@aztec-labs/stdlib": "6.0.0",
-    "@dfpunk/contracts": "workspace:*"
+    "@dfpunk/contracts": "workspace:*",
+    "lodash": "4.18.1"
   },
   "devDependencies": {
+    "@types/lodash": "4.17.27",
     "prettier": "3.7.4",
     "typescript": "5.9.3"
   },
