@@ -9,11 +9,6 @@
 
 import lodash from "lodash";
 import type { DebouncedFunc } from "lodash";
-import {
-  convertRow,
-  normalizeSnapshot,
-  rawIdToTableId,
-} from "./utils/convert.ts";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -25,10 +20,8 @@ import type {
   PlayerState,
   WorldState,
 } from "./TableTypes/chain.ts";
-import { ArtifactIndex } from "./service/ArtifactIndex.ts";
-import { EventStats } from "./service/EventStats.ts";
+import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
-  BlockUpdates,
   IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,
@@ -38,26 +31,8 @@ import type {
   TableId,
   TableName,
   TableRowType,
-  TableUpdate,
 } from "./types.ts";
 import { TABLE_NAMES } from "./types.ts";
-
-type Raw = Record<string, unknown>;
-
-function emptySnapshot(): IndexerSnapshot {
-  return {
-    lastProcessedBlock: 0,
-    world: new Map(),
-    player: new Map(),
-    planet: new Map(),
-    planet_revealed_coords: new Map(),
-    planet_events: new Map(),
-    planet_artifacts: new Map(),
-    arrival: new Map(),
-    artifact: new Map(),
-    artifact_location: new Map(),
-  };
-}
 
 export interface IndexerServiceOptions {
   /**
@@ -121,20 +96,16 @@ export class IndexerService {
   private readonly verifyBootstrapSnapshot: boolean;
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
-  private snapshot: IndexerSnapshot = emptySnapshot();
+  private readonly store: IndexerStore;
   private latestKnownBlock: number = 0;
   private isSyncing: boolean = false;
   private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private readonly debouncedProcess: DebouncedFunc<() => void>;
   private lifecycle: IndexerLifecycle = "idle";
-  private readonly eventStats: EventStats;
   private consecutiveFailures = 0;
   private nextRetryAt = 0;
   private lastError: string | undefined;
-
-  /** Secondary index: artifact owner and controller -> artifact ids. */
-  private readonly artifactIndex = new ArtifactIndex();
 
   /** Subscribers notified when state changes (after applying updates). */
   private listeners = new Set<(payload: IndexerChangePayload) => void>();
@@ -154,7 +125,7 @@ export class IndexerService {
     this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
     this.onBlockProcessed = options.onBlockProcessed;
-    this.eventStats = new EventStats(this.startBlock);
+    this.store = new IndexerStore(this.startBlock);
 
     // Background (poll/push) syncs are fire-and-forget: log failures here so
     // rethrown sync errors never become unhandled rejections. The next poll
@@ -243,7 +214,7 @@ export class IndexerService {
     if (this.isDestroyed()) return;
     if (!options?.ignoreBackoff && Date.now() < this.nextRetryAt) return;
 
-    let fromBlock = this.snapshot.lastProcessedBlock + 1;
+    let fromBlock = this.store.processedBlock + 1;
     const toBlock = this.latestKnownBlock;
     if (fromBlock > toBlock) return;
 
@@ -259,20 +230,13 @@ export class IndexerService {
         if (this.isDestroyed()) return;
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
-        this.applyUpdates(updates);
-        this.applyEventCounts(updates, committedTo);
-        this.snapshot.lastProcessedBlock = committedTo;
-        this.snapshot.lastProcessedBlockHash = updates.toBlockHash;
-        this.onBlockProcessed?.(fromBlock, committedTo);
-        const tables = [
-          ...new Set(updates.updates.map((u) => u.table)),
-        ] as TableName[];
-        const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
+        const committed = this.store.commit(updates);
+        this.onBlockProcessed?.(fromBlock, committed.toBlock);
         this.notifyListeners({
-          tables,
+          tables: committed.tables,
           fromBlock,
-          toBlock: committedTo,
-          updatedIdsByTable,
+          toBlock: committed.toBlock,
+          updatedIdsByTable: committed.updatedIdsByTable,
         });
         if (committedTo < chunkEnd) break;
         fromBlock = committedTo + 1;
@@ -293,7 +257,7 @@ export class IndexerService {
     const latest = await this.source.getLatestBlockNumber();
     this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
     await this.processNewBlocks({ ignoreBackoff: true });
-    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+    if (this.store.processedBlock < this.latestKnownBlock) {
       await this.processNewBlocks({ ignoreBackoff: true });
     }
     this.consecutiveFailures = 0;
@@ -301,75 +265,9 @@ export class IndexerService {
     this.nextRetryAt = 0;
   }
 
-  /** Build per-table list of row ids that were updated in this batch. */
-  private buildUpdatedIdsByTable(
-    updates: BlockUpdates,
-  ): Partial<Record<TableName, TableId[]>> {
-    const byTable = new Map<TableName, Set<TableId>>();
-    for (const u of updates.updates) {
-      const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
-      let set = byTable.get(u.table);
-      if (!set) {
-        set = new Set();
-        byTable.set(u.table, set);
-      }
-      set.add(id);
-    }
-    const out: Partial<Record<TableName, TableId[]>> = {};
-    byTable.forEach((ids, table) => {
-      out[table] = [...ids];
-    });
-    return out;
-  }
-
-  /**
-   * Apply a single BlockUpdates to current snapshot atomically: convert every
-   * row first (phase 1, no mutation), then commit all rows (phase 2). A bad
-   * row therefore cannot leave the snapshot partially updated across tables
-   * (e.g. planet_events written while its arrival row is missing).
-   */
-  private applyUpdates(updates: BlockUpdates): void {
-    const pending: Array<{ table: TableName; id: TableId; state: unknown }> =
-      [];
-    for (const u of updates.updates) {
-      const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
-      const rawState = (u as TableUpdate<Raw>).state;
-      pending.push({
-        table: u.table,
-        id,
-        state: convertRow(u.table, id, rawState),
-      });
-    }
-
-    for (const p of pending) {
-      const tableMap = this.snapshot[p.table] as Map<TableId, unknown>;
-
-      if (p.table === "artifact") {
-        const oldState = tableMap.get(p.id) as ArtifactState | undefined;
-        this.artifactIndex.onUpsert(p.id, oldState, p.state as ArtifactState);
-      }
-
-      tableMap.set(p.id, p.state);
-    }
-  }
-
-  /** Commit event counts only after every row in the range converted successfully. */
-  private applyEventCounts(updates: BlockUpdates, toBlock: number): void {
-    this.eventStats.add(updates.eventCounts, toBlock);
-  }
-
-  private rebuildArtifactIndexes(): void {
-    this.artifactIndex.rebuild(
-      this.snapshot.artifact as Map<string, ArtifactState>,
-    );
-  }
-
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
   applySnapshot(snapshot: IndexerSnapshot): void {
-    this.snapshot = normalizeSnapshot(snapshot);
-    this.rebuildArtifactIndexes();
-    const block = snapshot.lastProcessedBlock;
-    this.eventStats.resetAfterSnapshot(block);
+    const block = this.store.replaceSnapshot(snapshot);
     this.notifyListeners({
       tables: [...TABLE_NAMES],
       fromBlock: block,
@@ -402,10 +300,8 @@ export class IndexerService {
       try {
         const snap = await this.bootstrapSource.getSnapshot();
         if (snap) {
-          this.snapshot = normalizeSnapshot(snap);
-          this.rebuildArtifactIndexes();
+          this.store.replaceSnapshot(snap);
           this.latestKnownBlock = snap.lastProcessedBlock;
-          this.eventStats.resetAfterSnapshot(snap.lastProcessedBlock);
           snapshotLoaded = true;
         }
       } catch (err) {
@@ -413,25 +309,23 @@ export class IndexerService {
           "[IndexerService] bootstrap snapshot rejected, falling back to full sync:",
           err,
         );
-        this.snapshot = emptySnapshot();
-        this.rebuildArtifactIndexes();
+        this.store.clear();
         snapshotLoaded = false;
       }
     }
     if (snapshotLoaded && this.verifyBootstrapSnapshot) {
       const ok = await this.verifyBootstrapHash();
       if (!ok) {
-        this.snapshot = emptySnapshot();
-        this.rebuildArtifactIndexes();
+        this.store.clear();
         this.latestKnownBlock = 0;
         snapshotLoaded = false;
       }
     }
     if (!snapshotLoaded && this.startBlock > 0) {
-      this.snapshot.lastProcessedBlock = this.startBlock - 1;
+      this.store.resetTo(this.startBlock - 1);
     }
-    if (!snapshotLoaded && this.snapshot.lastProcessedBlock === 0) {
-      this.eventStats.markComplete(Math.max(1, this.startBlock));
+    if (!snapshotLoaded && this.store.processedBlock === 0) {
+      this.store.markStatsComplete(Math.max(1, this.startBlock));
     }
 
     this.lifecycle = "syncing";
@@ -439,15 +333,15 @@ export class IndexerService {
       try {
         this.latestKnownBlock = await this.source.getLatestBlockNumber();
         await this.processNewBlocks();
-        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+        if (this.store.processedBlock < this.latestKnownBlock) {
           // The node may have been behind the previously observed tip. Refresh once.
           this.latestKnownBlock = await this.source.getLatestBlockNumber();
           await this.processNewBlocks();
         }
-        if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
+        if (this.store.processedBlock < this.latestKnownBlock) {
           console.warn(
             `[IndexerService] initial sync incomplete: processed up to block ` +
-              `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}. ` +
+              `${this.store.processedBlock}, expected ${this.latestKnownBlock}. ` +
               `Will continue from the next poll.`,
           );
         }
@@ -469,7 +363,7 @@ export class IndexerService {
       }
     }
 
-    const syncedToBlock = this.snapshot.lastProcessedBlock;
+    const syncedToBlock = this.store.processedBlock;
 
     this.lifecycle = "ready";
 
@@ -482,8 +376,8 @@ export class IndexerService {
    * A present hash that differs discards it.
    */
   private async verifyBootstrapHash(): Promise<boolean> {
-    const n = this.snapshot.lastProcessedBlock;
-    const expected = this.snapshot.lastProcessedBlockHash;
+    const n = this.store.processedBlock;
+    const expected = this.store.processedBlockHash;
     if (!expected || n <= 0 || !this.source.getBlockHash) return true;
     try {
       const actual = await this.source.getBlockHash(n);
@@ -571,7 +465,7 @@ export class IndexerService {
 
   getStatus(): IndexerStatus {
     return {
-      lastProcessedBlock: this.snapshot.lastProcessedBlock,
+      lastProcessedBlock: this.store.processedBlock,
       latestKnownBlock: this.latestKnownBlock,
       isSyncing: this.isSyncing,
       lifecycle: this.lifecycle,
@@ -582,12 +476,12 @@ export class IndexerService {
 
   /** Last block whose events have been applied. Use for tx inputs (e.g. next_change_block). */
   getProcessedBlockNumber(): number {
-    return this.snapshot.lastProcessedBlock;
+    return this.store.processedBlock;
   }
 
   /** Hash of the last applied block, when the source reported one. */
   getProcessedBlockHash(): string | undefined {
-    return this.snapshot.lastProcessedBlockHash;
+    return this.store.processedBlockHash;
   }
 
   getLatestKnownBlock(): number {
@@ -596,49 +490,43 @@ export class IndexerService {
 
   /** Public events fetched from the node, counted before same-id rows overwrite. */
   getPublicEventStats(): PublicEventStats {
-    return this.eventStats.get();
+    return this.store.getPublicEventStats();
   }
 
   getWorld(): WorldState | undefined {
-    return this.snapshot.world.get("0") as WorldState | undefined;
+    return this.store.getWorld();
   }
 
   getPlayer(id: TableId): PlayerState | undefined {
-    return this.snapshot.player.get(id) as PlayerState | undefined;
+    return this.store.getPlayer(id);
   }
 
   getPlanet(id: TableId): PlanetState | undefined {
-    return this.snapshot.planet.get(id) as PlanetState | undefined;
+    return this.store.getPlanet(id);
   }
 
   getPlanetRevealedCoords(id: TableId): PlanetRevealedCoordsState | undefined {
-    return this.snapshot.planet_revealed_coords.get(id) as
-      | PlanetRevealedCoordsState
-      | undefined;
+    return this.store.getPlanetRevealedCoords(id);
   }
 
   getPlanetEvents(id: TableId): PlanetEventsState | undefined {
-    return this.snapshot.planet_events.get(id) as PlanetEventsState | undefined;
+    return this.store.getPlanetEvents(id);
   }
 
   getPlanetArtifacts(id: TableId): PlanetArtifactsState | undefined {
-    return this.snapshot.planet_artifacts.get(id) as
-      | PlanetArtifactsState
-      | undefined;
+    return this.store.getPlanetArtifacts(id);
   }
 
   getArrival(id: TableId): ArrivalState | undefined {
-    return this.snapshot.arrival.get(id) as ArrivalState | undefined;
+    return this.store.getArrival(id);
   }
 
   getArtifact(id: TableId): ArtifactState | undefined {
-    return this.snapshot.artifact.get(id) as ArtifactState | undefined;
+    return this.store.getArtifact(id);
   }
 
   getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
-    return this.snapshot.artifact_location.get(id) as
-      | ArtifactLocationState
-      | undefined;
+    return this.store.getArtifactLocation(id);
   }
 
   /** Generic: get table row(s). Typed by table name for function inputs. */
@@ -646,9 +534,7 @@ export class IndexerService {
     table: K,
     id?: TableId,
   ): TableRowType[K] | Record<string, TableRowType[K]> | undefined {
-    const map = this.snapshot[table] as Map<TableId, unknown>;
-    if (id !== undefined) return map.get(id) as TableRowType[K] | undefined;
-    return Object.fromEntries(map) as Record<string, TableRowType[K]>;
+    return this.store.getTable(table, id);
   }
 
   /**
@@ -656,79 +542,62 @@ export class IndexerService {
    * Use for debugging or exporting the current synced state.
    */
   getSnapshotAsJsonString(): string {
-    const obj: Record<string, unknown> = {
-      lastProcessedBlock: this.snapshot.lastProcessedBlock,
-    };
-    if (this.snapshot.lastProcessedBlockHash !== undefined) {
-      obj.lastProcessedBlockHash = this.snapshot.lastProcessedBlockHash;
-    }
-    for (const table of TABLE_NAMES) {
-      const map = this.snapshot[table] as Map<TableId, unknown>;
-      obj[table] = Object.fromEntries(map);
-    }
-    return JSON.stringify(obj, (_key, value) =>
-      typeof value === "bigint" ? value.toString() : value,
-    );
+    return this.store.toJsonString();
   }
 
   /** All planet ids currently in state. */
   getPlanetIds(): string[] {
-    return Array.from(this.snapshot.planet.keys());
+    return this.store.getPlanetIds();
   }
 
   /** All player ids (addresses). */
   getPlayerIds(): string[] {
-    return Array.from(this.snapshot.player.keys());
+    return this.store.getPlayerIds();
   }
 
   /** All arrival ids. */
   getArrivalIds(): string[] {
-    return Array.from(this.snapshot.arrival.keys());
+    return this.store.getArrivalIds();
   }
 
   /** All artifact ids. */
   getArtifactIds(): string[] {
-    return Array.from(this.snapshot.artifact.keys());
+    return this.store.getArtifactIds();
   }
 
   /** Total number of artifacts in state. */
   getArtifactCount(): number {
-    return this.snapshot.artifact.size;
+    return this.store.getArtifactCount();
   }
 
   /** Artifact ids owned by the given address (via owner field). */
   getArtifactIdsByOwner(ownerId: string): string[] {
-    return this.artifactIndex.byOwner(ownerId);
+    return this.store.getArtifactIdsByOwner(ownerId);
   }
 
   /** Artifact ids controlled by the given address (via controller field). */
   getArtifactIdsByController(controllerId: string): string[] {
-    return this.artifactIndex.byController(controllerId);
+    return this.store.getArtifactIdsByController(controllerId);
   }
 
   /** Full player map (id → PlayerState). */
   getPlayerMap(): Map<string, PlayerState> {
-    return new Map(this.snapshot.player as Map<string, PlayerState>);
+    return this.store.getPlayerMap();
   }
 
   /** Full planet map (id → PlanetState). */
   getPlanetMap(): Map<string, PlanetState> {
-    return new Map(this.snapshot.planet as Map<string, PlanetState>);
+    return this.store.getPlanetMap();
   }
 
   /** Full arrival map (id → ArrivalState). */
   getArrivalMap(): Map<string, ArrivalState> {
-    return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
+    return this.store.getArrivalMap();
   }
 
   /** Full revealed coords map (id → PlanetRevealedCoordsState). */
   getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
-    return new Map(
-      this.snapshot.planet_revealed_coords as Map<
-        string,
-        PlanetRevealedCoordsState
-      >,
-    );
+    return this.store.getRevealedCoordsMap();
   }
 
   /**
@@ -736,7 +605,7 @@ export class IndexerService {
    * at least up to the given block number.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+    if (this.store.processedBlock >= blockNumber) {
       return;
     }
 
@@ -746,7 +615,7 @@ export class IndexerService {
       console.warn("[IndexerService] immediate sync failed:", err);
     }
 
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
+    if (this.store.processedBlock >= blockNumber) {
       return;
     }
 
@@ -773,9 +642,9 @@ export class IndexerService {
       }, timeoutMs);
 
       unsub = this.subscribe(() => {
-        if (this.snapshot.lastProcessedBlock >= blockNumber) finish();
+        if (this.store.processedBlock >= blockNumber) finish();
       });
-      if (this.snapshot.lastProcessedBlock >= blockNumber) finish();
+      if (this.store.processedBlock >= blockNumber) finish();
     });
   }
 }
