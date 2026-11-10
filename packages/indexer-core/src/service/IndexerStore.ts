@@ -137,6 +137,14 @@ export class IndexerStore {
     this.eventStats.markComplete(fromBlock);
   }
 
+  /**
+   * A snapshot was accepted far enough to reset event history, then discarded
+   * (hash mismatch). Tables are cleared separately.
+   */
+  resetStatsAfterSnapshot(block: number): void {
+    this.eventStats.resetAfterSnapshot(block);
+  }
+
   getPublicEventStats(): PublicEventStats {
     return this.eventStats.get();
   }

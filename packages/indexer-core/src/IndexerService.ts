@@ -7,8 +7,6 @@
  * callers never receive partial state during initial catch-up.
  */
 
-import lodash from "lodash";
-import type { DebouncedFunc } from "lodash";
 import type {
   ArrivalState,
   ArtifactLocationState,
@@ -20,6 +18,8 @@ import type {
   PlayerState,
   WorldState,
 } from "./TableTypes/chain.ts";
+import { loadInitialState } from "./service/bootstrap.ts";
+import { BlockSyncer } from "./service/BlockSyncer.ts";
 import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
@@ -88,25 +88,14 @@ export class IndexerService {
   private readonly bootstrapSource: IBlockEventSource | undefined;
   private readonly source: IBlockEventSource;
   private readonly startBlock: number;
-  private readonly debounceMs: number;
-  private readonly pollIntervalMs: number;
-  private readonly maxBlocksPerRequest: number;
-  private readonly maxBackoffMs: number;
   private readonly initialSyncMaxRetries: number;
   private readonly onInitialSyncRetry?: IndexerServiceOptions["onInitialSyncRetry"];
   private readonly verifyBootstrapSnapshot: boolean;
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
   private readonly store: IndexerStore;
-  private latestKnownBlock: number = 0;
-  private isSyncing: boolean = false;
-  private syncPromise: Promise<void> | undefined;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
-  private readonly debouncedProcess: DebouncedFunc<() => void>;
+  private readonly syncer: BlockSyncer;
   private lifecycle: IndexerLifecycle = "idle";
-  private consecutiveFailures = 0;
-  private nextRetryAt = 0;
-  private lastError: string | undefined;
 
   /** Subscribers notified when state changes (after applying updates). */
   private readonly changes = new ChangeEmitter();
@@ -115,10 +104,6 @@ export class IndexerService {
     this.bootstrapSource = options.bootstrapSource;
     this.source = options.source;
     this.startBlock = Math.max(0, options.startBlock ?? 0);
-    this.debounceMs = options.debounceMs ?? 1000;
-    this.pollIntervalMs = options.pollIntervalMs ?? 2000;
-    this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
-    this.maxBackoffMs = Math.max(0, options.maxBackoffMs ?? 0);
     this.initialSyncMaxRetries = Math.max(
       1,
       options.initialSyncMaxRetries ?? 1,
@@ -127,143 +112,29 @@ export class IndexerService {
     this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
     this.onBlockProcessed = options.onBlockProcessed;
     this.store = new IndexerStore(this.startBlock);
-
-    // Background (poll/push) syncs are fire-and-forget: log failures here so
-    // rethrown sync errors never become unhandled rejections. The next poll
-    // cycle retries from lastProcessedBlock + 1, after the backoff if one is set.
-    this.debouncedProcess = lodash.debounce(
-      () => {
-        if (this.isDestroyed()) return;
-        if (Date.now() < this.nextRetryAt) return;
-        this.processNewBlocks()
-          .then(() => {
-            this.consecutiveFailures = 0;
-            this.lastError = undefined;
-            this.nextRetryAt = 0;
-          })
-          .catch((err) => {
-            this.noteSyncFailure(err);
-          });
+    this.syncer = new BlockSyncer({
+      source: this.source,
+      store: this.store,
+      debounceMs: options.debounceMs ?? 1000,
+      pollIntervalMs: options.pollIntervalMs ?? 2000,
+      maxBlocksPerRequest: Math.max(1, options.maxBlocksPerRequest ?? 100),
+      maxBackoffMs: Math.max(0, options.maxBackoffMs ?? 0),
+      isStopped: () => this.lifecycle === "destroyed",
+      onChunk: (fromBlock, toBlock, committed) => {
+        this.onBlockProcessed?.(fromBlock, toBlock);
+        this.notifyListeners({
+          tables: committed.tables,
+          fromBlock,
+          toBlock,
+          updatedIdsByTable: committed.updatedIdsByTable,
+        });
       },
-      this.debounceMs,
-      { leading: true, trailing: true },
-    );
-
-    /** Called when we learn of a new latest block (poll or push). */
-    this.onLatestBlock = (latest: number) => {
-      this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-      this.debouncedProcess();
-    };
+    });
   }
-
-  private onLatestBlock: (latest: number) => void;
 
   /** Override the onBlockProcessed callback after construction. */
   setOnBlockProcessed(cb: (fromBlock: number, toBlock: number) => void): void {
     this.onBlockProcessed = cb;
-  }
-
-  /**
-   * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
-   * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
-   */
-  private async processNewBlocks(options?: {
-    ignoreBackoff?: boolean;
-  }): Promise<void> {
-    if (this.syncPromise) {
-      return this.syncPromise;
-    }
-
-    const syncPromise = this.processPendingBlocks(options);
-    this.syncPromise = syncPromise;
-    try {
-      await syncPromise;
-    } finally {
-      if (this.syncPromise === syncPromise) {
-        this.syncPromise = undefined;
-      }
-    }
-  }
-
-  private backoffMs(): number {
-    if (this.maxBackoffMs <= 0) return 0;
-    // 2s, 4s, 8s, ... capped at maxBackoffMs
-    return Math.min(
-      this.maxBackoffMs,
-      2_000 * 2 ** Math.max(0, this.consecutiveFailures - 1),
-    );
-  }
-
-  private noteSyncFailure(err: unknown): void {
-    this.consecutiveFailures += 1;
-    this.lastError = err instanceof Error ? err.message : String(err);
-    const wait = this.backoffMs();
-    this.nextRetryAt = Date.now() + wait;
-    console.warn(
-      `[IndexerService] sync failed (${this.consecutiveFailures}x), retry in ${wait}ms:`,
-      err,
-    );
-  }
-
-  private isDestroyed(): boolean {
-    return this.lifecycle === "destroyed";
-  }
-
-  private async processPendingBlocks(options?: {
-    ignoreBackoff?: boolean;
-  }): Promise<void> {
-    if (this.isDestroyed()) return;
-    if (!options?.ignoreBackoff && Date.now() < this.nextRetryAt) return;
-
-    let fromBlock = this.store.processedBlock + 1;
-    const toBlock = this.latestKnownBlock;
-    if (fromBlock > toBlock) return;
-
-    this.isSyncing = true;
-    try {
-      while (fromBlock <= toBlock) {
-        if (this.isDestroyed()) return;
-        const chunkEnd = Math.min(
-          fromBlock + this.maxBlocksPerRequest - 1,
-          toBlock,
-        );
-        const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
-        if (this.isDestroyed()) return;
-        const committedTo = updates.toBlock;
-        if (committedTo < fromBlock) break; // node behind; retry next poll
-        const committed = this.store.commit(updates);
-        this.onBlockProcessed?.(fromBlock, committed.toBlock);
-        this.notifyListeners({
-          tables: committed.tables,
-          fromBlock,
-          toBlock: committed.toBlock,
-          updatedIdsByTable: committed.updatedIdsByTable,
-        });
-        if (committedTo < chunkEnd) break;
-        fromBlock = committedTo + 1;
-      }
-    } finally {
-      // Errors propagate to the caller: start() rejects during initial sync,
-      // background syncs log via the debounce catch boundary. Fully committed
-      // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
-      this.isSyncing = false;
-    }
-  }
-
-  /**
-   * Immediately fetches the node's latest L2 tip and processes any missing blocks.
-   * Concurrent callers share the in-flight processing work.
-   */
-  private async syncToLatest(): Promise<void> {
-    const latest = await this.source.getLatestBlockNumber();
-    this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-    await this.processNewBlocks({ ignoreBackoff: true });
-    if (this.store.processedBlock < this.latestKnownBlock) {
-      await this.processNewBlocks({ ignoreBackoff: true });
-    }
-    this.consecutiveFailures = 0;
-    this.lastError = undefined;
-    this.nextRetryAt = 0;
   }
 
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
@@ -296,110 +167,37 @@ export class IndexerService {
    */
   async start(): Promise<{ syncedToBlock: number }> {
     this.lifecycle = "bootstrapping";
-    let snapshotLoaded = false;
-    if (this.bootstrapSource?.getSnapshot) {
-      try {
-        const snap = await this.bootstrapSource.getSnapshot();
-        if (snap) {
-          this.store.replaceSnapshot(snap);
-          this.latestKnownBlock = snap.lastProcessedBlock;
-          snapshotLoaded = true;
-        }
-      } catch (err) {
-        console.warn(
-          "[IndexerService] bootstrap snapshot rejected, falling back to full sync:",
-          err,
-        );
-        this.store.clear();
-        snapshotLoaded = false;
+    const loaded = await loadInitialState({
+      bootstrapSource: this.bootstrapSource,
+      source: this.source,
+      verify: this.verifyBootstrapSnapshot,
+    });
+    if (loaded.snapshot) {
+      this.store.replaceSnapshot(loaded.snapshot);
+      this.syncer.setTip(loaded.snapshot.lastProcessedBlock);
+    } else {
+      if (loaded.clear) this.store.clear();
+      if (loaded.statsResetBlock !== undefined) {
+        this.store.resetStatsAfterSnapshot(loaded.statsResetBlock);
       }
-    }
-    if (snapshotLoaded && this.verifyBootstrapSnapshot) {
-      const ok = await this.verifyBootstrapHash();
-      if (!ok) {
-        this.store.clear();
-        this.latestKnownBlock = 0;
-        snapshotLoaded = false;
+      if (loaded.resetTip) this.syncer.setTip(0);
+      if (this.startBlock > 0) this.store.resetTo(this.startBlock - 1);
+      if (this.store.processedBlock === 0) {
+        this.store.markStatsComplete(Math.max(1, this.startBlock));
       }
-    }
-    if (!snapshotLoaded && this.startBlock > 0) {
-      this.store.resetTo(this.startBlock - 1);
-    }
-    if (!snapshotLoaded && this.store.processedBlock === 0) {
-      this.store.markStatsComplete(Math.max(1, this.startBlock));
     }
 
     this.lifecycle = "syncing";
-    for (let attempt = 1; ; attempt++) {
-      try {
-        this.latestKnownBlock = await this.source.getLatestBlockNumber();
-        await this.processNewBlocks();
-        if (this.store.processedBlock < this.latestKnownBlock) {
-          // The node may have been behind the previously observed tip. Refresh once.
-          this.latestKnownBlock = await this.source.getLatestBlockNumber();
-          await this.processNewBlocks();
-        }
-        if (this.store.processedBlock < this.latestKnownBlock) {
-          console.warn(
-            `[IndexerService] initial sync incomplete: processed up to block ` +
-              `${this.store.processedBlock}, expected ${this.latestKnownBlock}. ` +
-              `Will continue from the next poll.`,
-          );
-        }
-        this.consecutiveFailures = 0;
-        this.lastError = undefined;
-        this.nextRetryAt = 0;
-        break;
-      } catch (err) {
-        this.consecutiveFailures = attempt;
-        this.lastError = err instanceof Error ? err.message : String(err);
-        if (attempt >= this.initialSyncMaxRetries) throw err;
-        const wait = Math.min(60_000, 2_000 * 2 ** (attempt - 1));
-        this.onInitialSyncRetry?.(attempt, wait, err);
-        console.warn(
-          `[IndexerService] initial sync failed (attempt ${attempt}), retry in ${wait}ms:`,
-          err,
-        );
-        await new Promise((r) => setTimeout(r, wait));
-      }
-    }
+    await this.syncer.catchUp({
+      maxRetries: this.initialSyncMaxRetries,
+      onRetry: this.onInitialSyncRetry,
+    });
 
     const syncedToBlock = this.store.processedBlock;
 
     this.lifecycle = "ready";
 
     return { syncedToBlock };
-  }
-
-  /**
-   * Compare the bootstrap snapshot's last block hash with the chain source.
-   * Missing hash, a missing block, or a failed request accepts the snapshot.
-   * A present hash that differs discards it.
-   */
-  private async verifyBootstrapHash(): Promise<boolean> {
-    const n = this.store.processedBlock;
-    const expected = this.store.processedBlockHash;
-    if (!expected || n <= 0 || !this.source.getBlockHash) return true;
-    try {
-      const actual = await this.source.getBlockHash(n);
-      if (actual === undefined) {
-        console.warn(
-          `[IndexerService] snapshot block ${n} not found on node yet; accepting snapshot`,
-        );
-        return true;
-      }
-      if (actual === expected) return true;
-      console.error(
-        `[IndexerService] snapshot hash mismatch at block ${n}: snapshot=${expected} node=${actual}; falling back to full sync`,
-      );
-      return false;
-    } catch (err) {
-      console.warn(
-        "[IndexerService] snapshot hash check failed; accepting snapshot:",
-        err,
-      );
-      return true;
-    }
   }
 
   /**
@@ -416,27 +214,13 @@ export class IndexerService {
       );
     }
     this.lifecycle = "live";
-
-    this.pollTimer = setInterval(async () => {
-      if (this.lifecycle === "destroyed") return;
-      if (Date.now() < this.nextRetryAt) return;
-      try {
-        const next = await this.source.getLatestBlockNumber();
-        this.onLatestBlock(next);
-      } catch (err) {
-        this.noteSyncFailure(err);
-      }
-    }, this.pollIntervalMs);
+    this.syncer.startPolling();
   }
 
   /** Stop polling and clear timer. */
   destroy(): void {
     this.lifecycle = "destroyed";
-    this.debouncedProcess.cancel();
-    if (this.pollTimer !== undefined) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.syncer.stop();
     this.changes.clear();
   }
 
@@ -464,13 +248,14 @@ export class IndexerService {
   // ---------- Query API ----------
 
   getStatus(): IndexerStatus {
+    const sync = this.syncer.status();
     return {
       lastProcessedBlock: this.store.processedBlock,
-      latestKnownBlock: this.latestKnownBlock,
-      isSyncing: this.isSyncing,
+      latestKnownBlock: sync.latestKnownBlock,
+      isSyncing: sync.isSyncing,
       lifecycle: this.lifecycle,
-      consecutiveFailures: this.consecutiveFailures,
-      lastError: this.lastError,
+      consecutiveFailures: sync.consecutiveFailures,
+      lastError: sync.lastError,
     };
   }
 
@@ -485,7 +270,7 @@ export class IndexerService {
   }
 
   getLatestKnownBlock(): number {
-    return this.latestKnownBlock;
+    return this.syncer.status().latestKnownBlock;
   }
 
   /** Public events fetched from the node, counted before same-id rows overwrite. */
@@ -610,7 +395,7 @@ export class IndexerService {
     }
 
     try {
-      await this.syncToLatest();
+      await this.syncer.syncNow();
     } catch (err) {
       console.warn("[IndexerService] immediate sync failed:", err);
     }
