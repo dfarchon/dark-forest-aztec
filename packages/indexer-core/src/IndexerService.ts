@@ -20,6 +20,7 @@ import type {
   PlayerState,
   WorldState,
 } from "./TableTypes/chain.ts";
+import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
   IBlockEventSource,
@@ -108,7 +109,7 @@ export class IndexerService {
   private lastError: string | undefined;
 
   /** Subscribers notified when state changes (after applying updates). */
-  private listeners = new Set<(payload: IndexerChangePayload) => void>();
+  private readonly changes = new ChangeEmitter();
 
   constructor(options: IndexerServiceOptions) {
     this.bootstrapSource = options.bootstrapSource;
@@ -281,7 +282,7 @@ export class IndexerService {
    */
   private notifyListeners(payload: IndexerChangePayload): void {
     if (this.lifecycle !== "live") return;
-    this.listeners.forEach((cb) => cb(payload));
+    this.changes.emit(payload);
   }
 
   /**
@@ -436,7 +437,7 @@ export class IndexerService {
       clearInterval(this.pollTimer);
       this.pollTimer = undefined;
     }
-    this.listeners.clear();
+    this.changes.clear();
   }
 
   /**
@@ -445,8 +446,7 @@ export class IndexerService {
    * Only fires in the "live" lifecycle phase.
    */
   subscribe(listener: (payload: IndexerChangePayload) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return this.changes.subscribe(listener);
   }
 
   // ---------- Lifecycle ----------
@@ -619,32 +619,10 @@ export class IndexerService {
       return;
     }
 
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
-      let unsub = () => {};
-      let timer: ReturnType<typeof setTimeout>;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        unsub();
-        resolve();
-      };
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        unsub();
-        reject(
-          new Error(
-            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`,
-          ),
-        );
-      }, timeoutMs);
-
-      unsub = this.subscribe(() => {
-        if (this.store.processedBlock >= blockNumber) finish();
-      });
-      if (this.store.processedBlock >= blockNumber) finish();
-    });
+    return this.changes.waitUntil(
+      () => this.store.processedBlock >= blockNumber,
+      timeoutMs,
+      new Error(`waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`),
+    );
   }
 }
