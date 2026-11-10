@@ -58,8 +58,10 @@ export class IndexerStore {
   private snapshot: IndexerSnapshot = emptySnapshot();
   private readonly artifactIndex = new ArtifactIndex();
   private readonly eventStats: EventStats;
+  private readonly startBlock: number;
 
   constructor(startBlock: number) {
+    this.startBlock = startBlock;
     this.eventStats = new EventStats(startBlock);
   }
 
@@ -128,12 +130,24 @@ export class IndexerStore {
     );
   }
 
+  /**
+   * No usable snapshot. The cursor starts just before startBlock so the next
+   * sync includes that block. An empty history is marked complete from there,
+   * including after a rejected snapshot reset the stats.
+   */
+  applyStartBlock(): void {
+    if (this.startBlock > 0) this.resetTo(this.startBlock - 1);
+    if (this.processedBlock === 0) {
+      this.markStatsComplete(Math.max(1, this.startBlock));
+    }
+  }
+
   /** Point the cursor at `block` without touching rows. Used when starting mid-chain. */
-  resetTo(block: number): void {
+  private resetTo(block: number): void {
     this.snapshot.lastProcessedBlock = block;
   }
 
-  markStatsComplete(fromBlock: number): void {
+  private markStatsComplete(fromBlock: number): void {
     this.eventStats.markComplete(fromBlock);
   }
 
@@ -145,52 +159,63 @@ export class IndexerStore {
     this.eventStats.resetAfterSnapshot(block);
   }
 
+  /** Counts from the node, before same-id rows overwrite. */
   getPublicEventStats(): PublicEventStats {
     return this.eventStats.get();
   }
 
+  /** The single world row. */
   getWorld(): WorldState | undefined {
     return this.snapshot.world.get("0") as WorldState | undefined;
   }
 
+  /** One player. */
   getPlayer(id: TableId): PlayerState | undefined {
     return this.snapshot.player.get(id) as PlayerState | undefined;
   }
 
+  /** One planet. */
   getPlanet(id: TableId): PlanetState | undefined {
     return this.snapshot.planet.get(id) as PlanetState | undefined;
   }
 
+  /** Revealed coordinates for a planet. */
   getPlanetRevealedCoords(id: TableId): PlanetRevealedCoordsState | undefined {
     return this.snapshot.planet_revealed_coords.get(id) as
       | PlanetRevealedCoordsState
       | undefined;
   }
 
+  /** Event list on a planet. */
   getPlanetEvents(id: TableId): PlanetEventsState | undefined {
     return this.snapshot.planet_events.get(id) as PlanetEventsState | undefined;
   }
 
+  /** Artifacts stored on a planet. */
   getPlanetArtifacts(id: TableId): PlanetArtifactsState | undefined {
     return this.snapshot.planet_artifacts.get(id) as
       | PlanetArtifactsState
       | undefined;
   }
 
+  /** One arrival. */
   getArrival(id: TableId): ArrivalState | undefined {
     return this.snapshot.arrival.get(id) as ArrivalState | undefined;
   }
 
+  /** One artifact. */
   getArtifact(id: TableId): ArtifactState | undefined {
     return this.snapshot.artifact.get(id) as ArtifactState | undefined;
   }
 
+  /** Where an artifact is. */
   getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
     return this.snapshot.artifact_location.get(id) as
       | ArtifactLocationState
       | undefined;
   }
 
+  /** One row, or the whole table when id is omitted. */
   getTable<K extends TableName>(
     table: K,
     id?: TableId,
@@ -216,46 +241,57 @@ export class IndexerStore {
     );
   }
 
+  /** All planet ids currently in state. */
   getPlanetIds(): string[] {
     return Array.from(this.snapshot.planet.keys());
   }
 
+  /** All player ids (addresses). */
   getPlayerIds(): string[] {
     return Array.from(this.snapshot.player.keys());
   }
 
+  /** All arrival ids. */
   getArrivalIds(): string[] {
     return Array.from(this.snapshot.arrival.keys());
   }
 
+  /** All artifact ids. */
   getArtifactIds(): string[] {
     return Array.from(this.snapshot.artifact.keys());
   }
 
+  /** Total number of artifacts in state. */
   getArtifactCount(): number {
     return this.snapshot.artifact.size;
   }
 
+  /** Artifact ids whose owner is this address. */
   getArtifactIdsByOwner(ownerId: string): string[] {
     return this.artifactIndex.byOwner(ownerId);
   }
 
+  /** Artifact ids controlled by this address. */
   getArtifactIdsByController(controllerId: string): string[] {
     return this.artifactIndex.byController(controllerId);
   }
 
+  /** id → PlayerState. */
   getPlayerMap(): Map<string, PlayerState> {
     return new Map(this.snapshot.player as Map<string, PlayerState>);
   }
 
+  /** id → PlanetState. */
   getPlanetMap(): Map<string, PlanetState> {
     return new Map(this.snapshot.planet as Map<string, PlanetState>);
   }
 
+  /** id → ArrivalState. */
   getArrivalMap(): Map<string, ArrivalState> {
     return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
   }
 
+  /** id → PlanetRevealedCoordsState. */
   getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
     return new Map(
       this.snapshot.planet_revealed_coords as Map<

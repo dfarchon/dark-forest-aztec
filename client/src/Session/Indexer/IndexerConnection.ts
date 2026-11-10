@@ -556,14 +556,18 @@ export async function createIndexerConnection(
 
   const indexer = new IndexerService({
     source,
-    bootstrapSource,
-    startBlock: config.startBlock,
-    debounceMs: config.debounceMs,
-    pollIntervalMs: config.pollIntervalMs,
-    maxBlocksPerRequest: config.maxBlocksPerRequest,
-    initialSyncMaxRetries: Infinity,
-    onInitialSyncRetry: config.onInitialSyncRetry,
-    ...(config.bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
+    bootstrap: {
+      source: bootstrapSource,
+      startBlock: config.startBlock,
+      ...(config.bootstrapUrl ? { verifySnapshot: true } : {}),
+    },
+    sync: {
+      debounceMs: config.debounceMs,
+      pollIntervalMs: config.pollIntervalMs,
+      maxBlocksPerRequest: config.maxBlocksPerRequest,
+      initialSyncMaxRetries: Infinity,
+      onInitialSyncRetry: config.onInitialSyncRetry,
+    },
   });
   indexer.setOnBlockProcessed((from, to) => {
     config.onBlockSyncProgress?.(from, to, indexer.getLatestKnownBlock());

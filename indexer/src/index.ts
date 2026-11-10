@@ -121,12 +121,14 @@ async function main(): Promise<void> {
   });
   const indexer = new IndexerService({
     source,
-    startBlock: config.indexerStartBlock,
-    debounceMs: 1000,
-    pollIntervalMs: 2000,
-    maxBlocksPerRequest: 100,
-    initialSyncMaxRetries: Infinity,
-    maxBackoffMs: 60_000,
+    bootstrap: { startBlock: config.indexerStartBlock },
+    sync: {
+      debounceMs: 1000,
+      pollIntervalMs: 2000,
+      maxBlocksPerRequest: 100,
+      initialSyncMaxRetries: Infinity,
+      maxBackoffMs: 60_000,
+    },
   });
 
   const cache = new SnapshotCache(indexer);

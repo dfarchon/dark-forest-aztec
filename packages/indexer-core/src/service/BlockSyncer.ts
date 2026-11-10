@@ -3,6 +3,32 @@ import type { DebouncedFunc } from "lodash";
 import type { IBlockEventSource } from "../types.ts";
 import type { CommittedChunk, IndexerStore } from "./IndexerStore.ts";
 
+/** Caller-facing sync settings. BlockSyncer fills in source, store, and callbacks. */
+export interface SyncOptions {
+  /** Debounce delay in ms for processing new blocks. Default 1000. */
+  debounceMs?: number;
+  /** Poll interval for latest block when not using push. Default 2000. */
+  pollIntervalMs?: number;
+  /**
+   * Max blocks per getBlockUpdates call when syncing from chain. Prevents a single
+   * huge request (e.g. 1 to 50000). Default 100; tune to match node/RPC limits (e.g. 50–200).
+   */
+  maxBlocksPerRequest?: number;
+  /** Max wait between background retries after failures; 0 = no backoff. Default 0. */
+  maxBackoffMs?: number;
+  /** Attempts for the initial sync in start(); 1 = no retry. Default 1. */
+  initialSyncMaxRetries?: number;
+  /**
+   * Called before waiting to retry a failed initial sync. Not called on the
+   * attempt that exhausts initialSyncMaxRetries and rejects start().
+   */
+  onInitialSyncRetry?: (
+    attempt: number,
+    waitMs: number,
+    error: unknown,
+  ) => void;
+}
+
 export interface BlockSyncerOptions {
   source: IBlockEventSource;
   store: IndexerStore;
@@ -10,6 +36,9 @@ export interface BlockSyncerOptions {
   pollIntervalMs: number;
   maxBlocksPerRequest: number;
   maxBackoffMs: number;
+  /** Attempts for catchUp(); 1 = no retry. Default 1. */
+  initialSyncMaxRetries?: number;
+  onInitialSyncRetry?: SyncOptions["onInitialSyncRetry"];
   /** Clock for backoff. Tests pass a fake; production uses Date.now. */
   now?: () => number;
   isStopped: () => boolean;
@@ -39,6 +68,8 @@ export class BlockSyncer {
   private readonly pollIntervalMs: number;
   private readonly maxBlocksPerRequest: number;
   private readonly maxBackoffMs: number;
+  private readonly initialSyncMaxRetries: number;
+  private readonly onInitialSyncRetry?: SyncOptions["onInitialSyncRetry"];
   private readonly now: () => number;
   private readonly isStopped: () => boolean;
   private readonly onChunk: BlockSyncerOptions["onChunk"];
@@ -58,6 +89,11 @@ export class BlockSyncer {
     this.pollIntervalMs = options.pollIntervalMs;
     this.maxBlocksPerRequest = options.maxBlocksPerRequest;
     this.maxBackoffMs = options.maxBackoffMs;
+    this.initialSyncMaxRetries = Math.max(
+      1,
+      options.initialSyncMaxRetries ?? 1,
+    );
+    this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.now = options.now ?? Date.now;
     this.isStopped = options.isStopped;
     this.onChunk = options.onChunk;
@@ -97,10 +133,7 @@ export class BlockSyncer {
    * Initial catch-up. Retries with its own sleep, and does not consult the
    * background backoff clock.
    */
-  async catchUp(options: {
-    maxRetries: number;
-    onRetry?: (attempt: number, waitMs: number, error: unknown) => void;
-  }): Promise<void> {
+  async catchUp(): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
         this.tip = await this.source.getLatestBlockNumber();
@@ -122,9 +155,9 @@ export class BlockSyncer {
       } catch (err) {
         this.consecutiveFailures = attempt;
         this.lastError = err instanceof Error ? err.message : String(err);
-        if (attempt >= options.maxRetries) throw err;
+        if (attempt >= this.initialSyncMaxRetries) throw err;
         const wait = Math.min(60_000, 2_000 * 2 ** (attempt - 1));
-        options.onRetry?.(attempt, wait, err);
+        this.onInitialSyncRetry?.(attempt, wait, err);
         console.warn(
           `[IndexerService] initial sync failed (attempt ${attempt}), retry in ${wait}ms:`,
           err,

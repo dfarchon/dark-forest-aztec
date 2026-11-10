@@ -90,7 +90,10 @@ test("start() syncs fully and transitions to ready", async () => {
         ? [planetEventsUpdate("0xplanet", "0xarr"), arrivalUpdate("0xarr")]
         : [],
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   const { syncedToBlock } = await indexer.start();
 
@@ -114,7 +117,10 @@ test("start() rejects when initial getBlockUpdates fails and does not become rea
       throw new Error("rpc timeout");
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await assert.rejects(() => indexer.start(), /rpc timeout/);
   assert.notEqual(indexer.getLifecycle(), "ready");
@@ -131,7 +137,10 @@ test("mid-sync chunk failure keeps only fully committed chunks", async () => {
       throw new Error("network flake");
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await assert.rejects(() => indexer.start(), /network flake/);
   // First chunk committed; failed chunk left no trace.
@@ -152,7 +161,10 @@ test("applyUpdates is atomic: a bad row prevents all rows of the chunk from bein
       arrivalUpdate("0xarr", { arrival_type: 2n ** 64n }),
     ],
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await assert.rejects(() => indexer.start(), /overflow/);
   assert.equal(indexer.getPlanetEvents("0xplanet"), undefined);
@@ -200,7 +212,10 @@ test("applyUpdates rejects bad strings, unsigned values, and event lists", async
       latestBlock: 1,
       updatesFor: () => [planetEventsUpdate("0xplanet", "0xkeep"), bad],
     });
-    const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+    const indexer = new IndexerService({
+      source,
+      sync: { maxBlocksPerRequest: 100 },
+    });
     await assert.rejects(() => indexer.start());
     assert.equal(indexer.getPlanetEvents("0xplanet"), undefined);
     assert.equal(indexer.getArrival("0xarr"), undefined);
@@ -222,7 +237,10 @@ test("a failed sync resumes from the last committed chunk and recovers", async (
       return [];
     },
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await assert.rejects(() => indexer.start(), /transient failure/);
   assert.equal(indexer.getProcessedBlockNumber(), 100);
@@ -266,8 +284,8 @@ test("public event stats count every event even when the same row id overwrites"
   });
   const indexer = new IndexerService({
     source,
-    startBlock: 1,
-    maxBlocksPerRequest: 100,
+    bootstrap: { startBlock: 1 },
+    sync: { maxBlocksPerRequest: 100 },
   });
 
   await indexer.start();
@@ -307,7 +325,10 @@ test("event counts accumulate by chunk and a failed retry is not double-counted"
       PlanetUpdate: fromBlock === 1 ? 20 : fromBlock === 101 ? 7 : 1,
     }),
   });
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await assert.rejects(() => indexer.start(), /transient failure/);
   assert.equal(indexer.getPublicEventStats().counts.PlanetUpdate, 20);
@@ -348,7 +369,10 @@ test("event stats are marked partial after loading a bootstrap snapshot", async 
     latestBlock: 102,
     eventCountsFor: () => ({ WorldUpdate: 2 }),
   });
-  const indexer = new IndexerService({ source, bootstrapSource });
+  const indexer = new IndexerService({
+    source,
+    bootstrap: { source: bootstrapSource },
+  });
 
   await indexer.start();
 
@@ -517,8 +541,7 @@ test("start() converts every string snapshot field to the chain type", async () 
   const source = sourceWithSnapshot(snap, { latestBlock: 5 });
   const indexer = new IndexerService({
     source,
-    bootstrapSource: source,
-    startBlock: 1,
+    bootstrap: { source, startBlock: 1 },
   });
 
   await indexer.start();
@@ -573,8 +596,7 @@ test("a bad or incomplete snapshot is discarded and sync starts from startBlock"
     const source = sourceWithSnapshot(snap, { latestBlock: 1 });
     const indexer = new IndexerService({
       source,
-      bootstrapSource: source,
-      startBlock: 1,
+      bootstrap: { source, startBlock: 1 },
     });
     await indexer.start();
     assert.equal(indexer.getPlanet("0xplanet"), undefined);
@@ -602,7 +624,10 @@ test("a clamped toBlock is committed and the next round resumes after it", async
       return { fromBlock, toBlock: 60, updates: [] };
     },
   };
-  const indexer = new IndexerService({ source, maxBlocksPerRequest: 100 });
+  const indexer = new IndexerService({
+    source,
+    sync: { maxBlocksPerRequest: 100 },
+  });
 
   await indexer.start();
 
@@ -630,14 +655,16 @@ test("initial sync retries then succeeds without advancing on the failed attempt
     [];
   const indexer = new IndexerService({
     source,
-    maxBlocksPerRequest: 100,
-    initialSyncMaxRetries: 3,
-    onInitialSyncRetry: (attempt, waitMs, error) => {
-      retries.push({
-        attempt,
-        waitMs,
-        message: error instanceof Error ? error.message : String(error),
-      });
+    sync: {
+      maxBlocksPerRequest: 100,
+      initialSyncMaxRetries: 3,
+      onInitialSyncRetry: (attempt, waitMs, error) => {
+        retries.push({
+          attempt,
+          waitMs,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      },
     },
   });
 
@@ -665,7 +692,7 @@ test("initial sync stops when the retry limit is reached", async () => {
   });
   const indexer = new IndexerService({
     source,
-    initialSyncMaxRetries: 2,
+    sync: { initialSyncMaxRetries: 2 },
   });
 
   await assert.rejects(() => indexer.start(), /rpc down/);
@@ -680,8 +707,7 @@ test("waitForBlock syncs to a block that landed after start", async () => {
   const source = createMockSource(options);
   const indexer = new IndexerService({
     source,
-    maxBlocksPerRequest: 100,
-    maxBackoffMs: 60_000,
+    sync: { maxBlocksPerRequest: 100, maxBackoffMs: 60_000 },
   });
   await indexer.start();
   options.latestBlock = 20;
@@ -706,7 +732,7 @@ test("a changed tip hash does not rewind, and the first RPC failure is not retri
   };
   const indexer = new IndexerService({
     source,
-    maxBlocksPerRequest: 100,
+    sync: { maxBlocksPerRequest: 100 },
   });
   await indexer.start();
   sourceHash = "b";
@@ -737,9 +763,7 @@ test("verifyBootstrapSnapshot keeps a matching snapshot and drops a mismatch", a
   });
   const matched = new IndexerService({
     source: matching,
-    bootstrapSource: matching,
-    startBlock: 1,
-    verifyBootstrapSnapshot: true,
+    bootstrap: { source: matching, startBlock: 1, verifySnapshot: true },
   });
   await matched.start();
   assert.equal(matching.calls[0]?.fromBlock, 501);
@@ -752,9 +776,7 @@ test("verifyBootstrapSnapshot keeps a matching snapshot and drops a mismatch", a
   });
   const dropped = new IndexerService({
     source: mismatched,
-    bootstrapSource: mismatched,
-    startBlock: 1,
-    verifyBootstrapSnapshot: true,
+    bootstrap: { source: mismatched, startBlock: 1, verifySnapshot: true },
   });
   await dropped.start();
   assert.equal(mismatched.calls[0]?.fromBlock, 1);
@@ -787,9 +809,7 @@ test("verifyBootstrapSnapshot accepts a snapshot that cannot be checked", async 
     });
     const indexer = new IndexerService({
       source,
-      bootstrapSource: source,
-      startBlock: 1,
-      verifyBootstrapSnapshot: true,
+      bootstrap: { source, startBlock: 1, verifySnapshot: true },
     });
     await indexer.start();
     assert.equal(source.calls[0]?.fromBlock, 501);

@@ -1,6 +1,28 @@
 import type { IBlockEventSource, IndexerSnapshot } from "../types.ts";
 import { normalizeSnapshot } from "../utils/convert.ts";
 
+/**
+ * Optional initial state. Used only by start(); later blocks come from the chain source.
+ */
+export interface BootstrapOptions {
+  /**
+   * Used only at start() to load initial state up to block X.
+   * Only getSnapshot() is called; never used for getLatestBlockNumber or getBlockUpdates.
+   * Typical: off-chain indexer API (e.g. OffChainBlockSource).
+   */
+  source?: IBlockEventSource;
+  /**
+   * When no bootstrap snapshot is used, start processing from this block (inclusive).
+   * Ignored if source.getSnapshot() returns a snapshot. Default 0 (process from block 1).
+   */
+  startBlock?: number;
+  /**
+   * Before using a bootstrap snapshot, check its last block hash on the chain source;
+   * discard it on mismatch. Default false.
+   */
+  verifySnapshot?: boolean;
+}
+
 export interface LoadInitialStateOptions {
   bootstrapSource?: IBlockEventSource;
   source: IBlockEventSource;
@@ -25,6 +47,22 @@ export interface InitialState {
   statsResetBlock?: number;
   /** Hash mismatch: the known tip from the rejected snapshot must not stick. */
   resetTip: boolean;
+}
+
+/**
+ * Bootstrap inputs captured at construction. start() calls load();
+ * the indexer does not keep the sources or the verify flag itself.
+ */
+export class InitialStateLoader {
+  private readonly options: LoadInitialStateOptions;
+
+  constructor(options: LoadInitialStateOptions) {
+    this.options = options;
+  }
+
+  load(): Promise<InitialState> {
+    return loadInitialState(this.options);
+  }
 }
 
 /**

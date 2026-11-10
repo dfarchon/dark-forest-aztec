@@ -7,19 +7,11 @@
  * callers never receive partial state during initial catch-up.
  */
 
-import type {
-  ArrivalState,
-  ArtifactLocationState,
-  ArtifactState,
-  PlanetArtifactsState,
-  PlanetEventsState,
-  PlanetRevealedCoordsState,
-  PlanetState,
-  PlayerState,
-  WorldState,
-} from "./TableTypes/chain.ts";
-import { loadInitialState } from "./service/bootstrap.ts";
-import { BlockSyncer } from "./service/BlockSyncer.ts";
+import {
+  InitialStateLoader,
+  type BootstrapOptions,
+} from "./service/bootstrap.ts";
+import { BlockSyncer, type SyncOptions } from "./service/BlockSyncer.ts";
 import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
@@ -28,97 +20,48 @@ import type {
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
-  PublicEventStats,
-  TableId,
-  TableName,
-  TableRowType,
 } from "./types.ts";
 import { TABLE_NAMES } from "./types.ts";
 
 export interface IndexerServiceOptions {
   /**
-   * Optional bootstrap: used only at start() to load initial state up to block X.
-   * Only getSnapshot() is called; never used for getLatestBlockNumber or getBlockUpdates.
-   * Typical: off-chain indexer API (e.g. OffChainBlockSource).
-   */
-  bootstrapSource?: IBlockEventSource;
-  /**
    * Chain data source: used for getLatestBlockNumber and getBlockUpdates for the entire
-   * lifecycle. All blocks after the bootstrap (or after startBlock) are maintained by the
-   * frontend via this source (e.g. AztecNode-based source).
+   * lifecycle. All blocks after the bootstrap (or after startBlock) are maintained via
+   * this source (e.g. AztecNode-based source).
    */
   source: IBlockEventSource;
-  /**
-   * When no bootstrap snapshot is used, start processing from this block (inclusive).
-   * Ignored if bootstrapSource.getSnapshot() returns a snapshot. Default 0 (process from block 1).
-   */
-  startBlock?: number;
-  /** Debounce delay in ms for processing new blocks. Default 1000. */
-  debounceMs?: number;
-  /** Poll interval for latest block when not using push. Default 2000. */
-  pollIntervalMs?: number;
-  /**
-   * Max blocks per getBlockUpdates call when syncing from chain. Prevents a single
-   * huge request (e.g. 1 to 50000). Default 100; tune to match node/RPC limits (e.g. 50–200).
-   */
-  maxBlocksPerRequest?: number;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
-  /** Max wait between background retries after failures; 0 = no backoff (current behavior). */
-  maxBackoffMs?: number;
-  /** Attempts for the initial sync in start(); 1 = no retry (current behavior). */
-  initialSyncMaxRetries?: number;
-  /**
-   * Called before waiting to retry a failed initial sync. Not called on the
-   * attempt that exhausts initialSyncMaxRetries and rejects start().
-   */
-  onInitialSyncRetry?: (
-    attempt: number,
-    waitMs: number,
-    error: unknown,
-  ) => void;
-  /**
-   * Before using a bootstrap snapshot, check its last block hash on the source;
-   * discard it on mismatch. Default false.
-   */
-  verifyBootstrapSnapshot?: boolean;
+  /** Snapshot and start block for the first sync. */
+  bootstrap?: BootstrapOptions;
+  /** Polling, chunk size, and initial-sync retries. */
+  sync?: SyncOptions;
 }
 
-export class IndexerService {
-  private readonly bootstrapSource: IBlockEventSource | undefined;
-  private readonly source: IBlockEventSource;
-  private readonly startBlock: number;
-  private readonly initialSyncMaxRetries: number;
-  private readonly onInitialSyncRetry?: IndexerServiceOptions["onInitialSyncRetry"];
-  private readonly verifyBootstrapSnapshot: boolean;
+export class IndexerService extends IndexerStore {
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
 
-  private readonly store: IndexerStore;
   private readonly syncer: BlockSyncer;
+  private readonly initialLoad: InitialStateLoader;
   private lifecycle: IndexerLifecycle = "idle";
 
   /** Subscribers notified when state changes (after applying updates). */
   private readonly changes = new ChangeEmitter();
 
   constructor(options: IndexerServiceOptions) {
-    this.bootstrapSource = options.bootstrapSource;
-    this.source = options.source;
-    this.startBlock = Math.max(0, options.startBlock ?? 0);
-    this.initialSyncMaxRetries = Math.max(
-      1,
-      options.initialSyncMaxRetries ?? 1,
-    );
-    this.onInitialSyncRetry = options.onInitialSyncRetry;
-    this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
+    const bootstrap = options.bootstrap;
+    const sync = options.sync;
+    super(Math.max(0, bootstrap?.startBlock ?? 0));
     this.onBlockProcessed = options.onBlockProcessed;
-    this.store = new IndexerStore(this.startBlock);
     this.syncer = new BlockSyncer({
-      source: this.source,
-      store: this.store,
-      debounceMs: options.debounceMs ?? 1000,
-      pollIntervalMs: options.pollIntervalMs ?? 2000,
-      maxBlocksPerRequest: Math.max(1, options.maxBlocksPerRequest ?? 100),
-      maxBackoffMs: Math.max(0, options.maxBackoffMs ?? 0),
+      source: options.source,
+      store: this,
+      debounceMs: sync?.debounceMs ?? 1000,
+      pollIntervalMs: sync?.pollIntervalMs ?? 2000,
+      maxBlocksPerRequest: Math.max(1, sync?.maxBlocksPerRequest ?? 100),
+      maxBackoffMs: Math.max(0, sync?.maxBackoffMs ?? 0),
+      initialSyncMaxRetries: sync?.initialSyncMaxRetries,
+      onInitialSyncRetry: sync?.onInitialSyncRetry,
       isStopped: () => this.lifecycle === "destroyed",
       onChunk: (fromBlock, toBlock, committed) => {
         this.onBlockProcessed?.(fromBlock, toBlock);
@@ -130,6 +73,11 @@ export class IndexerService {
         });
       },
     });
+    this.initialLoad = new InitialStateLoader({
+      bootstrapSource: bootstrap?.source,
+      source: options.source,
+      verify: bootstrap?.verifySnapshot ?? false,
+    });
   }
 
   /** Override the onBlockProcessed callback after construction. */
@@ -139,7 +87,7 @@ export class IndexerService {
 
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
   applySnapshot(snapshot: IndexerSnapshot): void {
-    const block = this.store.replaceSnapshot(snapshot);
+    const block = this.replaceSnapshot(snapshot);
     this.notifyListeners({
       tables: [...TABLE_NAMES],
       fromBlock: block,
@@ -167,33 +115,23 @@ export class IndexerService {
    */
   async start(): Promise<{ syncedToBlock: number }> {
     this.lifecycle = "bootstrapping";
-    const loaded = await loadInitialState({
-      bootstrapSource: this.bootstrapSource,
-      source: this.source,
-      verify: this.verifyBootstrapSnapshot,
-    });
+    const loaded = await this.initialLoad.load();
     if (loaded.snapshot) {
-      this.store.replaceSnapshot(loaded.snapshot);
+      this.replaceSnapshot(loaded.snapshot);
       this.syncer.setTip(loaded.snapshot.lastProcessedBlock);
     } else {
-      if (loaded.clear) this.store.clear();
+      if (loaded.clear) this.clear();
       if (loaded.statsResetBlock !== undefined) {
-        this.store.resetStatsAfterSnapshot(loaded.statsResetBlock);
+        this.resetStatsAfterSnapshot(loaded.statsResetBlock);
       }
       if (loaded.resetTip) this.syncer.setTip(0);
-      if (this.startBlock > 0) this.store.resetTo(this.startBlock - 1);
-      if (this.store.processedBlock === 0) {
-        this.store.markStatsComplete(Math.max(1, this.startBlock));
-      }
+      this.applyStartBlock();
     }
 
     this.lifecycle = "syncing";
-    await this.syncer.catchUp({
-      maxRetries: this.initialSyncMaxRetries,
-      onRetry: this.onInitialSyncRetry,
-    });
+    await this.syncer.catchUp();
 
-    const syncedToBlock = this.store.processedBlock;
+    const syncedToBlock = this.processedBlock;
 
     this.lifecycle = "ready";
 
@@ -246,11 +184,35 @@ export class IndexerService {
   }
 
   // ---------- Query API ----------
+  // Inherited from IndexerStore. Each line is the method callers already use.
+  // getPublicEventStats() — counts from the node, before same-id rows overwrite.
+  // getWorld() — the single world row.
+  // getPlayer(id) — one player.
+  // getPlanet(id) — one planet.
+  // getPlanetRevealedCoords(id) — revealed coordinates for a planet.
+  // getPlanetEvents(id) — event list on a planet.
+  // getPlanetArtifacts(id) — artifacts stored on a planet.
+  // getArrival(id) — one arrival.
+  // getArtifact(id) — one artifact.
+  // getArtifactLocation(id) — where an artifact is.
+  // getTable(table, id?) — one row, or the whole table when id is omitted.
+  // getPlanetIds() — all planet ids currently in state.
+  // getPlayerIds() — all player ids (addresses).
+  // getArrivalIds() — all arrival ids.
+  // getArtifactIds() — all artifact ids.
+  // getArtifactCount() — total number of artifacts in state.
+  // getArtifactIdsByOwner(ownerId) — artifact ids whose owner is this address.
+  // getArtifactIdsByController(controllerId) — artifact ids controlled by this address.
+  // getPlayerMap() — id → PlayerState.
+  // getPlanetMap() — id → PlanetState.
+  // getArrivalMap() — id → ArrivalState.
+  // getRevealedCoordsMap() — id → PlanetRevealedCoordsState.
 
+  /** Sync progress, lifecycle, and the last error. */
   getStatus(): IndexerStatus {
     const sync = this.syncer.status();
     return {
-      lastProcessedBlock: this.store.processedBlock,
+      lastProcessedBlock: this.processedBlock,
       latestKnownBlock: sync.latestKnownBlock,
       isSyncing: sync.isSyncing,
       lifecycle: this.lifecycle,
@@ -261,128 +223,22 @@ export class IndexerService {
 
   /** Last block whose events have been applied. Use for tx inputs (e.g. next_change_block). */
   getProcessedBlockNumber(): number {
-    return this.store.processedBlock;
+    return this.processedBlock;
   }
 
   /** Hash of the last applied block, when the source reported one. */
   getProcessedBlockHash(): string | undefined {
-    return this.store.processedBlockHash;
+    return this.processedBlockHash;
   }
 
+  /** Highest block number observed from the chain source. */
   getLatestKnownBlock(): number {
     return this.syncer.status().latestKnownBlock;
   }
 
-  /** Public events fetched from the node, counted before same-id rows overwrite. */
-  getPublicEventStats(): PublicEventStats {
-    return this.store.getPublicEventStats();
-  }
-
-  getWorld(): WorldState | undefined {
-    return this.store.getWorld();
-  }
-
-  getPlayer(id: TableId): PlayerState | undefined {
-    return this.store.getPlayer(id);
-  }
-
-  getPlanet(id: TableId): PlanetState | undefined {
-    return this.store.getPlanet(id);
-  }
-
-  getPlanetRevealedCoords(id: TableId): PlanetRevealedCoordsState | undefined {
-    return this.store.getPlanetRevealedCoords(id);
-  }
-
-  getPlanetEvents(id: TableId): PlanetEventsState | undefined {
-    return this.store.getPlanetEvents(id);
-  }
-
-  getPlanetArtifacts(id: TableId): PlanetArtifactsState | undefined {
-    return this.store.getPlanetArtifacts(id);
-  }
-
-  getArrival(id: TableId): ArrivalState | undefined {
-    return this.store.getArrival(id);
-  }
-
-  getArtifact(id: TableId): ArtifactState | undefined {
-    return this.store.getArtifact(id);
-  }
-
-  getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
-    return this.store.getArtifactLocation(id);
-  }
-
-  /** Generic: get table row(s). Typed by table name for function inputs. */
-  getTable<K extends TableName>(
-    table: K,
-    id?: TableId,
-  ): TableRowType[K] | Record<string, TableRowType[K]> | undefined {
-    return this.store.getTable(table, id);
-  }
-
-  /**
-   * Full snapshot as JSON string (same shape as indexer GET /snapshot).
-   * Use for debugging or exporting the current synced state.
-   */
+  /** Full snapshot JSON, same shape as indexer GET /snapshot. */
   getSnapshotAsJsonString(): string {
-    return this.store.toJsonString();
-  }
-
-  /** All planet ids currently in state. */
-  getPlanetIds(): string[] {
-    return this.store.getPlanetIds();
-  }
-
-  /** All player ids (addresses). */
-  getPlayerIds(): string[] {
-    return this.store.getPlayerIds();
-  }
-
-  /** All arrival ids. */
-  getArrivalIds(): string[] {
-    return this.store.getArrivalIds();
-  }
-
-  /** All artifact ids. */
-  getArtifactIds(): string[] {
-    return this.store.getArtifactIds();
-  }
-
-  /** Total number of artifacts in state. */
-  getArtifactCount(): number {
-    return this.store.getArtifactCount();
-  }
-
-  /** Artifact ids owned by the given address (via owner field). */
-  getArtifactIdsByOwner(ownerId: string): string[] {
-    return this.store.getArtifactIdsByOwner(ownerId);
-  }
-
-  /** Artifact ids controlled by the given address (via controller field). */
-  getArtifactIdsByController(controllerId: string): string[] {
-    return this.store.getArtifactIdsByController(controllerId);
-  }
-
-  /** Full player map (id → PlayerState). */
-  getPlayerMap(): Map<string, PlayerState> {
-    return this.store.getPlayerMap();
-  }
-
-  /** Full planet map (id → PlanetState). */
-  getPlanetMap(): Map<string, PlanetState> {
-    return this.store.getPlanetMap();
-  }
-
-  /** Full arrival map (id → ArrivalState). */
-  getArrivalMap(): Map<string, ArrivalState> {
-    return this.store.getArrivalMap();
-  }
-
-  /** Full revealed coords map (id → PlanetRevealedCoordsState). */
-  getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
-    return this.store.getRevealedCoordsMap();
+    return this.toJsonString();
   }
 
   /**
@@ -390,7 +246,7 @@ export class IndexerService {
    * at least up to the given block number.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
-    if (this.store.processedBlock >= blockNumber) {
+    if (this.processedBlock >= blockNumber) {
       return;
     }
 
@@ -400,12 +256,12 @@ export class IndexerService {
       console.warn("[IndexerService] immediate sync failed:", err);
     }
 
-    if (this.store.processedBlock >= blockNumber) {
+    if (this.processedBlock >= blockNumber) {
       return;
     }
 
     return this.changes.waitUntil(
-      () => this.store.processedBlock >= blockNumber,
+      () => this.processedBlock >= blockNumber,
       timeoutMs,
       new Error(`waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`),
     );

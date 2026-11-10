@@ -35,7 +35,7 @@ test("syncNow fetches updates while a retry backoff is still active", async () =
     onChunk: () => {},
   });
 
-  await syncer.catchUp({ maxRetries: 1 });
+  await syncer.catchUp();
   assert.equal(store.processedBlock, 10);
 
   failTip = true;

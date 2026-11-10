@@ -19,6 +19,8 @@ export {
   toStr,
 } from "./utils/convert.ts";
 
+export type { BootstrapOptions } from "./service/bootstrap.ts";
+export type { SyncOptions } from "./service/BlockSyncer.ts";
 export type { IndexerServiceOptions } from "./IndexerService.ts";
 export { IndexerService } from "./IndexerService.ts";
 
