@@ -39,9 +39,9 @@ export class InitialStateLoader {
 
 /**
  * Load an optional bootstrap snapshot and decide whether it is usable.
- * A snapshot is always checked against the chain source. Only a present hash
- * that differs discards it; a missing hash or a failed hash request accepts it.
- * This function does not write the store. A rejected snapshot is not returned.
+ * A snapshot is installed only when getBlockHash(lastProcessedBlock) returns
+ * the same string as lastProcessedBlockHash. Anything that cannot be checked
+ * is discarded. This function does not write the store.
  */
 export async function loadInitialState(
   options: BootstrapOptions,
@@ -67,8 +67,8 @@ export async function loadInitialState(
 }
 
 /**
- * Missing hash, a missing block, or a failed request accepts the snapshot.
- * A present hash that differs discards it.
+ * True only when the node returns the same block hash the snapshot recorded.
+ * A missing hash, a missing block, or a failed request discards the snapshot.
  */
 async function snapshotHashMatches(
   source: IBlockEventSource,
@@ -76,25 +76,30 @@ async function snapshotHashMatches(
 ): Promise<boolean> {
   const n = snap.lastProcessedBlock;
   const expected = snap.lastProcessedBlockHash;
-  if (!expected || n <= 0 || !source.getBlockHash) return true;
+  if (!expected || n <= 0 || !source.getBlockHash) {
+    console.warn(
+      `[IndexerService] snapshot at block ${n} has no verifiable hash; falling back to full sync`,
+    );
+    return false;
+  }
   try {
     const actual = await source.getBlockHash(n);
+    if (actual === expected) return true;
     if (actual === undefined) {
       console.warn(
-        `[IndexerService] snapshot block ${n} not found on node yet; accepting snapshot`,
+        `[IndexerService] snapshot block ${n} not found on node; falling back to full sync`,
       );
-      return true;
+    } else {
+      console.error(
+        `[IndexerService] snapshot hash mismatch at block ${n}: snapshot=${expected} node=${actual}; falling back to full sync`,
+      );
     }
-    if (actual === expected) return true;
-    console.error(
-      `[IndexerService] snapshot hash mismatch at block ${n}: snapshot=${expected} node=${actual}; falling back to full sync`,
-    );
     return false;
   } catch (err) {
     console.warn(
-      "[IndexerService] snapshot hash check failed; accepting snapshot:",
+      "[IndexerService] snapshot hash check failed; falling back to full sync:",
       err,
     );
-    return true;
+    return false;
   }
 }

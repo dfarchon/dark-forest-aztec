@@ -420,8 +420,11 @@ function sourceWithSnapshot(
 }
 
 test("start() converts every string snapshot field to the chain type", async () => {
-  const snap = snapshotWithStringRows(5);
-  const source = sourceWithSnapshot(snap, { latestBlock: 5 });
+  const snap = snapshotWithStringRows(5, "a");
+  const source = sourceWithSnapshot(snap, {
+    latestBlock: 5,
+    blockHash: () => "a",
+  });
   const indexer = new IndexerService({
     bootstrap: { source, bootstrapSource: source, startBlock: 1 },
   });
@@ -671,13 +674,14 @@ test("a matching snapshot is kept and a mismatch is dropped", async () => {
   dropped.destroy();
 });
 
-test("a snapshot that cannot be checked is accepted", async () => {
+test("a snapshot that cannot be checked is dropped", async () => {
   const cases: Array<{
     snap: IndexerSnapshot;
     blockHash?: (n: number) => string | undefined;
     blockHashError?: Error;
   }> = [
     { snap: snapshotWithStringRows(500) },
+    { snap: snapshotWithStringRows(500, "a") },
     {
       snap: snapshotWithStringRows(500, "a"),
       blockHash: () => undefined,
@@ -698,8 +702,8 @@ test("a snapshot that cannot be checked is accepted", async () => {
       bootstrap: { source, bootstrapSource: source, startBlock: 1 },
     });
     await indexer.start();
-    assert.equal(source.calls[0]?.fromBlock, 501);
-    assert.equal(indexer.getPlanet("0xplanet")?.population, 123n);
+    assert.equal(source.calls[0]?.fromBlock, 1);
+    assert.equal(indexer.getPlanet("0xplanet"), undefined);
     indexer.destroy();
   }
 });
