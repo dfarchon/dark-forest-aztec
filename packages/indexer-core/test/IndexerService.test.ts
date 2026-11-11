@@ -255,6 +255,43 @@ test("a failed sync resumes from the last committed chunk and recovers", async (
   indexer.destroy();
 });
 
+test("a failed sync with startBlock resumes from the last committed chunk", async () => {
+  let failSecondChunk = true;
+  const source = createMockSource({
+    latestBlock: 250,
+    updatesFor: (fromBlock) => {
+      if (fromBlock === 1) return [arrivalUpdate("0xchunk1")];
+      if (fromBlock === 101) {
+        if (failSecondChunk) throw new Error("transient failure");
+        return [arrivalUpdate("0xchunk2")];
+      }
+      return [];
+    },
+  });
+  const indexer = new IndexerService({
+    bootstrap: { source, startBlock: 1 },
+    sync: { maxBlocksPerRequest: 100 },
+  });
+
+  await assert.rejects(() => indexer.start(), /transient failure/);
+  assert.equal(indexer.getProcessedBlockNumber(), 100);
+  assert.equal(indexer.getLifecycle(), "syncing");
+
+  failSecondChunk = false;
+  source.calls.length = 0;
+  const { syncedToBlock } = await indexer.start();
+
+  assert.equal(syncedToBlock, 250);
+  assert.equal(indexer.getLifecycle(), "ready");
+  assert.deepEqual(source.calls, [
+    { fromBlock: 101, toBlock: 200 },
+    { fromBlock: 201, toBlock: 250 },
+  ]);
+  assert.ok(indexer.getArrival("0xchunk1"));
+  assert.ok(indexer.getArrival("0xchunk2"));
+  indexer.destroy();
+});
+
 test("start() rejects if getLatestBlockNumber fails", async () => {
   const source = createMockSource({ latestBlock: 0 });
   source.getLatestBlockNumber = async () => {
@@ -583,6 +620,69 @@ test("initial sync stops when the retry limit is reached", async () => {
   assert.equal(attempts, 2);
   assert.equal(indexer.getProcessedBlockNumber(), 0);
   assert.notEqual(indexer.getLifecycle(), "ready");
+  indexer.destroy();
+});
+
+test("destroy() during initial sync retry rejects start() and stays destroyed", async () => {
+  const source = createMockSource({
+    latestBlock: 10,
+    updatesFor: () => {
+      throw new Error("rpc down");
+    },
+  });
+  let indexer!: IndexerService;
+  indexer = new IndexerService({
+    bootstrap: { source },
+    sync: {
+      initialSyncMaxRetries: 3,
+      onInitialSyncRetry: () => {
+        indexer.destroy();
+      },
+    },
+  });
+
+  await assert.rejects(() => indexer.start());
+  assert.equal(indexer.getLifecycle(), "destroyed");
+  assert.throws(() => indexer.startPolling());
+});
+
+test("start() after destroy() rejects and stays destroyed", async () => {
+  const indexer = new IndexerService({
+    bootstrap: { source: createMockSource({ latestBlock: 1 }) },
+  });
+  indexer.destroy();
+
+  await assert.rejects(
+    () => indexer.start(),
+    /start\(\) rejected: indexer is destroyed/,
+  );
+  assert.equal(indexer.getLifecycle(), "destroyed");
+});
+
+test("a second start() while one is running is rejected", async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let updates = 0;
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 1,
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      updates += 1;
+      await gate;
+      return { fromBlock, toBlock, updates: [] };
+    },
+  };
+  const indexer = new IndexerService({ bootstrap: { source } });
+
+  const first = indexer.start();
+  await assert.rejects(() => indexer.start(), /start already in progress/);
+  release();
+  const { syncedToBlock } = await first;
+
+  assert.equal(syncedToBlock, 1);
+  assert.equal(updates, 1);
+  assert.equal(indexer.getLifecycle(), "ready");
   indexer.destroy();
 });
 

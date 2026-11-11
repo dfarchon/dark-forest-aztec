@@ -2,7 +2,7 @@
  * IndexerService: maintains latest chain table state by syncing block-by-block
  * with debounce. Supports init from off-chain indexer and query API for tx inputs.
  *
- * Lifecycle: idle → bootstrapping → syncing → live → destroyed.
+ * Lifecycle: idle → bootstrapping → syncing → ready → live → destroyed.
  * Subscriber notifications are only dispatched in the "live" phase so that
  * callers never receive partial state during initial catch-up.
  */
@@ -37,6 +37,8 @@ export class IndexerService extends IndexerStore {
   private readonly syncer: BlockSyncer;
   private readonly initialLoad: InitialStateLoader;
   private lifecycle: IndexerLifecycle = "idle";
+  /** True while start() is awaiting. "syncing" also means the last start failed. */
+  private starting = false;
 
   /** Subscribers notified when state changes (after applying updates). */
   private readonly changes = new ChangeEmitter();
@@ -106,22 +108,52 @@ export class IndexerService extends IndexerStore {
    *   All subsequent subscriber notifications correspond to blocks after this point.
    */
   async start(): Promise<{ syncedToBlock: number }> {
-    this.lifecycle = "bootstrapping";
-    const snapshot = await this.initialLoad.load();
-    if (snapshot) {
-      this.installSnapshot(snapshot);
-      this.syncer.setLatestKnownBlock(snapshot.lastProcessedBlock);
-    } else {
-      this.applyStartBlock();
+    if (this.lifecycle === "destroyed") {
+      throw new Error(
+        "[IndexerService] start() rejected: indexer is destroyed",
+      );
+    }
+    if (this.starting) {
+      throw new Error(
+        "[IndexerService] start() rejected: start already in progress",
+      );
+    }
+    this.starting = true;
+    try {
+      return await this.runStart();
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  private async runStart(): Promise<{ syncedToBlock: number }> {
+    // "syncing" is a failed catch-up, "ready" is a finished one. Both already
+    // have a cursor. Bootstrap would rewind it through applyStartBlock.
+    const resume = this.lifecycle === "syncing" || this.lifecycle === "ready";
+    if (!resume) {
+      this.lifecycle = "bootstrapping";
+      const snapshot = await this.initialLoad.load();
+      if (snapshot) {
+        this.installSnapshot(snapshot);
+        this.syncer.setLatestKnownBlock(snapshot.lastProcessedBlock);
+      } else {
+        this.applyStartBlock();
+      }
     }
 
-    this.lifecycle = "syncing";
+    // destroy() during load already set "destroyed". Leave it.
+    if (this.lifecycle !== "destroyed") {
+      this.lifecycle = "syncing";
+    }
     await this.syncer.catchUp();
+    if (this.lifecycle === "destroyed") {
+      throw new Error(
+        "[IndexerService] start() aborted: indexer was destroyed",
+      );
+    }
 
     const syncedToBlock = this.processedBlock;
-
     this.lifecycle = "ready";
-
     return { syncedToBlock };
   }
 
