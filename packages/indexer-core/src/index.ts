@@ -27,6 +27,7 @@ export { IndexerService } from "./IndexerService.ts";
 export type {
   BlockTipTag,
   BlockUpdates,
+  ForkDivergence,
   IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,

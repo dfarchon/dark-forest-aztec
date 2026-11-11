@@ -120,6 +120,19 @@ export interface IBlockEventSource {
   getBlockHash?(blockNumber: number): Promise<string | undefined>;
 }
 
+/**
+ * The processed block is no longer the block at that height on the tip
+ * just read. Reported once; the store is left as it was.
+ */
+export interface ForkDivergence {
+  processedBlock: number;
+  processedBlockHash: string;
+  /** Set when the node returned a different hash. Absent when it returned none. */
+  nodeHash?: string;
+  /** Tip read for this check, before any high-water mark is applied. */
+  tip: number;
+}
+
 /** Lifecycle states for IndexerService. */
 export type IndexerLifecycle =
   | "idle"
@@ -137,8 +150,10 @@ export interface IndexerStatus {
   lifecycle: IndexerLifecycle;
   /** Consecutive background or initial sync failures since the last success. */
   consecutiveFailures: number;
-  /** Message from the most recent sync failure, if any. */
+  /** Message from the most recent sync failure, or the divergence, if any. */
   lastError?: string;
+  /** True once the processed block diverged from the tip. Stays set. */
+  forkDiverged: boolean;
 }
 
 /**

@@ -12,6 +12,7 @@ import { IndexerService } from "../src/IndexerService.ts";
 import { normalizeSnapshot, rawToState } from "../src/utils/convert.ts";
 import type {
   BlockUpdates,
+  ForkDivergence,
   IBlockEventSource,
   IndexerSnapshot,
   TableUpdate,
@@ -835,8 +836,10 @@ test("a changed tip hash does not rewind, and the first RPC failure is not retri
   sourceHash = "b";
   source.getLatestBlockNumber = async () => 150;
   await indexer.start();
-  assert.equal(calls[calls.length - 1], 101);
+  assert.deepEqual(calls, [1]);
+  assert.equal(indexer.getProcessedBlockNumber(), 100);
   assert.equal(indexer.getProcessedBlockHash(), "a");
+  assert.equal(indexer.getStatus().forkDiverged, true);
   indexer.destroy();
 
   let attempts = 0;
@@ -851,6 +854,230 @@ test("a changed tip hash does not rewind, and the first RPC failure is not retri
   await assert.rejects(() => once.start(), /rpc down/);
   assert.equal(attempts, 1);
   once.destroy();
+});
+
+function forkSource(blockCount: number) {
+  let tip = blockCount;
+  let nodeHash: string | undefined = "a";
+  let hashError: Error | undefined;
+  const calls: number[] = [];
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => tip,
+    getBlockHash: async () => {
+      if (hashError) throw hashError;
+      return nodeHash;
+    },
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      calls.push(fromBlock);
+      const updates = [];
+      if (fromBlock <= blockCount && toBlock >= blockCount) {
+        updates.push(arrivalUpdate("0xold"));
+      }
+      if (fromBlock <= blockCount + 1 && toBlock >= blockCount + 1) {
+        updates.push(arrivalUpdate("0xnew"));
+      }
+      return { fromBlock, toBlock, toBlockHash: "a", updates };
+    },
+  };
+  return {
+    source,
+    calls,
+    setTip: (block: number) => {
+      tip = block;
+    },
+    setNodeHash: (hash: string | undefined) => {
+      nodeHash = hash;
+    },
+    setHashError: (error: Error | undefined) => {
+      hashError = error;
+    },
+  };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error("timed out waiting for indexer state");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test("a divergent block hash stops new commits and reports once", async () => {
+  const world = forkSource(4);
+  const reports: ForkDivergence[] = [];
+  const indexer = new IndexerService({
+    onForkDiverged: (divergence) => {
+      reports.push(divergence);
+    },
+    bootstrap: { source: world.source },
+    sync: { pollIntervalMs: 15, debounceMs: 0, maxBlocksPerRequest: 100 },
+  });
+
+  try {
+    await indexer.start();
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+    assert.ok(indexer.getArrival("0xold"));
+    const callsAfterSync = world.calls.length;
+
+    world.setNodeHash("b");
+    world.setTip(14);
+    indexer.startPolling();
+    await waitFor(() => reports.length === 1);
+
+    assert.equal(indexer.getStatus().forkDiverged, true);
+    assert.equal(reports[0]?.processedBlock, 4);
+    assert.equal(reports[0]?.processedBlockHash, "a");
+    assert.equal(reports[0]?.nodeHash, "b");
+    assert.equal(reports[0]?.tip, 14);
+    assert.match(indexer.getStatus().lastError ?? "", /block 4/);
+    assert.match(indexer.getStatus().lastError ?? "", /b/);
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+    assert.equal(indexer.getArrival("0xnew"), undefined);
+    assert.equal(world.calls.length, callsAfterSync);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(reports.length, 1);
+    assert.equal(indexer.getArrival("0xnew"), undefined);
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("a tip behind the processed block is reported and does not rewind", async () => {
+  const world = forkSource(4);
+  const reports: ForkDivergence[] = [];
+  const indexer = new IndexerService({
+    onForkDiverged: (divergence) => {
+      reports.push(divergence);
+    },
+    bootstrap: { source: world.source },
+  });
+
+  try {
+    await indexer.start();
+    world.setTip(3);
+    await assert.rejects(() => indexer.waitForBlock(5, 30), /timed out/);
+
+    assert.equal(indexer.getStatus().forkDiverged, true);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0]?.tip, 3);
+    assert.equal(reports[0]?.nodeHash, undefined);
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+    assert.equal(indexer.getProcessedBlockHash(), "a");
+    assert.ok(indexer.getArrival("0xold"));
+    assert.match(indexer.getStatus().lastError ?? "", /block 4/);
+    assert.match(indexer.getStatus().lastError ?? "", /tip 3/);
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("a block hash RPC error does not latch and a later poll can commit", async () => {
+  const world = forkSource(4);
+  const reports: ForkDivergence[] = [];
+  const indexer = new IndexerService({
+    onForkDiverged: (divergence) => {
+      reports.push(divergence);
+    },
+    bootstrap: { source: world.source },
+    sync: { pollIntervalMs: 10, debounceMs: 0, maxBlocksPerRequest: 100 },
+  });
+
+  try {
+    await indexer.start();
+    world.setHashError(new Error("rpc down"));
+    world.setTip(8);
+
+    await assert.rejects(() => indexer.waitForBlock(5, 1_000), /rpc down/);
+    assert.equal(indexer.getStatus().forkDiverged, false);
+    assert.equal(reports.length, 0);
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+
+    indexer.startPolling();
+    await waitFor(() => indexer.getStatus().consecutiveFailures > 0);
+    assert.equal(indexer.getStatus().forkDiverged, false);
+    assert.equal(reports.length, 0);
+    assert.match(indexer.getStatus().lastError ?? "", /rpc down/);
+
+    world.setHashError(undefined);
+    world.setNodeHash("a");
+    world.setTip(5);
+    await waitFor(() => indexer.getProcessedBlockNumber() === 5);
+    assert.equal(indexer.getStatus().forkDiverged, false);
+    assert.equal(indexer.getStatus().consecutiveFailures, 0);
+    assert.ok(indexer.getArrival("0xnew"));
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("a missing block hash latches when the tip still covers the cursor", async () => {
+  const world = forkSource(4);
+  const reports: ForkDivergence[] = [];
+  const indexer = new IndexerService({
+    onForkDiverged: (divergence) => {
+      reports.push(divergence);
+    },
+    bootstrap: { source: world.source },
+  });
+
+  try {
+    await indexer.start();
+    world.setNodeHash(undefined);
+    world.setTip(14);
+    await indexer.start();
+
+    assert.equal(indexer.getStatus().forkDiverged, true);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0]?.processedBlock, 4);
+    assert.equal(reports[0]?.nodeHash, undefined);
+    assert.equal(reports[0]?.tip, 14);
+    assert.equal(indexer.getProcessedBlockNumber(), 4);
+    assert.equal(indexer.getArrival("0xnew"), undefined);
+    assert.ok(indexer.getArrival("0xold"));
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("start() still becomes ready when the processed hash changes before it returns", async () => {
+  let nodeHash = "a";
+  let reports = 0;
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 4,
+    getBlockHash: async () => nodeHash,
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      nodeHash = "b";
+      return {
+        fromBlock,
+        toBlock,
+        toBlockHash: "a",
+        updates: [arrivalUpdate("0xold")],
+      };
+    },
+  };
+  const indexer = new IndexerService({
+    onForkDiverged: () => {
+      reports += 1;
+      throw new Error("listener down");
+    },
+    bootstrap: { source },
+  });
+
+  try {
+    const started = await indexer.start();
+    assert.equal(started.syncedToBlock, 4);
+    assert.equal(indexer.getLifecycle(), "ready");
+    assert.equal(indexer.getStatus().forkDiverged, true);
+    assert.equal(reports, 1);
+    assert.ok(indexer.getArrival("0xold"));
+    assert.equal(indexer.getProcessedBlockHash(), "a");
+  } finally {
+    indexer.destroy();
+  }
 });
 
 test("a matching snapshot is kept and a mismatch is dropped", async () => {

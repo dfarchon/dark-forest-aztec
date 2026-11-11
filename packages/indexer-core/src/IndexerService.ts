@@ -15,6 +15,8 @@ import { BlockSyncer, type SyncOptions } from "./service/BlockSyncer.ts";
 import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
+  ForkDivergence,
+  IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
@@ -25,6 +27,11 @@ import { TABLE_NAMES } from "./types.ts";
 export interface IndexerServiceOptions {
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
+  /**
+   * Called once when the processed block is no longer on the tip just read.
+   * Later polls do not commit. The service stays up; it does not clear tables.
+   */
+  onForkDiverged?: (divergence: ForkDivergence) => void;
   /** Chain source, optional off-chain snapshot, and start block. */
   bootstrap: BootstrapOptions;
   /** Polling, chunk size, and initial-sync retries. */
@@ -33,6 +40,9 @@ export interface IndexerServiceOptions {
 
 export class IndexerService extends IndexerStore {
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
+  private readonly onForkDiverged?: (divergence: ForkDivergence) => void;
+  private forkDiverged = false;
+  private forkError: string | undefined;
 
   private readonly syncer: BlockSyncer;
   private readonly initialLoad: InitialStateLoader;
@@ -48,8 +58,10 @@ export class IndexerService extends IndexerStore {
     const sync = options.sync;
     super(Math.max(0, bootstrap.startBlock ?? 0));
     this.onBlockProcessed = options.onBlockProcessed;
+    this.onForkDiverged = options.onForkDiverged;
+    const source = bootstrap.source;
     this.syncer = new BlockSyncer({
-      source: bootstrap.source,
+      source,
       store: this,
       debounceMs: sync?.debounceMs ?? 1000,
       pollIntervalMs: sync?.pollIntervalMs ?? 2000,
@@ -57,6 +69,7 @@ export class IndexerService extends IndexerStore {
       maxBackoffMs: Math.max(0, sync?.maxBackoffMs ?? 0),
       initialSyncMaxRetries: sync?.initialSyncMaxRetries,
       onInitialSyncRetry: sync?.onInitialSyncRetry,
+      onAcceptTip: (tip) => this.considerFork(source, tip),
       onChunk: (fromBlock, toBlock, committed) => {
         try {
           this.onBlockProcessed?.(fromBlock, toBlock);
@@ -235,8 +248,56 @@ export class IndexerService extends IndexerStore {
       isSyncing: sync.isSyncing,
       lifecycle: this.lifecycle,
       consecutiveFailures: sync.consecutiveFailures,
-      lastError: sync.lastError,
+      lastError: this.forkDiverged ? this.forkError : sync.lastError,
+      forkDiverged: this.forkDiverged,
     };
+  }
+
+  /**
+   * false when the processed block is no longer on this tip.
+   * A hash RPC error is rethrown and does not latch.
+   */
+  private async considerFork(
+    source: IBlockEventSource,
+    observedTip: number,
+  ): Promise<boolean> {
+    if (this.forkDiverged) return false;
+    const processedBlockHash = this.processedBlockHash;
+    const processedBlock = this.processedBlock;
+    if (!processedBlockHash || !source.getBlockHash) return true;
+
+    if (observedTip < processedBlock) {
+      this.reportFork({ processedBlock, processedBlockHash, tip: observedTip });
+      return false;
+    }
+
+    const nodeHash = await source.getBlockHash(processedBlock);
+    if (nodeHash === processedBlockHash) return true;
+    this.reportFork({
+      processedBlock,
+      processedBlockHash,
+      tip: observedTip,
+      ...(nodeHash !== undefined ? { nodeHash } : {}),
+    });
+    return false;
+  }
+
+  private reportFork(divergence: ForkDivergence): void {
+    if (this.forkDiverged) return;
+    this.forkDiverged = true;
+    const node =
+      divergence.nodeHash !== undefined
+        ? `, node hash ${divergence.nodeHash}`
+        : "";
+    this.forkError =
+      `fork diverged at block ${divergence.processedBlock} ` +
+      `(stored ${divergence.processedBlockHash}${node}, tip ${divergence.tip})`;
+    console.error(`[IndexerService] ${this.forkError}`);
+    try {
+      this.onForkDiverged?.(divergence);
+    } catch (err) {
+      console.error("[IndexerService] onForkDiverged threw:", err);
+    }
   }
 
   /** Last block whose events have been applied. Use for tx inputs (e.g. next_change_block). */

@@ -46,6 +46,11 @@ export interface BlockSyncerOptions {
     toBlock: number,
     committed: CommittedChunk,
   ) => void;
+  /**
+   * Called with the tip just read, before a run commits.
+   * false stops this run and every later run. A throw is an ordinary sync failure.
+   */
+  onAcceptTip?: (observedTip: number) => Promise<boolean>;
 }
 
 export interface SyncerStatus {
@@ -71,10 +76,16 @@ export class BlockSyncer {
   private readonly onInitialSyncRetry?: SyncOptions["onInitialSyncRetry"];
   private readonly now: () => number;
   private readonly onChunk: BlockSyncerOptions["onChunk"];
+  private readonly onAcceptTip?: BlockSyncerOptions["onAcceptTip"];
   private readonly debouncedProcess: DebouncedFunc<() => void>;
 
   private stopped = false;
   private latestKnownBlock = 0;
+  /** Tip from the latest read. Kept apart from latestKnownBlock, which never shrinks. */
+  private observedTip = 0;
+  /** catchUp replaces the target tip. poll and syncNow only raise it. */
+  private replaceTip = false;
+  private halted = false;
   private isSyncing = false;
   private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -95,6 +106,7 @@ export class BlockSyncer {
     this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.now = options.now ?? Date.now;
     this.onChunk = options.onChunk;
+    this.onAcceptTip = options.onAcceptTip;
 
     // Background syncs are fire-and-forget: log failures here so a rejected
     // run never becomes an unhandled rejection. The next poll retries from
@@ -132,15 +144,19 @@ export class BlockSyncer {
    * background backoff clock.
    */
   async catchUp(): Promise<void> {
+    if (this.halted) return;
     for (let attempt = 1; ; attempt++) {
       try {
-        this.latestKnownBlock = await this.source.getLatestBlockNumber();
+        this.observedTip = await this.source.getLatestBlockNumber();
+        this.replaceTip = true;
         await this.run();
-        if (this.store.processedBlock < this.latestKnownBlock) {
+        if (!this.halted && this.store.processedBlock < this.latestKnownBlock) {
           // The node may have been behind the previously observed latest block. Refresh once.
-          this.latestKnownBlock = await this.source.getLatestBlockNumber();
+          this.observedTip = await this.source.getLatestBlockNumber();
+          this.replaceTip = true;
           await this.run();
         }
+        if (this.halted) return;
         if (this.store.processedBlock < this.latestKnownBlock) {
           console.warn(
             `[IndexerService] initial sync incomplete: processed up to block ` +
@@ -174,11 +190,11 @@ export class BlockSyncer {
 
   /** One poll tick. Skipped entirely while a background backoff is in effect. */
   async pollOnce(): Promise<void> {
-    if (this.stopped) return;
+    if (this.stopped || this.halted) return;
     if (this.now() < this.nextRetryAt) return;
     try {
-      const next = await this.source.getLatestBlockNumber();
-      this.latestKnownBlock = Math.max(this.latestKnownBlock, next);
+      this.observedTip = await this.source.getLatestBlockNumber();
+      this.replaceTip = false;
       this.debouncedProcess();
     } catch (err) {
       this.noteSyncFailure(err);
@@ -199,9 +215,11 @@ export class BlockSyncer {
    * even during a background backoff. Concurrent callers share the in-flight run.
    */
   async syncNow(): Promise<void> {
-    const latest = await this.source.getLatestBlockNumber();
-    this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
+    if (this.halted) return;
+    this.observedTip = await this.source.getLatestBlockNumber();
+    this.replaceTip = false;
     await this.run();
+    if (this.halted) return;
     if (this.store.processedBlock < this.latestKnownBlock) {
       await this.run();
     }
@@ -223,7 +241,12 @@ export class BlockSyncer {
   }
 
   private async runPending(): Promise<void> {
-    if (this.stopped) return;
+    if (this.stopped || this.halted) return;
+    const hashBefore = this.store.processedBlockHash;
+    if (!(await this.acceptTip())) return;
+    this.latestKnownBlock = this.replaceTip
+      ? this.observedTip
+      : Math.max(this.latestKnownBlock, this.observedTip);
 
     let fromBlock = this.store.processedBlock + 1;
     const toBlock = this.latestKnownBlock;
@@ -232,7 +255,7 @@ export class BlockSyncer {
     this.isSyncing = true;
     try {
       while (fromBlock <= toBlock) {
-        if (this.stopped) return;
+        if (this.stopped || this.halted) return;
         const chunkEnd = Math.min(
           fromBlock + this.maxBlocksPerRequest - 1,
           toBlock,
@@ -251,6 +274,19 @@ export class BlockSyncer {
       // the next run resumes from the last processed block + 1.
       this.isSyncing = false;
     }
+
+    // The first chunks of a sync are what create the stored hash.
+    // Check again once that hash exists, before start() treats the run as done.
+    if (hashBefore === undefined) await this.acceptTip();
+  }
+
+  /** false means the caller asked us to stop committing. A throw is not a halt. */
+  private async acceptTip(): Promise<boolean> {
+    if (this.halted) return false;
+    if (!this.onAcceptTip) return true;
+    const accepted = await this.onAcceptTip(this.observedTip);
+    if (!accepted) this.halted = true;
+    return accepted;
   }
 
   private backoffMs(): number {

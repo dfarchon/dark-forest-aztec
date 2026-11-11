@@ -25,6 +25,7 @@ import type {
   ArtifactLocationState,
   ArtifactState,
   BlockTipTag,
+  ForkDivergence,
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerStatus,
@@ -89,6 +90,11 @@ export interface IndexerConnectionConfig {
     waitMs: number,
     error: unknown
   ) => void;
+  /**
+   * Called once when the processed block is no longer on the followed tip.
+   * Forwarded to IndexerService. This connection does not show a notice.
+   */
+  onForkDiverged?: (divergence: ForkDivergence) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +550,7 @@ export async function createIndexerConnection(
     : undefined;
 
   const indexer = new IndexerService({
+    onForkDiverged: config.onForkDiverged,
     bootstrap: {
       source,
       bootstrapSource,
