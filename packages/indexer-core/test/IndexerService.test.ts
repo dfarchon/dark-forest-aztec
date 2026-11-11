@@ -728,6 +728,94 @@ test("waitForBlock syncs to a block that landed after start", async () => {
   indexer.destroy();
 });
 
+test("waitForBlock rejects a sync error before polling starts", async () => {
+  const source = createMockSource({ latestBlock: 10 });
+  const indexer = new IndexerService({ bootstrap: { source } });
+  await indexer.start();
+  source.getLatestBlockNumber = async () => {
+    throw new Error("rpc down");
+  };
+
+  const started = Date.now();
+  await assert.rejects(
+    () => indexer.waitForBlock(indexer.getProcessedBlockNumber() + 1, 30_000),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.message, "rpc down");
+      return true;
+    },
+  );
+  assert.ok(Date.now() - started < 5_000);
+  indexer.destroy();
+});
+
+test("waitForBlock while live recovers from a failed syncNow on a later poll", async () => {
+  let latest = 10;
+  let failNext = false;
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("rpc down");
+      }
+      return latest;
+    },
+    getBlockUpdates: async (fromBlock, toBlock) => ({
+      fromBlock,
+      toBlock,
+      updates: [],
+    }),
+  };
+  const indexer = new IndexerService({
+    bootstrap: { source },
+    sync: { pollIntervalMs: 10, debounceMs: 0 },
+  });
+
+  try {
+    await indexer.start();
+    indexer.startPolling();
+    failNext = true;
+    latest = 11;
+
+    await indexer.waitForBlock(11, 2_000);
+
+    assert.equal(indexer.getProcessedBlockNumber(), 11);
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("waitForBlock timeout includes the sync failure while live", async () => {
+  const source = createMockSource({ latestBlock: 10 });
+  const indexer = new IndexerService({
+    bootstrap: { source },
+    sync: { pollIntervalMs: 10, debounceMs: 0 },
+  });
+
+  try {
+    await indexer.start();
+    indexer.startPolling();
+    source.getLatestBlockNumber = async () => {
+      throw new Error("rpc down");
+    };
+
+    await assert.rejects(
+      () => indexer.waitForBlock(11, 50),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /timed out after 50ms/);
+        assert.match(err.message, /rpc down/);
+        const cause = (err as { cause?: unknown }).cause;
+        assert.ok(cause instanceof Error);
+        assert.equal(cause.message, "rpc down");
+        return true;
+      },
+    );
+  } finally {
+    indexer.destroy();
+  }
+});
+
 test("a changed tip hash does not rewind, and the first RPC failure is not retried", async () => {
   let sourceHash = "a";
   const calls: number[] = [];

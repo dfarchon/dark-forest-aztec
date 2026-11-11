@@ -262,15 +262,22 @@ export class IndexerService extends IndexerStore {
   /**
    * Returns a promise that resolves when the indexer has processed
    * at least up to the given block number.
+   *
+   * Before "live", subscriber notifications never fire, so a failed syncNow
+   * is rethrown instead of waiting out the timeout. Once live, a failed
+   * immediate sync can still be recovered by a later poll; the timeout error
+   * keeps that failure as its message and cause.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
     if (this.processedBlock >= blockNumber) {
       return;
     }
 
+    let syncError: unknown;
     try {
       await this.syncer.syncNow();
     } catch (err) {
+      syncError = err;
       console.warn("[IndexerService] immediate sync failed:", err);
     }
 
@@ -278,10 +285,29 @@ export class IndexerService extends IndexerStore {
       return;
     }
 
+    if (syncError !== undefined && this.lifecycle !== "live") {
+      throw syncError;
+    }
+
+    const reason =
+      syncError instanceof Error
+        ? syncError.message
+        : syncError !== undefined
+          ? String(syncError)
+          : undefined;
+    const timeoutError = new Error(
+      reason === undefined
+        ? `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`
+        : `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms: ${reason}`,
+    );
+    if (syncError !== undefined) {
+      (timeoutError as Error & { cause?: unknown }).cause = syncError;
+    }
+
     return this.changes.waitUntil(
       () => this.processedBlock >= blockNumber,
       timeoutMs,
-      new Error(`waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`),
+      timeoutError,
     );
   }
 }
