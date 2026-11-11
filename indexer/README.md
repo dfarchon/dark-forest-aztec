@@ -199,7 +199,6 @@ After the client finishes its initial indexer sync, the connection is on `window
 indexer.snapshot();
 indexer.snapshotJson();
 indexer.downloadSnapshot();
-indexer.publicEventStats();
 
 indexer.getStatus();
 indexer.getCurrentBlockNumber();
