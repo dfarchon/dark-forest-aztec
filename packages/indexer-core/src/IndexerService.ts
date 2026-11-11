@@ -56,7 +56,11 @@ export class IndexerService extends IndexerStore {
       initialSyncMaxRetries: sync?.initialSyncMaxRetries,
       onInitialSyncRetry: sync?.onInitialSyncRetry,
       onChunk: (fromBlock, toBlock, committed) => {
-        this.onBlockProcessed?.(fromBlock, toBlock);
+        try {
+          this.onBlockProcessed?.(fromBlock, toBlock);
+        } catch (err) {
+          console.error("[IndexerService] onBlockProcessed threw:", err);
+        }
         this.notifyListeners({
           tables: committed.tables,
           fromBlock,

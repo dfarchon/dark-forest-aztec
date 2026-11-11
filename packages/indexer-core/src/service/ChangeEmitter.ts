@@ -15,7 +15,13 @@ export class ChangeEmitter {
   }
 
   emit(payload: IndexerChangePayload): void {
-    this.listeners.forEach((cb) => cb(payload));
+    for (const cb of this.listeners) {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.error("[IndexerService] subscriber threw:", err);
+      }
+    }
   }
 
   clear(): void {

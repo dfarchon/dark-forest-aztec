@@ -703,3 +703,137 @@ test("a snapshot that cannot be checked is accepted", async () => {
     indexer.destroy();
   }
 });
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out after ${timeoutMs}ms`);
+    }
+    await delay(10);
+  }
+}
+
+test("a throwing subscriber does not drop the update or fail the sync", async () => {
+  const options: MockSourceOptions = {
+    latestBlock: 10,
+    updatesFor: (fromBlock) =>
+      fromBlock === 11 ? [arrivalUpdate("0xnew")] : [],
+  };
+  const source = createMockSource(options);
+  const indexer = new IndexerService({
+    bootstrap: { source },
+    sync: { maxBlocksPerRequest: 100, pollIntervalMs: 10, debounceMs: 0 },
+  });
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+
+  try {
+    await indexer.start();
+    options.latestBlock = 11;
+
+    const received: string[][] = [];
+    indexer.subscribe(() => {
+      throw new Error("subscriber blew up");
+    });
+    indexer.subscribe((payload) => {
+      received.push([...(payload.updatedIdsByTable?.arrival ?? [])]);
+    });
+    indexer.startPolling();
+
+    await waitUntil(() => received.length > 0);
+    await delay(20);
+
+    assert.deepEqual(received, [["0xnew"]]);
+    assert.equal(indexer.getStatus().consecutiveFailures, 0);
+    assert.equal(indexer.getStatus().lastError, undefined);
+    assert.equal(indexer.getProcessedBlockNumber(), 11);
+    assert.ok(indexer.getArrival("0xnew"));
+    assert.equal(
+      source.calls.filter((call) => call.fromBlock === 11).length,
+      1,
+    );
+    assert.ok(
+      logged.some((args) =>
+        args.some(
+          (arg) => arg instanceof Error && arg.message === "subscriber blew up",
+        ),
+      ),
+    );
+  } finally {
+    console.error = originalError;
+    indexer.destroy();
+  }
+});
+
+test("a throwing onBlockProcessed still notifies subscribers", async () => {
+  const options: MockSourceOptions = {
+    latestBlock: 10,
+    updatesFor: (fromBlock) =>
+      fromBlock === 11 ? [arrivalUpdate("0xhook")] : [],
+  };
+  const source = createMockSource(options);
+  const indexer = new IndexerService({
+    bootstrap: { source },
+    sync: { maxBlocksPerRequest: 100, pollIntervalMs: 10, debounceMs: 0 },
+  });
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+
+  try {
+    await indexer.start();
+    indexer.setOnBlockProcessed(() => {
+      throw new Error("progress hook failed");
+    });
+    options.latestBlock = 11;
+
+    const received: Array<{
+      fromBlock: number;
+      toBlock: number;
+      ids: string[];
+    }> = [];
+    indexer.subscribe((payload) => {
+      received.push({
+        fromBlock: payload.fromBlock,
+        toBlock: payload.toBlock,
+        ids: [...(payload.updatedIdsByTable?.arrival ?? [])],
+      });
+    });
+    indexer.startPolling();
+
+    await waitUntil(() => received.length > 0);
+    await delay(20);
+
+    assert.deepEqual(received, [
+      { fromBlock: 11, toBlock: 11, ids: ["0xhook"] },
+    ]);
+    assert.equal(indexer.getProcessedBlockNumber(), 11);
+    assert.equal(indexer.getStatus().consecutiveFailures, 0);
+    assert.equal(indexer.getStatus().lastError, undefined);
+    assert.ok(indexer.getArrival("0xhook"));
+    assert.ok(
+      logged.some((args) =>
+        args.some(
+          (arg) =>
+            arg instanceof Error && arg.message === "progress hook failed",
+        ),
+      ),
+    );
+  } finally {
+    console.error = originalError;
+    indexer.destroy();
+  }
+});
