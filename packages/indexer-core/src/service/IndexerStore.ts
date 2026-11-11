@@ -49,6 +49,47 @@ function emptySnapshot(): IndexerSnapshot {
 }
 
 /**
+ * Snapshot the store can keep. Each table is a new Map, each row is a new
+ * object, and nested `events` / `ids` lists are copied too.
+ */
+function copySnapshot(snapshot: IndexerSnapshot): IndexerSnapshot {
+  const copy: IndexerSnapshot = {
+    ...snapshot,
+    world: new Map(),
+    player: new Map(),
+    planet: new Map(),
+    planet_revealed_coords: new Map(),
+    planet_events: new Map(),
+    planet_artifacts: new Map(),
+    arrival: new Map(),
+    artifact: new Map(),
+    artifact_location: new Map(),
+  };
+  for (const table of TABLE_NAMES) {
+    const source = snapshot[table] as Map<TableId, unknown>;
+    const dest = copy[table] as Map<TableId, unknown>;
+    for (const [id, row] of source) {
+      dest.set(id, copyRow(table, row));
+    }
+  }
+  return copy;
+}
+
+function copyRow(table: TableName, row: unknown): unknown {
+  const copy = { ...(row as Record<string, unknown>) };
+  if (table === "planet_events" && Array.isArray(copy.events)) {
+    copy.events = copy.events.map((event) =>
+      event !== null && typeof event === "object"
+        ? { ...(event as Record<string, unknown>) }
+        : event,
+    );
+  } else if (table === "planet_artifacts" && Array.isArray(copy.ids)) {
+    copy.ids = copy.ids.slice();
+  }
+  return copy;
+}
+
+/**
  * In-memory chain tables. Knows how to apply a block range atomically and
  * answer queries. Does not talk to a node, poll, or notify subscribers.
  */
@@ -111,13 +152,15 @@ export class IndexerStore {
     return this.installSnapshot(normalizeSnapshot(snapshot));
   }
 
-  /** Same as replaceSnapshot, for a snapshot that normalizeSnapshot already converted. */
+  /**
+   * Same as replaceSnapshot, for a snapshot that normalizeSnapshot already
+   * converted. Stores a copy so the caller can keep editing the original.
+   */
   protected installSnapshot(snapshot: IndexerSnapshot): number {
-    this.snapshot = snapshot;
-    this.artifactIndex.rebuild(
-      this.snapshot.artifact as Map<string, ArtifactState>,
-    );
-    return snapshot.lastProcessedBlock;
+    const owned = copySnapshot(snapshot);
+    this.snapshot = owned;
+    this.artifactIndex.rebuild(owned.artifact);
+    return owned.lastProcessedBlock;
   }
 
   /** Drop tables back to empty. */

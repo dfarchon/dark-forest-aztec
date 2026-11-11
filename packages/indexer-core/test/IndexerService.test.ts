@@ -536,6 +536,31 @@ test("applySnapshot throws on a bad numeric value", () => {
   indexer.destroy();
 });
 
+test("an installed snapshot is not shared with the caller", () => {
+  const source = createMockSource({ latestBlock: 1 });
+  const indexer = new IndexerService({ bootstrap: { source } });
+  const snap = snapshotWithStringRows(3);
+  indexer.applySnapshot(snap);
+
+  const planet = snap.planet.get("0xplanet") as { population: bigint };
+  planet.population = 999n;
+  snap.planet.set("0xother", planet as never);
+  const events = snap.planet_events.get("0xplanet") as {
+    events: { id: string }[];
+  };
+  events.events.push({ id: "0xextra" });
+  const artifacts = snap.planet_artifacts.get("0xplanet") as { ids: string[] };
+  artifacts.ids.push("0xextra");
+
+  assert.equal(indexer.getPlanet("0xplanet")?.population, 123n);
+  assert.equal(indexer.getPlanet("0xother"), undefined);
+  assert.deepEqual(indexer.getPlanetEvents("0xplanet")?.events, [
+    { id: "0xev" },
+  ]);
+  assert.deepEqual(indexer.getPlanetArtifacts("0xplanet")?.ids, ["0xart"]);
+  indexer.destroy();
+});
+
 test("a clamped toBlock is committed and the next round resumes after it", async () => {
   const calls: Array<{ fromBlock: number; toBlock: number }> = [];
   const source: IBlockEventSource = {
