@@ -7,8 +7,8 @@
  * Usage:
  *   node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]
  *
- * The client snapshot file can be obtained from the browser console:
- *   dfDebug.downloadSnapshot()
+ * The client snapshot file can be obtained from the browser console (dev build):
+ *   indexer.downloadSnapshot()
  *
  * Examples:
  *   node scripts/compare-snapshots.mjs client-snapshot-block-42.json
@@ -48,8 +48,8 @@ function parseArgs() {
         "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
       );
       console.log("");
-      console.log("Get the client snapshot from browser console:");
-      console.log("  dfDebug.downloadSnapshot()");
+      console.log("Get the client snapshot from the browser console (dev build):");
+      console.log("  indexer.downloadSnapshot()");
       process.exit(0);
     }
     if ((args[i] === "--indexer-url" || args[i] === "--server-url") && args[i + 1]) {
@@ -67,8 +67,8 @@ function parseArgs() {
       "Usage: node scripts/compare-snapshots.mjs <client-snapshot.json> [--indexer-url URL] [--ignore-block-mismatch]"
     );
     console.error("");
-    console.error("Get the client snapshot from browser console:");
-    console.error("  dfDebug.downloadSnapshot()");
+    console.error("Get the client snapshot from the browser console (dev build):");
+    console.error("  indexer.downloadSnapshot()");
     process.exit(1);
   }
 

@@ -594,7 +594,13 @@ importers:
       '@dfpunk/contracts':
         specifier: workspace:*
         version: link:../contracts
+      lodash:
+        specifier: 4.18.1
+        version: 4.18.1
     devDependencies:
+      '@types/lodash':
+        specifier: 4.17.27
+        version: 4.17.27
       prettier:
         specifier: 3.7.4
         version: 3.7.4
@@ -3488,6 +3494,9 @@ packages:
 
   '@types/lodash@4.17.0':
     resolution: {integrity: sha512-t7dhREVv6dbNj0q17X12j7yDG4bD/DHYX7o5/DbDxobP0HnGPgpRz2Ej77aL7TZT3DSw13fqUTj8J4mMnqa7WA==}
+
+  '@types/lodash@4.17.27':
+    resolution: {integrity: sha512-VenMRv/eKNrspX9v3H4dbmjsrnCOYdYBG3kxXKk3dG6X+urBGcj2Prww3xw1U5K4FV/mE4h5GbWd0szEKf+9ew==}
 
   '@types/node@24.10.7':
     resolution: {integrity: sha512-+054pVMzVTmRQV8BhpGv3UyfZ2Llgl8rdpDTon+cUH9+na0ncBVXj3wTUKh14+Kiz18ziM3b4ikpP5/Pc0rQEQ==}
@@ -11840,6 +11849,8 @@ snapshots:
   '@types/json-stable-stringify@1.0.36': {}
 
   '@types/lodash@4.17.0': {}
+
+  '@types/lodash@4.17.27': {}
 
   '@types/node@24.10.7':
     dependencies:

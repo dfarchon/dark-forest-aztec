@@ -1315,6 +1315,7 @@ export function GameLandingPage() {
       walletManagerRef.current = undefined;
       indexerRef.current?.destroy();
       indexerRef.current = undefined;
+      window.indexer = undefined;
       setGameManager(undefined);
 
       if (!fatalWalletSessionPrintedRef.current) {
@@ -1647,6 +1648,13 @@ export function GameLandingPage() {
             : `${formatBytes(progress.loadedBytes)}${progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : ""}`;
       setLoadingPhase({ step: "snapshot", detail, percent: pct });
     };
+    indexerConfig.onInitialSyncRetry = (attempt, waitMs) => {
+      const seconds = Math.max(1, Math.round(waitMs / 1000));
+      setLoadingPhase({
+        step: "syncing",
+        detail: `Sync failed (attempt ${attempt}), retrying in ${seconds}s`,
+      });
+    };
     indexerConfig.onBlockSyncProgress = (_from, to, latest) => {
       if (initialSyncDoneRef.current) return;
       const pct = latest > 0 ? Math.round((to / latest) * 100) : undefined;
@@ -1659,27 +1667,8 @@ export function GameLandingPage() {
 
     const { connection } = await createIndexerConnection(indexerConfig);
     indexerRef.current = connection;
+    window.indexer = connection;
     initialSyncDoneRef.current = true;
-
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).dfDebug = {
-        snapshot: () => JSON.parse(connection.getSnapshotAsJsonString()),
-        snapshotJson: () => connection.getSnapshotAsJsonString(),
-        publicEventStats: () => connection.getPublicEventStats(),
-        downloadSnapshot: () => {
-          const json = connection.getSnapshotAsJsonString();
-          const blob = new Blob([json], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `client-snapshot-block-${connection.getProcessedBlockNumber()}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-        },
-        connection,
-      };
-    }
 
     setLoadingPhase({ step: "done" });
     return connection;
@@ -2051,6 +2040,7 @@ export function GameLandingPage() {
       gameUIManagerRef.current?.destroy();
       walletManagerRef.current?.destroy();
       indexerRef.current?.destroy();
+      window.indexer = undefined;
       void releaseWalletSession();
     };
   }, [releaseWalletSession]);

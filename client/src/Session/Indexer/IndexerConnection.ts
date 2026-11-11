@@ -24,16 +24,16 @@ import type {
   ArrivalState,
   ArtifactLocationState,
   ArtifactState,
+  BlockTipTag,
+  ForkDivergence,
   IndexerChangePayload,
   IndexerLifecycle,
-  IndexerServiceOptions,
   IndexerStatus,
   PlanetArtifactsState,
   PlanetEventsState,
   PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
-  PublicEventStats,
   StorageContractAddresses,
   TableId,
   WorldState,
@@ -77,6 +77,24 @@ export interface IndexerConnectionConfig {
   pollIntervalMs?: number;
   /** Max blocks per getBlockUpdates call. Default 100. */
   maxBlocksPerRequest?: number;
+  /** L2 tip to follow. Default "proposed", matching transaction receipts. */
+  tipTag?: BlockTipTag;
+  /** Per-request timeout for Aztec node calls. Default 30000. */
+  requestTimeoutMs?: number;
+  /**
+   * Called before the initial sync waits to retry a failed node request.
+   * The connection keeps retrying until the sync succeeds.
+   */
+  onInitialSyncRetry?: (
+    attempt: number,
+    waitMs: number,
+    error: unknown
+  ) => void;
+  /**
+   * Called once when the processed block is no longer on the followed tip.
+   * Forwarded to IndexerService. This connection does not show a notice.
+   */
+  onForkDiverged?: (divergence: ForkDivergence) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +168,8 @@ export class IndexerConnection {
    * If the IndexerService is in "ready" state (sync complete but not yet polling),
    * this method automatically starts polling — mirroring the darkforest-v0.6 pattern
    * where GameManager loads state first, then calls contractsAPI.setupEventListeners().
+   * A second call while already "live" replaces the handlers. Any other lifecycle
+   * throws, so a subscription is not left attached without polling.
    *
    * Handler keys match Aztec storage contract event names 1:1:
    *   WorldUpdate, PlayerUpdate, PlanetUpdate, PlanetRevealedCoordsUpdate,
@@ -161,14 +181,19 @@ export class IndexerConnection {
   public subscribeToContractEvents(
     handlers: Partial<Record<string, (...args: any[]) => void>>
   ): () => void {
+    const lifecycle = this.indexer.getLifecycle();
+    if (lifecycle === "ready") {
+      this.indexer.startPolling();
+    } else if (lifecycle !== "live") {
+      throw new Error(
+        `subscribeToContractEvents requires lifecycle "ready" or "live", current: "${lifecycle}"`
+      );
+    }
+
     // Guard against double-subscribe: tear down any previous subscription first
     this.unsubscribeIndexer?.();
 
     this.eventHandlers = handlers;
-
-    if (this.indexer.getLifecycle() === "ready") {
-      this.indexer.startPolling();
-    }
 
     this.unsubscribeIndexer = this.indexer.subscribe((payload) => {
       this.onNewBlock(payload);
@@ -295,11 +320,6 @@ export class IndexerConnection {
   /** Last block whose events have been applied. Use for tx inputs. */
   public getProcessedBlockNumber(): number {
     return this.indexer.getProcessedBlockNumber();
-  }
-
-  /** Cumulative public event counts for the block range read from the node. */
-  public getPublicEventStats(): PublicEventStats {
-    return this.indexer.getPublicEventStats();
   }
 
   // -------------------------------------------------------------------------
@@ -476,6 +496,28 @@ export class IndexerConnection {
     }
     return this.indexer.getSnapshotAsJsonString();
   }
+
+  /** Parsed snapshot object. Dev-only alias of getSnapshotAsJsonString(). */
+  public snapshot(): unknown {
+    return JSON.parse(this.getSnapshotAsJsonString());
+  }
+
+  /** Snapshot JSON string. Dev-only alias of getSnapshotAsJsonString(). */
+  public snapshotJson(): string {
+    return this.getSnapshotAsJsonString();
+  }
+
+  /** Download the current snapshot as JSON. Dev-only. */
+  public downloadSnapshot(): void {
+    const json = this.getSnapshotAsJsonString();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `client-snapshot-block-${this.getProcessedBlockNumber()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -494,7 +536,11 @@ export async function createIndexerConnection(
 ): Promise<{ connection: IndexerConnection; syncedToBlock: number }> {
   const source = createAztecNodeBlockSource(
     config.nodeUrl,
-    config.contractAddresses
+    config.contractAddresses,
+    {
+      tipTag: config.tipTag ?? "proposed",
+      requestTimeoutMs: config.requestTimeoutMs ?? 30_000,
+    }
   );
   const bootstrapSource = config.bootstrapUrl
     ? new OffChainBlockSource({
@@ -503,71 +549,25 @@ export async function createIndexerConnection(
       })
     : undefined;
 
-  const serviceOpts: IndexerServiceOptions & { source: typeof source } = {
-    source,
-    bootstrapSource,
-    startBlock: config.startBlock,
-    debounceMs: config.debounceMs,
-    pollIntervalMs: config.pollIntervalMs,
-    maxBlocksPerRequest: config.maxBlocksPerRequest,
-    ...(config.bootstrapUrl ? { verifyBootstrapSnapshot: true } : {}),
-  };
-
-  const indexer = new IndexerService(serviceOpts);
-  const statsStorageKey = getPublicEventStatsStorageKey(config);
-  let initializing = true;
+  const indexer = new IndexerService({
+    onForkDiverged: config.onForkDiverged,
+    bootstrap: {
+      source,
+      bootstrapSource,
+      startBlock: config.startBlock,
+    },
+    sync: {
+      debounceMs: config.debounceMs,
+      pollIntervalMs: config.pollIntervalMs,
+      maxBlocksPerRequest: config.maxBlocksPerRequest,
+      initialSyncMaxRetries: Infinity,
+      onInitialSyncRetry: config.onInitialSyncRetry,
+    },
+  });
   indexer.setOnBlockProcessed((from, to) => {
     config.onBlockSyncProgress?.(from, to, indexer.getLatestKnownBlock());
-    const stats = indexer.getPublicEventStats();
-    persistPublicEventStats(statsStorageKey, stats);
-    if (!initializing) logPublicEventStats(statsStorageKey, stats);
   });
   const connection = new IndexerConnection(indexer);
   const { syncedToBlock } = await connection.initialize();
-  initializing = false;
-  const stats = connection.getPublicEventStats();
-  persistPublicEventStats(statsStorageKey, stats);
-  logPublicEventStats(statsStorageKey, stats);
   return { connection, syncedToBlock };
-}
-
-const PUBLIC_EVENT_STATS_STORAGE_PREFIX = "dfpunk:public-event-stats";
-
-function getPublicEventStatsStorageKey(
-  config: IndexerConnectionConfig
-): string {
-  const contractAddresses = Object.entries(config.contractAddresses ?? {}).sort(
-    ([a], [b]) => a.localeCompare(b)
-  );
-  const identity = JSON.stringify({
-    nodeUrl: config.nodeUrl,
-    contractAddresses:
-      contractAddresses.length > 0 ? contractAddresses : "default",
-    startBlock: config.startBlock ?? 0,
-  });
-  return `${PUBLIC_EVENT_STATS_STORAGE_PREFIX}:${encodeURIComponent(identity)}`;
-}
-
-function persistPublicEventStats(
-  storageKey: string,
-  stats: PublicEventStats
-): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(stats));
-  } catch (err) {
-    console.warn("[PublicEventStats] Failed to persist event counts:", err);
-  }
-}
-
-function logPublicEventStats(
-  storageKey: string,
-  stats: PublicEventStats
-): void {
-  const qualifier = stats.complete ? "complete" : "partial";
-  console.info(
-    `[PublicEventStats] ${qualifier} blocks ${stats.fromBlock}-${stats.toBlock}, total=${stats.total}`,
-    stats.counts,
-    { storageKey }
-  );
 }

@@ -3,6 +3,7 @@ import { Dispatch, SetStateAction } from "react";
 
 import GameManager from "../../Backend/GameLogic/GameManager";
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
+import type { IndexerConnection } from "../../Session/Indexer/IndexerConnection";
 
 export type Hook<T> = [T, Dispatch<SetStateAction<T>>];
 
@@ -15,6 +16,7 @@ declare global {
     // instead of global
     df?: GameManager;
     ui?: GameUIManager;
+    indexer?: IndexerConnection;
 
     // injected into global scope via netlify snippets - this is a permalink
     // to the deployment hosted on netlify.

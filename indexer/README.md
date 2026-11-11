@@ -30,7 +30,7 @@ packages/
     src/                        # IndexerService, AztecNodeSource, table types
       IndexerService.ts
       AztecNodeSource.ts
-      convert.ts, debounce.ts, types.ts, TableTypes/
+      utils/convert.ts, utils/callWithBoundedRetry.ts, types.ts, TableTypes/
 ```
 
 The indexer depends on `@dfpunk/contracts` and `@dfpunk/indexer-core` (`workspace:*`). Docker builds copy `indexer/`, `contracts/`, `packages/contracts/`, and `packages/indexer-core/` into the image.
@@ -111,7 +111,7 @@ Env file references: `.env.example` (generic), `env.local.example` (local testne
 | `PERSIST_MIN_INTERVAL_SEC` | `10`                                 | Throttles SQLite writes during live sync (see below).                                                  |
 | `ADMIN_TOKEN`              | (empty)                              | Empty = backup endpoint disabled                                                                       |
 
-IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`, `requestTimeoutMs: 30_000`, `maxBackoffMs: 60_000`, `initialSyncMaxRetries: Infinity`, `verifyBlockHashes: true`.
+IndexerService options (hardcoded in `src/index.ts`): `maxBlocksPerRequest: 100`, `pollIntervalMs: 2000`, `debounceMs: 1000`, `requestTimeoutMs: 30_000`, `maxBackoffMs: 60_000`, `initialSyncMaxRetries: Infinity`.
 
 **Timing:** Chosen for **public testnet** (seconds-scale blocks): poll only queries latest block height every 2s; `getBlockUpdates` runs when there is backlog. Debounce (1s) and `PERSIST_MIN_INTERVAL_SEC` cut redundant work. Hardcoded in `src/index.ts` (no env override).
 
@@ -193,18 +193,20 @@ localStorage.removeItem("dfpunk:connection:nodeUrl");
 localStorage.removeItem("dfpunk:connection:indexerBootstrapUrl");
 ```
 
-### Dev Console (DEV builds only)
+After the client finishes its initial indexer sync, the connection is on `window.indexer`. It exposes the old `dfDebug` console helpers plus the connection methods:
 
 ```js
-window.dfDebug.snapshot();
-window.dfDebug.snapshotJson();
-window.dfDebug.downloadSnapshot();
+indexer.snapshot();
+indexer.snapshotJson();
+indexer.downloadSnapshot();
 
-window.dfDebug.connection.getStatus();
-window.dfDebug.connection.getCurrentBlockNumber();
-window.dfDebug.connection.getProcessedBlockNumber();
-window.dfDebug.connection.getSnapshotAsJsonString();
+indexer.getStatus();
+indexer.getCurrentBlockNumber();
+indexer.getProcessedBlockNumber();
+indexer.getSnapshotAsJsonString();
 ```
+
+`snapshot`, `snapshotJson`, `downloadSnapshot`, and `getSnapshotAsJsonString` throw outside dev builds.
 
 ## E2E Test Stack
 

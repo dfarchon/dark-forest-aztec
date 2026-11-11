@@ -1,5 +1,5 @@
-export type { StorageContractAddresses } from "./AztecNodeSource.ts";
-export { createAztecNodeBlockSource } from "./AztecNodeSource.ts";
+export type { StorageContractAddresses } from "./service/AztecNodeSource.ts";
+export { createAztecNodeBlockSource } from "./service/AztecNodeSource.ts";
 
 export {
   normalizeSnapshot,
@@ -17,25 +17,23 @@ export {
   toBigInt,
   toSafeNum,
   toStr,
-} from "./convert.ts";
+} from "./utils/convert.ts";
 
-export type { DebouncedFn } from "./debounce.ts";
-export { debounce } from "./debounce.ts";
-
+export type { BootstrapOptions } from "./service/bootstrap.ts";
+export type { SyncOptions } from "./service/BlockSyncer.ts";
 export type { IndexerServiceOptions } from "./IndexerService.ts";
 export { IndexerService } from "./IndexerService.ts";
 
 export type {
   BlockTipTag,
   BlockUpdates,
+  ForkDivergence,
   IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
-  PublicEventBatchCounts,
   PublicEventName,
-  PublicEventStats,
   TableId,
   TableName,
   TableRowType,

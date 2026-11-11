@@ -2,465 +2,99 @@
  * IndexerService: maintains latest chain table state by syncing block-by-block
  * with debounce. Supports init from off-chain indexer and query API for tx inputs.
  *
- * Lifecycle: idle → bootstrapping → syncing → live → destroyed.
+ * Lifecycle: idle → bootstrapping → syncing → ready → live → destroyed.
  * Subscriber notifications are only dispatched in the "live" phase so that
  * callers never receive partial state during initial catch-up.
  */
 
-import { normalizeSnapshot, rawIdToTableId, rawToState } from "./convert.ts";
-import { debounce } from "./debounce.ts";
+import {
+  InitialStateLoader,
+  type BootstrapOptions,
+} from "./service/bootstrap.ts";
+import { BlockSyncer, type SyncOptions } from "./service/BlockSyncer.ts";
+import { ChangeEmitter } from "./service/ChangeEmitter.ts";
+import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
-  ArrivalState,
-  ArtifactLocationState,
-  ArtifactState,
-  PlanetArtifactsState,
-  PlanetEventsState,
-  PlanetRevealedCoordsState,
-  PlanetState,
-  PlayerState,
-  WorldState,
-} from "./TableTypes/chain.ts";
-import type {
-  BlockUpdates,
+  ForkDivergence,
   IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
-  PublicEventName,
-  PublicEventStats,
-  TableId,
-  TableName,
-  TableRowType,
-  TableUpdate,
 } from "./types.ts";
-import { PUBLIC_EVENT_NAMES, TABLE_NAMES } from "./types.ts";
-
-type Raw = Record<string, unknown>;
-
-function emptySnapshot(): IndexerSnapshot {
-  return {
-    lastProcessedBlock: 0,
-    world: new Map(),
-    player: new Map(),
-    planet: new Map(),
-    planet_revealed_coords: new Map(),
-    planet_events: new Map(),
-    planet_artifacts: new Map(),
-    arrival: new Map(),
-    artifact: new Map(),
-    artifact_location: new Map(),
-  };
-}
-
-function emptyPublicEventCounts(): Record<PublicEventName, number> {
-  return Object.fromEntries(
-    PUBLIC_EVENT_NAMES.map((eventName) => [eventName, 0]),
-  ) as Record<PublicEventName, number>;
-}
+import { TABLE_NAMES } from "./types.ts";
 
 export interface IndexerServiceOptions {
-  /**
-   * Optional bootstrap: used only at start() to load initial state up to block X.
-   * Only getSnapshot() is called; never used for getLatestBlockNumber or getBlockUpdates.
-   * Typical: off-chain indexer API (e.g. OffChainBlockSource).
-   */
-  bootstrapSource?: IBlockEventSource;
-  /**
-   * Chain data source: used for getLatestBlockNumber and getBlockUpdates for the entire
-   * lifecycle. All blocks after the bootstrap (or after startBlock) are maintained by the
-   * frontend via this source (e.g. AztecNode-based source).
-   */
-  source: IBlockEventSource;
-  /**
-   * When no bootstrap snapshot is used, start processing from this block (inclusive).
-   * Ignored if bootstrapSource.getSnapshot() returns a snapshot. Default 0 (process from block 1).
-   */
-  startBlock?: number;
-  /** Debounce delay in ms for processing new blocks. Default 1000. */
-  debounceMs?: number;
-  /** Poll interval for latest block when not using push. Default 2000. */
-  pollIntervalMs?: number;
-  /**
-   * Max blocks per getBlockUpdates call when syncing from chain. Prevents a single
-   * huge request (e.g. 1 to 50000). Default 100; tune to match node/RPC limits (e.g. 50–200).
-   */
-  maxBlocksPerRequest?: number;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
-  /** Check lastProcessedBlock's hash against the source before each sync. Default false. */
-  verifyBlockHashes?: boolean;
-  /** Called when the block hash at lastProcessedBlock no longer matches the source chain. */
-  onReorgDetected?: (info: {
-    blockNumber: number;
-    localHash: string;
-    sourceHash: string | undefined;
-  }) => void;
-  /** Max wait between background retries after failures; 0 = no backoff (current behavior). */
-  maxBackoffMs?: number;
-  /** Attempts for the initial sync in start(); 1 = no retry (current behavior). */
-  initialSyncMaxRetries?: number;
   /**
-   * Before using a bootstrap snapshot, check its last block hash on the source;
-   * discard it on mismatch. Default false.
+   * Called once when the processed block is no longer on the tip just read.
+   * Later polls do not commit. The service stays up; it does not clear tables.
    */
-  verifyBootstrapSnapshot?: boolean;
+  onForkDiverged?: (divergence: ForkDivergence) => void;
+  /** Chain source, optional off-chain snapshot, and start block. */
+  bootstrap: BootstrapOptions;
+  /** Polling, chunk size, and initial-sync retries. */
+  sync?: SyncOptions;
 }
 
-export class IndexerService {
-  private readonly bootstrapSource: IBlockEventSource | undefined;
-  private readonly source: IBlockEventSource;
-  private readonly startBlock: number;
-  private readonly debounceMs: number;
-  private readonly pollIntervalMs: number;
-  private readonly maxBlocksPerRequest: number;
-  private readonly verifyBlockHashes: boolean;
-  private readonly onReorgDetected?: IndexerServiceOptions["onReorgDetected"];
-  private readonly maxBackoffMs: number;
-  private readonly initialSyncMaxRetries: number;
-  private readonly verifyBootstrapSnapshot: boolean;
+export class IndexerService extends IndexerStore {
   private onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
+  private readonly onForkDiverged?: (divergence: ForkDivergence) => void;
+  private forkDiverged = false;
+  private forkError: string | undefined;
 
-  private snapshot: IndexerSnapshot = emptySnapshot();
-  private latestKnownBlock: number = 0;
-  private isSyncing: boolean = false;
-  private syncPromise: Promise<void> | undefined;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly syncer: BlockSyncer;
+  private readonly initialLoad: InitialStateLoader;
   private lifecycle: IndexerLifecycle = "idle";
-  private eventStatsFromBlock: number;
-  private eventStatsToBlock: number;
-  private eventCounts = emptyPublicEventCounts();
-  private eventStatsComplete = true;
-  /** Once set, syncing stops so bad data is not stacked on top of a reorg. */
-  private reorgDetected = false;
-  private consecutiveFailures = 0;
-  private nextRetryAt = 0;
-  private lastError: string | undefined;
-
-  /** Secondary index: artifact owner -> set of artifact ids. */
-  private ownerArtifactIndex = new Map<string, Set<string>>();
-  /** Secondary index: artifact controller -> set of artifact ids. */
-  private controllerArtifactIndex = new Map<string, Set<string>>();
+  /** True while start() is awaiting. "syncing" also means the last start failed. */
+  private starting = false;
 
   /** Subscribers notified when state changes (after applying updates). */
-  private listeners = new Set<(payload: IndexerChangePayload) => void>();
+  private readonly changes = new ChangeEmitter();
 
   constructor(options: IndexerServiceOptions) {
-    this.bootstrapSource = options.bootstrapSource;
-    this.source = options.source;
-    this.startBlock = Math.max(0, options.startBlock ?? 0);
-    this.debounceMs = options.debounceMs ?? 1000;
-    this.pollIntervalMs = options.pollIntervalMs ?? 2000;
-    this.maxBlocksPerRequest = Math.max(1, options.maxBlocksPerRequest ?? 100);
-    this.verifyBlockHashes = options.verifyBlockHashes ?? false;
-    this.onReorgDetected = options.onReorgDetected;
-    this.maxBackoffMs = Math.max(0, options.maxBackoffMs ?? 0);
-    this.initialSyncMaxRetries = Math.max(
-      1,
-      options.initialSyncMaxRetries ?? 1,
-    );
-    this.verifyBootstrapSnapshot = options.verifyBootstrapSnapshot ?? false;
+    const bootstrap = options.bootstrap;
+    const sync = options.sync;
+    super(Math.max(0, bootstrap.startBlock ?? 0));
     this.onBlockProcessed = options.onBlockProcessed;
-    this.eventStatsFromBlock = Math.max(1, this.startBlock);
-    this.eventStatsToBlock = this.eventStatsFromBlock - 1;
-
-    // Background (poll/push) syncs are fire-and-forget: log failures here so
-    // rethrown sync errors never become unhandled rejections. The next poll
-    // cycle retries from lastProcessedBlock + 1, after the backoff if one is set.
-    const debouncedProcess = debounce(
-      () => {
-        if (Date.now() < this.nextRetryAt) return;
-        this.processNewBlocks()
-          .then(() => {
-            this.consecutiveFailures = 0;
-            this.lastError = undefined;
-            this.nextRetryAt = 0;
-          })
-          .catch((err) => {
-            this.noteSyncFailure(err);
-          });
+    this.onForkDiverged = options.onForkDiverged;
+    const source = bootstrap.source;
+    this.syncer = new BlockSyncer({
+      source,
+      store: this,
+      debounceMs: sync?.debounceMs ?? 1000,
+      pollIntervalMs: sync?.pollIntervalMs ?? 2000,
+      maxBlocksPerRequest: Math.max(1, sync?.maxBlocksPerRequest ?? 100),
+      maxBackoffMs: Math.max(0, sync?.maxBackoffMs ?? 0),
+      initialSyncMaxRetries: sync?.initialSyncMaxRetries,
+      onInitialSyncRetry: sync?.onInitialSyncRetry,
+      onAcceptTip: (tip) => this.considerFork(source, tip),
+      onChunk: (fromBlock, toBlock, committed) => {
+        try {
+          this.onBlockProcessed?.(fromBlock, toBlock);
+        } catch (err) {
+          console.error("[IndexerService] onBlockProcessed threw:", err);
+        }
+        this.notifyListeners({
+          tables: committed.tables,
+          fromBlock,
+          toBlock,
+          updatedIdsByTable: committed.updatedIdsByTable,
+        });
       },
-      this.debounceMs,
-      true,
-      true,
-    );
-
-    /** Called when we learn of a new latest block (poll or push). */
-    this.onLatestBlock = (latest: number) => {
-      this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-      debouncedProcess();
-    };
+    });
+    this.initialLoad = new InitialStateLoader(bootstrap);
   }
-
-  private onLatestBlock: (latest: number) => void;
 
   /** Override the onBlockProcessed callback after construction. */
   setOnBlockProcessed(cb: (fromBlock: number, toBlock: number) => void): void {
     this.onBlockProcessed = cb;
   }
 
-  /**
-   * Process blocks from (lastProcessedBlock + 1) up to latestKnownBlock in chunks of
-   * at most maxBlocksPerRequest to avoid a single huge getBlockUpdates call.
-   */
-  private async processNewBlocks(): Promise<void> {
-    if (this.syncPromise) {
-      return this.syncPromise;
-    }
-
-    const syncPromise = this.processPendingBlocks();
-    this.syncPromise = syncPromise;
-    try {
-      await syncPromise;
-    } finally {
-      if (this.syncPromise === syncPromise) {
-        this.syncPromise = undefined;
-      }
-    }
-  }
-
-  private backoffMs(): number {
-    if (this.maxBackoffMs <= 0) return 0;
-    // 2s, 4s, 8s, ... capped at maxBackoffMs
-    return Math.min(
-      this.maxBackoffMs,
-      2_000 * 2 ** Math.max(0, this.consecutiveFailures - 1),
-    );
-  }
-
-  private noteSyncFailure(err: unknown): void {
-    this.consecutiveFailures += 1;
-    this.lastError = err instanceof Error ? err.message : String(err);
-    const wait = this.backoffMs();
-    this.nextRetryAt = Date.now() + wait;
-    console.warn(
-      `[IndexerService] sync failed (${this.consecutiveFailures}x), retry in ${wait}ms:`,
-      err,
-    );
-  }
-
-  private async processPendingBlocks(): Promise<void> {
-    if (this.reorgDetected) return;
-    if (!(await this.verifyChainContinuity())) return;
-
-    let fromBlock = this.snapshot.lastProcessedBlock + 1;
-    const toBlock = this.latestKnownBlock;
-    if (fromBlock > toBlock) return;
-
-    this.isSyncing = true;
-    try {
-      while (fromBlock <= toBlock) {
-        const chunkEnd = Math.min(
-          fromBlock + this.maxBlocksPerRequest - 1,
-          toBlock,
-        );
-        const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
-        const committedTo = updates.toBlock;
-        if (committedTo < fromBlock) break; // node behind; retry next poll
-        if (this.verifyBlockHashes && committedTo > 0 && !updates.toBlockHash) {
-          throw new Error(
-            `[IndexerService] block ${committedTo} has no hash; refusing to commit`,
-          );
-        }
-        this.applyUpdates(updates);
-        this.applyEventCounts(updates, committedTo);
-        this.snapshot.lastProcessedBlock = committedTo;
-        this.snapshot.lastProcessedBlockHash = updates.toBlockHash;
-        this.onBlockProcessed?.(fromBlock, committedTo);
-        const tables = [
-          ...new Set(updates.updates.map((u) => u.table)),
-        ] as TableName[];
-        const updatedIdsByTable = this.buildUpdatedIdsByTable(updates);
-        this.notifyListeners({
-          tables,
-          fromBlock,
-          toBlock: committedTo,
-          updatedIdsByTable,
-        });
-        if (committedTo < chunkEnd) break;
-        fromBlock = committedTo + 1;
-      }
-    } finally {
-      // Errors propagate to the caller: start() rejects during initial sync,
-      // background syncs log via the debounce catch boundary. Fully committed
-      // chunks are kept; the next sync resumes from lastProcessedBlock + 1.
-      this.isSyncing = false;
-    }
-  }
-
-  /**
-   * Returns false when the stored tip hash no longer matches the node, or when
-   * the node cannot return that hash yet. Only a mismatch latches reorgDetected.
-   */
-  private async verifyChainContinuity(): Promise<boolean> {
-    const localHash = this.snapshot.lastProcessedBlockHash;
-    const n = this.snapshot.lastProcessedBlock;
-    if (!this.verifyBlockHashes) return true;
-    if (!localHash || n <= 0 || !this.source.getBlockHash) return true;
-    const sourceHash = await this.source.getBlockHash(n);
-    if (sourceHash === undefined) {
-      console.warn(
-        `[IndexerService] block ${n} hash unavailable on node; pausing sync`,
-      );
-      return false;
-    }
-    if (sourceHash === localHash) return true;
-    this.reorgDetected = true;
-    console.error(
-      `[IndexerService] reorg detected at block ${n}: local=${localHash} source=${sourceHash}`,
-    );
-    this.onReorgDetected?.({ blockNumber: n, localHash, sourceHash });
-    return false;
-  }
-
-  /**
-   * Immediately fetches the node's latest L2 tip and processes any missing blocks.
-   * Concurrent callers share the in-flight processing work.
-   */
-  private async syncToLatest(): Promise<void> {
-    const latest = await this.source.getLatestBlockNumber();
-    this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
-    await this.processNewBlocks();
-    if (this.snapshot.lastProcessedBlock < this.latestKnownBlock) {
-      await this.processNewBlocks();
-    }
-  }
-
-  /** Build per-table list of row ids that were updated in this batch. */
-  private buildUpdatedIdsByTable(
-    updates: BlockUpdates,
-  ): Partial<Record<TableName, TableId[]>> {
-    const byTable = new Map<TableName, Set<TableId>>();
-    for (const u of updates.updates) {
-      const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
-      let set = byTable.get(u.table);
-      if (!set) {
-        set = new Set();
-        byTable.set(u.table, set);
-      }
-      set.add(id);
-    }
-    const out: Partial<Record<TableName, TableId[]>> = {};
-    byTable.forEach((ids, table) => {
-      out[table] = [...ids];
-    });
-    return out;
-  }
-
-  /**
-   * Apply a single BlockUpdates to current snapshot atomically: convert every
-   * row first (phase 1, no mutation), then commit all rows (phase 2). A bad
-   * row therefore cannot leave the snapshot partially updated across tables
-   * (e.g. planet_events written while its arrival row is missing).
-   */
-  private applyUpdates(updates: BlockUpdates): void {
-    const pending: Array<{ table: TableName; id: TableId; state: unknown }> =
-      [];
-    for (const u of updates.updates) {
-      const id = rawIdToTableId(u.table, (u as { id?: unknown }).id);
-      const rawState = (u as TableUpdate<Raw>).state as Raw;
-      pending.push({
-        table: u.table,
-        id,
-        state: rawToState(u.table, rawState),
-      });
-    }
-
-    for (const p of pending) {
-      const tableMap = this.snapshot[p.table] as Map<TableId, unknown>;
-
-      if (p.table === "artifact") {
-        const oldState = tableMap.get(p.id) as ArtifactState | undefined;
-        this.updateArtifactIndexes(p.id, oldState, p.state as ArtifactState);
-      }
-
-      tableMap.set(p.id, p.state);
-    }
-  }
-
-  /** Commit event counts only after every row in the range converted successfully. */
-  private applyEventCounts(updates: BlockUpdates, toBlock: number): void {
-    for (const eventName of PUBLIC_EVENT_NAMES) {
-      this.eventCounts[eventName] += updates.eventCounts?.[eventName] ?? 0;
-    }
-    this.eventStatsToBlock = toBlock;
-  }
-
-  /**
-   * Maintain ownerArtifactIndex and controllerArtifactIndex when an artifact
-   * row is inserted or updated. Handles removal from old owner/controller sets
-   * and insertion into new ones.
-   */
-  private updateArtifactIndexes(
-    artifactId: string,
-    oldState: ArtifactState | undefined,
-    newState: ArtifactState,
-  ): void {
-    if (oldState?.owner !== newState.owner) {
-      if (oldState) {
-        this.ownerArtifactIndex.get(oldState.owner)?.delete(artifactId);
-      }
-      if (newState.owner) {
-        let set = this.ownerArtifactIndex.get(newState.owner);
-        if (!set) {
-          set = new Set();
-          this.ownerArtifactIndex.set(newState.owner, set);
-        }
-        set.add(artifactId);
-      }
-    }
-
-    if (oldState?.controller !== newState.controller) {
-      if (oldState) {
-        this.controllerArtifactIndex
-          .get(oldState.controller)
-          ?.delete(artifactId);
-      }
-      if (newState.controller) {
-        let set = this.controllerArtifactIndex.get(newState.controller);
-        if (!set) {
-          set = new Set();
-          this.controllerArtifactIndex.set(newState.controller, set);
-        }
-        set.add(artifactId);
-      }
-    }
-  }
-
-  /** Rebuild both artifact secondary indexes from the current snapshot. */
-  private rebuildArtifactIndexes(): void {
-    this.ownerArtifactIndex.clear();
-    this.controllerArtifactIndex.clear();
-    const artifactMap = this.snapshot.artifact as Map<string, ArtifactState>;
-    for (const [id, state] of artifactMap) {
-      if (state.owner) {
-        let set = this.ownerArtifactIndex.get(state.owner);
-        if (!set) {
-          set = new Set();
-          this.ownerArtifactIndex.set(state.owner, set);
-        }
-        set.add(id);
-      }
-      if (state.controller) {
-        let set = this.controllerArtifactIndex.get(state.controller);
-        if (!set) {
-          set = new Set();
-          this.controllerArtifactIndex.set(state.controller, set);
-        }
-        set.add(id);
-      }
-    }
-  }
-
   /** Load full snapshot (e.g. from off-chain indexer) and set lastProcessedBlock. */
   applySnapshot(snapshot: IndexerSnapshot): void {
-    this.snapshot = normalizeSnapshot(snapshot);
-    this.rebuildArtifactIndexes();
-    const block = snapshot.lastProcessedBlock;
-    this.eventCounts = emptyPublicEventCounts();
-    this.eventStatsFromBlock = block + 1;
-    this.eventStatsToBlock = block;
-    this.eventStatsComplete = false;
+    const block = this.replaceSnapshot(snapshot);
     this.notifyListeners({
       tables: [...TABLE_NAMES],
       fromBlock: block,
@@ -474,7 +108,7 @@ export class IndexerService {
    */
   private notifyListeners(payload: IndexerChangePayload): void {
     if (this.lifecycle !== "live") return;
-    this.listeners.forEach((cb) => cb(payload));
+    this.changes.emit(payload);
   }
 
   /**
@@ -487,124 +121,53 @@ export class IndexerService {
    *   All subsequent subscriber notifications correspond to blocks after this point.
    */
   async start(): Promise<{ syncedToBlock: number }> {
-    this.lifecycle = "bootstrapping";
-    let snapshotLoaded = false;
-    if (this.bootstrapSource?.getSnapshot) {
-      try {
-        const snap = await this.bootstrapSource.getSnapshot();
-        if (snap) {
-          this.snapshot = normalizeSnapshot(snap);
-          this.rebuildArtifactIndexes();
-          this.latestKnownBlock = snap.lastProcessedBlock;
-          this.eventCounts = emptyPublicEventCounts();
-          this.eventStatsFromBlock = snap.lastProcessedBlock + 1;
-          this.eventStatsToBlock = snap.lastProcessedBlock;
-          this.eventStatsComplete = false;
-          snapshotLoaded = true;
-        }
-      } catch (err) {
-        console.warn(
-          "[IndexerService] bootstrap snapshot rejected, falling back to full sync:",
-          err,
-        );
-        this.snapshot = emptySnapshot();
-        this.rebuildArtifactIndexes();
-        snapshotLoaded = false;
-      }
+    if (this.lifecycle === "destroyed") {
+      throw new Error(
+        "[IndexerService] start() rejected: indexer is destroyed",
+      );
     }
-    if (snapshotLoaded && this.verifyBootstrapSnapshot) {
-      const ok = await this.verifyBootstrapHash();
-      if (!ok) {
-        this.snapshot = emptySnapshot();
-        this.rebuildArtifactIndexes();
-        this.latestKnownBlock = 0;
-        snapshotLoaded = false;
-      }
+    if (this.starting) {
+      throw new Error(
+        "[IndexerService] start() rejected: start already in progress",
+      );
     }
-    if (!snapshotLoaded && this.startBlock > 0) {
-      this.snapshot.lastProcessedBlock = this.startBlock - 1;
+    this.starting = true;
+    try {
+      return await this.runStart();
+    } finally {
+      this.starting = false;
     }
-    if (!snapshotLoaded && this.snapshot.lastProcessedBlock === 0) {
-      this.eventStatsFromBlock = Math.max(1, this.startBlock);
-      this.eventStatsComplete = true;
-    }
-
-    this.lifecycle = "syncing";
-    for (let attempt = 1; ; attempt++) {
-      try {
-        this.latestKnownBlock = await this.source.getLatestBlockNumber();
-        await this.processNewBlocks();
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
-          // The node may have been behind the previously observed tip. Refresh once.
-          this.latestKnownBlock = await this.source.getLatestBlockNumber();
-          await this.processNewBlocks();
-        }
-        if (
-          this.snapshot.lastProcessedBlock < this.latestKnownBlock &&
-          !this.reorgDetected
-        ) {
-          console.warn(
-            `[IndexerService] initial sync incomplete: processed up to block ` +
-              `${this.snapshot.lastProcessedBlock}, expected ${this.latestKnownBlock}. ` +
-              `Will continue from the next poll.`,
-          );
-        }
-        this.consecutiveFailures = 0;
-        this.lastError = undefined;
-        this.nextRetryAt = 0;
-        break;
-      } catch (err) {
-        this.consecutiveFailures = attempt;
-        this.lastError = err instanceof Error ? err.message : String(err);
-        if (attempt >= this.initialSyncMaxRetries) throw err;
-        const wait = Math.min(60_000, 2_000 * 2 ** (attempt - 1));
-        console.warn(
-          `[IndexerService] initial sync failed (attempt ${attempt}), retry in ${wait}ms:`,
-          err,
-        );
-        await new Promise((r) => setTimeout(r, wait));
-      }
-    }
-
-    const syncedToBlock = this.snapshot.lastProcessedBlock;
-
-    this.lifecycle = "ready";
-
-    return { syncedToBlock };
   }
 
-  /**
-   * Compare the bootstrap snapshot's last block hash with the chain source.
-   * Missing hash, a missing block, or a failed request accepts the snapshot.
-   * A present hash that differs discards it.
-   */
-  private async verifyBootstrapHash(): Promise<boolean> {
-    const n = this.snapshot.lastProcessedBlock;
-    const expected = this.snapshot.lastProcessedBlockHash;
-    if (!expected || n <= 0 || !this.source.getBlockHash) return true;
-    try {
-      const actual = await this.source.getBlockHash(n);
-      if (actual === undefined) {
-        console.warn(
-          `[IndexerService] snapshot block ${n} not found on node yet; accepting snapshot`,
-        );
-        return true;
+  private async runStart(): Promise<{ syncedToBlock: number }> {
+    // "syncing" is a failed catch-up, "ready" is a finished one. Both already
+    // have a cursor. Bootstrap would rewind it through applyStartBlock.
+    const resume = this.lifecycle === "syncing" || this.lifecycle === "ready";
+    if (!resume) {
+      this.lifecycle = "bootstrapping";
+      const snapshot = await this.initialLoad.load();
+      if (snapshot) {
+        this.installSnapshot(snapshot);
+        this.syncer.setLatestKnownBlock(snapshot.lastProcessedBlock);
+      } else {
+        this.applyStartBlock();
       }
-      if (actual === expected) return true;
-      console.error(
-        `[IndexerService] snapshot hash mismatch at block ${n}: snapshot=${expected} node=${actual}; falling back to full sync`,
-      );
-      return false;
-    } catch (err) {
-      console.warn(
-        "[IndexerService] snapshot hash check failed; accepting snapshot:",
-        err,
-      );
-      return true;
     }
+
+    // destroy() during load already set "destroyed". Leave it.
+    if (this.lifecycle !== "destroyed") {
+      this.lifecycle = "syncing";
+    }
+    await this.syncer.catchUp();
+    if (this.lifecycle === "destroyed") {
+      throw new Error(
+        "[IndexerService] start() aborted: indexer was destroyed",
+      );
+    }
+
+    const syncedToBlock = this.processedBlock;
+    this.lifecycle = "ready";
+    return { syncedToBlock };
   }
 
   /**
@@ -621,27 +184,14 @@ export class IndexerService {
       );
     }
     this.lifecycle = "live";
-
-    this.pollTimer = setInterval(async () => {
-      if (this.lifecycle === "destroyed") return;
-      if (Date.now() < this.nextRetryAt) return;
-      try {
-        const next = await this.source.getLatestBlockNumber();
-        this.onLatestBlock(next);
-      } catch (err) {
-        this.noteSyncFailure(err);
-      }
-    }, this.pollIntervalMs);
+    this.syncer.startPolling();
   }
 
   /** Stop polling and clear timer. */
   destroy(): void {
     this.lifecycle = "destroyed";
-    if (this.pollTimer !== undefined) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
-    this.listeners.clear();
+    this.syncer.stop();
+    this.changes.clear();
   }
 
   /**
@@ -650,8 +200,7 @@ export class IndexerService {
    * Only fires in the "live" lifecycle phase.
    */
   subscribe(listener: (payload: IndexerChangePayload) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return this.changes.subscribe(listener);
   }
 
   // ---------- Lifecycle ----------
@@ -667,225 +216,159 @@ export class IndexerService {
   }
 
   // ---------- Query API ----------
+  // Inherited from IndexerStore. Each line is the method callers already use.
+  // getWorld() — the single world row.
+  // getPlayer(id) — one player.
+  // getPlanet(id) — one planet.
+  // getPlanetRevealedCoords(id) — revealed coordinates for a planet.
+  // getPlanetEvents(id) — event list on a planet.
+  // getPlanetArtifacts(id) — artifacts stored on a planet.
+  // getArrival(id) — one arrival.
+  // getArtifact(id) — one artifact.
+  // getArtifactLocation(id) — where an artifact is.
+  // getTable(table, id?) — one row, or the whole table when id is omitted.
+  // getPlanetIds() — all planet ids currently in state.
+  // getPlayerIds() — all player ids (addresses).
+  // getArrivalIds() — all arrival ids.
+  // getArtifactIds() — all artifact ids.
+  // getArtifactCount() — total number of artifacts in state.
+  // getArtifactIdsByOwner(ownerId) — artifact ids whose owner is this address.
+  // getArtifactIdsByController(controllerId) — artifact ids controlled by this address.
+  // getPlayerMap() — id → PlayerState.
+  // getPlanetMap() — id → PlanetState.
+  // getArrivalMap() — id → ArrivalState.
+  // getRevealedCoordsMap() — id → PlanetRevealedCoordsState.
 
+  /** Sync progress, lifecycle, and the last error. */
   getStatus(): IndexerStatus {
+    const sync = this.syncer.status();
     return {
-      lastProcessedBlock: this.snapshot.lastProcessedBlock,
-      latestKnownBlock: this.latestKnownBlock,
-      isSyncing: this.isSyncing,
+      lastProcessedBlock: this.processedBlock,
+      latestKnownBlock: sync.latestKnownBlock,
+      isSyncing: sync.isSyncing,
       lifecycle: this.lifecycle,
-      consecutiveFailures: this.consecutiveFailures,
-      lastError: this.lastError,
+      consecutiveFailures: sync.consecutiveFailures,
+      lastError: this.forkDiverged ? this.forkError : sync.lastError,
+      forkDiverged: this.forkDiverged,
     };
+  }
+
+  /**
+   * false when the processed block is no longer on this tip.
+   * A hash RPC error is rethrown and does not latch.
+   */
+  private async considerFork(
+    source: IBlockEventSource,
+    observedTip: number,
+  ): Promise<boolean> {
+    if (this.forkDiverged) return false;
+    const processedBlockHash = this.processedBlockHash;
+    const processedBlock = this.processedBlock;
+    if (!processedBlockHash || !source.getBlockHash) return true;
+
+    if (observedTip < processedBlock) {
+      this.reportFork({ processedBlock, processedBlockHash, tip: observedTip });
+      return false;
+    }
+
+    const nodeHash = await source.getBlockHash(processedBlock);
+    if (nodeHash === processedBlockHash) return true;
+    this.reportFork({
+      processedBlock,
+      processedBlockHash,
+      tip: observedTip,
+      ...(nodeHash !== undefined ? { nodeHash } : {}),
+    });
+    return false;
+  }
+
+  private reportFork(divergence: ForkDivergence): void {
+    if (this.forkDiverged) return;
+    this.forkDiverged = true;
+    const node =
+      divergence.nodeHash !== undefined
+        ? `, node hash ${divergence.nodeHash}`
+        : "";
+    this.forkError =
+      `fork diverged at block ${divergence.processedBlock} ` +
+      `(stored ${divergence.processedBlockHash}${node}, tip ${divergence.tip})`;
+    console.error(`[IndexerService] ${this.forkError}`);
+    try {
+      this.onForkDiverged?.(divergence);
+    } catch (err) {
+      console.error("[IndexerService] onForkDiverged threw:", err);
+    }
   }
 
   /** Last block whose events have been applied. Use for tx inputs (e.g. next_change_block). */
   getProcessedBlockNumber(): number {
-    return this.snapshot.lastProcessedBlock;
+    return this.processedBlock;
   }
 
   /** Hash of the last applied block, when the source reported one. */
   getProcessedBlockHash(): string | undefined {
-    return this.snapshot.lastProcessedBlockHash;
+    return this.processedBlockHash;
   }
 
+  /** Highest block number observed from the chain source. */
   getLatestKnownBlock(): number {
-    return this.latestKnownBlock;
+    return this.syncer.status().latestKnownBlock;
   }
 
-  /** Public events fetched from the node, counted before same-id rows overwrite. */
-  getPublicEventStats(): PublicEventStats {
-    const counts = { ...this.eventCounts };
-    return {
-      fromBlock: this.eventStatsFromBlock,
-      toBlock: this.eventStatsToBlock,
-      counts,
-      total: PUBLIC_EVENT_NAMES.reduce(
-        (sum, eventName) => sum + counts[eventName],
-        0,
-      ),
-      complete: this.eventStatsComplete,
-    };
-  }
-
-  getWorld(): WorldState | undefined {
-    return this.snapshot.world.get("0") as WorldState | undefined;
-  }
-
-  getPlayer(id: TableId): PlayerState | undefined {
-    return this.snapshot.player.get(id) as PlayerState | undefined;
-  }
-
-  getPlanet(id: TableId): PlanetState | undefined {
-    return this.snapshot.planet.get(id) as PlanetState | undefined;
-  }
-
-  getPlanetRevealedCoords(id: TableId): PlanetRevealedCoordsState | undefined {
-    return this.snapshot.planet_revealed_coords.get(id) as
-      | PlanetRevealedCoordsState
-      | undefined;
-  }
-
-  getPlanetEvents(id: TableId): PlanetEventsState | undefined {
-    return this.snapshot.planet_events.get(id) as PlanetEventsState | undefined;
-  }
-
-  getPlanetArtifacts(id: TableId): PlanetArtifactsState | undefined {
-    return this.snapshot.planet_artifacts.get(id) as
-      | PlanetArtifactsState
-      | undefined;
-  }
-
-  getArrival(id: TableId): ArrivalState | undefined {
-    return this.snapshot.arrival.get(id) as ArrivalState | undefined;
-  }
-
-  getArtifact(id: TableId): ArtifactState | undefined {
-    return this.snapshot.artifact.get(id) as ArtifactState | undefined;
-  }
-
-  getArtifactLocation(id: TableId): ArtifactLocationState | undefined {
-    return this.snapshot.artifact_location.get(id) as
-      | ArtifactLocationState
-      | undefined;
-  }
-
-  /** Generic: get table row(s). Typed by table name for function inputs. */
-  getTable<K extends TableName>(
-    table: K,
-    id?: TableId,
-  ): TableRowType[K] | Record<string, TableRowType[K]> | undefined {
-    const map = this.snapshot[table] as Map<TableId, unknown>;
-    if (id !== undefined) return map.get(id) as TableRowType[K] | undefined;
-    return Object.fromEntries(map) as Record<string, TableRowType[K]>;
-  }
-
-  /**
-   * Full snapshot as JSON string (same shape as indexer GET /snapshot).
-   * Use for debugging or exporting the current synced state.
-   */
+  /** Full snapshot JSON, same shape as indexer GET /snapshot. */
   getSnapshotAsJsonString(): string {
-    const obj: Record<string, unknown> = {
-      lastProcessedBlock: this.snapshot.lastProcessedBlock,
-    };
-    if (this.snapshot.lastProcessedBlockHash !== undefined) {
-      obj.lastProcessedBlockHash = this.snapshot.lastProcessedBlockHash;
-    }
-    for (const table of TABLE_NAMES) {
-      const map = this.snapshot[table] as Map<TableId, unknown>;
-      obj[table] = Object.fromEntries(map);
-    }
-    return JSON.stringify(obj, (_key, value) =>
-      typeof value === "bigint" ? value.toString() : value,
-    );
-  }
-
-  /** All planet ids currently in state. */
-  getPlanetIds(): string[] {
-    return Array.from(this.snapshot.planet.keys());
-  }
-
-  /** All player ids (addresses). */
-  getPlayerIds(): string[] {
-    return Array.from(this.snapshot.player.keys());
-  }
-
-  /** All arrival ids. */
-  getArrivalIds(): string[] {
-    return Array.from(this.snapshot.arrival.keys());
-  }
-
-  /** All artifact ids. */
-  getArtifactIds(): string[] {
-    return Array.from(this.snapshot.artifact.keys());
-  }
-
-  /** Total number of artifacts in state. */
-  getArtifactCount(): number {
-    return this.snapshot.artifact.size;
-  }
-
-  /** Artifact ids owned by the given address (via owner field). */
-  getArtifactIdsByOwner(ownerId: string): string[] {
-    const set = this.ownerArtifactIndex.get(ownerId);
-    return set ? Array.from(set) : [];
-  }
-
-  /** Artifact ids controlled by the given address (via controller field). */
-  getArtifactIdsByController(controllerId: string): string[] {
-    const set = this.controllerArtifactIndex.get(controllerId);
-    return set ? Array.from(set) : [];
-  }
-
-  /** Full player map (id → PlayerState). */
-  getPlayerMap(): Map<string, PlayerState> {
-    return new Map(this.snapshot.player as Map<string, PlayerState>);
-  }
-
-  /** Full planet map (id → PlanetState). */
-  getPlanetMap(): Map<string, PlanetState> {
-    return new Map(this.snapshot.planet as Map<string, PlanetState>);
-  }
-
-  /** Full arrival map (id → ArrivalState). */
-  getArrivalMap(): Map<string, ArrivalState> {
-    return new Map(this.snapshot.arrival as Map<string, ArrivalState>);
-  }
-
-  /** Full revealed coords map (id → PlanetRevealedCoordsState). */
-  getRevealedCoordsMap(): Map<string, PlanetRevealedCoordsState> {
-    return new Map(
-      this.snapshot.planet_revealed_coords as Map<
-        string,
-        PlanetRevealedCoordsState
-      >,
-    );
+    return this.toJsonString();
   }
 
   /**
    * Returns a promise that resolves when the indexer has processed
    * at least up to the given block number.
+   *
+   * Before "live", subscriber notifications never fire, so a failed syncNow
+   * is rethrown instead of waiting out the timeout. Once live, a failed
+   * immediate sync can still be recovered by a later poll; the timeout error
+   * keeps that failure as its message and cause.
    */
   async waitForBlock(blockNumber: number, timeoutMs = 30_000): Promise<void> {
-    console.log(
-      `[DEBUG waitForBlock] target=${blockNumber}, current=${this.snapshot.lastProcessedBlock}`,
-    );
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] already synced, resolving immediately`);
+    if (this.processedBlock >= blockNumber) {
       return;
     }
 
+    let syncError: unknown;
     try {
-      await this.syncToLatest();
+      await this.syncer.syncNow();
     } catch (err) {
+      syncError = err;
       console.warn("[IndexerService] immediate sync failed:", err);
     }
 
-    if (this.snapshot.lastProcessedBlock >= blockNumber) {
-      console.log(`[DEBUG waitForBlock] immediate sync reached ${blockNumber}`);
+    if (this.processedBlock >= blockNumber) {
       return;
     }
 
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        unsub();
-        reject(
-          new Error(
-            `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`,
-          ),
-        );
-      }, timeoutMs);
+    if (syncError !== undefined && this.lifecycle !== "live") {
+      throw syncError;
+    }
 
-      const unsub = this.subscribe(() => {
-        if (this.snapshot.lastProcessedBlock >= blockNumber) {
-          console.log(
-            `[DEBUG waitForBlock] synced to block ${this.snapshot.lastProcessedBlock}, resolving`,
-          );
-          clearTimeout(timer);
-          unsub();
-          resolve();
-        }
-      });
-    });
+    const reason =
+      syncError instanceof Error
+        ? syncError.message
+        : syncError !== undefined
+          ? String(syncError)
+          : undefined;
+    const timeoutError = new Error(
+      reason === undefined
+        ? `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms`
+        : `waitForBlock(${blockNumber}) timed out after ${timeoutMs}ms: ${reason}`,
+    );
+    if (syncError !== undefined) {
+      (timeoutError as Error & { cause?: unknown }).cause = syncError;
+    }
+
+    return this.changes.waitUntil(
+      () => this.processedBlock >= blockNumber,
+      timeoutMs,
+      timeoutError,
+    );
   }
 }
