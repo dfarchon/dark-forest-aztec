@@ -48,19 +48,6 @@ export const PUBLIC_EVENT_NAMES = [
 
 export type PublicEventName = (typeof PUBLIC_EVENT_NAMES)[number];
 
-/** Event counts returned for one fetched block range. */
-export type PublicEventBatchCounts = Partial<Record<PublicEventName, number>>;
-
-/** Cumulative public event counts for the blocks processed by the indexer. */
-export interface PublicEventStats {
-  fromBlock: number;
-  toBlock: number;
-  counts: Record<PublicEventName, number>;
-  total: number;
-  /** False when an off-chain snapshot skipped part of the event history. */
-  complete: boolean;
-}
-
 /** Row type per table — use for typed query and function inputs (contract args). */
 export type TableRowType = {
   world: WorldState;
@@ -110,8 +97,6 @@ export interface BlockUpdates {
   toBlock: number;
   toBlockHash?: string;
   updates: TableUpdate[];
-  /** Raw decoded events in this range, before rows with the same id overwrite. */
-  eventCounts?: PublicEventBatchCounts;
 }
 
 /** API for fetching block data: used by IndexerService for init and sync. */

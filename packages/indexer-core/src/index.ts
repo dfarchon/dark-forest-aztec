@@ -1,5 +1,5 @@
-export type { StorageContractAddresses } from "./AztecNodeSource.ts";
-export { createAztecNodeBlockSource } from "./AztecNodeSource.ts";
+export type { StorageContractAddresses } from "./service/AztecNodeSource.ts";
+export { createAztecNodeBlockSource } from "./service/AztecNodeSource.ts";
 
 export {
   normalizeSnapshot,
@@ -32,9 +32,7 @@ export type {
   IndexerLifecycle,
   IndexerSnapshot,
   IndexerStatus,
-  PublicEventBatchCounts,
   PublicEventName,
-  PublicEventStats,
   TableId,
   TableName,
   TableRowType,

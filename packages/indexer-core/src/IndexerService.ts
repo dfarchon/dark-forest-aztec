@@ -15,7 +15,6 @@ import { BlockSyncer, type SyncOptions } from "./service/BlockSyncer.ts";
 import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
-  IBlockEventSource,
   IndexerChangePayload,
   IndexerLifecycle,
   IndexerSnapshot,
@@ -24,16 +23,10 @@ import type {
 import { TABLE_NAMES } from "./types.ts";
 
 export interface IndexerServiceOptions {
-  /**
-   * Chain data source: used for getLatestBlockNumber and getBlockUpdates for the entire
-   * lifecycle. All blocks after the bootstrap (or after startBlock) are maintained via
-   * this source (e.g. AztecNode-based source).
-   */
-  source: IBlockEventSource;
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
-  /** Snapshot and start block for the first sync. */
-  bootstrap?: BootstrapOptions;
+  /** Chain source, optional off-chain snapshot, and start block. */
+  bootstrap: BootstrapOptions;
   /** Polling, chunk size, and initial-sync retries. */
   sync?: SyncOptions;
 }
@@ -51,10 +44,10 @@ export class IndexerService extends IndexerStore {
   constructor(options: IndexerServiceOptions) {
     const bootstrap = options.bootstrap;
     const sync = options.sync;
-    super(Math.max(0, bootstrap?.startBlock ?? 0));
+    super(Math.max(0, bootstrap.startBlock ?? 0));
     this.onBlockProcessed = options.onBlockProcessed;
     this.syncer = new BlockSyncer({
-      source: options.source,
+      source: bootstrap.source,
       store: this,
       debounceMs: sync?.debounceMs ?? 1000,
       pollIntervalMs: sync?.pollIntervalMs ?? 2000,
@@ -62,7 +55,6 @@ export class IndexerService extends IndexerStore {
       maxBackoffMs: Math.max(0, sync?.maxBackoffMs ?? 0),
       initialSyncMaxRetries: sync?.initialSyncMaxRetries,
       onInitialSyncRetry: sync?.onInitialSyncRetry,
-      isStopped: () => this.lifecycle === "destroyed",
       onChunk: (fromBlock, toBlock, committed) => {
         this.onBlockProcessed?.(fromBlock, toBlock);
         this.notifyListeners({
@@ -73,11 +65,7 @@ export class IndexerService extends IndexerStore {
         });
       },
     });
-    this.initialLoad = new InitialStateLoader({
-      bootstrapSource: bootstrap?.source,
-      source: options.source,
-      verify: bootstrap?.verifySnapshot ?? false,
-    });
+    this.initialLoad = new InitialStateLoader(bootstrap);
   }
 
   /** Override the onBlockProcessed callback after construction. */
@@ -115,16 +103,11 @@ export class IndexerService extends IndexerStore {
    */
   async start(): Promise<{ syncedToBlock: number }> {
     this.lifecycle = "bootstrapping";
-    const loaded = await this.initialLoad.load();
-    if (loaded.snapshot) {
-      this.replaceSnapshot(loaded.snapshot);
-      this.syncer.setTip(loaded.snapshot.lastProcessedBlock);
+    const snapshot = await this.initialLoad.load();
+    if (snapshot) {
+      this.installSnapshot(snapshot);
+      this.syncer.setLatestKnownBlock(snapshot.lastProcessedBlock);
     } else {
-      if (loaded.clear) this.clear();
-      if (loaded.statsResetBlock !== undefined) {
-        this.resetStatsAfterSnapshot(loaded.statsResetBlock);
-      }
-      if (loaded.resetTip) this.syncer.setTip(0);
       this.applyStartBlock();
     }
 
@@ -185,7 +168,6 @@ export class IndexerService extends IndexerStore {
 
   // ---------- Query API ----------
   // Inherited from IndexerStore. Each line is the method callers already use.
-  // getPublicEventStats() — counts from the node, before same-id rows overwrite.
   // getWorld() — the single world row.
   // getPlayer(id) — one player.
   // getPlanet(id) — one planet.

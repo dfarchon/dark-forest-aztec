@@ -31,7 +31,6 @@ test("syncNow fetches updates while a retry backoff is still active", async () =
     maxBlocksPerRequest: 100,
     maxBackoffMs: 60_000,
     now: () => now,
-    isStopped: () => false,
     onChunk: () => {},
   });
 

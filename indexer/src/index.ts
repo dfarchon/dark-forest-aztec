@@ -120,8 +120,7 @@ async function main(): Promise<void> {
     requestTimeoutMs: 30_000,
   });
   const indexer = new IndexerService({
-    source,
-    bootstrap: { startBlock: config.indexerStartBlock },
+    bootstrap: { source, startBlock: config.indexerStartBlock },
     sync: {
       debounceMs: 1000,
       pollIntervalMs: 2000,

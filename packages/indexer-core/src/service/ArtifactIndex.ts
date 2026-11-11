@@ -13,6 +13,17 @@ function addTo(
   set.add(artifactId);
 }
 
+function removeFrom(
+  index: Map<string, Set<string>>,
+  key: string,
+  artifactId: string,
+): void {
+  const set = index.get(key);
+  if (!set) return;
+  set.delete(artifactId);
+  if (set.size === 0) index.delete(key);
+}
+
 /**
  * Secondary indexes from artifact owner and controller to artifact ids.
  * Rebuilt from a snapshot, then maintained on each artifact row upsert.
@@ -27,15 +38,13 @@ export class ArtifactIndex {
     newState: ArtifactState,
   ): void {
     if (oldState?.owner !== newState.owner) {
-      if (oldState) {
-        this.byOwnerIndex.get(oldState.owner)?.delete(artifactId);
-      }
+      if (oldState) removeFrom(this.byOwnerIndex, oldState.owner, artifactId);
       if (newState.owner) addTo(this.byOwnerIndex, newState.owner, artifactId);
     }
 
     if (oldState?.controller !== newState.controller) {
       if (oldState) {
-        this.byControllerIndex.get(oldState.controller)?.delete(artifactId);
+        removeFrom(this.byControllerIndex, oldState.controller, artifactId);
       }
       if (newState.controller) {
         addTo(this.byControllerIndex, newState.controller, artifactId);

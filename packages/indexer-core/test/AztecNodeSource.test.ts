@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readDecodedUpdate } from "../src/AztecNodeSource.ts";
+import { readDecodedUpdate } from "../src/service/AztecNodeSource.ts";
 import { callWithBoundedRetry } from "../src/utils/callWithBoundedRetry.ts";
 
 test("readDecodedUpdate keeps id, state, and an optional block number", () => {

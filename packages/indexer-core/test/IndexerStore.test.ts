@@ -60,14 +60,12 @@ function updates(
   fromBlock: number,
   toBlock: number,
   rows: TableUpdate<Raw>[],
-  eventCounts?: BlockUpdates["eventCounts"],
 ): BlockUpdates {
   return {
     fromBlock,
     toBlock,
     toBlockHash: `h${toBlock}`,
     updates: rows,
-    eventCounts,
   };
 }
 
@@ -89,34 +87,26 @@ function emptySnapshot(block: number): IndexerSnapshot {
   return snap;
 }
 
-test("commit writes every row or none, and counts events only on success", () => {
+test("commit writes every row or none", () => {
   const store = new IndexerStore(1);
-  const first = store.commit(
-    updates(1, 4, [arrival("0xok")], { ArrivalUpdate: 1 }),
-  );
+  const first = store.commit(updates(1, 4, [arrival("0xok")]));
   assert.equal(first.toBlock, 4);
   assert.deepEqual(first.tables, ["arrival"]);
   assert.deepEqual(first.updatedIdsByTable.arrival, ["0xok"]);
   assert.equal(store.processedBlock, 4);
   assert.equal(store.processedBlockHash, "h4");
-  assert.equal(store.getPublicEventStats().counts.ArrivalUpdate, 1);
   assert.ok(store.getArrival("0xok"));
 
   const bad = arrival("0xbad");
   bad.state.arrival_type = 2n ** 64n;
   assert.throws(
-    () =>
-      store.commit(
-        updates(5, 6, [arrival("0xnext"), bad], { ArrivalUpdate: 9 }),
-      ),
+    () => store.commit(updates(5, 6, [arrival("0xnext"), bad])),
     /overflow/,
   );
 
   assert.equal(store.getArrival("0xnext"), undefined);
   assert.equal(store.processedBlock, 4);
   assert.equal(store.processedBlockHash, "h4");
-  assert.equal(store.getPublicEventStats().counts.ArrivalUpdate, 1);
-  assert.equal(store.getPublicEventStats().toBlock, 4);
 });
 
 test("commit moves an artifact between owner and controller indexes", () => {
@@ -133,19 +123,13 @@ test("commit moves an artifact between owner and controller indexes", () => {
   assert.equal(store.getArtifactCount(), 1);
 });
 
-test("replaceSnapshot installs rows and marks earlier event stats incomplete", () => {
+test("replaceSnapshot installs rows and moves the cursor to the snapshot block", () => {
   const store = new IndexerStore(1);
-  store.commit(updates(1, 2, [], { WorldUpdate: 4 }));
+  store.commit(updates(1, 2, []));
 
   const block = store.replaceSnapshot(emptySnapshot(50));
   assert.equal(block, 50);
   assert.equal(store.processedBlock, 50);
   assert.equal(store.processedBlockHash, "snap");
   assert.equal(store.getArrival("0xkept")?.player, "0xp1");
-
-  const stats = store.getPublicEventStats();
-  assert.equal(stats.complete, false);
-  assert.equal(stats.fromBlock, 51);
-  assert.equal(stats.toBlock, 50);
-  assert.equal(stats.total, 0);
 });

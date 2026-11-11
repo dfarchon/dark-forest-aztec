@@ -41,7 +41,6 @@ export interface BlockSyncerOptions {
   onInitialSyncRetry?: SyncOptions["onInitialSyncRetry"];
   /** Clock for backoff. Tests pass a fake; production uses Date.now. */
   now?: () => number;
-  isStopped: () => boolean;
   onChunk: (
     fromBlock: number,
     toBlock: number,
@@ -71,11 +70,11 @@ export class BlockSyncer {
   private readonly initialSyncMaxRetries: number;
   private readonly onInitialSyncRetry?: SyncOptions["onInitialSyncRetry"];
   private readonly now: () => number;
-  private readonly isStopped: () => boolean;
   private readonly onChunk: BlockSyncerOptions["onChunk"];
   private readonly debouncedProcess: DebouncedFunc<() => void>;
 
-  private tip = 0;
+  private stopped = false;
+  private latestKnownBlock = 0;
   private isSyncing = false;
   private syncPromise: Promise<void> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -95,7 +94,6 @@ export class BlockSyncer {
     );
     this.onInitialSyncRetry = options.onInitialSyncRetry;
     this.now = options.now ?? Date.now;
-    this.isStopped = options.isStopped;
     this.onChunk = options.onChunk;
 
     // Background syncs are fire-and-forget: log failures here so a rejected
@@ -103,7 +101,7 @@ export class BlockSyncer {
     // the last committed block, after the backoff if one is set.
     this.debouncedProcess = lodash.debounce(
       () => {
-        if (this.isStopped()) return;
+        if (this.stopped) return;
         if (this.now() < this.nextRetryAt) return;
         this.run()
           .then(() => this.clearFailure())
@@ -116,7 +114,7 @@ export class BlockSyncer {
 
   status(): SyncerStatus {
     return {
-      latestKnownBlock: this.tip,
+      latestKnownBlock: this.latestKnownBlock,
       isSyncing: this.isSyncing,
       consecutiveFailures: this.consecutiveFailures,
       lastError: this.lastError,
@@ -124,9 +122,9 @@ export class BlockSyncer {
     };
   }
 
-  /** Replace the known tip. Used when a bootstrap snapshot sets or clears it. */
-  setTip(block: number): void {
-    this.tip = block;
+  /** Replace the known latest block. Used when an accepted bootstrap snapshot sets it. */
+  setLatestKnownBlock(block: number): void {
+    this.latestKnownBlock = block;
   }
 
   /**
@@ -136,17 +134,17 @@ export class BlockSyncer {
   async catchUp(): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
-        this.tip = await this.source.getLatestBlockNumber();
+        this.latestKnownBlock = await this.source.getLatestBlockNumber();
         await this.run();
-        if (this.store.processedBlock < this.tip) {
-          // The node may have been behind the previously observed tip. Refresh once.
-          this.tip = await this.source.getLatestBlockNumber();
+        if (this.store.processedBlock < this.latestKnownBlock) {
+          // The node may have been behind the previously observed latest block. Refresh once.
+          this.latestKnownBlock = await this.source.getLatestBlockNumber();
           await this.run();
         }
-        if (this.store.processedBlock < this.tip) {
+        if (this.store.processedBlock < this.latestKnownBlock) {
           console.warn(
             `[IndexerService] initial sync incomplete: processed up to block ` +
-              `${this.store.processedBlock}, expected ${this.tip}. ` +
+              `${this.store.processedBlock}, expected ${this.latestKnownBlock}. ` +
               `Will continue from the next poll.`,
           );
         }
@@ -176,11 +174,11 @@ export class BlockSyncer {
 
   /** One poll tick. Skipped entirely while a background backoff is in effect. */
   async pollOnce(): Promise<void> {
-    if (this.isStopped()) return;
+    if (this.stopped) return;
     if (this.now() < this.nextRetryAt) return;
     try {
       const next = await this.source.getLatestBlockNumber();
-      this.tip = Math.max(this.tip, next);
+      this.latestKnownBlock = Math.max(this.latestKnownBlock, next);
       this.debouncedProcess();
     } catch (err) {
       this.noteSyncFailure(err);
@@ -188,6 +186,7 @@ export class BlockSyncer {
   }
 
   stop(): void {
+    this.stopped = true;
     this.debouncedProcess.cancel();
     if (this.pollTimer !== undefined) {
       clearInterval(this.pollTimer);
@@ -196,14 +195,14 @@ export class BlockSyncer {
   }
 
   /**
-   * Fetch the tip and apply any missing blocks immediately, even during a
-   * background backoff. Concurrent callers share the in-flight run.
+   * Fetch the latest known block and apply any missing blocks immediately,
+   * even during a background backoff. Concurrent callers share the in-flight run.
    */
   async syncNow(): Promise<void> {
     const latest = await this.source.getLatestBlockNumber();
-    this.tip = Math.max(this.tip, latest);
+    this.latestKnownBlock = Math.max(this.latestKnownBlock, latest);
     await this.run();
-    if (this.store.processedBlock < this.tip) {
+    if (this.store.processedBlock < this.latestKnownBlock) {
       await this.run();
     }
     this.clearFailure();
@@ -224,22 +223,22 @@ export class BlockSyncer {
   }
 
   private async runPending(): Promise<void> {
-    if (this.isStopped()) return;
+    if (this.stopped) return;
 
     let fromBlock = this.store.processedBlock + 1;
-    const toBlock = this.tip;
+    const toBlock = this.latestKnownBlock;
     if (fromBlock > toBlock) return;
 
     this.isSyncing = true;
     try {
       while (fromBlock <= toBlock) {
-        if (this.isStopped()) return;
+        if (this.stopped) return;
         const chunkEnd = Math.min(
           fromBlock + this.maxBlocksPerRequest - 1,
           toBlock,
         );
         const updates = await this.source.getBlockUpdates(fromBlock, chunkEnd);
-        if (this.isStopped()) return;
+        if (this.stopped) return;
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
         const committed = this.store.commit(updates);

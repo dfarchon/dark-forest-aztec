@@ -12,7 +12,6 @@ import type {
 import type {
   BlockUpdates,
   IndexerSnapshot,
-  PublicEventStats,
   TableId,
   TableName,
   TableRowType,
@@ -25,7 +24,6 @@ import {
   rawIdToTableId,
 } from "../utils/convert.ts";
 import { ArtifactIndex } from "./ArtifactIndex.ts";
-import { EventStats } from "./EventStats.ts";
 
 type Raw = Record<string, unknown>;
 
@@ -57,12 +55,10 @@ function emptySnapshot(): IndexerSnapshot {
 export class IndexerStore {
   private snapshot: IndexerSnapshot = emptySnapshot();
   private readonly artifactIndex = new ArtifactIndex();
-  private readonly eventStats: EventStats;
   private readonly startBlock: number;
 
   constructor(startBlock: number) {
     this.startBlock = startBlock;
-    this.eventStats = new EventStats(startBlock);
   }
 
   get processedBlock(): number {
@@ -74,8 +70,8 @@ export class IndexerStore {
   }
 
   /**
-   * Convert every row first, then write them, update artifact indexes, and
-   * count events. A bad row throws before any of this snapshot changes.
+   * Convert every row first, then write them and update artifact indexes.
+   * A bad row throws before any of this snapshot changes.
    */
   commit(updates: BlockUpdates): CommittedChunk {
     const pending: Array<{ table: TableName; id: TableId; state: unknown }> =
@@ -100,7 +96,6 @@ export class IndexerStore {
     }
 
     const committedTo = updates.toBlock;
-    this.eventStats.add(updates.eventCounts, committedTo);
     this.snapshot.lastProcessedBlock = committedTo;
     this.snapshot.lastProcessedBlockHash = updates.toBlockHash;
 
@@ -111,18 +106,21 @@ export class IndexerStore {
     };
   }
 
-  /** Replace all tables from a snapshot and mark event history before it incomplete. */
+  /** Replace all tables from a snapshot. */
   replaceSnapshot(snapshot: IndexerSnapshot): number {
-    this.snapshot = normalizeSnapshot(snapshot);
+    return this.installSnapshot(normalizeSnapshot(snapshot));
+  }
+
+  /** Same as replaceSnapshot, for a snapshot that normalizeSnapshot already converted. */
+  protected installSnapshot(snapshot: IndexerSnapshot): number {
+    this.snapshot = snapshot;
     this.artifactIndex.rebuild(
       this.snapshot.artifact as Map<string, ArtifactState>,
     );
-    const block = snapshot.lastProcessedBlock;
-    this.eventStats.resetAfterSnapshot(block);
-    return block;
+    return snapshot.lastProcessedBlock;
   }
 
-  /** Drop tables back to empty. Event stats are left for the caller to adjust. */
+  /** Drop tables back to empty. */
   clear(): void {
     this.snapshot = emptySnapshot();
     this.artifactIndex.rebuild(
@@ -132,36 +130,12 @@ export class IndexerStore {
 
   /**
    * No usable snapshot. The cursor starts just before startBlock so the next
-   * sync includes that block. An empty history is marked complete from there,
-   * including after a rejected snapshot reset the stats.
+   * sync includes that block.
    */
   applyStartBlock(): void {
-    if (this.startBlock > 0) this.resetTo(this.startBlock - 1);
-    if (this.processedBlock === 0) {
-      this.markStatsComplete(Math.max(1, this.startBlock));
+    if (this.startBlock > 0) {
+      this.snapshot.lastProcessedBlock = this.startBlock - 1;
     }
-  }
-
-  /** Point the cursor at `block` without touching rows. Used when starting mid-chain. */
-  private resetTo(block: number): void {
-    this.snapshot.lastProcessedBlock = block;
-  }
-
-  private markStatsComplete(fromBlock: number): void {
-    this.eventStats.markComplete(fromBlock);
-  }
-
-  /**
-   * A snapshot was accepted far enough to reset event history, then discarded
-   * (hash mismatch). Tables are cleared separately.
-   */
-  resetStatsAfterSnapshot(block: number): void {
-    this.eventStats.resetAfterSnapshot(block);
-  }
-
-  /** Counts from the node, before same-id rows overwrite. */
-  getPublicEventStats(): PublicEventStats {
-    return this.eventStats.get();
   }
 
   /** The single world row. */

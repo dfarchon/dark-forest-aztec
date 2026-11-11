@@ -33,7 +33,6 @@ import type {
   PlanetRevealedCoordsState,
   PlanetState,
   PlayerState,
-  PublicEventStats,
   StorageContractAddresses,
   TableId,
   WorldState,
@@ -317,16 +316,6 @@ export class IndexerConnection {
     return this.indexer.getProcessedBlockNumber();
   }
 
-  /** Cumulative public event counts for the block range read from the node. */
-  public getPublicEventStats(): PublicEventStats {
-    return this.indexer.getPublicEventStats();
-  }
-
-  /** Alias of getPublicEventStats(), for the browser console. */
-  public publicEventStats(): PublicEventStats {
-    return this.getPublicEventStats();
-  }
-
   // -------------------------------------------------------------------------
   // Read API (replaces ContractsAPI getter methods)
   // These read from the in-memory snapshot — synchronous, no network calls.
@@ -555,11 +544,10 @@ export async function createIndexerConnection(
     : undefined;
 
   const indexer = new IndexerService({
-    source,
     bootstrap: {
-      source: bootstrapSource,
+      source,
+      bootstrapSource,
       startBlock: config.startBlock,
-      ...(config.bootstrapUrl ? { verifySnapshot: true } : {}),
     },
     sync: {
       debounceMs: config.debounceMs,

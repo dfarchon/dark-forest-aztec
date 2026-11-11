@@ -41,11 +41,10 @@ import type {
   BlockTipTag,
   BlockUpdates,
   IBlockEventSource,
-  PublicEventBatchCounts,
   PublicEventName,
   TableName,
-} from "./types.ts";
-import { callWithBoundedRetry } from "./utils/callWithBoundedRetry.ts";
+} from "../types.ts";
+import { callWithBoundedRetry } from "../utils/callWithBoundedRetry.ts";
 
 /** Decoded storage event shape: id, optional block_number, state. */
 type DecodedUpdate = {
@@ -297,7 +296,6 @@ export function createAztecNodeBlockSource(
           fromBlock,
           toBlock: fromBlock - 1,
           updates: [],
-          eventCounts: {},
         };
       }
 
@@ -313,7 +311,6 @@ export function createAztecNodeBlockSource(
         : undefined;
 
       const updates: BlockUpdates["updates"] = [];
-      const eventCounts: PublicEventBatchCounts = {};
 
       for (const {
         table,
@@ -334,8 +331,6 @@ export function createAztecNodeBlockSource(
               }),
             `getPublicLogsByTags(${eventName})`,
           );
-          eventCounts[eventName] =
-            (eventCounts[eventName] ?? 0) + page.events.length;
           for (const ev of page.events) {
             const id = table === "world" ? "0" : toIdStr(ev.id);
             updates.push({ table, id, state: ev.state });
@@ -349,7 +344,6 @@ export function createAztecNodeBlockSource(
         toBlock: end,
         toBlockHash: anchorHash?.toString(),
         updates,
-        eventCounts,
       };
     },
   };

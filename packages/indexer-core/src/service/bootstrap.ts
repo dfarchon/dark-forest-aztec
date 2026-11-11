@@ -2,79 +2,51 @@ import type { IBlockEventSource, IndexerSnapshot } from "../types.ts";
 import { normalizeSnapshot } from "../utils/convert.ts";
 
 /**
- * Optional initial state. Used only by start(); later blocks come from the chain source.
+ * Initial state for start(). Later blocks continue from `source`.
  */
 export interface BootstrapOptions {
+  /** Chain source. Checks a snapshot hash, then supplies every later block. */
+  source: IBlockEventSource;
   /**
-   * Used only at start() to load initial state up to block X.
-   * Only getSnapshot() is called; never used for getLatestBlockNumber or getBlockUpdates.
-   * Typical: off-chain indexer API (e.g. OffChainBlockSource).
+   * Off-chain indexer. Only getSnapshot() is called. The indexer follows the
+   * proven tip, so a returned snapshot is checked against `source`.
+   * Absent: start from startBlock.
    */
-  source?: IBlockEventSource;
+  bootstrapSource?: IBlockEventSource;
   /**
    * When no bootstrap snapshot is used, start processing from this block (inclusive).
-   * Ignored if source.getSnapshot() returns a snapshot. Default 0 (process from block 1).
+   * Ignored if bootstrapSource.getSnapshot() returns a snapshot. Default 0 (process from block 1).
    */
   startBlock?: number;
-  /**
-   * Before using a bootstrap snapshot, check its last block hash on the chain source;
-   * discard it on mismatch. Default false.
-   */
-  verifySnapshot?: boolean;
-}
-
-export interface LoadInitialStateOptions {
-  bootstrapSource?: IBlockEventSource;
-  source: IBlockEventSource;
-  /** Check the snapshot's last block hash against `source` before accepting it. */
-  verify: boolean;
-}
-
-/**
- * What start() should do to the store. This function does not write the store:
- * a rejected snapshot is described, not applied.
- */
-export interface InitialState {
-  /** Normalized snapshot to install. Absent means keep or clear existing tables. */
-  snapshot?: IndexerSnapshot;
-  /** Drop current tables. Set when bootstrap throws or the hash does not match. */
-  clear: boolean;
-  /**
-   * Block of a snapshot that was rejected after its event history would have
-   * been marked incomplete. The caller resets stats to this block, then the
-   * empty-cursor path may mark them complete again.
-   */
-  statsResetBlock?: number;
-  /** Hash mismatch: the known tip from the rejected snapshot must not stick. */
-  resetTip: boolean;
 }
 
 /**
  * Bootstrap inputs captured at construction. start() calls load();
- * the indexer does not keep the sources or the verify flag itself.
+ * the indexer does not keep the sources itself.
  */
 export class InitialStateLoader {
-  private readonly options: LoadInitialStateOptions;
+  private readonly options: BootstrapOptions;
 
-  constructor(options: LoadInitialStateOptions) {
+  constructor(options: BootstrapOptions) {
     this.options = options;
   }
 
-  load(): Promise<InitialState> {
+  /** A usable snapshot, or undefined when start() should sync from startBlock. */
+  load(): Promise<IndexerSnapshot | undefined> {
     return loadInitialState(this.options);
   }
 }
 
 /**
  * Load an optional bootstrap snapshot and decide whether it is usable.
- * Hash check, missing hash, and a failed hash request follow the same rules
- * as before: only a present hash that differs discards the snapshot.
+ * A snapshot is always checked against the chain source. Only a present hash
+ * that differs discards it; a missing hash or a failed hash request accepts it.
+ * This function does not write the store. A rejected snapshot is not returned.
  */
 export async function loadInitialState(
-  options: LoadInitialStateOptions,
-): Promise<InitialState> {
-  const none: InitialState = { clear: false, resetTip: false };
-  if (!options.bootstrapSource?.getSnapshot) return none;
+  options: BootstrapOptions,
+): Promise<IndexerSnapshot | undefined> {
+  if (!options.bootstrapSource?.getSnapshot) return undefined;
 
   let snap: IndexerSnapshot | null | undefined;
   try {
@@ -85,19 +57,13 @@ export async function loadInitialState(
       "[IndexerService] bootstrap snapshot rejected, falling back to full sync:",
       err,
     );
-    return { clear: true, resetTip: false };
+    return undefined;
   }
-  if (!snap) return none;
+  if (!snap) return undefined;
 
-  if (options.verify && !(await snapshotHashMatches(options.source, snap))) {
-    return {
-      clear: true,
-      resetTip: true,
-      statsResetBlock: snap.lastProcessedBlock,
-    };
-  }
+  if (!(await snapshotHashMatches(options.source, snap))) return undefined;
 
-  return { snapshot: snap, clear: false, resetTip: false };
+  return snap;
 }
 
 /**
