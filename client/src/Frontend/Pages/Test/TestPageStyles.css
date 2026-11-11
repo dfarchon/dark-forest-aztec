@@ -414,6 +414,18 @@
   font-weight: 500;
 }
 
+.test-page__split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 720px) {
+  .test-page__split {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Light mode overrides — light page background so dark text is readable
    --------------------------------------------------------------------------- */

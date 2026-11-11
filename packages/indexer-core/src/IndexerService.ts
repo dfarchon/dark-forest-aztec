@@ -119,8 +119,13 @@ export class IndexerService extends IndexerStore {
    *
    * @returns syncedToBlock — the block number at which the snapshot is consistent.
    *   All subsequent subscriber notifications correspond to blocks after this point.
+   *   bootstrapBlock is the off-chain snapshot installed by this call, or undefined
+   *   when this call did not install one (none, discarded, or a resumed catch-up).
    */
-  async start(): Promise<{ syncedToBlock: number }> {
+  async start(): Promise<{
+    syncedToBlock: number;
+    bootstrapBlock?: number;
+  }> {
     if (this.lifecycle === "destroyed") {
       throw new Error(
         "[IndexerService] start() rejected: indexer is destroyed",
@@ -139,16 +144,21 @@ export class IndexerService extends IndexerStore {
     }
   }
 
-  private async runStart(): Promise<{ syncedToBlock: number }> {
+  private async runStart(): Promise<{
+    syncedToBlock: number;
+    bootstrapBlock?: number;
+  }> {
     // "syncing" is a failed catch-up, "ready" is a finished one. Both already
     // have a cursor. Bootstrap would rewind it through applyStartBlock.
     const resume = this.lifecycle === "syncing" || this.lifecycle === "ready";
+    let bootstrapBlock: number | undefined;
     if (!resume) {
       this.lifecycle = "bootstrapping";
       const snapshot = await this.initialLoad.load();
       if (snapshot) {
         this.installSnapshot(snapshot);
         this.syncer.setLatestKnownBlock(snapshot.lastProcessedBlock);
+        bootstrapBlock = snapshot.lastProcessedBlock;
       } else {
         this.applyStartBlock();
       }
@@ -167,7 +177,7 @@ export class IndexerService extends IndexerStore {
 
     const syncedToBlock = this.processedBlock;
     this.lifecycle = "ready";
-    return { syncedToBlock };
+    return { syncedToBlock, bootstrapBlock };
   }
 
   /**

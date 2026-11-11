@@ -16,6 +16,7 @@ import { GifMaker } from "./GifMaker";
 import LandingPage from "./LandingPage";
 import { NotFoundPage } from "./NotFoundPage";
 import {
+  IndexerCompareTestPage,
   IndexerTestPage,
   TxExecutorTestPage,
   WalletManagerTestPage,
@@ -43,6 +44,8 @@ function TestHub() {
           <Link to="/">← Home</Link>
           <span className="test-page__nav-sep"> · </span>
           <Link to="/test/indexer">Indexer</Link>
+          <span className="test-page__nav-sep"> · </span>
+          <Link to="/test/indexer-compare">Indexer compare</Link>
           <span className="test-page__nav-sep"> · </span>
           <Link to="/test/wallet">WalletManager</Link>
           <span className="test-page__nav-sep"> · </span>
@@ -87,6 +90,10 @@ function App() {
             )}
             <Route path="/test" element={<TestHub />} />
             <Route path="/test/indexer" element={<IndexerTestPage />} />
+            <Route
+              path="/test/indexer-compare"
+              element={<IndexerCompareTestPage />}
+            />
             <Route path="/test/wallet" element={<WalletManagerTestPage />} />
             <Route path="/test/tx-executor" element={<TxExecutorTestPage />} />
             <Route path="*" element={<NotFoundPage />} />

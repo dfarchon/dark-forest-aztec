@@ -1092,7 +1092,9 @@ test("a matching snapshot is kept and a mismatch is dropped", async () => {
       startBlock: 1,
     },
   });
-  await matched.start();
+  const kept = await matched.start();
+  assert.equal(kept.bootstrapBlock, 500);
+  assert.equal(kept.syncedToBlock, 501);
   assert.equal(matching.calls[0]?.fromBlock, 501);
   assert.equal(matched.getPlanet("0xplanet")?.population, 123n);
   matched.destroy();
@@ -1108,7 +1110,8 @@ test("a matching snapshot is kept and a mismatch is dropped", async () => {
       startBlock: 1,
     },
   });
-  await dropped.start();
+  const rejected = await dropped.start();
+  assert.equal(rejected.bootstrapBlock, undefined);
   assert.equal(mismatched.calls[0]?.fromBlock, 1);
   assert.equal(dropped.getPlanet("0xplanet"), undefined);
   dropped.destroy();
@@ -1141,7 +1144,8 @@ test("a snapshot that cannot be checked is dropped", async () => {
     const indexer = new IndexerService({
       bootstrap: { source, bootstrapSource: source, startBlock: 1 },
     });
-    await indexer.start();
+    const started = await indexer.start();
+    assert.equal(started.bootstrapBlock, undefined);
     assert.equal(source.calls[0]?.fromBlock, 1);
     assert.equal(indexer.getPlanet("0xplanet"), undefined);
     indexer.destroy();
