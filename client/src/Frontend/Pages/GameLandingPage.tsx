@@ -63,6 +63,7 @@ import {
   isWalletSessionConflictError,
   WALLET_SESSION_CONFLICT_HINT,
   WALLET_SESSION_CONFLICT_MESSAGE,
+  WalletClosedError,
   WalletManager,
 } from "../../Session/WalletManager";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
@@ -1369,8 +1370,17 @@ export function GameLandingPage() {
       );
     }
 
-    if (walletManagerRef.current) {
-      return walletManagerRef.current;
+    const current = walletManagerRef.current;
+    if (current) {
+      if (!current.isClosed()) {
+        return current;
+      }
+      walletManagerRef.current = undefined;
+      await current.destroy();
+      const replaced = walletManagerRef.current;
+      if (replaced && !replaced.isClosed()) {
+        return replaced;
+      }
     }
     if (walletManagerInitRef.current) {
       return walletManagerInitRef.current;
@@ -1383,6 +1393,9 @@ export function GameLandingPage() {
     walletManagerInitRef.current = initPromise;
     try {
       const wm = await initPromise;
+      if (wm.isClosed()) {
+        throw new WalletClosedError();
+      }
       walletManagerRef.current = wm;
       setLoadingPhase({ step: "done" });
       refreshLocalAccountCount();
@@ -1489,8 +1502,7 @@ export function GameLandingPage() {
   useEffect(() => {
     if (entryMode !== "quick") return;
 
-    quickBootstrapEffectGenRef.current += 1;
-    const generation = quickBootstrapEffectGenRef.current;
+    const generation = ++quickBootstrapEffectGenRef.current;
 
     void (async () => {
       try {
@@ -1556,9 +1568,12 @@ export function GameLandingPage() {
           if (!chosen) {
             throw new Error("Local accounts list was unexpectedly empty.");
           }
-          await wm.switchAccount(chosen.address, (msg) =>
-            terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
-          );
+          // create() already restored the saved active account.
+          if (wm.getActiveAddress()?.toString() !== chosen.address) {
+            await wm.switchAccount(chosen.address, (msg) =>
+              terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
+            );
+          }
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 
@@ -1590,8 +1605,8 @@ export function GameLandingPage() {
         quickBootstrapDoneRef.current = true;
         setStep(TerminalPromptStep.ACCOUNT_SET);
       } catch (err) {
-        console.error(err);
         if (generation !== quickBootstrapEffectGenRef.current) return;
+        console.error(err);
         quickBootstrapDoneRef.current = true;
         setTerminalVisible(true);
         if (isWalletSessionConflictError(err)) {
@@ -1609,6 +1624,12 @@ export function GameLandingPage() {
         setStep(TerminalPromptStep.TERMINATED);
       }
     })();
+
+    return () => {
+      if (quickBootstrapEffectGenRef.current === generation) {
+        quickBootstrapEffectGenRef.current += 1;
+      }
+    };
   }, [
     entryMode,
     ensureEmbeddedWalletManager,
@@ -2048,15 +2069,18 @@ export function GameLandingPage() {
     });
   }, [enterFatalWalletSessionLoss, onWalletSessionLost]);
 
+  const releaseWalletSessionRef = useRef(releaseWalletSession);
+  releaseWalletSessionRef.current = releaseWalletSession;
+
   useEffect(() => {
     return () => {
       gameUIManagerRef.current?.destroy();
       walletManagerRef.current?.destroy();
       indexerRef.current?.destroy();
       window.indexer = undefined;
-      void releaseWalletSession();
+      void releaseWalletSessionRef.current();
     };
-  }, [releaseWalletSession]);
+  }, []);
 
   useEffect(() => {
     if (!terminalHandle.current || loadingPhase.step === "done") {

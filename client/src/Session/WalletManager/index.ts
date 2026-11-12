@@ -6,7 +6,11 @@ export type {
   WalletManagerConfig,
   WalletStatus,
 } from "./types";
-export { createWalletManager, WalletManager } from "./WalletManager";
+export {
+  createWalletManager,
+  WalletClosedError,
+  WalletManager,
+} from "./WalletManager";
 export {
   acquireWalletSessionLock,
   isWalletSessionConflictError,

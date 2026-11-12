@@ -4,7 +4,7 @@ import styled from "styled-components";
 
 import dfstyles from "../Styles/dfstyles";
 
-const FORK_NOTICE_MS = 4600;
+const FORK_RELOAD_SECONDS = 6;
 const FORK_RELOAD_NOTICE_KEY = "dfpunk.forkDivergenceNotice";
 
 const FORK_PREVIEW_SAMPLE: ForkDivergence = {
@@ -16,33 +16,24 @@ const FORK_PREVIEW_SAMPLE: ForkDivergence = {
   tip: 128_512,
 };
 
-/** Fields for `ui.previewForkDiverged`. `nodeHash: null` omits the node hash. */
+/** Optional fields for `ui.previewForkDiverged`. `nodeHash: null` omits the node hash. */
 export interface ForkNoticePreview {
   processedBlock?: number;
   processedBlockHash?: string;
   nodeHash?: string | null;
   tip?: number;
-  /** Keep the notice up until `ui.dismissForkDiverged()`. */
-  hold?: boolean;
 }
 
 type ForkNoticeState = {
   divergence: ForkDivergence;
-  preview: boolean;
-  hold: boolean;
+  secondsLeft: number;
 };
 
 type ForkNoticeControls = {
   show: (divergence: ForkDivergence) => void;
-  preview: (sample?: ForkNoticePreview) => void;
-  dismiss: () => void;
 };
 
 let controls: ForkNoticeControls | null = null;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function rememberForkReload(divergence: ForkDivergence): void {
   try {
@@ -58,10 +49,7 @@ function rememberForkReload(divergence: ForkDivergence): void {
   }
 }
 
-function resolveForkPreview(sample?: ForkNoticePreview): {
-  divergence: ForkDivergence;
-  hold: boolean;
-} {
+function resolveForkPreview(sample?: ForkNoticePreview): ForkDivergence {
   const divergence: ForkDivergence = {
     processedBlock:
       sample?.processedBlock ?? FORK_PREVIEW_SAMPLE.processedBlock,
@@ -77,7 +65,7 @@ function resolveForkPreview(sample?: ForkNoticePreview): {
   ) {
     divergence.nodeHash = FORK_PREVIEW_SAMPLE.nodeHash;
   }
-  return { divergence, hold: sample?.hold === true };
+  return divergence;
 }
 
 /** One terminal line describing a real divergence. */
@@ -108,7 +96,7 @@ export function consumeForkReloadNotice(): string | null {
   }
 }
 
-/** Shows the fork notice, then reloads. No-op if one is already in progress. */
+/** Shows the fork notice, counts down, then reloads. No-op if one is already in progress. */
 export function showForkDivergence(divergence: ForkDivergence): void {
   if (!controls) {
     console.warn("[ui] fork notice is not mounted");
@@ -117,103 +105,76 @@ export function showForkDivergence(divergence: ForkDivergence): void {
   controls.show(divergence);
 }
 
-/** Plays the notice without reloading. Used by `ui.previewForkDiverged()`. */
+/** Same countdown and reload as a real fork. Used by `ui.previewForkDiverged()`. */
 export function previewForkDiverged(sample?: ForkNoticePreview): void {
-  if (!controls) {
-    console.warn("[ui] fork notice is not mounted");
-    return;
-  }
-  controls.preview(sample);
-}
-
-/** Closes a held preview. A real fork still reloads. */
-export function dismissForkDiverged(): void {
-  controls?.dismiss();
+  showForkDivergence(resolveForkPreview(sample));
 }
 
 export function ForkDivergenceNotice() {
   const [notice, setNotice] = useState<ForkNoticeState | null>(null);
   const tokenRef = useRef(0);
   const liveRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
 
   const show = useCallback((divergence: ForkDivergence) => {
     if (liveRef.current) return;
     liveRef.current = true;
     const token = ++tokenRef.current;
     rememberForkReload(divergence);
-    setNotice({ divergence, preview: false, hold: false });
-    void sleep(FORK_NOTICE_MS).then(() => {
+    const startedAt = Date.now();
+    setNotice({ divergence, secondsLeft: FORK_RELOAD_SECONDS });
+    if (timerRef.current !== null) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
       if (tokenRef.current !== token) return;
-      window.location.reload();
-    });
-  }, []);
-
-  const preview = useCallback((sample?: ForkNoticePreview) => {
-    if (liveRef.current) {
-      console.warn("[ui] a real fork notice is already showing");
-      return;
-    }
-    const resolved = resolveForkPreview(sample);
-    const token = ++tokenRef.current;
-    setNotice({
-      divergence: resolved.divergence,
-      preview: true,
-      hold: resolved.hold,
-    });
-    if (resolved.hold) return;
-    void sleep(FORK_NOTICE_MS).then(() => {
-      if (tokenRef.current !== token) return;
-      setNotice((current) => (current?.preview ? null : current));
-    });
-  }, []);
-
-  const dismiss = useCallback(() => {
-    if (liveRef.current) return;
-    tokenRef.current += 1;
-    setNotice(null);
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= FORK_RELOAD_SECONDS * 1000) {
+        if (timerRef.current !== null) window.clearInterval(timerRef.current);
+        timerRef.current = null;
+        window.location.reload();
+        return;
+      }
+      const secondsLeft = FORK_RELOAD_SECONDS - Math.floor(elapsed / 1000);
+      setNotice((current) => (current ? { ...current, secondsLeft } : current));
+    }, 200);
   }, []);
 
   useEffect(() => {
-    const next = { show, preview, dismiss };
+    const next = { show };
     controls = next;
     return () => {
       if (controls === next) controls = null;
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
     };
-  }, [show, preview, dismiss]);
-
-  useEffect(() => {
-    if (!notice?.preview) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dismiss();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [notice?.preview, dismiss]);
+  }, [show]);
 
   if (!notice) return null;
+
+  const secondsLabel = notice.secondsLeft === 1 ? "second" : "seconds";
 
   return (
     <ForkDivergenceTransition
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="fork-divergence-title"
-      $mode={notice.hold ? "hold" : notice.preview ? "preview" : "live"}
     >
       <ForkDivergenceCard>
         <strong id="fork-divergence-title">Block fork</strong>
         <p>
           The chain forked. Block{" "}
           {notice.divergence.processedBlock.toLocaleString()} was proposed
-          earlier and did not land on chain. This page will reload.
+          earlier and did not land on chain.
         </p>
+        <ForkCountdown aria-live="polite">
+          <span>This page reloads in</span>
+          <b>{notice.secondsLeft}</b>
+          <span>{secondsLabel}</span>
+        </ForkCountdown>
       </ForkDivergenceCard>
     </ForkDivergenceTransition>
   );
 }
 
-const ForkDivergenceTransition = styled.div<{
-  $mode: "live" | "preview" | "hold";
-}>`
+const ForkDivergenceTransition = styled.div`
   position: fixed;
   inset: 0;
   z-index: 4600;
@@ -223,41 +184,9 @@ const ForkDivergenceTransition = styled.div<{
   overflow: hidden;
   pointer-events: auto;
   background: rgba(8, 0, 0, 0.72);
-  animation: ${({ $mode }) =>
-    $mode === "hold"
-      ? "fork-veil-hold 700ms ease-out forwards"
-      : $mode === "preview"
-        ? `fork-veil-preview ${FORK_NOTICE_MS}ms ease-in forwards`
-        : `fork-veil-live ${FORK_NOTICE_MS}ms ease-out forwards`};
+  animation: fork-veil-live 700ms ease-out forwards;
 
   @keyframes fork-veil-live {
-    0% {
-      opacity: 0;
-    }
-    12% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-
-  @keyframes fork-veil-preview {
-    0% {
-      opacity: 0;
-    }
-    10% {
-      opacity: 1;
-    }
-    78% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-    }
-  }
-
-  @keyframes fork-veil-hold {
     0% {
       opacity: 0;
     }
@@ -291,5 +220,26 @@ const ForkDivergenceCard = styled.div`
     color: ${dfstyles.colors.text};
     font-size: 14px;
     line-height: 1.45;
+  }
+`;
+
+const ForkCountdown = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 22px;
+  color: ${dfstyles.colors.dfyellow};
+
+  span {
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  b {
+    min-width: 1.2ch;
+    color: ${dfstyles.colors.textLight};
+    font-size: 42px;
+    font-weight: 400;
+    line-height: 1;
   }
 `;

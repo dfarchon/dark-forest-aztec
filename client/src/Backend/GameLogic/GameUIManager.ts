@@ -44,7 +44,6 @@ import React from "react";
 import type { HashConfig } from "../../_types/global/GlobalTypes";
 import type { ContractConstants } from "../../ContractsAPI/ContractsAPITypes";
 import {
-  dismissForkDiverged as dismissForkNotice,
   type ForkNoticePreview,
   previewForkDiverged as previewForkNotice,
 } from "../../Frontend/Components/ForkDivergenceNotice";
@@ -303,17 +302,11 @@ class GameUIManager extends EventEmitter {
   }
 
   /**
-   * Plays the chain-fork notice without reloading.
+   * Shows the chain-fork countdown and reloads after 6 seconds.
    * Browser console: `ui.previewForkDiverged()`.
-   * Pass `{ hold: true }` to keep it up until `ui.dismissForkDiverged()`.
    */
   public previewForkDiverged(sample?: ForkNoticePreview): void {
     previewForkNotice(sample);
-  }
-
-  /** Closes a held fork-notice preview. A real fork still reloads. */
-  public dismissForkDiverged(): void {
-    dismissForkNotice();
   }
 
   public updateDiagnostics(updateFn: (d: Diagnostics) => void) {

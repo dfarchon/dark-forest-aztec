@@ -431,6 +431,25 @@ async function registerSponsoredFpcWithWallet(
   return sponsoredFPC.address;
 }
 
+/** Account registration lost the race with `WalletManager.destroy()`. */
+export class WalletClosedError extends Error {
+  constructor(cause?: unknown) {
+    super(
+      "Wallet closed before the account could be registered.",
+      cause !== undefined ? { cause } : undefined
+    );
+    this.name = "WalletClosedError";
+  }
+}
+
+function isWalletEnqueueRejected(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("Could not enqueue") ||
+    message.includes("queue is flushing")
+  );
+}
+
 export class WalletManager {
   private readonly node: AztecNode;
   private readonly wallet: Wallet;
@@ -483,6 +502,9 @@ export class WalletManager {
         onProgress?.(total, total, "Restoring account");
         await mgr.restoreAccount(savedAddr);
       } catch (err) {
+        if (err instanceof WalletClosedError) {
+          throw err;
+        }
         console.warn("[WalletManager] Failed to restore saved account:", err);
         console.warn("[WalletManager] Clearing stale PXE data and retrying...");
         await mgr.destroy();
@@ -698,7 +720,8 @@ export class WalletManager {
     const signingKey = Fq.random();
 
     onStatus?.("Creating Schnorr account keys...");
-    const accountManager = await wallet.createSchnorrInitializerlessAccount(
+    const accountManager = await this.registerEmbeddedAccount(
+      wallet,
       secretKey,
       salt,
       signingKey
@@ -730,7 +753,8 @@ export class WalletManager {
     }
 
     onStatus?.("Registering Schnorr account...");
-    await wallet.createSchnorrInitializerlessAccount(
+    await this.registerEmbeddedAccount(
+      wallet,
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       fqFromHex(record.signingKey)
@@ -756,7 +780,8 @@ export class WalletManager {
   ): Promise<AccountRecord> {
     const wallet = this.getEmbeddedWallet("importAccount");
     onStatus?.("Importing Schnorr account...");
-    const accountManager = await wallet.createSchnorrInitializerlessAccount(
+    const accountManager = await this.registerEmbeddedAccount(
+      wallet,
       Fr.fromString(secretKey),
       Fr.fromString(salt),
       fqFromHex(signingKey)
@@ -891,8 +916,20 @@ export class WalletManager {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
+  /** True once `destroy()` has started, including while `stop()` is still running. */
+  isClosed(): boolean {
+    return this.destroyPromise !== undefined;
+  }
+
   destroy(): Promise<void> {
     if (this.destroyPromise) return this.destroyPromise;
+
+    // Mark closed before stop() so in-flight registration does not enqueue
+    // onto a queue that is about to flush.
+    let resolveDestroy: () => void = () => {};
+    this.destroyPromise = new Promise<void>((resolve) => {
+      resolveDestroy = resolve;
+    });
 
     if (this.balanceInterval !== undefined) {
       clearInterval(this.balanceInterval);
@@ -901,13 +938,15 @@ export class WalletManager {
     this.walletChanged$.clear();
     this.myBalance$.clear();
 
-    this.destroyPromise = (async () => {
-      if (!this.isExternal) {
-        try {
+    void (async () => {
+      try {
+        if (!this.isExternal) {
           await (this.wallet as EmbeddedWallet).stop();
-        } catch (err) {
-          console.warn("[WalletManager] Failed to close embedded wallet:", err);
         }
+      } catch (err) {
+        console.warn("[WalletManager] Failed to close embedded wallet:", err);
+      } finally {
+        resolveDestroy();
       }
     })();
     return this.destroyPromise;
@@ -941,6 +980,34 @@ export class WalletManager {
   private getEmbeddedWallet(action: string): EmbeddedWallet {
     this.assertEmbeddedOnly(action);
     return this.wallet as EmbeddedWallet;
+  }
+
+  /**
+   * Register a Schnorr account on the embedded wallet.
+   * A queue that is already flushing means this manager is closing; surface that
+   * instead of the SDK's "Could not enqueue".
+   */
+  private async registerEmbeddedAccount(
+    wallet: EmbeddedWallet,
+    secretKey: Fr,
+    salt: Fr,
+    signingKey: Fq
+  ) {
+    if (this.destroyPromise) {
+      throw new WalletClosedError();
+    }
+    try {
+      return await wallet.createSchnorrInitializerlessAccount(
+        secretKey,
+        salt,
+        signingKey
+      );
+    } catch (err) {
+      if (this.destroyPromise !== undefined || isWalletEnqueueRejected(err)) {
+        throw new WalletClosedError(err);
+      }
+      throw err;
+    }
   }
 
   private static async resolveExternalAddress(
