@@ -15,6 +15,7 @@ import { EMPTY_LOCATION_ID } from "@dfpunk/constants";
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { isSpaceShip } from "@dfpunk/gamelogic";
 import {
+  artifactIdFromDecStr,
   artifactIdToDecStr,
   decodeArrival,
   decodeArtifact,
@@ -170,7 +171,10 @@ export class ContractsAPI extends EventEmitter {
         this.emit(ContractsAPIEvent.RadiusUpdated);
       },
       ArtifactUpdate: (artifactId: string) => {
-        this.emit(ContractsAPIEvent.ArtifactUpdate, artifactId);
+        this.emit(
+          ContractsAPIEvent.ArtifactUpdate,
+          artifactIdFromDecStr(artifactId)
+        );
       },
       PlanetRevealedCoordsUpdate: (locationId: string, revealer: string) => {
         const hexId = locationIdFromDecStr(locationId);
@@ -194,7 +198,10 @@ export class ContractsAPI extends EventEmitter {
         );
       },
       ArtifactLocationUpdate: (artifactId: string) => {
-        this.emit(ContractsAPIEvent.ArtifactUpdate, artifactId);
+        this.emit(
+          ContractsAPIEvent.ArtifactUpdate,
+          artifactIdFromDecStr(artifactId)
+        );
       },
     });
   }
