@@ -36,9 +36,9 @@ contract ArtifactAction {
     };
 
     use ::libs::batch_utils::{
-        assert_artifact_and_location_timestamp_freshness, assert_no_skipped_arrivals,
+        assert_artifact_and_location_timestamp_freshness,
         assert_owned_artifacts_timestamp_freshness, assert_planet_timestamp_freshness,
-        assert_public_timestamp, compute_arrival_times, compute_artifact_and_location_hashes,
+        assert_public_timestamp, compute_artifact_and_location_hashes,
         compute_owned_artifact_hashes, compute_planet_artifact_hashes, compute_planet_hashes,
         compute_planet_state_hash, compute_world_hash,
     };
@@ -251,7 +251,6 @@ contract ArtifactAction {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let arrival_artifact_ids: [Field; 20] = planet_hashes_result.6;
         let arrival_artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let arrival_artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -439,7 +438,6 @@ contract ArtifactAction {
             planet_events_state_hash,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             arrival_artifact_ids,
             arrival_artifact_hashes,
             arrival_artifact_location_hashes,
@@ -476,7 +474,6 @@ contract ArtifactAction {
         planet_events_state_hash: Field,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
         arrival_artifact_location_hashes: [Field; 20],
@@ -502,13 +499,6 @@ contract ArtifactAction {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            origin_arrivals_count,
-        );
-
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_artifacts_storage =
             PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
@@ -679,7 +669,6 @@ contract ArtifactAction {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let arrival_artifact_ids: [Field; 20] = planet_hashes_result.6;
         let arrival_artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let arrival_artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -779,7 +768,6 @@ contract ArtifactAction {
             planet_events_state_hash,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             arrival_artifact_ids,
             arrival_artifact_hashes,
             arrival_artifact_location_hashes,
@@ -809,7 +797,6 @@ contract ArtifactAction {
         planet_events_state_hash: Field,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
         arrival_artifact_location_hashes: [Field; 20],
@@ -829,13 +816,6 @@ contract ArtifactAction {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            origin_arrivals_count,
-        );
-
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_artifacts_storage =
             PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());

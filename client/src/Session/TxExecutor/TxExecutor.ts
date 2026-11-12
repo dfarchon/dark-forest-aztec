@@ -90,12 +90,7 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
 
 /** Contract assertions that a re-proof at the latest block time and state can clear. */
-const STALE_PROOF_ERRORS = [
-  "Due arrival skipped",
-  "New arrival already due",
-  "Timestamp too old",
-  "hash mismatch",
-];
+const STALE_PROOF_ERRORS = ["Timestamp too old", "hash mismatch"];
 
 function isStaleProofError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -308,8 +303,8 @@ export class TxExecutor {
           console.warn(
             `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
           );
-          // Re-proving at the click-time timestamp would skip arrivals that
-          // landed meanwhile and fail the same assertion again.
+          // A click-time timestamp can be outside the block-time window by the
+          // time the proof is simulated. Re-prove against the latest block.
           tx.intent.uiTimestamp =
             await this.chainClock.syncAndGetBlockTimestamp();
         }

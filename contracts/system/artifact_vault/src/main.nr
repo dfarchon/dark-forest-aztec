@@ -25,10 +25,9 @@ contract ArtifactVault {
     };
 
     use ::libs::batch_utils::{
-        assert_artifact_and_location_timestamp_freshness, assert_no_skipped_arrivals,
-        assert_planet_timestamp_freshness, assert_public_timestamp, compute_arrival_times,
-        compute_artifact_and_location_hashes, compute_planet_hashes, compute_player_hash,
-        compute_world_hash,
+        assert_artifact_and_location_timestamp_freshness, assert_planet_timestamp_freshness,
+        assert_public_timestamp, compute_artifact_and_location_hashes, compute_planet_hashes,
+        compute_player_hash, compute_world_hash,
     };
     use ::libs::game_utils::{
         _put_artifact_on_planet, _take_artifact_off_planet, assert_nonzero_artifact_id,
@@ -249,7 +248,6 @@ contract ArtifactVault {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let artifact_ids: [Field; 20] = planet_hashes_result.6;
         let artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -339,7 +337,6 @@ contract ArtifactVault {
             origin_arrivals_count,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             artifact_ids,
             artifact_hashes,
             artifact_location_hashes,
@@ -367,7 +364,6 @@ contract ArtifactVault {
         origin_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         artifact_ids: [Field; 20],
         artifact_hashes: [Field; 20],
         artifact_location_hashes: [Field; 20],
@@ -384,13 +380,6 @@ contract ArtifactVault {
         let actual_timestamp = self.context.timestamp();
 
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            origin_arrivals_count,
-        );
-
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
         let artifact_location_storage =
@@ -513,7 +502,6 @@ contract ArtifactVault {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let artifact_ids: [Field; 20] = planet_hashes_result.6;
         let artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -594,7 +582,6 @@ contract ArtifactVault {
             origin_arrivals_count,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             artifact_ids,
             artifact_hashes,
             artifact_location_hashes,
@@ -622,7 +609,6 @@ contract ArtifactVault {
         origin_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         artifact_ids: [Field; 20],
         artifact_hashes: [Field; 20],
         artifact_location_hashes: [Field; 20],
@@ -638,13 +624,6 @@ contract ArtifactVault {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            origin_arrivals_count,
-        );
-
         let arrival_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
         let artifact_location_storage =
@@ -772,7 +751,6 @@ contract ArtifactVault {
         let planet_events_state_hash = planet_hashes_result.3;
         let arrival_ids: [Field; 20] = planet_hashes_result.4;
         let arrival_hashes: [Field; 20] = planet_hashes_result.5;
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
         let artifact_ids: [Field; 20] = planet_hashes_result.6;
         let artifact_hashes: [Field; 20] = planet_hashes_result.7;
         let artifact_location_hashes: [Field; 20] = planet_hashes_result.8;
@@ -879,7 +857,6 @@ contract ArtifactVault {
             planet_events_state_hash,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             artifact_ids,
             artifact_hashes,
             artifact_location_hashes,
@@ -908,7 +885,6 @@ contract ArtifactVault {
         planet_events_state_hash: Field,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         artifact_ids: [Field; 20],
         artifact_hashes: [Field; 20],
         artifact_location_hashes: [Field; 20],
@@ -926,13 +902,6 @@ contract ArtifactVault {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            origin_arrivals_count,
-        );
-
         // Without this check the private side trusts any spaceships_config,
         // letting a player mint every ship type even when it is disabled.
         let config = Config::at(self.storage.config_storage_address.read());

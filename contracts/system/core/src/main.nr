@@ -39,10 +39,9 @@ contract Core {
     use ::types::system_storage_addresses::CoreSystemStorageAddresses;
 
     use ::libs::batch_utils::{
-        assert_no_skipped_arrivals, assert_planet_timestamp_freshness, assert_public_timestamp,
-        compute_arrival_times, compute_config_hashes, compute_planet_hashes,
-        compute_planet_revealed_coords_hash, compute_planet_state_hash, compute_player_hash,
-        compute_world_hash,
+        assert_planet_timestamp_freshness, assert_public_timestamp, compute_config_hashes,
+        compute_planet_hashes, compute_planet_revealed_coords_hash, compute_planet_state_hash,
+        compute_player_hash, compute_world_hash,
     };
     use ::libs::game_utils::{_buff_planet, revert_if_bad_snark_perlin_flags};
 
@@ -244,8 +243,6 @@ contract Core {
             arrival_artifacts,
             arrival_artifact_locations,
         );
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
-
         let res = refresh_planet_v1(
             timestamp,
             location,
@@ -281,7 +278,6 @@ contract Core {
             original_arrivals_count,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             arrival_artifact_ids,
             arrival_artifact_hashes,
             arrival_artifact_location_hashes,
@@ -303,7 +299,6 @@ contract Core {
         original_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
         arrival_artifact_location_hashes: [Field; 20],
@@ -314,12 +309,6 @@ contract Core {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            original_arrivals_count,
-        );
 
         let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let planet_artifacts_storage =
@@ -417,8 +406,6 @@ contract Core {
             arrival_artifacts,
             arrival_artifact_locations,
         );
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
-
         let upgrade_config_hash = upgrade_config.state_hash();
         let upgrade_hash = upgrade.state_hash();
         let world_hash = compute_world_hash(world);
@@ -476,7 +463,6 @@ contract Core {
             original_arrivals_count,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             arrival_artifact_ids,
             arrival_artifact_hashes,
             arrival_artifact_location_hashes,
@@ -504,7 +490,6 @@ contract Core {
         original_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
         arrival_artifact_location_hashes: [Field; 20],
@@ -518,12 +503,6 @@ contract Core {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            original_arrivals_count,
-        );
 
         let config = Config::at(self.storage.config_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
@@ -645,8 +624,6 @@ contract Core {
             arrival_artifacts,
             arrival_artifact_locations,
         );
-        let arrival_times = compute_arrival_times(planet_events_state, arrivals);
-
         let player_state_hash = compute_player_hash(player_state);
         let world_config_hash = world_config.state_hash();
         let world_hash = compute_world_hash(world);
@@ -705,7 +682,6 @@ contract Core {
             original_arrivals_count,
             arrival_ids,
             arrival_hashes,
-            arrival_times,
             arrival_artifact_ids,
             arrival_artifact_hashes,
             arrival_artifact_location_hashes,
@@ -732,7 +708,6 @@ contract Core {
         original_arrivals_count: u32,
         arrival_ids: [Field; 20],
         arrival_hashes: [Field; 20],
-        arrival_times: [u64; 20],
         arrival_artifact_ids: [Field; 20],
         arrival_artifact_hashes: [Field; 20],
         arrival_artifact_location_hashes: [Field; 20],
@@ -747,12 +722,6 @@ contract Core {
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
-        assert_no_skipped_arrivals(
-            timestamp,
-            actual_timestamp,
-            arrival_times,
-            original_arrivals_count,
-        );
 
         let config = Config::at(self.storage.config_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
