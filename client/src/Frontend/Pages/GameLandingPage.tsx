@@ -73,6 +73,12 @@ import type {
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import {
+  consumeForkReloadNotice,
+  ForkDivergenceNotice,
+  forkDivergenceTerminalLine,
+  showForkDivergence,
+} from "../Components/ForkDivergenceNotice";
+import {
   GameWindowWrapper,
   InitRenderState,
   TerminalToggler,
@@ -1664,6 +1670,13 @@ export function GameLandingPage() {
         percent: pct,
       });
     };
+    indexerConfig.onForkDiverged = (divergence) => {
+      terminalHandle.current?.println(
+        forkDivergenceTerminalLine(divergence),
+        TerminalTextStyle.Red
+      );
+      showForkDivergence(divergence);
+    };
 
     const { connection } = await createIndexerConnection(indexerConfig);
     indexerRef.current = connection;
@@ -2161,6 +2174,12 @@ export function GameLandingPage() {
 
   const advanceStateFromNone = useCallback(
     async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
+      const forkReloadNotice = consumeForkReloadNotice();
+      if (forkReloadNotice) {
+        terminal.current?.println(forkReloadNotice, TerminalTextStyle.Yellow);
+        terminal.current?.println("");
+      }
+
       const issues = await unsupportedFeatures();
 
       if (issues.includes(Incompatibility.MobileOrTablet)) {
@@ -3559,6 +3578,7 @@ export function GameLandingPage() {
         />
       )}
       {enterTransitionVisible && <EnterTransition aria-hidden />}
+      <ForkDivergenceNotice />
       {refreshTransitionVisible && (
         <RefreshPageTransition aria-hidden>
           <RefreshTransitionHud>

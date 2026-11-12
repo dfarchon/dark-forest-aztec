@@ -121,8 +121,9 @@ export interface IBlockEventSource {
 }
 
 /**
- * The processed block is no longer the block at that height on the tip
- * just read. Reported once; the store is left as it was.
+ * The stored block hash is no longer the hash at that height on the tip
+ * just read. A tip behind the cursor is not a divergence. Reported once;
+ * the store is left as it was.
  */
 export interface ForkDivergence {
   processedBlock: number;
@@ -152,7 +153,7 @@ export interface IndexerStatus {
   consecutiveFailures: number;
   /** Message from the most recent sync failure, or the divergence, if any. */
   lastError?: string;
-  /** True once the processed block diverged from the tip. Stays set. */
+  /** True once the stored block hash diverged from the tip. Stays set. */
   forkDiverged: boolean;
 }
 

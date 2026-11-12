@@ -92,7 +92,8 @@ export interface IndexerConnectionConfig {
   ) => void;
   /**
    * Called once when the processed block is no longer on the followed tip.
-   * Forwarded to IndexerService. This connection does not show a notice.
+   * Forwarded to IndexerService. This connection does not render the notice;
+   * GameLandingPage does.
    */
   onForkDiverged?: (divergence: ForkDivergence) => void;
 }

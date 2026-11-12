@@ -946,7 +946,7 @@ test("a divergent block hash stops new commits and reports once", async () => {
   }
 });
 
-test("a tip behind the processed block is reported and does not rewind", async () => {
+test("a tip behind the processed block is skipped and a later tip still commits", async () => {
   const world = forkSource(4);
   const reports: ForkDivergence[] = [];
   const indexer = new IndexerService({
@@ -954,22 +954,83 @@ test("a tip behind the processed block is reported and does not rewind", async (
       reports.push(divergence);
     },
     bootstrap: { source: world.source },
+    sync: { maxBlocksPerRequest: 100 },
   });
 
   try {
     await indexer.start();
+    assert.equal(indexer.getLatestKnownBlock(), 4);
     world.setTip(3);
     await assert.rejects(() => indexer.waitForBlock(5, 30), /timed out/);
 
-    assert.equal(indexer.getStatus().forkDiverged, true);
-    assert.equal(reports.length, 1);
-    assert.equal(reports[0]?.tip, 3);
-    assert.equal(reports[0]?.nodeHash, undefined);
+    assert.equal(indexer.getStatus().forkDiverged, false);
+    assert.equal(reports.length, 0);
+    assert.equal(indexer.getStatus().lastError, undefined);
+    assert.equal(indexer.getLatestKnownBlock(), 4);
     assert.equal(indexer.getProcessedBlockNumber(), 4);
     assert.equal(indexer.getProcessedBlockHash(), "a");
     assert.ok(indexer.getArrival("0xold"));
-    assert.match(indexer.getStatus().lastError ?? "", /block 4/);
-    assert.match(indexer.getStatus().lastError ?? "", /tip 3/);
+    assert.equal(indexer.getArrival("0xnew"), undefined);
+
+    world.setTip(5);
+    await indexer.waitForBlock(5);
+    assert.equal(indexer.getStatus().forkDiverged, false);
+    assert.equal(reports.length, 0);
+    assert.equal(indexer.getProcessedBlockNumber(), 5);
+    assert.equal(indexer.getLatestKnownBlock(), 5);
+    assert.ok(indexer.getArrival("0xnew"));
+  } finally {
+    indexer.destroy();
+  }
+});
+
+test("a reorg between chunks halts before the next chunk overwrites the hash", async () => {
+  const hashes = new Map<number, string>([
+    [1, "h1"],
+    [2, "h2"],
+  ]);
+  const source: IBlockEventSource = {
+    getLatestBlockNumber: async () => 2,
+    getBlockHash: async (block) => hashes.get(block),
+    getBlockUpdates: async (fromBlock, toBlock) => {
+      if (fromBlock === 2) hashes.set(1, "h1-reorg");
+      return {
+        fromBlock,
+        toBlock,
+        toBlockHash: hashes.get(toBlock),
+        updates: [arrivalUpdate(fromBlock === 1 ? "0xchunk1" : "0xchunk2")],
+      };
+    },
+  };
+  const reports: ForkDivergence[] = [];
+  const indexer = new IndexerService({
+    onForkDiverged: (divergence) => {
+      reports.push(divergence);
+    },
+    bootstrap: { source },
+    sync: { maxBlocksPerRequest: 1 },
+  });
+
+  try {
+    const started = await indexer.start();
+    assert.equal(started.syncedToBlock, 1);
+    assert.equal(indexer.getProcessedBlockNumber(), 1);
+    assert.equal(indexer.getProcessedBlockHash(), "h1");
+    assert.ok(indexer.getArrival("0xchunk1"));
+    assert.equal(indexer.getArrival("0xchunk2"), undefined);
+    assert.equal(indexer.getStatus().forkDiverged, true);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0]?.processedBlock, 1);
+    assert.equal(reports[0]?.processedBlockHash, "h1");
+    assert.equal(reports[0]?.nodeHash, "h1-reorg");
+    assert.equal(reports[0]?.tip, 2);
+
+    source.getLatestBlockNumber = async () => 3;
+    await indexer.start();
+    assert.equal(indexer.getProcessedBlockNumber(), 1);
+    assert.equal(indexer.getProcessedBlockHash(), "h1");
+    assert.equal(indexer.getArrival("0xchunk2"), undefined);
+    assert.equal(reports.length, 1);
   } finally {
     indexer.destroy();
   }

@@ -3,6 +3,13 @@ import type { DebouncedFunc } from "lodash";
 import type { IBlockEventSource } from "../types.ts";
 import type { CommittedChunk, IndexerStore } from "./IndexerStore.ts";
 
+/**
+ * ok: commit up to this tip.
+ * skip: the tip number is behind the cursor. End this run, do not latch.
+ * halt: the stored block is no longer on this tip. Stop every later run.
+ */
+export type TipDecision = "ok" | "skip" | "halt";
+
 /** Caller-facing sync settings. BlockSyncer fills in source, store, and callbacks. */
 export interface SyncOptions {
   /** Debounce delay in ms for processing new blocks. Default 1000. */
@@ -47,10 +54,11 @@ export interface BlockSyncerOptions {
     committed: CommittedChunk,
   ) => void;
   /**
-   * Called with the tip just read, before a run commits.
-   * false stops this run and every later run. A throw is an ordinary sync failure.
+   * Called with the tip just read, before a run commits and again before each chunk.
+   * "skip" ends this run without latching. "halt" stops this run and every later run.
+   * A throw is an ordinary sync failure.
    */
-  onAcceptTip?: (observedTip: number) => Promise<boolean>;
+  onAcceptTip?: (observedTip: number) => Promise<TipDecision>;
 }
 
 export interface SyncerStatus {
@@ -243,10 +251,12 @@ export class BlockSyncer {
   private async runPending(): Promise<void> {
     if (this.stopped || this.halted) return;
     const hashBefore = this.store.processedBlockHash;
-    if (!(await this.acceptTip())) return;
+    const accepted = await this.acceptTip();
+    if (accepted.decision !== "ok") return;
+    // Use the tip that was checked. A later read must not pull the target down.
     this.latestKnownBlock = this.replaceTip
-      ? this.observedTip
-      : Math.max(this.latestKnownBlock, this.observedTip);
+      ? accepted.tip
+      : Math.max(this.latestKnownBlock, accepted.tip);
 
     let fromBlock = this.store.processedBlock + 1;
     const toBlock = this.latestKnownBlock;
@@ -264,6 +274,9 @@ export class BlockSyncer {
         if (this.stopped) return;
         const committedTo = updates.toBlock;
         if (committedTo < fromBlock) break; // node behind; retry next poll
+        // Re-check the stored hash before this chunk can replace it.
+        const beforeCommit = await this.acceptTip();
+        if (beforeCommit.decision !== "ok") return;
         const committed = this.store.commit(updates);
         this.onChunk(fromBlock, committed.toBlock, committed);
         if (committedTo < chunkEnd) break;
@@ -280,13 +293,17 @@ export class BlockSyncer {
     if (hashBefore === undefined) await this.acceptTip();
   }
 
-  /** false means the caller asked us to stop committing. A throw is not a halt. */
-  private async acceptTip(): Promise<boolean> {
-    if (this.halted) return false;
-    if (!this.onAcceptTip) return true;
-    const accepted = await this.onAcceptTip(this.observedTip);
-    if (!accepted) this.halted = true;
-    return accepted;
+  /**
+   * Snapshots the tip before the check. "halt" latches. "skip" does not.
+   * A throw is not a halt.
+   */
+  private async acceptTip(): Promise<{ decision: TipDecision; tip: number }> {
+    const tip = this.observedTip;
+    if (this.halted) return { decision: "halt", tip };
+    if (!this.onAcceptTip) return { decision: "ok", tip };
+    const decision = await this.onAcceptTip(tip);
+    if (decision === "halt") this.halted = true;
+    return { decision, tip };
   }
 
   private backoffMs(): number {

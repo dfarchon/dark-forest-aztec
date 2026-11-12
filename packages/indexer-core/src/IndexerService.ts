@@ -11,7 +11,11 @@ import {
   InitialStateLoader,
   type BootstrapOptions,
 } from "./service/bootstrap.ts";
-import { BlockSyncer, type SyncOptions } from "./service/BlockSyncer.ts";
+import {
+  BlockSyncer,
+  type SyncOptions,
+  type TipDecision,
+} from "./service/BlockSyncer.ts";
 import { ChangeEmitter } from "./service/ChangeEmitter.ts";
 import { IndexerStore } from "./service/IndexerStore.ts";
 import type {
@@ -28,7 +32,8 @@ export interface IndexerServiceOptions {
   /** Called after each block range is applied. */
   onBlockProcessed?: (fromBlock: number, toBlock: number) => void;
   /**
-   * Called once when the processed block is no longer on the tip just read.
+   * Called once when the stored block hash is no longer the hash at that
+   * height. A tip number behind the cursor does not call this.
    * Later polls do not commit. The service stays up; it does not clear tables.
    */
   onForkDiverged?: (divergence: ForkDivergence) => void;
@@ -264,32 +269,31 @@ export class IndexerService extends IndexerStore {
   }
 
   /**
-   * false when the processed block is no longer on this tip.
+   * ok when this tip still contains the processed block.
+   * skip when the tip number is behind the cursor: do not latch.
+   * halt when the stored hash is no longer the hash at that height.
    * A hash RPC error is rethrown and does not latch.
    */
   private async considerFork(
     source: IBlockEventSource,
     observedTip: number,
-  ): Promise<boolean> {
-    if (this.forkDiverged) return false;
+  ): Promise<TipDecision> {
+    if (this.forkDiverged) return "halt";
     const processedBlockHash = this.processedBlockHash;
     const processedBlock = this.processedBlock;
-    if (!processedBlockHash || !source.getBlockHash) return true;
+    if (!processedBlockHash || !source.getBlockHash) return "ok";
 
-    if (observedTip < processedBlock) {
-      this.reportFork({ processedBlock, processedBlockHash, tip: observedTip });
-      return false;
-    }
+    if (observedTip < processedBlock) return "skip";
 
     const nodeHash = await source.getBlockHash(processedBlock);
-    if (nodeHash === processedBlockHash) return true;
+    if (nodeHash === processedBlockHash) return "ok";
     this.reportFork({
       processedBlock,
       processedBlockHash,
       tip: observedTip,
       ...(nodeHash !== undefined ? { nodeHash } : {}),
     });
-    return false;
+    return "halt";
   }
 
   private reportFork(divergence: ForkDivergence): void {
