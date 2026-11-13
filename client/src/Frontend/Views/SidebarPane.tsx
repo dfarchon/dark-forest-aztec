@@ -122,6 +122,7 @@ const WindowTogglesPaneContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  pointer-events: auto;
 `;
 
 const ToolButtonFrame = styled.div<{ $active: boolean }>`

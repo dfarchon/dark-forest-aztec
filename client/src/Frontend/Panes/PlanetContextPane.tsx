@@ -1,4 +1,4 @@
-import { ModalName, Planet, PlanetType } from "@dfpunk/types";
+import { ModalName, Planet, PlanetType, Setting } from "@dfpunk/types";
 import React, { useCallback, useEffect, useMemo } from "react";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
@@ -16,13 +16,14 @@ import {
 import { snips } from "../Styles/dfstyles";
 import { useAccount, useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 import { useEmitterSubscribe } from "../Utils/EmitterHooks";
-import { useOnUp } from "../Utils/KeyEmitters";
+import { useBooleanSetting } from "../Utils/SettingsHooks";
 import {
   EXIT_PANE,
   TOGGLE_ABANDON,
   TOGGLE_SEND,
 } from "../Utils/ShortcutConstants";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
+import { useShortcut } from "../Utils/useShortcut";
 import { ModalHandle, ModalPane } from "../Views/ModalPane";
 import { PlanetCard, PlanetCardTitle } from "../Views/PlanetCard";
 import {
@@ -172,18 +173,36 @@ export function PlanetContextPane({
     doSend();
   }, [uiManager, doSend, planet]);
 
-  useOnUp(TOGGLE_SEND, () => {
-    toggleSendingForces();
-  }, [toggleSendingForces]);
+  const [disableDefaultShortcuts] = useBooleanSetting(
+    uiManager,
+    Setting.DisableDefaultShortcuts
+  );
+  const shortcutsEnabled = !disableDefaultShortcuts;
 
-  useOnUp(TOGGLE_ABANDON, () => {
-    toggleAbandoning();
-  }, [toggleAbandoning]);
+  useShortcut(
+    TOGGLE_SEND,
+    () => {
+      toggleSendingForces();
+    },
+    { enabled: shortcutsEnabled }
+  );
 
-  useOnUp(EXIT_PANE, () => {
-    // If we clear the selectedPlanetId, the below hook will cancel and cleanup the sending
-    uiManager.setSelectedPlanet(undefined);
-  }, [uiManager]);
+  useShortcut(
+    TOGGLE_ABANDON,
+    () => {
+      toggleAbandoning();
+    },
+    { enabled: shortcutsEnabled }
+  );
+
+  useShortcut(
+    EXIT_PANE,
+    () => {
+      // If we clear the selectedPlanetId, the below hook will cancel and cleanup the sending
+      uiManager.setSelectedPlanet(undefined);
+    },
+    { enabled: shortcutsEnabled }
+  );
 
   // If the locationId changes, cancel any sending
   useEmitterSubscribe(

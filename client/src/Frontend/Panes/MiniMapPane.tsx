@@ -434,6 +434,7 @@ export function MiniMapPane() {
     <Frame>
       <MapCanvas
         ref={canvasRef}
+        data-pointer-target="minimap"
         aria-label="Mini map. Click or drag to move the view. Scroll to zoom the view."
       />
     </Frame>

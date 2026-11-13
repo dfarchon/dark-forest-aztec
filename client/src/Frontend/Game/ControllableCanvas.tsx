@@ -10,6 +10,7 @@ import React, {
 import styled from "styled-components";
 
 import { useUIManager } from "../Utils/AppHooks";
+import { pointerTarget } from "../Utils/PointerFocus";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import Viewport from "./Viewport";
 
@@ -102,9 +103,12 @@ export default function ControllableCanvas() {
     }
 
     const onWheel = (e: WheelEvent): void => {
+      const target = pointerTarget(e).kind;
+      // A pane or the terminal owns this wheel. preventDefault would cancel
+      // that surface's own scrolling, and the map should not zoom instead.
+      if (target === "pane" || target === "terminal") return;
       e.preventDefault();
-      const { deltaY } = e;
-      uiEmitter.emit(UIEmitterEvent.CanvasScroll, deltaY);
+      uiEmitter.emit(UIEmitterEvent.CanvasScroll, e.deltaY);
     };
 
     const canvas = evtRef.current;

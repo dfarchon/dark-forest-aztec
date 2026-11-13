@@ -52,10 +52,6 @@ import NotificationManager from "../../Frontend/Game/NotificationManager";
 import Viewport from "../../Frontend/Game/Viewport";
 import { getObjectWithIdFromMap } from "../../Frontend/Utils/EmitterUtils";
 import {
-  listenForKeyboardEvents,
-  unlinkKeyboardEvents,
-} from "../../Frontend/Utils/KeyEmitters";
-import {
   getBooleanSetting,
   getSetting,
   setBooleanSetting,
@@ -212,7 +208,6 @@ class GameUIManager extends EventEmitter {
     gameManager: GameManager,
     terminalHandle: React.MutableRefObject<TerminalHandle | undefined>
   ) {
-    listenForKeyboardEvents();
     const uiEmitter = UIEmitter.getInstance();
 
     const uiManager = new GameUIManager(gameManager, terminalHandle);
@@ -240,7 +235,6 @@ class GameUIManager extends EventEmitter {
   }
 
   public destroy(): void {
-    unlinkKeyboardEvents();
     const uiEmitter = UIEmitter.getInstance();
 
     uiEmitter.removeListener(UIEmitterEvent.WorldMouseDown, this.onMouseDown);

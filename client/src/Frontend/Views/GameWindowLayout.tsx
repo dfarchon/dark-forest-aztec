@@ -28,13 +28,14 @@ import { TutorialPane } from "../Panes/TutorialPane";
 import { TwitterVerifyPane } from "../Panes/TwitterVerifyPane";
 import { useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
-import { useOnUp } from "../Utils/KeyEmitters";
 import { useBooleanSetting } from "../Utils/SettingsHooks";
 import {
   TOGGLE_DIAGNOSTICS_PANE,
   TOGGLE_UNIVERSE_VIEW,
 } from "../Utils/ShortcutConstants";
+import { setActiveShortcutModal } from "../Utils/ShortcutRegistry";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
+import { useShortcut } from "../Utils/useShortcut";
 import { NotificationsPane } from "./Notifications";
 import { SidebarPane } from "./SidebarPane";
 import { SponsoredFpcBalanceWarning } from "./SponsoredFpcBalanceWarning";
@@ -157,18 +158,35 @@ export function GameWindowLayout({
     [selected, setSelectedPlanetVisible]
   );
 
-  useOnUp(
-    TOGGLE_DIAGNOSTICS_PANE,
-    useCallback(() => {
-      setDiagnosticsVisible((value) => !value);
-    }, [setDiagnosticsVisible])
+  const [disableDefaultShortcuts] = useBooleanSetting(
+    uiManager,
+    Setting.DisableDefaultShortcuts
   );
 
-  useOnUp(
+  useEffect(() => {
+    const subscription = modalManager.activeModalId$.subscribe((modalId) => {
+      setActiveShortcutModal(modalId);
+    });
+    return () => {
+      subscription.unsubscribe();
+      setActiveShortcutModal(undefined);
+    };
+  }, [modalManager]);
+
+  useShortcut(
+    TOGGLE_DIAGNOSTICS_PANE,
+    () => {
+      setDiagnosticsVisible((visible) => !visible);
+    },
+    { enabled: !disableDefaultShortcuts }
+  );
+
+  useShortcut(
     TOGGLE_UNIVERSE_VIEW,
-    useCallback(() => {
-      setUniverseView((v) => !v);
-    }, [setUniverseView])
+    () => {
+      setUniverseView((visible) => !visible);
+    },
+    { enabled: !disableDefaultShortcuts }
   );
 
   useEffect(() => {
@@ -354,11 +372,14 @@ const BottomLeftDock = styled.div`
   flex-direction: column;
   align-items: flex-start;
   z-index: ${DFZIndex.MenuBar};
+  /* The box is as wide as the explore bar and as tall as the sidebar plus
+     that bar. Its empty corner would otherwise swallow map clicks. */
+  pointer-events: none;
 `;
 
 /**
- * Fades edge UI in universe view but keeps it mounted so df-shortcut-button
- * global key listeners (h, j, k, space, etc.) keep working.
+ * Fades edge UI in universe view but keeps it mounted so shortcut
+ * registrations (h, j, k, space, etc.) stay active.
  */
 const HiddenEdgeChrome = styled.div<{ $hidden: boolean }>`
   opacity: ${({ $hidden }) => ($hidden ? 0 : 1)};

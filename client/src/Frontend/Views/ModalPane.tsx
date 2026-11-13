@@ -249,6 +249,7 @@ export function ModalPane({
             onShortcutPressed={() => api.pop()}
             shortcutKey={MODAL_BACK_SHORTCUT}
             shortcutText={MODAL_BACK_SHORTCUT}
+            shortcutModalId={id}
           >
             back
           </MaybeShortcutButton>

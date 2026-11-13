@@ -26,6 +26,7 @@ import {
 import { LoadingBarHandle, TextLoadingBar } from "../Components/TextLoadingBar";
 import dfstyles from "../Styles/dfstyles";
 import { isFirefox } from "../Utils/BrowserChecks";
+import { pointerTarget, registerPointerOverlay } from "../Utils/PointerFocus";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
 
 const ENTER_KEY_CODE = 13;
@@ -237,6 +238,7 @@ function TerminalImpl(
 
   const stickToEndRef = useRef(true);
   const readingRef = useRef(false);
+  const draggingScrollRef = useRef(false);
   const [showScrollbar, setShowScrollbar] = useState(false);
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollTop: 0,
@@ -290,6 +292,7 @@ function TerminalImpl(
     if (!node) return;
 
     const setReadingState = (readingNow: boolean) => {
+      if (draggingScrollRef.current) return;
       if (readingRef.current === readingNow) return;
       readingRef.current = readingNow;
       setShowScrollbar(readingNow);
@@ -300,18 +303,8 @@ function TerminalImpl(
       }
     };
 
-    const pointerIsOverLog = (event: PointerEvent) => {
-      const rect = (frameRef.current ?? node).getBoundingClientRect();
-      return (
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      );
-    };
-
     const onPointerMove = (event: PointerEvent) => {
-      setReadingState(pointerIsOverLog(event));
+      setReadingState(pointerTarget(event).kind === "terminal");
     };
 
     const onPointerLeave = () => {
@@ -319,7 +312,7 @@ function TerminalImpl(
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!readingRef.current) return;
+      if (pointerTarget(event).kind !== "terminal") return;
       const maxScroll = node.scrollHeight - node.clientHeight;
       if (maxScroll <= 1) return;
       event.preventDefault();
@@ -336,6 +329,9 @@ function TerminalImpl(
       syncScrollMetrics();
     };
 
+    const unregisterOverlay = registerPointerOverlay(() =>
+      (frameRef.current ?? node).getBoundingClientRect()
+    );
     window.addEventListener("pointermove", onPointerMove);
     document.documentElement.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("wheel", onWheel, {
@@ -343,6 +339,7 @@ function TerminalImpl(
       passive: false,
     });
     return () => {
+      unregisterOverlay();
       window.removeEventListener("pointermove", onPointerMove);
       document.documentElement.removeEventListener(
         "pointerleave",
@@ -495,6 +492,54 @@ function TerminalImpl(
     ]
   );
 
+  const onScrollLanePointerDown = (
+    event: React.PointerEvent<HTMLDivElement>
+  ) => {
+    const node = containerRef.current;
+    if (!node) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    draggingScrollRef.current = true;
+    readingRef.current = true;
+    setShowScrollbar(true);
+
+    const lane = event.currentTarget;
+    lane.setPointerCapture(event.pointerId);
+
+    const scrollToPointer = (clientY: number) => {
+      const rect = lane.getBoundingClientRect();
+      const maxScroll = node.scrollHeight - node.clientHeight;
+      if (maxScroll <= 1 || rect.height <= 1) return;
+      const thumbPercent = Math.max(
+        12,
+        (node.clientHeight / node.scrollHeight) * 100
+      );
+      const thumbPx = (thumbPercent / 100) * rect.height;
+      const travel = Math.max(1, rect.height - thumbPx);
+      const thumbTop = clientY - rect.top - thumbPx / 2;
+      const ratio = Math.min(1, Math.max(0, thumbTop / travel));
+      node.scrollTop = ratio * maxScroll;
+      stickToEndRef.current = pinnedToEnd(node);
+      syncScrollMetrics();
+    };
+
+    scrollToPointer(event.clientY);
+
+    const onMove = (ev: PointerEvent) => {
+      scrollToPointer(ev.clientY);
+    };
+    const onUp = () => {
+      draggingScrollRef.current = false;
+      lane.removeEventListener("pointermove", onMove);
+      lane.removeEventListener("pointerup", onUp);
+      lane.removeEventListener("pointercancel", onUp);
+    };
+    lane.addEventListener("pointermove", onMove);
+    lane.addEventListener("pointerup", onUp);
+    lane.addEventListener("pointercancel", onUp);
+  };
+
   return (
     <TerminalFrame ref={frameRef} $live={!interactive}>
       <TerminalContainer
@@ -537,7 +582,11 @@ function TerminalImpl(
         )}
       </TerminalContainer>
       {!interactive && (
-        <ScrollLane aria-hidden data-visible={showScrollbar ? "true" : "false"}>
+        <ScrollLane
+          data-scroll-lane
+          data-visible={showScrollbar ? "true" : "false"}
+          onPointerDown={onScrollLanePointerDown}
+        >
           <ScrollThumb style={scrollThumbStyle(scrollMetrics)} />
         </ScrollLane>
       )}
@@ -678,7 +727,7 @@ const TerminalFrame = styled.div<{ $live: boolean }>`
     css`
       pointer-events: none;
 
-      & * {
+      & *:not([data-scroll-lane]):not([data-scroll-lane] *) {
         pointer-events: none !important;
       }
     `}
@@ -741,20 +790,24 @@ function scrollThumbStyle({
 const ScrollLane = styled.div`
   position: absolute;
   top: 0;
-  right: 10px;
+  /* Wider than the thumb so it can be grabbed; the bar itself stays at the old inset. */
+  right: 4px;
   bottom: 0;
-  width: 4px;
+  width: 16px;
   pointer-events: none;
   opacity: 0;
+  touch-action: none;
 
   &[data-visible="true"] {
     opacity: 1;
+    pointer-events: auto;
+    cursor: pointer;
   }
 `;
 
 const ScrollThumb = styled.div`
   position: absolute;
-  left: 0;
+  right: 6px;
   width: 4px;
   border-radius: 2px;
   background: rgba(187, 187, 187, 0.72);

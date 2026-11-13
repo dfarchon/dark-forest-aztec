@@ -35,6 +35,7 @@ const StyledExplorePane = styled.div`
   padding: 0.5em;
   margin: 0.5em;
   border-radius: ${dfstyles.borderRadius};
+  pointer-events: auto;
 `;
 
 function Cores() {

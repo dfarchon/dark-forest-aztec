@@ -1,4 +1,3 @@
-import { SpecialKey } from "@dfpunk/constants";
 import { css, html, nothing, unsafeCSS } from "lit";
 import { classMap } from "lit/directives/class-map.js";
 import { DarkForestButton } from "./DarkForestButton";
@@ -103,22 +102,23 @@ export class DarkForestShortcutButton extends DarkForestButton {
     shortcutText: {
       type: String,
     },
-    _shortcutPressed: {
-      state: true,
+    shortcutPressed: {
+      type: Boolean,
     },
   };
 
   // Properties defined above will have a getter/setter created on the component,
   // but we want to define their type and/or defaults on the component
   /**
-   * The `shortcutKey` indicates which key this component listens for while it is mounted
+   * Key this button represents. The shortcut registry, not this element, listens for it.
    */
   shortcutKey?: string;
   /**
    * The `shortcutText` indicates the key should be displayed and with what text
    */
   shortcutText?: string;
-  private _shortcutPressed = false;
+  /** Set by the shortcut registry while the key is held. */
+  shortcutPressed = false;
   // Since this extends DarkForestButton, the properties it accepts should already be on this component
 
   render() {
@@ -131,7 +131,7 @@ export class DarkForestShortcutButton extends DarkForestButton {
   private _renderKbd() {
     const classes = {
       keyboardButton: true,
-      active: this.active || this._shortcutPressed,
+      active: this.active || this.shortcutPressed,
     };
 
     if (this.shortcutText) {
@@ -139,49 +139,5 @@ export class DarkForestShortcutButton extends DarkForestButton {
     } else {
       return nothing;
     }
-  }
-
-  private _getKeyFromEvent(evt: KeyboardEvent) {
-    if ((Object.values(SpecialKey) as string[]).includes(evt.key)) {
-      return evt.key;
-    }
-    return evt.key.toLowerCase();
-  }
-
-  private _handleKeyDown = (evt: KeyboardEvent) => {
-    if (this.disabled) {
-      return;
-    }
-
-    if (this.shortcutKey && this._getKeyFromEvent(evt) === this.shortcutKey) {
-      this._shortcutPressed = true;
-    }
-  };
-
-  private _handleKeyUp = (evt: KeyboardEvent) => {
-    if (this.disabled) {
-      return;
-    }
-
-    if (this.shortcutKey && this._getKeyFromEvent(evt) === this.shortcutKey) {
-      // Currently not preventing anything else from happening but we should consider it in the future
-      if (this._shortcutPressed) {
-        const event = new ShortcutPressedEvent();
-        this.dispatchEvent(event);
-      }
-      this._shortcutPressed = false;
-    }
-  };
-
-  connectedCallback() {
-    super.connectedCallback();
-    window.addEventListener("keydown", this._handleKeyDown);
-    window.addEventListener("keyup", this._handleKeyUp);
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    window.removeEventListener("keydown", this._handleKeyDown);
-    window.removeEventListener("keyup", this._handleKeyUp);
   }
 }

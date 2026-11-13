@@ -4,6 +4,7 @@ import {
   Artifact,
   artifactNameFromArtifact,
   Planet,
+  Setting,
   TooltipName,
 } from "@dfpunk/types";
 import React, { useCallback } from "react";
@@ -26,9 +27,21 @@ import {
   useUIManager,
 } from "../Utils/AppHooks";
 import { useEmitterValue } from "../Utils/EmitterHooks";
-import { useOnUp } from "../Utils/KeyEmitters";
+import { useBooleanSetting } from "../Utils/SettingsHooks";
 import { TOGGLE_ABANDON, TOGGLE_SEND } from "../Utils/ShortcutConstants";
+import { useShortcut } from "../Utils/useShortcut";
 import { SelectArtifactRow } from "./ArtifactRow";
+
+const ENERGY_PERCENT_KEYS = "1234567890".split("");
+const SILVER_PERCENT_KEYS = "!@#$%^&*()".split("");
+const SEND_RESOURCE_SHORTCUTS = [
+  ...ENERGY_PERCENT_KEYS,
+  ...SILVER_PERCENT_KEYS,
+  "-",
+  "=",
+  "_",
+  "+",
+];
 
 const StyledSendResources = styled.div`
   display: flex;
@@ -257,54 +270,37 @@ export function SendResources({
     [uiManager, locationId]
   );
 
-  // this variable is an array of 10 elements. each element is a key. whenever the user presses a
-  // key, we set the amount of energy that we're sending to be proportional to how late in the array
-  // that key is
-  const energyShortcuts = "1234567890".split("");
-
-  // same as above, except for silver
-  const silverShortcuts = "!@#$%^&*()".split("");
-
-  // for each of the above keys, we set up a listener that is triggered whenever that key is
-  // pressed, and sets the corresponding resource sending amount
-  for (let i = 0; i < energyShortcuts.length; i++) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useOnUp(energyShortcuts[i], () => updateEnergySending((i + 1) * 10), [
-      updateEnergySending,
-    ]);
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useOnUp(silverShortcuts[i], () => updateSilverSending((i + 1) * 10), [
-      updateSilverSending,
-    ]);
-  }
-
-  useOnUp(
-    "-",
-    () => {
-      updateEnergySending(uiManager.getForcesSending(locationId) - 10);
-    },
-    [uiManager, locationId, updateEnergySending]
+  const [disableDefaultShortcuts] = useBooleanSetting(
+    uiManager,
+    Setting.DisableDefaultShortcuts
   );
-  useOnUp(
-    "=",
-    () => {
-      updateEnergySending(uiManager.getForcesSending(locationId) + 10);
+
+  // 1-0 set energy to 10%-100%. Shifted digits set silver the same way.
+  // -/= nudge energy, _/+ nudge silver.
+  useShortcut(
+    SEND_RESOURCE_SHORTCUTS,
+    (key) => {
+      const energyIndex = ENERGY_PERCENT_KEYS.indexOf(key);
+      if (energyIndex >= 0) {
+        updateEnergySending((energyIndex + 1) * 10);
+        return;
+      }
+      const silverIndex = SILVER_PERCENT_KEYS.indexOf(key);
+      if (silverIndex >= 0) {
+        updateSilverSending((silverIndex + 1) * 10);
+        return;
+      }
+      if (key === "-" || key === "=") {
+        const current = uiManager.getForcesSending(locationId);
+        updateEnergySending(current + (key === "=" ? 10 : -10));
+        return;
+      }
+      if (key === "_" || key === "+") {
+        const current = uiManager.getSilverSending(locationId);
+        updateSilverSending(current + (key === "+" ? 10 : -10));
+      }
     },
-    [uiManager, locationId, updateEnergySending]
-  );
-  useOnUp(
-    "_",
-    () => {
-      updateSilverSending(uiManager.getSilverSending(locationId) - 10);
-    },
-    [uiManager, locationId, updateSilverSending]
-  );
-  useOnUp(
-    "+",
-    () => {
-      updateSilverSending(uiManager.getSilverSending(locationId) + 10);
-    },
-    [uiManager, locationId, updateSilverSending]
+    { enabled: !disableDefaultShortcuts }
   );
 
   const artifacts = usePlanetInactiveArtifacts(p, uiManager);
