@@ -31,7 +31,7 @@ const borderDarkest = color(borderDarker).darken(0.5).hex();
 const blueBackground = "#0a0a23";
 
 const dfblue = "#00ADE1";
-const dfgreen = "#00DC82";
+const dfgreen = "#FFD0DA";
 const dfgreendark = color(dfgreen).darken(0.7).hex();
 const dfgreenlight = color(dfgreen).lighten(0.1).hex();
 const dfred = "#FF6492";

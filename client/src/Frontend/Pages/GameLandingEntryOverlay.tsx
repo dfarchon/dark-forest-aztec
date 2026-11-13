@@ -325,7 +325,7 @@ const GearBtn = styled.button`
   &:hover {
     color: ${dfstyles.colors.dfgreen};
     border-color: ${dfstyles.colors.dfgreen};
-    background: rgba(0, 220, 130, 0.06);
+    background: rgba(255, 208, 218, 0.06);
   }
 `;
 

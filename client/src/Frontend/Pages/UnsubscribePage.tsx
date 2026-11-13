@@ -103,7 +103,7 @@ const TextLinks = styled.div`
 
 const Title = styled.div`
   font-size: ${dfstyles.fontH1};
-  font-family: ${dfstyles.titleFont};
+  font-family: "Fira Sans", system-ui, sans-serif;
   @media (max-width: ${dfstyles.screenSizeS}) {
     font-size: ${dfstyles.fontH1S};
   }

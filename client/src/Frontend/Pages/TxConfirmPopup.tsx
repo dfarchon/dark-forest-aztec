@@ -25,13 +25,13 @@ const StyledTxConfirmPopup = styled.div`
   background: white;
   color: black;
 
-  font-family: "Helvetica", "Arial", sans-serif;
+  font-family: "Fira Sans", system-ui, sans-serif;
   font-size: 12pt;
 
   font-weight: 400;
 
   .mono {
-    font-family: "Inconsolata", "Monaco", monospace;
+    font-family: inherit;
     font-size: 11pt;
   }
 
@@ -81,7 +81,7 @@ const StyledTxConfirmPopup = styled.div`
 
     & > h2 {
       font-size: 1.5em;
-      font-weight: 300;
+      font-weight: 400;
     }
   }
 `;

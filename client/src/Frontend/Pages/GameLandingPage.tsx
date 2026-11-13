@@ -3674,7 +3674,6 @@ const StartupStatusBar = styled.div`
   gap: 3px;
   border-top: 1px solid ${dfstyles.colors.borderDark};
   padding: 7px 8px;
-  font-family: monospace;
   font-size: 11px;
   color: ${dfstyles.colors.subtext};
   background: rgba(0, 0, 0, 0.2);
@@ -3707,7 +3706,7 @@ const StartupStatusDetail = styled.div`
 
 const DownloadAccountInfoButtonElement = styled.button`
   color: ${dfstyles.colors.dfgreen};
-  background: rgba(0, 220, 130, 0.08);
+  background: rgba(255, 208, 218, 0.08);
   border: 1px solid ${dfstyles.colors.dfgreen};
   border-radius: 2px;
   cursor: pointer;
@@ -3757,7 +3756,7 @@ const EnterTransition = styled.div`
     inset: 0;
     background: radial-gradient(
       circle at 50% 45%,
-      rgba(0, 220, 130, 0.22),
+      rgba(255, 208, 218, 0.22),
       transparent 55%
     );
     opacity: 0;
@@ -3774,20 +3773,20 @@ const EnterTransition = styled.div`
       transform: translate(-50%, -50%) scale(1);
       box-shadow:
         0 0 0 2px rgba(255, 255, 255, 0.9),
-        0 0 60px 20px rgba(0, 220, 130, 0.8),
+        0 0 60px 20px rgba(255, 208, 218, 0.8),
         0 0 120px 40px rgba(187, 187, 187, 0.3);
     }
     15% {
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.6),
-        0 0 40px 10px rgba(0, 220, 130, 0.6),
+        0 0 40px 10px rgba(255, 208, 218, 0.6),
         0 0 80px 20px rgba(187, 187, 187, 0.2);
     }
     60% {
       transform: translate(-50%, -50%) scale(1.4);
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.4),
-        0 0 80px 20px rgba(0, 220, 130, 0.8),
+        0 0 80px 20px rgba(255, 208, 218, 0.8),
         0 0 160px 40px rgba(187, 187, 187, 0.2);
     }
     100% {
@@ -3818,19 +3817,19 @@ const RefreshPageTransition = styled.div`
   background:
     radial-gradient(
       circle at 50% 50%,
-      rgba(0, 220, 130, 0.18),
+      rgba(255, 208, 218, 0.18),
       transparent 30%
     ),
     linear-gradient(
       90deg,
       transparent 49.85%,
-      rgba(0, 220, 130, 0.32) 50%,
+      rgba(255, 208, 218, 0.32) 50%,
       transparent 50.15%
     ),
     linear-gradient(
       0deg,
       transparent 49.85%,
-      rgba(0, 220, 130, 0.32) 50%,
+      rgba(255, 208, 218, 0.32) 50%,
       transparent 50.15%
     ),
     rgba(0, 0, 0, 0.18);
@@ -3857,7 +3856,7 @@ const RefreshPageTransition = styled.div`
       repeating-linear-gradient(
         90deg,
         transparent 0 22px,
-        rgba(0, 220, 130, 0.16) 23px,
+        rgba(255, 208, 218, 0.16) 23px,
         transparent 26px
       ),
       radial-gradient(
@@ -3866,10 +3865,10 @@ const RefreshPageTransition = styled.div`
         rgba(255, 255, 255, 0.65) 10.3vmin,
         transparent 10.8vmin,
         transparent 18vmin,
-        rgba(0, 220, 130, 0.58) 18.4vmin,
+        rgba(255, 208, 218, 0.58) 18.4vmin,
         transparent 19.2vmin,
         transparent 30vmin,
-        rgba(0, 220, 130, 0.28) 30.5vmin,
+        rgba(255, 208, 218, 0.28) 30.5vmin,
         transparent 31.5vmin
       );
     opacity: 0;
@@ -3907,21 +3906,21 @@ const RefreshPageTransition = styled.div`
       transform: translate(-50%, -50%) scale(1);
       box-shadow:
         0 0 0 2px rgba(255, 255, 255, 0.95),
-        0 0 50px 16px rgba(0, 220, 130, 0.95),
+        0 0 50px 16px rgba(255, 208, 218, 0.95),
         0 0 120px 46px rgba(0, 140, 255, 0.28);
     }
     22% {
       transform: translate(-50%, -50%) scale(1.15);
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.75),
-        0 0 72px 22px rgba(0, 220, 130, 0.9),
+        0 0 72px 22px rgba(255, 208, 218, 0.9),
         0 0 170px 56px rgba(0, 140, 255, 0.34);
     }
     58% {
       transform: translate(-50%, -50%) scale(1.45);
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.5),
-        0 0 110px 32px rgba(0, 220, 130, 0.95),
+        0 0 110px 32px rgba(255, 208, 218, 0.95),
         0 0 220px 76px rgba(255, 255, 255, 0.16);
     }
     100% {
@@ -3967,8 +3966,8 @@ const RefreshTransitionHud = styled.div`
   color: ${dfstyles.colors.dfgreen};
   text-align: center;
   text-shadow:
-    0 0 10px rgba(0, 220, 130, 0.9),
-    0 0 28px rgba(0, 220, 130, 0.58);
+    0 0 10px rgba(255, 208, 218, 0.9),
+    0 0 28px rgba(255, 208, 218, 0.58);
   transform: translate(-50%, -50%) scale(0.86);
   animation: refresh-hud-collapse ${REFRESH_PAGE_TRANSITION_MS}ms ease-in
     forwards;
@@ -3979,10 +3978,10 @@ const RefreshTransitionHud = styled.div`
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    border: 1px solid rgba(0, 220, 130, 0.82);
+    border: 1px solid rgba(255, 208, 218, 0.82);
     box-shadow:
-      inset 0 0 32px rgba(0, 220, 130, 0.24),
-      0 0 42px rgba(0, 220, 130, 0.38);
+      inset 0 0 32px rgba(255, 208, 218, 0.24),
+      0 0 42px rgba(255, 208, 218, 0.38);
   }
 
   &::before {

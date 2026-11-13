@@ -670,7 +670,7 @@ export default class Plugin {
       info: "#a8a8a8",
       warn: "#f8b73e",
       error: "#FF6492",
-      ok: "#00DC82",
+      ok: "#FFD0DA",
     };
 
     box.innerHTML = "";
@@ -700,7 +700,7 @@ export default class Plugin {
       <style>
         .th-never { color: #FF6492; }
         .th-stale { color: #f8b73e; }
-        .th-ok { color: #00DC82; }
+        .th-ok { color: #FFD0DA; }
         table.th-t { width:100%; border-collapse:collapse; font-size:12px; }
         table.th-t th, table.th-t td { padding:4px 6px; border-bottom:1px solid #444; text-align:left; }
         table.th-t td.num { text-align:right; }

@@ -50,7 +50,7 @@ const AccountRow = styled.label<{ $selected?: boolean }>`
       $selected ? dfstyles.colors.dfgreen : dfstyles.colors.borderDarker};
   border-radius: ${dfstyles.borderRadius};
   background: ${({ $selected }) =>
-    $selected ? "rgba(0, 220, 130, 0.075)" : "rgba(255, 255, 255, 0.025)"};
+    $selected ? "rgba(255, 208, 218, 0.075)" : "rgba(255, 255, 255, 0.025)"};
   cursor: pointer;
   font-size: ${dfstyles.fontSizeS};
   color: ${dfstyles.colors.text};
@@ -59,7 +59,7 @@ const AccountRow = styled.label<{ $selected?: boolean }>`
     border-color: ${({ $selected }) =>
       $selected ? dfstyles.colors.dfgreen : dfstyles.colors.border};
     background: ${({ $selected }) =>
-      $selected ? "rgba(0, 220, 130, 0.12)" : "rgba(255, 255, 255, 0.045)"};
+      $selected ? "rgba(255, 208, 218, 0.12)" : "rgba(255, 255, 255, 0.045)"};
   }
 `;
 
@@ -89,7 +89,7 @@ const RadioIndicator = styled.span<{ $selected: boolean }>`
   align-items: center;
   justify-content: center;
   background: ${({ $selected }) =>
-    $selected ? "rgba(0, 220, 130, 0.15)" : "transparent"};
+    $selected ? "rgba(255, 208, 218, 0.15)" : "transparent"};
 
   &::after {
     content: "";
@@ -105,7 +105,7 @@ const SingleAccountCard = styled.div`
   padding: 10px 12px;
   border: 1px solid ${dfstyles.colors.dfgreen};
   border-radius: ${dfstyles.borderRadius};
-  background: rgba(0, 220, 130, 0.075);
+  background: rgba(255, 208, 218, 0.075);
   margin-bottom: 12px;
 `;
 
@@ -128,7 +128,6 @@ const RowHint = styled.span`
 
 const AddressMono = styled.span`
   display: block;
-  font-family: monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

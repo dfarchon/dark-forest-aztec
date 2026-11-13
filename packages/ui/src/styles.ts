@@ -3,7 +3,7 @@ import color from "color";
 
 const text = color("#bbb").hex();
 const dfred = "#FF6492";
-const dfgreen = "#00DC82";
+const dfgreen = "#FFD0DA";
 const subtext = color(text).darken(0.3).hex();
 
 const background = "#151515";

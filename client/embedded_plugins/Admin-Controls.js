@@ -168,7 +168,7 @@ const addressStyle = {
 const flexInput = { flex: "1", minWidth: "80px" };
 const narrowInput = { width: "80px" };
 const selectFlex = { flex: "1", minWidth: "0" };
-const greenStyle = { color: "#00DC82" };
+const greenStyle = { color: "#FFD0DA" };
 const redStyle = { color: "#FF6492" };
 const bannerBase = {
   padding: "6px 10px",
@@ -179,9 +179,9 @@ const bannerBase = {
 };
 const successBanner = {
   ...bannerBase,
-  borderLeft: "3px solid #00DC82",
+  borderLeft: "3px solid #FFD0DA",
   background: "rgba(0,220,130,0.08)",
-  color: "#00DC82",
+  color: "#FFD0DA",
 };
 const errorBanner = {
   ...bannerBase,

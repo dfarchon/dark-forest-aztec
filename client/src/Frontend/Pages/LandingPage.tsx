@@ -10,6 +10,7 @@ import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { Link, Spacer, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
+import { AsciiFieldBackground } from "../Renderers/AsciiFieldBackground";
 import dfstyles from "../Styles/dfstyles";
 
 export const enum LandingPageZIndex {
@@ -40,10 +41,10 @@ const ButtonWrapper = styled.div`
 
 const PrimaryAction = styled.div`
   --df-button-color: ${dfstyles.colors.dfgreen};
-  --df-button-background: rgba(0, 220, 130, 0.14);
-  --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-background: #000;
+  --df-button-border: none;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: none;
 
   df-button {
     min-width: 240px;
@@ -54,10 +55,10 @@ const SecondaryAction = styled.div`
   display: inline-block;
 
   --df-button-color: ${dfstyles.colors.text};
-  --df-button-background: rgba(255, 255, 255, 0.04);
-  --df-button-border: 1px solid ${dfstyles.colors.border};
+  --df-button-background: #000;
+  --df-button-border: none;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: none;
 
   df-button {
     min-width: 160px;
@@ -68,8 +69,8 @@ const SettingsModalBoundary = styled.div`
   display: contents;
 `;
 
-const MODAL_WIDTH_ESTIMATE = 320;
-const MODAL_HEIGHT_ESTIMATE = 420;
+const MODAL_WIDTH_ESTIMATE = 480;
+const MODAL_HEIGHT_ESTIMATE = 560;
 const MODAL_GAP_ABOVE_BUTTON = 12;
 const ENTER_TRANSITION_DURATION_MS = 1100;
 
@@ -127,7 +128,7 @@ export default function LandingPage() {
 
   return (
     <>
-      <PrettyOverlayGradient />
+      <AsciiFieldBackground />
       {/* <Hiring /> */}
 
       <Page $entering={phase === "blackhole1"}>
@@ -421,51 +422,6 @@ export default function LandingPage() {
   );
 }
 
-const PrettyOverlayGradient = styled.div`
-  width: 100vw;
-  height: 100vh;
-  background: ${dfstyles.colors.background};
-  background-position: 50%, 50%;
-  display: inline-block;
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: -1;
-  overflow: hidden;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(${dfstyles.colors.borderDarker} 1px, transparent 1px),
-      linear-gradient(${dfstyles.colors.borderDarkest} 1px, transparent 1px),
-      linear-gradient(
-        90deg,
-        ${dfstyles.colors.borderDarkest} 1px,
-        transparent 1px
-      );
-    background-size:
-      58px 58px,
-      72px 72px,
-      72px 72px;
-    opacity: 0.18;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(transparent, rgba(0, 0, 0, 0.26)),
-      radial-gradient(
-        circle at 50% 34%,
-        rgba(255, 255, 255, 0.04),
-        transparent 38%
-      );
-  }
-`;
-
 const BlackHoleTransition = styled.div`
   position: fixed;
   inset: 0;
@@ -495,20 +451,20 @@ const BlackHoleTransition = styled.div`
       transform: translate(-50%, -50%) scale(1);
       box-shadow:
         0 0 0 2px rgba(255, 255, 255, 0.9),
-        0 0 60px 20px rgba(0, 220, 130, 0.8),
+        0 0 60px 20px rgba(255, 208, 218, 0.8),
         0 0 120px 40px rgba(187, 187, 187, 0.3);
     }
     15% {
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.6),
-        0 0 40px 10px rgba(0, 220, 130, 0.6),
+        0 0 40px 10px rgba(255, 208, 218, 0.6),
         0 0 80px 20px rgba(187, 187, 187, 0.2);
     }
     60% {
       transform: translate(-50%, -50%) scale(1.4);
       box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.4),
-        0 0 80px 20px rgba(0, 220, 130, 0.8),
+        0 0 80px 20px rgba(255, 208, 218, 0.8),
         0 0 160px 40px rgba(187, 187, 187, 0.2);
     }
     100% {
@@ -555,9 +511,9 @@ const DisclaimerOverlay = styled.div<{ $leaving?: boolean }>`
 const DisclaimerPanel = styled.div`
   width: min(700px, calc(100vw - 48px));
   padding: 42px 52px 38px;
-  border: 1px solid ${dfstyles.colors.borderDarkest};
+  border: none;
   border-radius: ${dfstyles.borderRadius};
-  background: rgba(21, 21, 21, 0.88);
+  background: #000;
   text-align: center;
   animation: disclaimer-panel-in ${DISCLAIMER_FADE_IN_MS + 150}ms ease-out both;
 
@@ -640,10 +596,10 @@ const DisclaimerActions = styled.div`
 
 const DisclaimerAccept = styled.div`
   --df-button-color: ${dfstyles.colors.dfgreen};
-  --df-button-background: rgba(0, 220, 130, 0.14);
-  --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-background: #000;
+  --df-button-border: none;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: none;
 
   df-button {
     min-width: 320px;
@@ -652,10 +608,10 @@ const DisclaimerAccept = styled.div`
 
 const DisclaimerDecline = styled.div`
   --df-button-color: ${dfstyles.colors.text};
-  --df-button-background: rgba(255, 255, 255, 0.04);
-  --df-button-border: 1px solid ${dfstyles.colors.border};
+  --df-button-background: #000;
+  --df-button-border: none;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-hover-border: none;
 
   df-button {
     min-width: 140px;
@@ -676,9 +632,9 @@ const HeroFrame = styled.div`
   max-width: 860px;
   margin: 0 auto;
   padding: 34px 42px 36px;
-  border: 1px solid ${dfstyles.colors.borderDarkest};
+  border: none;
   border-radius: ${dfstyles.borderRadius};
-  background: rgba(21, 21, 21, 0.78);
+  background: #000;
 
   @media only screen and (max-device-width: 1000px) {
     width: min(720px, calc(100vw - 32px));

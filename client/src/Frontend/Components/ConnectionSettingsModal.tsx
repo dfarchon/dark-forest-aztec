@@ -37,23 +37,62 @@ function isValidHttpUrl(s: string): boolean {
 
 const ConnectionSettingsContent = styled.div`
   box-sizing: border-box;
-  width: min(520px, calc(100vw - 32px));
-  max-height: calc(100vh - 96px);
-  padding-right: 4px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 72px);
+  overflow: hidden;
+  font-size: 14pt;
+  line-height: 1.35;
+`;
+
+const Fields = styled.div`
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+`;
+
+const Intro = styled.p`
+  margin: 0 0 8px;
+  color: ${dfstyles.colors.subtext};
+  font-size: ${dfstyles.fontSizeS};
+  line-height: 1.4;
+`;
+
+const FieldLabel = styled.label`
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14pt;
+`;
+
+const StatusMessage = styled.div`
+  flex: 0 0 auto;
+  margin-top: 6px;
+  font-size: ${dfstyles.fontSizeS};
+  line-height: 1.4;
+`;
+
+const Actions = styled.div`
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid ${dfstyles.colors.borderDark};
 `;
 
 const FeePaymentSection = styled.div`
-  margin: 2px 0 12px;
+  margin: 14px 0 4px;
   text-align: left;
 `;
 
 const FeePaymentToggle = styled.label`
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 11px 12px;
+  gap: 8px;
+  padding: 6px 8px;
   border: 1px solid ${dfstyles.colors.borderDark};
   border-radius: ${dfstyles.borderRadius};
   background: ${dfstyles.colors.backgroundlight};
@@ -66,8 +105,8 @@ const FeePaymentToggle = styled.label`
 `;
 
 const FeePaymentCheckbox = styled.input`
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
   margin: 2px 0 0;
   flex: 0 0 auto;
   accent-color: ${dfstyles.colors.dfgreen};
@@ -78,13 +117,13 @@ const FeePaymentToggleCopy = styled.span`
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
-  line-height: 1.35;
+  gap: 1px;
+  line-height: 1.3;
 `;
 
 const FeePaymentTitle = styled.span`
   color: ${dfstyles.colors.text};
-  font-size: ${dfstyles.fontSize};
+  font-size: 14pt;
 `;
 
 const FeePaymentSubtitle = styled.span`
@@ -93,24 +132,24 @@ const FeePaymentSubtitle = styled.span`
 `;
 
 const FeePaymentDetails = styled.div`
-  margin-top: 8px;
-  padding: 11px 12px;
+  margin-top: 6px;
+  padding: 6px 8px;
   border-left: 2px solid ${dfstyles.colors.dfgreen};
   background: ${dfstyles.colors.background};
   text-align: left;
 `;
 
 const FeePaymentStatus = styled.div`
-  margin-bottom: 6px;
+  margin-bottom: 3px;
   color: ${dfstyles.colors.dfgreen};
   font-size: ${dfstyles.fontSizeS};
 `;
 
 const FeePaymentHelp = styled.p`
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: ${dfstyles.colors.subtext};
   font-size: ${dfstyles.fontSizeS};
-  line-height: 1.45;
+  line-height: 1.4;
 `;
 
 const BridgeLinkList = styled.div`
@@ -122,9 +161,15 @@ const BridgeLinkList = styled.div`
 
 const FeePaymentFieldLabel = styled.label`
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
   color: ${dfstyles.colors.text};
+  font-size: 14pt;
 `;
+
+const fieldInputStyle = {
+  width: "100%",
+  marginBottom: 8,
+} as const;
 
 export function ConnectionSettingsModal({
   open,
@@ -252,133 +297,125 @@ export function ConnectionSettingsModal({
     >
       <Title slot="title">Connection settings</Title>
       <ConnectionSettingsContent>
-        <p style={{ marginBottom: 8, color: dfstyles.colors.subtext }}>
-          Configure before entering the world. Leave indexer empty to sync from
-          node.
-        </p>
-        <label style={{ display: "block", marginBottom: 4 }}>
-          <Text>Aztec node URL</Text>
-        </label>
-        <TextInput
-          value={nodeUrlInput}
-          onChange={(e) =>
-            setNodeUrlInput((e.target as HTMLInputElement).value)
-          }
-          placeholder={getNodeUrl()}
-          style={{ width: "100%", marginBottom: 12 }}
-        />
-        <label style={{ display: "block", marginBottom: 4 }}>
-          <Text>Indexer bootstrap URL (optional)</Text>
-        </label>
-        <TextInput
-          value={indexerUrlInput}
-          onChange={(e) =>
-            setIndexerUrlInput((e.target as HTMLInputElement).value)
-          }
-          placeholder="Leave empty to sync from node"
-          style={{ width: "100%", marginBottom: 12 }}
-        />
-        <label style={{ display: "block", marginBottom: 4 }}>
-          <Text>Presto / prover URL</Text>
-        </label>
-        <TextInput
-          value={proverUrlInput}
-          onChange={(e) =>
-            setProverUrlInput((e.target as HTMLInputElement).value)
-          }
-          placeholder={getProverUrl()}
-          style={{ width: "100%", marginBottom: 12 }}
-        />
-        <FeePaymentSection>
-          {sponsorMode && (
-            <FeePaymentToggle>
-              <FeePaymentCheckbox
-                type="checkbox"
-                checked={useSponsoredFpc}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setUseSponsoredFpc(e.target.checked)
-                }
-              />
-              <FeePaymentToggleCopy>
-                <FeePaymentTitle>Sponsored fees</FeePaymentTitle>
-                <FeePaymentSubtitle>
-                  Pay transaction fees with SponsoredFPC
-                </FeePaymentSubtitle>
-              </FeePaymentToggleCopy>
-            </FeePaymentToggle>
-          )}
+        <Fields>
+          <Intro>
+            Configure before entering the world. Leave indexer empty to sync
+            from node.
+          </Intro>
+          <FieldLabel>
+            <Text>Aztec node URL</Text>
+          </FieldLabel>
+          <TextInput
+            value={nodeUrlInput}
+            onChange={(e) =>
+              setNodeUrlInput((e.target as HTMLInputElement).value)
+            }
+            placeholder={getNodeUrl()}
+            style={fieldInputStyle}
+          />
+          <FieldLabel>
+            <Text>Indexer bootstrap URL (optional)</Text>
+          </FieldLabel>
+          <TextInput
+            value={indexerUrlInput}
+            onChange={(e) =>
+              setIndexerUrlInput((e.target as HTMLInputElement).value)
+            }
+            placeholder="Leave empty to sync from node"
+            style={fieldInputStyle}
+          />
+          <FieldLabel>
+            <Text>Presto / prover URL</Text>
+          </FieldLabel>
+          <TextInput
+            value={proverUrlInput}
+            onChange={(e) =>
+              setProverUrlInput((e.target as HTMLInputElement).value)
+            }
+            placeholder={getProverUrl()}
+            style={fieldInputStyle}
+          />
+          <FeePaymentSection>
+            {sponsorMode && (
+              <FeePaymentToggle>
+                <FeePaymentCheckbox
+                  type="checkbox"
+                  checked={useSponsoredFpc}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setUseSponsoredFpc(e.target.checked)
+                  }
+                />
+                <FeePaymentToggleCopy>
+                  <FeePaymentTitle>Sponsored fees</FeePaymentTitle>
+                  <FeePaymentSubtitle>
+                    Pay transaction fees with SponsoredFPC
+                  </FeePaymentSubtitle>
+                </FeePaymentToggleCopy>
+              </FeePaymentToggle>
+            )}
 
-          {sponsorMode && useSponsoredFpc ? (
-            <FeePaymentDetails>
-              <FeePaymentStatus>SponsoredFPC selected</FeePaymentStatus>
-              <FeePaymentHelp>
-                If its FeeJuice balance is too low, entry stops instead of
-                charging your account.
-              </FeePaymentHelp>
-              <FeePaymentFieldLabel>SponsoredFPC address</FeePaymentFieldLabel>
-              <TextInput
-                value={sponsoredFpcInput}
-                onChange={(e) =>
-                  setSponsoredFpcInput((e.target as HTMLInputElement).value)
-                }
-                placeholder={
-                  getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
-                }
-                style={{ width: "100%", marginBottom: 7 }}
-              />
-              <FeePaymentHelp style={{ marginBottom: 0 }}>
-                Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code> or
-                the canonical instance. Address changes apply after refresh.
-              </FeePaymentHelp>
-            </FeePaymentDetails>
-          ) : (
-            <FeePaymentDetails>
-              <FeePaymentStatus>Account FeeJuice selected</FeePaymentStatus>
-              <FeePaymentHelp>
-                Your account pays transaction fees. Its FeeJuice balance is
-                checked after wallet selection.
-              </FeePaymentHelp>
-              <BridgeLinkList>
-                {externalLinks.aztecMainnet.feeJuiceBridges.map((bridge) => (
-                  <Link key={bridge.url} to={bridge.url}>
-                    Open {bridge.name}
-                  </Link>
-                ))}
-              </BridgeLinkList>
-            </FeePaymentDetails>
-          )}
-        </FeePaymentSection>
+            {sponsorMode && useSponsoredFpc ? (
+              <FeePaymentDetails>
+                <FeePaymentStatus>SponsoredFPC selected</FeePaymentStatus>
+                <FeePaymentHelp>
+                  If its FeeJuice balance is too low, entry stops instead of
+                  charging your account.
+                </FeePaymentHelp>
+                <FeePaymentFieldLabel>
+                  SponsoredFPC address
+                </FeePaymentFieldLabel>
+                <TextInput
+                  value={sponsoredFpcInput}
+                  onChange={(e) =>
+                    setSponsoredFpcInput((e.target as HTMLInputElement).value)
+                  }
+                  placeholder={
+                    getSponsoredFpcAddressFromEnv() ?? "Optional Aztec address"
+                  }
+                  style={fieldInputStyle}
+                />
+                <FeePaymentHelp style={{ marginBottom: 0 }}>
+                  Leave empty to use <code>VITE_SPONSORED_FPC_ADDRESS</code> or
+                  the canonical instance. Address changes apply after refresh.
+                </FeePaymentHelp>
+              </FeePaymentDetails>
+            ) : (
+              <FeePaymentDetails>
+                <FeePaymentStatus>Account FeeJuice selected</FeePaymentStatus>
+                <FeePaymentHelp>
+                  Your account pays transaction fees. Its FeeJuice balance is
+                  checked after wallet selection.
+                </FeePaymentHelp>
+                <BridgeLinkList>
+                  {externalLinks.aztecMainnet.feeJuiceBridges.map((bridge) => (
+                    <Link key={bridge.url} to={bridge.url}>
+                      Open {bridge.name}
+                    </Link>
+                  ))}
+                </BridgeLinkList>
+              </FeePaymentDetails>
+            )}
+          </FeePaymentSection>
+        </Fields>
         {saveMessage === "saved" && (
-          <Text
-            style={{
-              color: dfstyles.colors.dfgreen,
-              marginBottom: 8,
-              fontSize: dfstyles.fontSizeS,
-            }}
-          >
+          <StatusMessage style={{ color: dfstyles.colors.dfgreen }}>
             Saved. Will apply when you enter the world.
-          </Text>
+          </StatusMessage>
         )}
         {saveMessage === "restored" && (
-          <div
-            style={{
-              color: dfstyles.colors.dfgreen,
-              marginBottom: 8,
-              fontSize: dfstyles.fontSizeS,
-            }}
-          >
+          <StatusMessage style={{ color: dfstyles.colors.dfgreen }}>
             <div>Restored to default.</div>
             <div>Will apply when you enter the world.</div>
-          </div>
+          </StatusMessage>
         )}
         {saveMessage === "error" && (
-          <Text style={{ color: dfstyles.colors.dfred, marginBottom: 8 }}>
+          <StatusMessage style={{ color: dfstyles.colors.dfred }}>
             {sponsorMode
               ? "Please enter valid HTTP(S) URLs and a valid Aztec SponsoredFPC address (or leave sponsor empty)."
               : "Please enter valid HTTP(S) URLs."}
-          </Text>
+          </StatusMessage>
         )}
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <Actions>
           <Btn size="medium" onClick={handleSave}>
             Save
           </Btn>
@@ -396,7 +433,7 @@ export function ConnectionSettingsModal({
           >
             Close
           </Btn>
-        </div>
+        </Actions>
       </ConnectionSettingsContent>
     </Modal>
   );

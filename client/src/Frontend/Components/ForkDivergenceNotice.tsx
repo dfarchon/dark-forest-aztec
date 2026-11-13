@@ -205,7 +205,6 @@ const ForkDivergenceCard = styled.div`
   background: #100c00;
   color: ${dfstyles.colors.text};
   text-align: left;
-  font-family: monospace;
 
   strong {
     display: block;

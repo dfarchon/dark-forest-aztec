@@ -526,7 +526,7 @@ const OptionRowButton = styled.button`
     opacity: 0.9;
     color: ${dfstyles.colors.dfgreen};
     border-color: ${dfstyles.colors.dfgreen};
-    background: rgba(0, 220, 130, 0.08);
+    background: rgba(255, 208, 218, 0.08);
   }
 `;
 

@@ -86,7 +86,6 @@ const BridgeMeta = styled.div`
 
 const BridgeDomain = styled.span`
   color: ${dfstyles.colors.subtext};
-  font-family: monospace;
   overflow-wrap: anywhere;
 `;
 

@@ -269,7 +269,7 @@ export const PluginElements = styled.div`
   min-height: 100px;
   max-height: 600px;
   overflow: scroll;
-  font-family: "Inconsolata", monospace;
+  font-family: "Fira Sans", system-ui, sans-serif;
   font-size: ${dfstyles.fontSizeS};
   line-height: 1.5;
 
@@ -418,7 +418,7 @@ export const PluginElements = styled.div`
   }
 
   code {
-    font-family: "Inconsolata", monospace;
+    font-family: inherit;
     color: ${dfstyles.colors.textLight};
   }
 

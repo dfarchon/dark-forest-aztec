@@ -17,8 +17,8 @@ Theme.registerThemeFragment(
     :host,
     :root {
       color: ${unsafeCSS(dfstyles.colors.text)};
-      font-family: "Inconsolata", monospace;
-      font-weight: 300;
+      font-family: "Fira Sans", system-ui, sans-serif;
+      font-weight: 400;
 
       width: 100%;
       height: 100%;

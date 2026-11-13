@@ -10,7 +10,7 @@
 
 Dark Forest Aztec is a fully onchain strategy game set in a procedurally generated hidden universe. Core universe rules and state commitments are enforced by [Aztec](https://aztec.network/) smart contracts, while zero-knowledge cryptography lets players explore, fight, capture planets, and command fleets without fully exposing their positions onchain. Expand your empire, outthink rivals, and compete for resources and glory.
 
-Dark Forest Aztec 0.1.1 is a port of the core features of [Dark Forest 0.6](https://github.com/darkforest-eth/darkforest-v0.6) to Aztec.
+Dark Forest Aztec 0.2.0 is a port of the core features of [Dark Forest 0.6](https://github.com/darkforest-eth/darkforest-v0.6) to Aztec.
 
 Future updates and iterations will build on Aztec's programmable privacy features.
 
