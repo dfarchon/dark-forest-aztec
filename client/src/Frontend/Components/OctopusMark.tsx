@@ -1,5 +1,5 @@
 import React, { useId } from "react";
-import styled from "styled-components";
+import styled, { css, keyframes } from "styled-components";
 
 const LIGHT = "#FFB7C5";
 const DARK = "#E68398";
@@ -78,10 +78,16 @@ const SHIP: Block[] = [
 const PLANET = { cx: 206, cy: 288, r: 156 };
 const RING = { rx: 220, ry: 62, rotate: -18, stroke: 16, dy: 46 };
 
-const Frame = styled.div<{ $width: string }>`
+const Frame = styled.div<{ $width: string; $centerPlanet: boolean }>`
   position: relative;
   width: ${(props) => props.$width};
   margin: 0 auto;
+  ${({ $centerPlanet }) =>
+    $centerPlanet &&
+    css`
+      /* Planet (206, 288) is below the viewBox center. Shift it onto the page center. */
+      transform: translate(0.8%, -7.037%);
+    `}
 `;
 
 const Mark = styled.svg`
@@ -92,24 +98,45 @@ const Mark = styled.svg`
   overflow: visible;
 `;
 
-type PunkMarkProps = {
+const shipLift = keyframes`
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-62%);
+  }
+`;
+
+const ShipGroup = styled.g<{ $launch: boolean }>`
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  ${({ $launch }) =>
+    $launch &&
+    css`
+      animation: ${shipLift} 240ms cubic-bezier(0.16, 0.84, 0.24, 1) forwards;
+    `}
+`;
+
+type OctopusMarkProps = {
   width?: string;
   label?: string;
+  launch?: boolean;
 };
 
-export function PunkMark({
+export function OctopusMark({
   width = "min(236px, 62vw)",
-  label = "Dark Forest Punk",
-}: PunkMarkProps) {
+  label = "Dark Forest Aztec",
+  launch = false,
+}: OctopusMarkProps) {
   const rawId = useId().replace(/:/g, "");
-  const ringClipId = `punk-mark-ring-front-${rawId}`;
-  const glowId = `punk-planet-glow-${rawId}`;
-  const rimId = `punk-planet-rim-${rawId}`;
+  const ringClipId = `octopus-mark-ring-front-${rawId}`;
+  const glowId = `octopus-planet-glow-${rawId}`;
+  const rimId = `octopus-planet-rim-${rawId}`;
   const { cx, cy, r } = PLANET;
   const ringTransform = `translate(${cx} ${cy + RING.dy}) rotate(${RING.rotate})`;
 
   return (
-    <Frame $width={width}>
+    <Frame $width={width} $centerPlanet={launch}>
       <Mark viewBox="-40 -20 500 540" role="img" aria-label={label}>
         <defs>
           <clipPath id={ringClipId} clipPathUnits="userSpaceOnUse">
@@ -138,35 +165,43 @@ export function PunkMark({
           </filter>
         </defs>
 
-        <circle cx={cx} cy={cy} r={r + 52} fill={`url(#${glowId})`} />
+        <g>
+          <circle cx={cx} cy={cy} r={r + 52} fill={`url(#${glowId})`} />
 
-        <g transform={ringTransform}>
-          <ellipse
-            cx={0}
-            cy={0}
-            rx={RING.rx}
-            ry={RING.ry}
-            fill="none"
-            stroke={LIGHT}
-            strokeWidth={RING.stroke}
+          <g transform={ringTransform}>
+            <ellipse
+              cx={0}
+              cy={0}
+              rx={RING.rx}
+              ry={RING.ry}
+              fill="none"
+              stroke={LIGHT}
+              strokeWidth={RING.stroke}
+            />
+          </g>
+
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill={WHITE}
+            filter={`url(#${rimId})`}
           />
+
+          <g transform={ringTransform} clipPath={`url(#${ringClipId})`}>
+            <ellipse
+              cx={0}
+              cy={0}
+              rx={RING.rx}
+              ry={RING.ry}
+              fill="none"
+              stroke={LIGHT}
+              strokeWidth={RING.stroke}
+            />
+          </g>
         </g>
 
-        <circle cx={cx} cy={cy} r={r} fill={WHITE} filter={`url(#${rimId})`} />
-
-        <g transform={ringTransform} clipPath={`url(#${ringClipId})`}>
-          <ellipse
-            cx={0}
-            cy={0}
-            rx={RING.rx}
-            ry={RING.ry}
-            fill="none"
-            stroke={LIGHT}
-            strokeWidth={RING.stroke}
-          />
-        </g>
-
-        <g shapeRendering="crispEdges">
+        <ShipGroup $launch={launch} shapeRendering="crispEdges">
           {SHIP.map((block, index) => (
             <rect
               key={index}
@@ -177,7 +212,7 @@ export function PunkMark({
               fill={block.fill}
             />
           ))}
-        </g>
+        </ShipGroup>
       </Mark>
     </Frame>
   );

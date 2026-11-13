@@ -2,7 +2,7 @@ import { GAME_NAME } from "@dfpunk/constants";
 import React from "react";
 import styled, { css } from "styled-components";
 
-import { PunkMark } from "../Components/PunkMark";
+import { OctopusMark } from "../Components/OctopusMark";
 import dfstyles from "../Styles/dfstyles";
 
 export type EntryModeChoice = "quick" | "standard" | "terminal";
@@ -35,7 +35,7 @@ export function GameLandingEntryOverlay({
     <Backdrop role="dialog" aria-modal aria-labelledby="entry-overlay-title">
       <Card>
         <Logo>
-          <PunkMark width="100%" label={GAME_NAME} />
+          <OctopusMark width="100%" label={GAME_NAME} />
         </Logo>
         <Title id="entry-overlay-title">{GAME_NAME}</Title>
         <Subtitle>Choose how you want to sign in</Subtitle>

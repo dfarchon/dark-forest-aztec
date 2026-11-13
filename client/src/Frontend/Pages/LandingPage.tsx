@@ -10,7 +10,7 @@ import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { Link, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
-import { PunkMark } from "../Components/PunkMark";
+import { OctopusMark } from "../Components/OctopusMark";
 import { AsciiFieldBackground } from "../Renderers/AsciiFieldBackground";
 import dfstyles from "../Styles/dfstyles";
 
@@ -66,7 +66,9 @@ const SettingsModalBoundary = styled.div`
 const MODAL_WIDTH_ESTIMATE = 480;
 const MODAL_HEIGHT_ESTIMATE = 560;
 const MODAL_GAP_ABOVE_BUTTON = 12;
-const ENTER_TRANSITION_DURATION_MS = 1100;
+const RING_EXPAND_MS = 1100;
+const SHIP_LIFT_MS = 240;
+const ENTER_TRANSITION_DURATION_MS = SHIP_LIFT_MS + RING_EXPAND_MS;
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -129,9 +131,6 @@ export default function LandingPage() {
         <MainContentContainer>
           <Header>
             <HeroFrame>
-              <HeroLogo>
-                <PunkMark width="100%" label={GAME_NAME} />
-              </HeroLogo>
               <SignalLine>
                 The universe is dark. Your moves are private.
               </SignalLine>
@@ -365,7 +364,11 @@ export default function LandingPage() {
         <LeadboardDisplay /> 
         <Spacer height={256} /> */}
       </Page>
-      {phase !== "idle" && <BlackHoleTransition aria-hidden />}
+      {phase !== "idle" && (
+        <BlackHoleTransition aria-hidden>
+          <OctopusMark launch width="min(240px, 62vw)" label={GAME_NAME} />
+        </BlackHoleTransition>
+      )}
 
       {(phase === "disclaimer" || phase === "blackhole2") && (
         <DisclaimerOverlay $leaving={phase === "blackhole2"}>
@@ -412,7 +415,11 @@ export default function LandingPage() {
         </DisclaimerOverlay>
       )}
 
-      {phase === "blackhole2" && <SecondBlackHoleTransition aria-hidden />}
+      {phase === "blackhole2" && (
+        <SecondBlackHoleTransition aria-hidden>
+          <OctopusMark launch width="min(240px, 62vw)" label={GAME_NAME} />
+        </SecondBlackHoleTransition>
+      )}
     </>
   );
 }
@@ -421,12 +428,21 @@ const BlackHoleTransition = styled.div`
   position: fixed;
   inset: 0;
   z-index: ${LandingPageZIndex.Transition};
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
   overflow: hidden;
+
+  & > * {
+    position: relative;
+    z-index: 0;
+  }
 
   &::before {
     content: "";
     position: absolute;
+    z-index: 1;
     top: 50%;
     left: 50%;
     width: 4vmin;
@@ -434,7 +450,7 @@ const BlackHoleTransition = styled.div`
     border-radius: 50%;
     background: #000;
     transform: translate(-50%, -50%) scale(0);
-    animation: black-hole-core ${ENTER_TRANSITION_DURATION_MS}ms forwards;
+    animation: black-hole-core ${RING_EXPAND_MS}ms ${SHIP_LIFT_MS}ms forwards;
   }
 
   @keyframes black-hole-core {
@@ -637,16 +653,6 @@ const HeroFrame = styled.div`
   }
 `;
 
-const HeroLogo = styled.div`
-  width: 180px;
-  margin: 0 auto 18px;
-
-  @media (max-height: 820px) {
-    width: 120px;
-    margin-bottom: 12px;
-  }
-`;
-
 const SignalLine = styled.div`
   margin-bottom: 22px;
   color: ${dfstyles.colors.subbertext};
@@ -759,8 +765,7 @@ const Page = styled.div<{ $entering?: boolean }>`
     $entering &&
     `
     opacity: 0;
-    filter: blur(12px);
-    transform: scale(0.92);
+    transition: none;
   `}
 `;
 

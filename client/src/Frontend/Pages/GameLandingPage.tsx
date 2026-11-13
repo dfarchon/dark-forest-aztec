@@ -87,6 +87,7 @@ import {
   Wrapper,
 } from "../Components/GameLandingPageComponents";
 import { MythicLabelText } from "../Components/Labels/MythicLabel";
+import { OctopusMark } from "../Components/OctopusMark";
 import { QuickJoinSettingsModal } from "../Components/QuickJoinSettingsModal";
 import { TextPreview } from "../Components/TextPreview";
 import {
@@ -856,7 +857,9 @@ async function runAccountFeeJuicePreflightGate(params: {
 }
 
 /** Full-screen enter effect for Quick play (matches LandingPage enter duration). */
-const QUICK_PLAY_ENTER_TRANSITION_MS = 1100;
+const RING_EXPAND_MS = 1100;
+const SHIP_LIFT_MS = 240;
+const QUICK_PLAY_ENTER_TRANSITION_MS = SHIP_LIFT_MS + RING_EXPAND_MS;
 const REFRESH_PAGE_TRANSITION_MS = 1100;
 
 function formatBytes(bytes: number): string {
@@ -3571,7 +3574,11 @@ export function GameLandingPage() {
           onOpenConnectionSettings={() => setConnectionSettingsOpen(true)}
         />
       )}
-      {enterTransitionVisible && <EnterTransition aria-hidden />}
+      {enterTransitionVisible && (
+        <EnterTransition aria-hidden>
+          <OctopusMark launch width="min(240px, 62vw)" label={GAME_NAME} />
+        </EnterTransition>
+      )}
       <ForkDivergenceNotice />
       {refreshTransitionVisible && (
         <RefreshPageTransition aria-hidden>
@@ -3699,12 +3706,21 @@ const EnterTransition = styled.div`
   position: fixed;
   inset: 0;
   z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
   overflow: hidden;
+
+  & > * {
+    position: relative;
+    z-index: 0;
+  }
 
   &::before {
     content: "";
     position: absolute;
+    z-index: 1;
     top: 50%;
     left: 50%;
     width: 4vmin;
@@ -3712,22 +3728,8 @@ const EnterTransition = styled.div`
     border-radius: 50%;
     background: #000;
     transform: translate(-50%, -50%) scale(0);
-    animation: quick-play-enter-core ${QUICK_PLAY_ENTER_TRANSITION_MS}ms
+    animation: quick-play-enter-core ${RING_EXPAND_MS}ms ${SHIP_LIFT_MS}ms
       forwards;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle at 50% 45%,
-      rgba(255, 208, 218, 0.22),
-      transparent 55%
-    );
-    opacity: 0;
-    animation: quick-play-enter-flash ${QUICK_PLAY_ENTER_TRANSITION_MS}ms
-      ease-out forwards;
   }
 
   @keyframes quick-play-enter-core {
@@ -3758,18 +3760,6 @@ const EnterTransition = styled.div`
     100% {
       transform: translate(-50%, -50%) scale(150);
       box-shadow: 0 0 0 0 transparent;
-    }
-  }
-
-  @keyframes quick-play-enter-flash {
-    0% {
-      opacity: 0;
-    }
-    12% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
     }
   }
 `;
