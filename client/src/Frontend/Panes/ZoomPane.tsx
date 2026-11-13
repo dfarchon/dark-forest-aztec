@@ -21,6 +21,7 @@ const StyledZoomPane = styled.div`
   }
   color: ${dfstyles.colors.subtext};
   & > a {
+    outline: none;
     &:hover {
       color: ${dfstyles.colors.text};
       cursor: pointer;
@@ -28,17 +29,33 @@ const StyledZoomPane = styled.div`
     &:active {
       color: ${dfstyles.colors.subbertext};
     }
+    &:focus,
+    &:focus-visible {
+      outline: none;
+    }
   }
 `;
+
+function preventFocusOnMouseDown(e: React.MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault();
+}
 
 export function ZoomPane() {
   const uiEmitter = UIEmitter.getInstance();
   return (
     <StyledZoomPane>
-      <a onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomOut)}>
+      <a
+        onMouseDown={preventFocusOnMouseDown}
+        onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomOut)}
+      >
         <LongDash />
       </a>
-      <a onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomIn)}>+</a>
+      <a
+        onMouseDown={preventFocusOnMouseDown}
+        onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomIn)}
+      >
+        +
+      </a>
     </StyledZoomPane>
   );
 }

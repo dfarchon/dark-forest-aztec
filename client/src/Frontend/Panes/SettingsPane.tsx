@@ -39,7 +39,9 @@ const DEFAULT_SCROLL = Math.round(10000 * (getDefaultScroll() - 1));
 
 const SettingsContent = styled.div`
   width: 500px;
+  max-width: 100%;
   height: 500px;
+  overflow-x: hidden;
   overflow-y: scroll;
   display: flex;
   flex-direction: column;
@@ -49,14 +51,41 @@ const SettingsContent = styled.div`
 const Row = styled.div`
   display: flex;
   flex-direction: row;
+  width: 100%;
+  min-width: 0;
 
   justify-content: space-between;
   align-items: center;
 
   & > span:first-child {
     flex-grow: 1;
+    flex-shrink: 0;
+  }
+
+  & > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    text-align: right;
   }
 `;
+
+const KeyActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+`;
+
+const KeyValue = styled.span`
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+`;
+
+function shortenAddress(address: string): string {
+  if (address.length <= 20) return address;
+  return `${address.slice(0, 10)}…${address.slice(-8)}`;
+}
 
 const BridgeHeading = styled.div`
   margin-bottom: 8px;
@@ -118,6 +147,13 @@ export function SettingsPane({
     getEffectiveUseSponsoredFpc()
   );
   const [previewSponsorWarning, setPreviewSponsorWarning] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState(false);
+
+  useEffect(() => {
+    if (!copiedAccount) return;
+    const timeoutId = window.setTimeout(() => setCopiedAccount(false), 1500);
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedAccount]);
 
   useEffect(() => {
     if (!uiManager) return;
@@ -183,6 +219,16 @@ export function SettingsPane({
 
   const [failure, setFailure] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
+  const onCopyAccount = async () => {
+    if (!account) return;
+    try {
+      await window.navigator.clipboard.writeText(account);
+      setCopiedAccount(true);
+    } catch (err) {
+      console.error(err);
+      setFailure("Failed to copy public key.");
+    }
+  };
   const [importMapByTextBoxValue, setImportMapByTextBoxValue] = useState("");
   useEffect(() => {
     if (failure) {
@@ -295,7 +341,12 @@ export function SettingsPane({
           <SectionHeader>Current Wallet</SectionHeader>
           <Row>
             <span>Public Key</span>
-            <span>{account}</span>
+            <KeyActions>
+              <KeyValue>{account ? shortenAddress(account) : "—"}</KeyValue>
+              <Btn size="medium" disabled={!account} onClick={onCopyAccount}>
+                {copiedAccount ? "Copied" : "Copy"}
+              </Btn>
+            </KeyActions>
           </Row>
           <Row>
             <span>Balance</span>

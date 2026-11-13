@@ -17,10 +17,11 @@ export class DarkForestButton extends LitElement {
         font-size: 12pt;
         user-select: none;
         display: inline-flex;
-        border-radius: 3px;
+        border-radius: var(--df-button-radius, 3px);
         justify-content: center;
         align-items: center;
         cursor: pointer;
+        min-width: var(--df-button-min-width, 0);
         color: var(--df-button-color, ${unsafeCSS(dfstyles.colors.text)});
         background-color: var(
           --df-button-background,
@@ -53,7 +54,7 @@ export class DarkForestButton extends LitElement {
 
       .large {
         font-size: 16pt;
-        border-radius: 4px;
+        border-radius: var(--df-button-radius, 4px);
         padding: 4px 32px;
       }
 

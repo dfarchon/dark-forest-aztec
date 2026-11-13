@@ -8,7 +8,7 @@ import styled from "styled-components";
 import { externalLinks } from "../../config/externalLinks";
 import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
-import { Link, Spacer, Title } from "../Components/CoreUI";
+import { Link, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
 import { AsciiFieldBackground } from "../Renderers/AsciiFieldBackground";
 import dfstyles from "../Styles/dfstyles";
@@ -25,44 +25,37 @@ const defaultAddress = address(CORE_CONTRACT_ADDRESS);
 const ButtonWrapper = styled.div`
   display: flex;
   justify-content: center;
-  gap: 12px;
-  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  margin-top: 28px;
+  flex-wrap: wrap;
 
-  @media only screen and (max-device-width: 1000px) {
-    grid-template-columns: auto;
+  @media (max-width: 560px) {
     flex-direction: column;
+    gap: 12px;
   }
+`;
 
-  --df-button-color: ${dfstyles.colors.subtext};
-  --df-button-border: 1px solid ${dfstyles.colors.borderDark};
+const PrimaryAction = styled.div`
+  display: inline-flex;
+
+  --df-button-color: ${dfstyles.colors.dfgreen};
+  --df-button-background: #000;
+  --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
+  --df-button-min-width: 220px;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
   --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
 `;
 
-const PrimaryAction = styled.div`
-  --df-button-color: ${dfstyles.colors.dfgreen};
-  --df-button-background: #000;
-  --df-button-border: none;
-  --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: none;
-
-  df-button {
-    min-width: 240px;
-  }
-`;
-
 const SecondaryAction = styled.div`
-  display: inline-block;
+  display: inline-flex;
 
   --df-button-color: ${dfstyles.colors.text};
   --df-button-background: #000;
-  --df-button-border: none;
+  --df-button-border: 1px solid ${dfstyles.colors.text};
+  --df-button-min-width: 148px;
   --df-button-hover-background: ${dfstyles.colors.dfgreen};
-  --df-button-hover-border: none;
-
-  df-button {
-    min-width: 160px;
-  }
+  --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
 `;
 
 const SettingsModalBoundary = styled.div`
@@ -157,25 +150,23 @@ export default function LandingPage() {
                   {GAME_NAME} is a community branch by {ORGANIZER_NAME} team.
                 </p>
               </Provenance>
+
+              <ButtonWrapper>
+                <PrimaryAction>
+                  <Btn size="large" onClick={enterUniverse}>
+                    Enter Universe
+                  </Btn>
+                </PrimaryAction>
+                <SecondaryAction ref={networkSettingsRef}>
+                  <Btn size="large" onClick={toggleConnectionSettings}>
+                    Settings
+                  </Btn>
+                </SecondaryAction>
+                {/* <Btn size="large" onClick={() => navigate(`/events`)}>
+                  Events
+                </Btn> */}
+              </ButtonWrapper>
             </HeroFrame>
-
-            <Spacer height={32} />
-
-            <ButtonWrapper>
-              <PrimaryAction>
-                <Btn size="large" onClick={enterUniverse}>
-                  Enter Universe
-                </Btn>
-              </PrimaryAction>
-              <SecondaryAction ref={networkSettingsRef}>
-                <Btn size="large" onClick={toggleConnectionSettings}>
-                  Settings
-                </Btn>
-              </SecondaryAction>
-              {/* <Btn size="large" onClick={() => navigate(`/events`)}>
-                Events
-              </Btn> */}
-            </ButtonWrapper>
             <SettingsModalBoundary>
               <ConnectionSettingsModal
                 open={connectionSettingsOpen}
@@ -631,14 +622,14 @@ const HeroFrame = styled.div`
   width: min(860px, calc(100vw - 96px));
   max-width: 860px;
   margin: 0 auto;
-  padding: 34px 42px 36px;
+  padding: 34px 42px 32px;
   border: none;
   border-radius: ${dfstyles.borderRadius};
   background: #000;
 
-  @media only screen and (max-device-width: 1000px) {
+  @media (max-width: 720px) {
     width: min(720px, calc(100vw - 32px));
-    padding: 28px 22px 30px;
+    padding: 28px 20px 24px;
   }
 `;
 
@@ -648,12 +639,17 @@ const SignalLine = styled.div`
   font-size: 0.72em;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+
+  @media (max-width: 640px) {
+    font-size: 0.64em;
+    letter-spacing: 0.08em;
+  }
 `;
 
 const HeroTitle = styled.h1`
   margin: 0;
   color: ${dfstyles.colors.textLight};
-  font-size: clamp(1.9em, 3.4vw, 2.8em);
+  font-size: clamp(1.2em, 3.4vw, 2.8em);
   font-weight: 400;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -675,16 +671,12 @@ const HeroSubtitle = styled.div`
 
 const HeroBlurb = styled.p`
   margin: 12px auto 0;
+  max-width: 100%;
   color: ${dfstyles.colors.text};
-  font-size: 0.95em;
+  font-size: clamp(0.78em, 0.42em + 1.35vw, 0.95em);
   line-height: 1.55;
   letter-spacing: 0.02em;
-  white-space: nowrap;
-
-  @media only screen and (max-device-width: 1000px) {
-    white-space: normal;
-    max-width: min(420px, calc(100vw - 64px));
-  }
+  text-wrap: balance;
 `;
 
 const Provenance = styled.div`
