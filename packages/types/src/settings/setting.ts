@@ -27,6 +27,7 @@ export const Setting = {
   MoveNotifications: "MoveNotifications" as Setting,
   GasFeeGwei: "GasFeeGwei" as Setting,
   TerminalVisible: "TerminalVisible" as Setting,
+  TerminalReveal: "TerminalReveal" as Setting,
   HasAcceptedPluginRisk: "HasAcceptedPluginRisk" as Setting,
   FoundPirates: "FoundPirates" as Setting,
   TutorialCompleted: "TutorialCompleted" as Setting,

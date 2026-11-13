@@ -18,7 +18,12 @@ import {
 import { externalLinks } from "../../config/externalLinks";
 import { formatFeeJuiceWei } from "../../utils/feeJuiceUnits";
 import { Btn } from "../Components/Btn";
-import { Section, SectionHeader, Spacer } from "../Components/CoreUI";
+import {
+  Section,
+  SectionHeader,
+  SelectFrom,
+  Spacer,
+} from "../Components/CoreUI";
 import { Checkbox, DarkForestCheckbox, TextInput } from "../Components/Input";
 import { Slider } from "../Components/Slider";
 import { Gold, Green, Red } from "../Components/Text";
@@ -29,6 +34,7 @@ import {
   BooleanSetting,
   ColorSetting,
   NumberSetting,
+  useSetting,
 } from "../Utils/SettingsHooks";
 import { ModalPane } from "../Views/ModalPane";
 import { SPONSORED_FPC_WARNING_PREVIEW_EVENT } from "../Views/SponsoredFpcBalanceWarning";
@@ -133,6 +139,10 @@ export function SettingsPane({
   onOpenPrivate: () => void;
 }) {
   const uiManager = useUIManager();
+  const [terminalReveal, setTerminalReveal] = useSetting(
+    uiManager,
+    Setting.TerminalReveal
+  );
   const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const account = useAccount(uiManager);
   const isDevelopment = process.env.NODE_ENV !== "production";
@@ -630,6 +640,18 @@ export function SettingsPane({
             uiManager={uiManager}
             setting={Setting.OptOutMetrics}
             settingDescription="metrics opt out"
+          />
+        </Section>
+
+        <Section>
+          <SectionHeader>Terminal</SectionHeader>
+          How the log on the right opens and closes.
+          <Spacer height={8} />
+          <SelectFrom
+            values={["edge", "bar"]}
+            labels={["Edge", "Bar"]}
+            value={terminalReveal}
+            setValue={setTerminalReveal}
           />
         </Section>
 

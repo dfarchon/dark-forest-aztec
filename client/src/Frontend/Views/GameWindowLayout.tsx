@@ -1,5 +1,5 @@
 import { ModalId, ModalName, Setting } from "@dfpunk/types";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
 import { BorderlessPane } from "../Components/CoreUI";
@@ -11,7 +11,6 @@ import {
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
-import { CoordsPane } from "../Panes/CoordsPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
 import { HelpPane } from "../Panes/HelpPane";
@@ -120,23 +119,38 @@ export function GameWindowLayout({
 
   const [userTerminalVisibleSetting, setTerminalVisibleSetting] =
     useBooleanSetting(uiManager, Setting.TerminalVisible);
+  const [minimapOpen, setMinimapOpen] = useState(true);
+  const minimapEdgeArmed = useRef(true);
 
   useEffect(() => {
     uiManager.setOverlayContainer(modalsContainer);
   }, [uiManager, modalsContainer]);
 
   const account = uiManager.getAccount();
+  const terminalSettingLoaded = React.useRef(false);
   useEffect(() => {
-    if (uiManager.getAccount()) {
-      setTerminalVisible(uiManager.getBooleanSetting(Setting.TerminalVisible));
-    }
+    if (!uiManager.getAccount()) return;
+    setTerminalVisible(uiManager.getBooleanSetting(Setting.TerminalVisible));
   }, [account, uiManager, setTerminalVisible]);
 
   useEffect(() => {
+    // The first paint still has the default hidden state. Writing that would
+    // turn the saved "visible" setting off and the log would disappear.
+    if (!uiManager.getAccount()) return;
+    if (!terminalSettingLoaded.current) {
+      terminalSettingLoaded.current = true;
+      return;
+    }
     if (userTerminalVisibleSetting !== terminalVisible) {
       setTerminalVisibleSetting(terminalVisible);
     }
-  }, [userTerminalVisibleSetting, setTerminalVisibleSetting, terminalVisible]);
+  }, [
+    account,
+    uiManager,
+    userTerminalVisibleSetting,
+    setTerminalVisibleSetting,
+    terminalVisible,
+  ]);
 
   useEffect(
     () => setSelectedPlanetVisible(!!selected),
@@ -167,7 +181,7 @@ export function GameWindowLayout({
 
   return (
     <WindowWrapper>
-      {showEdgeChrome && (
+      <UniverseFade $hidden={!showEdgeChrome}>
         <TopBarPaneContainer>
           <BorderlessPane>
             <TopBar
@@ -178,8 +192,8 @@ export function GameWindowLayout({
             />
           </BorderlessPane>
         </TopBarPaneContainer>
-      )}
-      {showEdgeChrome && <SponsoredFpcBalanceWarning />}
+        <SponsoredFpcBalanceWarning />
+      </UniverseFade>
 
       {/* all modals rendered into here */}
       <div ref={modalsContainerCB}>
@@ -239,17 +253,25 @@ export function GameWindowLayout({
             <ControllableCanvas />
           </CanvasWrapper>
 
-          {showEdgeChrome && (
+          <UniverseFade $hidden={!showEdgeChrome}>
             <TopRightStack>
-              <CoordsPane />
               <NotificationsPane />
             </TopRightStack>
-          )}
-          {showEdgeChrome && (
-            <BottomRightStack>
+            <BottomRightStack $open={minimapOpen}>
               <MiniMapPane />
             </BottomRightStack>
-          )}
+            <MiniMapEdge
+              onMouseEnter={() => {
+                if (!showEdgeChrome || !minimapEdgeArmed.current) return;
+                minimapEdgeArmed.current = false;
+                setMinimapOpen((open) => !open);
+              }}
+              onMouseLeave={() => {
+                minimapEdgeArmed.current = true;
+              }}
+            />
+            <TutorialPane tutorialHook={tutorialHook} />
+          </UniverseFade>
           <HiddenEdgeChrome $hidden={!showEdgeChrome}>
             <BottomLeftDock>
               <SidebarPane
@@ -272,8 +294,6 @@ export function GameWindowLayout({
 
           <HoverPlanetPane />
           <ArtifactHoverPane />
-
-          {showEdgeChrome && <TutorialPane tutorialHook={tutorialHook} />}
         </CanvasContainer>
       </MainWindow>
     </WindowWrapper>
@@ -302,16 +322,28 @@ const TopRightStack = styled.div`
   margin: 0.5em;
 `;
 
-const BottomRightStack = styled.div`
+const BottomRightStack = styled.div<{ $open: boolean }>`
   position: absolute;
   right: 0;
   bottom: 0;
   /* Above the bottom-left dock, whose box is transparent and can cover the map. */
   z-index: ${DFZIndex.MenuBar + 1};
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-end;
+  gap: 0.75em;
   margin: 0.5em;
+  transform: translateX(${({ $open }) => ($open ? "0" : "calc(100% + 0.5em)")});
+  transition: transform 0.4s cubic-bezier(0.22, 1.2, 0.36, 1);
+`;
+
+const MiniMapEdge = styled.div`
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  height: 200px;
+  z-index: 1000;
 `;
 
 const BottomLeftDock = styled.div`
@@ -325,9 +357,23 @@ const BottomLeftDock = styled.div`
 `;
 
 /**
- * Hides edge UI in universe view but keeps it mounted so df-shortcut-button
+ * Fades edge UI in universe view but keeps it mounted so df-shortcut-button
  * global key listeners (h, j, k, space, etc.) keep working.
  */
 const HiddenEdgeChrome = styled.div<{ $hidden: boolean }>`
-  ${({ $hidden }) => ($hidden ? `display: none;` : "")}
+  opacity: ${({ $hidden }) => ($hidden ? 0 : 1)};
+  transition: opacity 0.3s ease;
+  ${({ $hidden }) => ($hidden ? "pointer-events: none;" : "")}
+`;
+
+const UniverseFade = styled.div<{ $hidden: boolean }>`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: ${({ $hidden }) => ($hidden ? 0 : 1)};
+  transition: opacity 0.3s ease;
+
+  & > * {
+    pointer-events: ${({ $hidden }) => ($hidden ? "none" : "auto")};
+  }
 `;

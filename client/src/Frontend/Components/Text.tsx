@@ -38,10 +38,10 @@ export const Green = styled.span`
   color: ${dfstyles.colors.dfgreen};
 `;
 export const Sub = styled.span`
-  color: ${dfstyles.colors.subtext};
+  color: var(--df-terminal-ink, ${dfstyles.colors.subtext});
 `;
 export const Subber = styled.span`
-  color: ${dfstyles.colors.subbertext};
+  color: var(--df-terminal-ink-dim, ${dfstyles.colors.subbertext});
 `;
 export const Text = styled.span`
   color: ${dfstyles.colors.text};

@@ -1,9 +1,8 @@
 import { SpaceType, WorldCoords } from "@dfpunk/types";
-import React, { useState } from "react";
+import React from "react";
 import styled from "styled-components";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
-import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
@@ -75,58 +74,20 @@ const StyledCoordsPane = styled.div`
   z-index: ${DFZIndex.MenuBar};
   width: max-content;
   min-width: 7em;
-  min-height: 1.6em;
-  text-align: right;
+  text-align: left;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 2px;
-  cursor: pointer;
   white-space: nowrap;
 `;
 
-const Content = styled.div<{ $hidden: boolean }>`
-  display: ${({ $hidden }) => ($hidden ? "none" : "flex")};
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-`;
-
-const Hint = styled.span`
-  color: ${dfstyles.colors.subtext};
-  line-height: 1.6em;
-
-  &:hover {
-    color: ${dfstyles.colors.text};
-  }
-`;
-
 export function CoordsPane() {
-  const [hovering, setHovering] = useState<boolean>(false);
-  const [hidden, setHidden] = useState<boolean>(false);
-  // The click that reveals the pane happens while the pointer is still inside.
-  // Hold the "Click to hide" line back until the pointer leaves and returns.
-  const [suppressHideHint, setSuppressHideHint] = useState<boolean>(false);
   const uiManager = useUIManager();
-  const showHideHint = !hidden && hovering && !suppressHideHint;
 
   return (
-    <StyledCoordsPane
-      onClick={() => {
-        setSuppressHideHint(hidden);
-        setHidden((isHidden) => !isHidden);
-      }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => {
-        setHovering(false);
-        setSuppressHideHint(false);
-      }}
-    >
-      {hidden && hovering && <Hint>Click to show</Hint>}
-      {showHideHint && <Hint>Click to hide</Hint>}
-      <Content $hidden={hidden || showHideHint}>
-        <CoordsText uiManager={uiManager} />
-      </Content>
+    <StyledCoordsPane>
+      <CoordsText uiManager={uiManager} />
     </StyledCoordsPane>
   );
 }

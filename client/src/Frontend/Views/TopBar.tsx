@@ -12,6 +12,7 @@ import { weiToEth } from "../../Backend/Utils/Utils";
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
 import { TextInput } from "../Components/Input";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
+import { CoordsPane } from "../Panes/CoordsPane";
 import { TooltipTrigger } from "../Panes/Tooltip";
 import dfstyles from "../Styles/dfstyles";
 import { usePlayer, useUIManager } from "../Utils/AppHooks";
@@ -365,6 +366,7 @@ export function TopBar({
       <PlateRow>
         <BlockReadout />
       </PlateRow>
+      <CoordsPane />
       {process.env.DF_WEBSERVER_URL && (
         <PlateRow>
           <TooltipTrigger

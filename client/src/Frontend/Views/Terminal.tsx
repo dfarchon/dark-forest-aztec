@@ -79,6 +79,11 @@ export interface TerminalProps {
   promptCharacter: string;
   /** How {@link TerminalHandle.printOption} renders. Default `classic` (plain text). */
   optionMode?: TerminalOptionMode;
+  /**
+   * When false, the input line is not rendered. The in-game HUD is read-only;
+   * the login terminal leaves this on.
+   */
+  interactive?: boolean;
 }
 
 export const Terminal = React.forwardRef<TerminalHandle, TerminalProps>(
@@ -88,10 +93,15 @@ export const Terminal = React.forwardRef<TerminalHandle, TerminalProps>(
 let terminalLineKey = 0;
 
 function TerminalImpl(
-  { promptCharacter, optionMode = "classic" }: TerminalProps,
+  {
+    promptCharacter,
+    optionMode = "classic",
+    interactive = true,
+  }: TerminalProps,
   ref: React.Ref<TerminalHandle>
 ) {
   const containerRef = useRef(document.createElement("div"));
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef(document.createElement("textarea"));
   const heightMeasureRef = useRef(document.createElement("textarea"));
 
@@ -221,20 +231,131 @@ function TerminalImpl(
 
   useEffect(() => {
     if (userInputEnabled) {
-      inputRef.current.focus();
+      inputRef.current?.focus();
     }
   }, [userInputEnabled]);
 
-  const scrollToEnd = () => {
-    containerRef.current.scrollTo(0, containerRef.current.scrollHeight);
-  };
+  const stickToEndRef = useRef(true);
+  const readingRef = useRef(false);
+  const [showScrollbar, setShowScrollbar] = useState(false);
+  const [scrollMetrics, setScrollMetrics] = useState({
+    scrollTop: 0,
+    scrollHeight: 0,
+    clientHeight: 0,
+  });
+
+  const syncScrollMetrics = useCallback(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    setScrollMetrics((prev) => {
+      if (
+        prev.scrollTop === node.scrollTop &&
+        prev.scrollHeight === node.scrollHeight &&
+        prev.clientHeight === node.clientHeight
+      ) {
+        return prev;
+      }
+      return {
+        scrollTop: node.scrollTop,
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
+      };
+    });
+  }, []);
+
+  const scrollToEnd = useCallback(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    node.scrollTo(0, node.scrollHeight);
+    syncScrollMetrics();
+  }, [syncScrollMetrics]);
+
+  const pinnedToEnd = (node: HTMLElement) =>
+    node.scrollHeight - node.scrollTop - node.clientHeight < 12;
 
   useEffect(() => {
-    scrollToEnd();
-  }, [fragments]);
+    if (interactive || stickToEndRef.current) {
+      scrollToEnd();
+    } else {
+      syncScrollMetrics();
+    }
+    if (!interactive) {
+      setShowScrollbar(readingRef.current);
+    }
+  }, [fragments, interactive, scrollToEnd, syncScrollMetrics]);
 
   useEffect(() => {
-    setInputHeight(heightMeasureRef.current.scrollHeight);
+    if (interactive) return;
+    const node = containerRef.current;
+    if (!node) return;
+
+    const setReadingState = (readingNow: boolean) => {
+      if (readingRef.current === readingNow) return;
+      readingRef.current = readingNow;
+      setShowScrollbar(readingNow);
+      if (readingNow) syncScrollMetrics();
+      if (!readingNow) {
+        stickToEndRef.current = true;
+        node.scrollTo(0, node.scrollHeight);
+      }
+    };
+
+    const pointerIsOverLog = (event: PointerEvent) => {
+      const rect = (frameRef.current ?? node).getBoundingClientRect();
+      return (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      );
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      setReadingState(pointerIsOverLog(event));
+    };
+
+    const onPointerLeave = () => {
+      setReadingState(false);
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (!readingRef.current) return;
+      const maxScroll = node.scrollHeight - node.clientHeight;
+      if (maxScroll <= 1) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const line = 16;
+      const delta =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? event.deltaY * line
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? event.deltaY * node.clientHeight
+            : event.deltaY;
+      node.scrollTop = Math.min(maxScroll, Math.max(0, node.scrollTop + delta));
+      stickToEndRef.current = pinnedToEnd(node);
+      syncScrollMetrics();
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    document.documentElement.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("wheel", onWheel, {
+      capture: true,
+      passive: false,
+    });
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      document.documentElement.removeEventListener(
+        "pointerleave",
+        onPointerLeave
+      );
+      window.removeEventListener("wheel", onWheel, { capture: true });
+    };
+  }, [interactive, syncScrollMetrics]);
+
+  useEffect(() => {
+    const measure = heightMeasureRef.current;
+    if (!measure) return;
+    setInputHeight(measure.scrollHeight);
   }, [inputText]);
 
   const emitSubmittedInput = useCallback(
@@ -375,39 +496,52 @@ function TerminalImpl(
   );
 
   return (
-    <TerminalContainer ref={containerRef}>
-      {fragments}
-      <Prompt
-        userInputEnabled={userInputEnabled}
-        onClick={() => {
-          if (userInputEnabled) inputRef.current.focus();
-        }}
+    <TerminalFrame ref={frameRef} $live={!interactive}>
+      <TerminalContainer
+        ref={containerRef}
+        $live={!interactive}
+        data-reading={showScrollbar ? "true" : "false"}
       >
-        <Green>{promptCharacter + " "}</Green>
-        <TextAreas>
-          <InputTextArea
-            height={inputHeight}
-            ref={inputRef}
-            onKeyUp={onKeyUp}
-            onKeyDown={preventEnterDefault}
-            onKeyPress={isFirefox() ? () => {} : preventEnterDefault}
-            value={inputText}
-            onChange={(e) => {
-              if (userInputEnabled) {
-                setInputText(e.target.value);
-              }
+        {fragments}
+        {interactive && (
+          <Prompt
+            userInputEnabled={userInputEnabled}
+            onClick={() => {
+              if (userInputEnabled) inputRef.current.focus();
             }}
-          />
-          {/* "ghost" textarea used to measure the scrollHeight of the input */}
-          <InputTextArea
-            height={0}
-            ref={heightMeasureRef}
-            onChange={() => {}}
-            value={inputText}
-          />
-        </TextAreas>
-      </Prompt>
-    </TerminalContainer>
+          >
+            <Green>{promptCharacter + " "}</Green>
+            <TextAreas>
+              <InputTextArea
+                height={inputHeight}
+                ref={inputRef}
+                onKeyUp={onKeyUp}
+                onKeyDown={preventEnterDefault}
+                onKeyPress={isFirefox() ? () => {} : preventEnterDefault}
+                value={inputText}
+                onChange={(e) => {
+                  if (userInputEnabled) {
+                    setInputText(e.target.value);
+                  }
+                }}
+              />
+              {/* "ghost" textarea used to measure the scrollHeight of the input */}
+              <InputTextArea
+                height={0}
+                ref={heightMeasureRef}
+                onChange={() => {}}
+                value={inputText}
+              />
+            </TextAreas>
+          </Prompt>
+        )}
+      </TerminalContainer>
+      {!interactive && (
+        <ScrollLane aria-hidden data-visible={showScrollbar ? "true" : "false"}>
+          <ScrollThumb style={scrollThumbStyle(scrollMetrics)} />
+        </ScrollLane>
+      )}
+    </TerminalFrame>
   );
 }
 
@@ -530,9 +664,30 @@ const OptionRowButton = styled.button`
   }
 `;
 
-const TerminalContainer = styled.div`
+const TerminalFrame = styled.div<{ $live: boolean }>`
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  flex: 1;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+
+  ${({ $live }) =>
+    $live &&
+    css`
+      pointer-events: none;
+
+      & * {
+        pointer-events: none !important;
+      }
+    `}
+`;
+
+const TerminalContainer = styled.div<{ $live: boolean }>`
+  width: 100%;
+  flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
   margin: 0 auto;
   overflow: auto;
@@ -543,7 +698,65 @@ const TerminalContainer = styled.div`
     word-break: break-all;
   }
 
+  ${({ $live }) =>
+    $live &&
+    css`
+      padding-right: 22px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: anywhere;
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+    `}
+
   @media (max-width: ${dfstyles.screenSizeS}) {
     font-size: ${dfstyles.fontSizeXS};
   }
+`;
+
+function scrollThumbStyle({
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+}: {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}): React.CSSProperties {
+  if (clientHeight <= 0 || scrollHeight <= clientHeight + 1) {
+    return { top: 0, height: "100%" };
+  }
+  const thumbPercent = Math.max(12, (clientHeight / scrollHeight) * 100);
+  const travelPercent = 100 - thumbPercent;
+  const maxScroll = scrollHeight - clientHeight;
+  const topPercent = (scrollTop / maxScroll) * travelPercent;
+  return { top: `${topPercent}%`, height: `${thumbPercent}%` };
+}
+
+const ScrollLane = styled.div`
+  position: absolute;
+  top: 0;
+  right: 10px;
+  bottom: 0;
+  width: 4px;
+  pointer-events: none;
+  opacity: 0;
+
+  &[data-visible="true"] {
+    opacity: 1;
+  }
+`;
+
+const ScrollThumb = styled.div`
+  position: absolute;
+  left: 0;
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(187, 187, 187, 0.72);
+  pointer-events: none;
 `;

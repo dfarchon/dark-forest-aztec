@@ -146,14 +146,14 @@ export function ExplorePane() {
 
     uiEmitter.on(UIEmitterEvent.WorldMouseDown, doMouseDown);
     modalManager.on(ModalManagerEvent.MiningCoordsUpdate, updateCoords);
-    uiEmitter.on(ModalManagerEvent.StateChanged, cursorStateChanged);
+    modalManager.on(ModalManagerEvent.StateChanged, cursorStateChanged);
     return () => {
       uiEmitter.removeListener(UIEmitterEvent.WorldMouseDown, doMouseDown);
       modalManager.removeListener(
         ModalManagerEvent.MiningCoordsUpdate,
         updateCoords
       );
-      uiEmitter.removeListener(
+      modalManager.removeListener(
         ModalManagerEvent.StateChanged,
         cursorStateChanged
       );

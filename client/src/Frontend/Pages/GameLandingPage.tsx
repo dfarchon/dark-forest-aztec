@@ -81,8 +81,8 @@ import {
 } from "../Components/ForkDivergenceNotice";
 import {
   GameWindowWrapper,
+  InGameTerminalChrome,
   InitRenderState,
-  TerminalToggler,
   TerminalWrapper,
   Wrapper,
 } from "../Components/GameLandingPageComponents";
@@ -963,7 +963,7 @@ function StartupLoadingStatus({
       : null;
 
   return (
-    <StartupStatusBar aria-live="polite">
+    <StartupStatusBar className="startup-status" aria-live="polite">
       <StartupStatusHeader>
         <span>{LOADING_STEP_LABELS[loadingPhase.step]}</span>
         <strong>{formatElapsedSeconds(elapsedSeconds)}</strong>
@@ -1046,7 +1046,7 @@ export function GameLandingPage() {
   );
 
   const [gameManager, setGameManager] = useState<GameManager | undefined>();
-  const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalVisible, setTerminalVisible] = useState(true);
   const [universeView, setUniverseView] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("pending");
   const [walletModeUi, setWalletModeUi] = useState<SelectedWalletMode>(null);
@@ -3336,13 +3336,6 @@ export function GameLandingPage() {
     const t = terminalHandle.current;
     t?.clear();
     t?.println(`Welcome to ${GAME_NAME}.`, TerminalTextStyle.Green);
-    t?.println("");
-    t?.println(
-      "This is the Dark Forest interactive JavaScript terminal. Only use this if you know exactly what you're doing."
-    );
-    t?.println("");
-    t?.println("Try running: df.getAccount()");
-    t?.println("");
   }, [resetInitializationTerminalLogging]);
 
   const finalizeTerminalGameEntry = useCallback(
@@ -3351,18 +3344,10 @@ export function GameLandingPage() {
       setStep(TerminalPromptStep.COMPLETE);
       setInitRenderState(InitRenderState.COMPLETE);
       terminal.current?.clear();
-
       terminal.current?.println(
         `Welcome to ${GAME_NAME}.`,
         TerminalTextStyle.Green
       );
-      terminal.current?.println("");
-      terminal.current?.println(
-        "This is the Dark Forest interactive JavaScript terminal. Only use this if you know exactly what you're doing."
-      );
-      terminal.current?.println("");
-      terminal.current?.println("Try running: df.getAccount()");
-      terminal.current?.println("");
     },
     [resetInitializationTerminalLogging]
   );
@@ -3429,26 +3414,9 @@ export function GameLandingPage() {
     [finalizeQuickPlayGameEntry, finalizeTerminalGameEntry, playEnterTransition]
   );
 
-  const advanceStateFromComplete = useCallback(
-    async (terminal: React.MutableRefObject<TerminalHandle | undefined>) => {
-      const input = (await terminal.current?.getInput()) || "";
-      let res = "";
-      try {
-        // indirect eval call: http://perfectionkills.com/global-eval-what-are-the-options/
-        // Indirect eval for global scope (avoids comma-operator lint)
-        const indirectEval = globalThis.eval;
-        res = indirectEval(input) as string;
-        if (res !== undefined) {
-          terminal.current?.println(res.toString(), TerminalTextStyle.Text);
-        }
-      } catch (e) {
-        res = e instanceof Error ? e.message : String(e);
-        terminal.current?.println(`ERROR: ${res}`, TerminalTextStyle.Red);
-      }
-      advanceStateFromComplete(terminal);
-    },
-    []
-  );
+  const advanceStateFromComplete = useCallback(async () => {
+    // In-game terminal is a read-only log over the map. It does not take commands.
+  }, []);
 
   const advanceStateFromError = useCallback(async () => {
     await new Promise(() => {});
@@ -3485,7 +3453,7 @@ export function GameLandingPage() {
       } else if (step === TerminalPromptStep.ALL_CHECKS_PASS) {
         await advanceStateFromAllChecksPass(terminal);
       } else if (step === TerminalPromptStep.COMPLETE) {
-        await advanceStateFromComplete(terminal);
+        await advanceStateFromComplete();
       } else if (step === TerminalPromptStep.ERROR) {
         await advanceStateFromError();
       }
@@ -3534,11 +3502,7 @@ export function GameLandingPage() {
       }
 
       setEntryMode(choice);
-      if (choice === "quick") {
-        setTerminalVisible(false);
-      } else {
-        setTerminalVisible(true);
-      }
+      setTerminalVisible(true);
     },
     [sponsorFpcEntryCheck.status]
   );
@@ -3604,23 +3568,26 @@ export function GameLandingPage() {
                     universeView={universeView}
                     setUniverseView={setUniverseView}
                   />
+                  <InGameTerminalChrome
+                    terminalEnabled={terminalVisible}
+                    setTerminalEnabled={setTerminalVisible}
+                    initRender={initRenderState}
+                    universeView={universeView}
+                  />
                 </UIManagerProvider>
               </TopLevelDivProvider>
             )}
         </GameWindowWrapper>
-        <TerminalToggler
-          terminalEnabled={terminalVisible}
-          setTerminalEnabled={setTerminalVisible}
-          initRender={initRenderState}
-        />
         <TerminalWrapper
           initRender={initRenderState}
           terminalEnabled={terminalVisible}
+          universeView={universeView}
         >
           <Terminal
             ref={terminalHandle as React.Ref<TerminalHandle>}
             promptCharacter={"$"}
             optionMode={terminalOptionMode}
+            interactive={initRenderState === InitRenderState.NONE}
           />
           <StartupLoadingStatus
             loadingPhase={loadingPhase}

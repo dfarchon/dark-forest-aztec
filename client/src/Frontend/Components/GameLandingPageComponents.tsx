@@ -1,7 +1,15 @@
-import React, { Dispatch, SetStateAction, useLayoutEffect } from "react";
+import { Setting } from "@dfpunk/types";
+import React, {
+  Dispatch,
+  SetStateAction,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import styled, { css } from "styled-components";
 
 import dfstyles from "../Styles/dfstyles";
+import { useUIManager } from "../Utils/AppHooks";
+import { useSetting } from "../Utils/SettingsHooks";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 
 export const enum InitRenderState {
@@ -44,9 +52,31 @@ const STWInit = css`
   box-sizing: border-box;
   width: ${dfstyles.game.terminalWidth};
   right: 0;
-  top: 0;
-  padding: 1em;
+  /* Above the mini map. Coordinates sit beside the map, not over this column. */
+  top: 0.6em;
+  bottom: 200px;
+  height: auto;
+  max-height: none;
+  padding: 0.4em 0 0.4em 0.6em;
   font-size: ${dfstyles.game.terminalFontSize};
+  background: transparent;
+  pointer-events: none;
+  z-index: 20;
+
+  & * {
+    pointer-events: none !important;
+  }
+
+  color: ${dfstyles.colors.text};
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  --df-terminal-ink: ${dfstyles.colors.text};
+  --df-terminal-ink-dim: ${dfstyles.colors.text};
+
+  .startup-status {
+    background: transparent;
+    border-top: none;
+    color: ${dfstyles.colors.text};
+  }
 `;
 
 const STWNoInit = css`
@@ -59,16 +89,10 @@ const STWNoInit = css`
 const StyledTerminalWrapper = styled.div<{
   initRender: InitRenderState;
   terminalEnabled: boolean;
+  $universeView: boolean;
 }>`
-  display: ${({ initRender, terminalEnabled }) => {
-    if (initRender === InitRenderState.NONE) return "flex";
-    else return terminalEnabled ? "flex" : "none";
-  }};
+  display: flex;
   flex-direction: column;
-  border-left: ${({ terminalEnabled, initRender }) =>
-    terminalEnabled && initRender !== InitRenderState.NONE
-      ? `1px solid ${dfstyles.colors.border}`
-      : "none"};
   height: 100%;
   max-height: 100vh;
   overflow: hidden;
@@ -78,9 +102,31 @@ const StyledTerminalWrapper = styled.div<{
   ${(props) =>
     props.initRender !== InitRenderState.NONE ? STWInit : STWNoInit};
 
+  ${({ initRender, terminalEnabled, $universeView }) =>
+    initRender !== InitRenderState.NONE &&
+    css`
+      /* Must win over the base height: 100%, or the log scrolls below the page. */
+      height: auto;
+      min-height: 0;
+      transform: translateX(${terminalEnabled ? "0" : "100%"});
+      opacity: ${$universeView ? 0 : 1};
+      ${$universeView ? "pointer-events: none;" : ""}
+      transition:
+        transform 0.4s cubic-bezier(0.22, 1.2, 0.36, 1),
+        opacity 0.3s ease;
+    `}
+
   @media (max-width: 660px) {
-    width: 100%;
-    padding: 1.5em 2em;
+    ${(props) =>
+      props.initRender === InitRenderState.NONE
+        ? css`
+            width: 100%;
+            padding: 1.5em 2em;
+          `
+        : css`
+            width: min(${dfstyles.game.terminalWidth}, 46vw);
+            padding: 0.4em 0 0.4em 0.5em;
+          `}
   }
 `;
 
@@ -88,11 +134,13 @@ export function TerminalWrapper({
   children,
   initRender,
   terminalEnabled,
-}: LandingWrapperProps) {
+  universeView = false,
+}: LandingWrapperProps & { universeView?: boolean }) {
   return (
     <StyledTerminalWrapper
       initRender={initRender}
       terminalEnabled={terminalEnabled}
+      $universeView={universeView}
     >
       {children}
     </StyledTerminalWrapper>
@@ -100,15 +148,13 @@ export function TerminalWrapper({
 }
 
 const StyledTerminalToggler = styled.div<{
-  terminalEnabled: boolean;
   initRender: InitRenderState;
 }>`
-  position: ${({ terminalEnabled }) =>
-    terminalEnabled ? "absolute" : "fixed"};
-  right: ${({ terminalEnabled }) =>
-    terminalEnabled ? dfstyles.game.terminalWidth : "0"};
-  top: 0;
-  height: 100%;
+  position: fixed;
+  right: 0;
+  top: 0.6em;
+  bottom: 200px;
+  height: auto;
   width: 1.3em;
 
   background: ${dfstyles.colors.text};
@@ -119,7 +165,7 @@ const StyledTerminalToggler = styled.div<{
   display: ${({ initRender }) =>
     initRender !== InitRenderState.NONE ? "flex" : "none"};
   flex-direction: column;
-  justify-content: space-around;
+  justify-content: center;
   align-items: center;
 
   opacity: 0;
@@ -134,6 +180,74 @@ const StyledTerminalToggler = styled.div<{
     transform: scaleY(2);
   }
 `;
+
+const EdgeRevealStrip = styled.div<{
+  initRender: InitRenderState;
+}>`
+  position: fixed;
+  right: 0;
+  top: 0.6em;
+  bottom: 200px;
+  width: 6px;
+  z-index: 1000;
+  display: ${({ initRender }) =>
+    initRender !== InitRenderState.NONE ? "block" : "none"};
+`;
+
+function EdgeReveal({
+  setTerminalEnabled,
+  initRender,
+}: {
+  setTerminalEnabled: Dispatch<SetStateAction<boolean>>;
+  initRender: InitRenderState;
+}) {
+  const armed = useRef(true);
+
+  return (
+    <EdgeRevealStrip
+      initRender={initRender}
+      onMouseEnter={() => {
+        if (!armed.current) return;
+        armed.current = false;
+        setTerminalEnabled((open) => !open);
+      }}
+      onMouseLeave={() => {
+        armed.current = true;
+      }}
+    />
+  );
+}
+
+export function InGameTerminalChrome({
+  terminalEnabled,
+  setTerminalEnabled,
+  initRender,
+  universeView = false,
+}: {
+  terminalEnabled: boolean;
+  setTerminalEnabled: Dispatch<SetStateAction<boolean>>;
+  initRender: InitRenderState;
+  universeView?: boolean;
+}) {
+  const uiManager = useUIManager();
+  const [reveal] = useSetting(uiManager, Setting.TerminalReveal);
+  if (universeView) return null;
+  if (reveal === "bar") {
+    return (
+      <TerminalToggler
+        terminalEnabled={terminalEnabled}
+        setTerminalEnabled={setTerminalEnabled}
+        initRender={initRender}
+      />
+    );
+  }
+  return (
+    <EdgeReveal
+      setTerminalEnabled={setTerminalEnabled}
+      initRender={initRender}
+    />
+  );
+}
 
 export function TerminalToggler({
   terminalEnabled,
@@ -151,7 +265,6 @@ export function TerminalToggler({
 
   return (
     <StyledTerminalToggler
-      terminalEnabled={terminalEnabled}
       initRender={initRender}
       onClick={() => setTerminalEnabled((b: boolean): boolean => !b)}
     >
@@ -162,17 +275,12 @@ export function TerminalToggler({
 
 const StyledGameWindowWrapper = styled.div<{
   initRender: InitRenderState;
-  terminalEnabled: boolean;
 }>`
   background: ${dfstyles.colors.background};
   position: absolute;
   left: 0;
   top: 0;
-
-  width: ${(props) =>
-    props.terminalEnabled
-      ? `calc(100% - ${dfstyles.game.terminalWidth})`
-      : "100%"};
+  width: 100%;
   height: 100%;
 
   display: ${(props) =>
@@ -182,13 +290,9 @@ const StyledGameWindowWrapper = styled.div<{
 export function GameWindowWrapper({
   children,
   initRender,
-  terminalEnabled,
 }: LandingWrapperProps) {
   return (
-    <StyledGameWindowWrapper
-      initRender={initRender}
-      terminalEnabled={terminalEnabled}
-    >
+    <StyledGameWindowWrapper initRender={initRender}>
       {initRender && <>{children}</>}
     </StyledGameWindowWrapper>
   );

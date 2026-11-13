@@ -141,9 +141,10 @@ export default function ControllableCanvas() {
         },
       }
     );
-    // We can't attach the wheel event onto the canvas due to:
-    // https://www.chromestatus.com/features/6662647093133312
-    canvas.addEventListener("wheel", onWheel);
+    // Bubble phase so the terminal can stop the event while the pointer is
+    // over its panel. Anywhere else, including beside the mini map, this
+    // zooms the map instead of scrolling the page.
+    window.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("resize", onResize);
 
     uiEmitter.on(UIEmitterEvent.UIChange, doResize);
@@ -156,7 +157,7 @@ export default function ControllableCanvas() {
     return () => {
       Viewport.destroyInstance();
       Renderer.destroy();
-      canvas.removeEventListener("wheel", onWheel);
+      window.removeEventListener("wheel", onWheel);
       window.removeEventListener("resize", onResize);
       uiEmitter.removeListener(UIEmitterEvent.UIChange, doResize);
     };
