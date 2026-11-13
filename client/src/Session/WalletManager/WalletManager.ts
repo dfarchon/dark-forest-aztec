@@ -18,7 +18,7 @@ import { type Wallet } from "@aztec-labs/aztec.js/wallet";
 import { BBLazyPrivateKernelProver } from "@aztec-labs/bb-prover/client/lazy";
 import { SPONSORED_FPC_SALT } from "@aztec-labs/constants";
 import { SponsoredFPCContractArtifact } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
-import { WASMSimulator } from "@aztec-labs/simulator/client";
+import type { CircuitSimulator } from "@aztec-labs/simulator/client";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import {
   ACCOUNT_ADDRESS,
@@ -75,6 +75,7 @@ import type { Monomitter } from "@dfpunk/events";
 import { monomitter } from "@dfpunk/events";
 
 import { getSponsoredFpcMinBalanceFjWei } from "../../config/env";
+import { WorkerCircuitSimulator } from "../Acvm/WorkerCircuitSimulator";
 import { KeyStore } from "./KeyStore";
 import type {
   AccountRecord,
@@ -111,8 +112,8 @@ function nextSrsSize(needed: number): number {
  * Grows the in-memory CRS up to {@link MAX_SRS_SIZE} when a proof asks for more points.
  */
 class BrowserKernelProver extends BBLazyPrivateKernelProver {
-  constructor() {
-    super(new WASMSimulator(), { srsSize: INITIAL_SRS_SIZE });
+  constructor(simulator: CircuitSimulator) {
+    super(simulator, { srsSize: INITIAL_SRS_SIZE });
   }
 
   override async createChonkProof(
@@ -158,14 +159,21 @@ function isPrestoFallbackFetchFailure(error: unknown): boolean {
 class PrestoRoutingProver extends PrestoProver {
   private readonly browser: BrowserKernelProver | undefined;
 
-  constructor(proverEnabled: boolean, presto: { host: string; port: number }) {
+  constructor(
+    proverEnabled: boolean,
+    presto: { host: string; port: number },
+    simulator: CircuitSimulator
+  ) {
     super({
       presto: { ...presto, httpsOnly: false },
+      simulator,
       onPhase: (phase, data) => {
         console.log(`Phase: ${phase}`, data);
       },
     });
-    this.browser = proverEnabled ? new BrowserKernelProver() : undefined;
+    this.browser = proverEnabled
+      ? new BrowserKernelProver(simulator)
+      : undefined;
   }
 
   override async createChonkProof(steps: ChonkProofSteps) {
@@ -456,6 +464,7 @@ export class WalletManager {
   private readonly sponsoredFpcAddress: AztecAddress | undefined;
   private readonly keyStore: KeyStore;
   private readonly isExternal: boolean;
+  private readonly circuitSimulator: WorkerCircuitSimulator | undefined;
   private activeAddress: AztecAddress | undefined;
   private balanceInterval: ReturnType<typeof setInterval> | undefined;
   private balance: bigint = 0n;
@@ -469,13 +478,15 @@ export class WalletManager {
     wallet: Wallet,
     sponsoredFpcAddress: AztecAddress | undefined,
     keyStore: KeyStore,
-    isExternal: boolean
+    isExternal: boolean,
+    circuitSimulator?: WorkerCircuitSimulator
   ) {
     this.node = node;
     this.wallet = wallet;
     this.sponsoredFpcAddress = sponsoredFpcAddress;
     this.keyStore = keyStore;
     this.isExternal = isExternal;
+    this.circuitSimulator = circuitSimulator;
     this.walletChanged$ = monomitter(true);
     this.myBalance$ = monomitter(true);
   }
@@ -652,58 +663,67 @@ export class WalletManager {
     onProgress?.(4, total, "Creating PXE");
     // OPFS SAH handles are exclusive per origin; fail fast if another tab holds them.
     await acquireWalletSessionLock();
-    const proverUrl = config.proverUrl;
-    let prover: PrestoRoutingProver | BrowserKernelProver | undefined;
-    if (proverUrl) {
-      const url = new URL(proverUrl);
-      prover = new PrestoRoutingProver(
-        config.pxeConfig?.proverEnabled === true,
-        {
-          host: url.hostname,
-          port: Number.parseInt(url.port, 10) || 59833,
-        }
+    const circuitSimulator = new WorkerCircuitSimulator();
+    try {
+      const proverUrl = config.proverUrl;
+      let prover: PrestoRoutingProver | BrowserKernelProver | undefined;
+      if (proverUrl) {
+        const url = new URL(proverUrl);
+        prover = new PrestoRoutingProver(
+          config.pxeConfig?.proverEnabled === true,
+          {
+            host: url.hostname,
+            port: Number.parseInt(url.port, 10) || 59833,
+          },
+          circuitSimulator
+        );
+      } else if (config.pxeConfig?.proverEnabled) {
+        prover = new BrowserKernelProver(circuitSimulator);
+      }
+      const wallet = await EmbeddedWallet.create(node, {
+        pxe: {
+          dataDirectory: pxeDataDir,
+          dataStoreMapSizeKb:
+            config.pxeConfig?.dataStoreMapSizeKb ??
+            DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
+          ...config.pxeConfig,
+          ...(prover ? { proverOrOptions: prover } : {}),
+          simulator: circuitSimulator,
+        },
+      });
+
+      const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
+      let sponsoredFpcAddress: AztecAddress | undefined = undefined;
+
+      if (config.sponsorMode) {
+        sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
+          node,
+          wallet,
+          config,
+          (msg) => onProgress?.(5, total, msg)
+        );
+      }
+
+      const contractStartStep = config.sponsorMode ? 6 : 5;
+      await registerGameContractsWithPxe(
+        wallet,
+        admin,
+        contractStartStep,
+        (step, name) => onProgress?.(step, total, `Registering ${name}`)
       );
-    } else if (config.pxeConfig?.proverEnabled) {
-      prover = new BrowserKernelProver();
-    }
-    const wallet = await EmbeddedWallet.create(node, {
-      pxe: {
-        dataDirectory: pxeDataDir,
-        dataStoreMapSizeKb:
-          config.pxeConfig?.dataStoreMapSizeKb ??
-          DEFAULT_PXE_DATA_STORE_MAP_SIZE_KB,
-        ...config.pxeConfig,
-        ...(prover ? { proverOrOptions: prover } : {}),
-      },
-    });
 
-    const admin = AztecAddress.fromStringUnsafe(ACCOUNT_ADDRESS);
-    let sponsoredFpcAddress: AztecAddress | undefined = undefined;
-
-    if (config.sponsorMode) {
-      sponsoredFpcAddress = await registerSponsoredFpcWithWallet(
+      return new WalletManager(
         node,
         wallet,
-        config,
-        (msg) => onProgress?.(5, total, msg)
+        sponsoredFpcAddress,
+        keyStore,
+        false,
+        circuitSimulator
       );
+    } catch (err) {
+      circuitSimulator.destroy();
+      throw err;
     }
-
-    const contractStartStep = config.sponsorMode ? 6 : 5;
-    await registerGameContractsWithPxe(
-      wallet,
-      admin,
-      contractStartStep,
-      (step, name) => onProgress?.(step, total, `Registering ${name}`)
-    );
-
-    return new WalletManager(
-      node,
-      wallet,
-      sponsoredFpcAddress,
-      keyStore,
-      false
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -946,6 +966,7 @@ export class WalletManager {
       } catch (err) {
         console.warn("[WalletManager] Failed to close embedded wallet:", err);
       } finally {
+        this.circuitSimulator?.destroy();
         resolveDestroy();
       }
     })();
