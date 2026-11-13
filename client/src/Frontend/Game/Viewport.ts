@@ -390,33 +390,33 @@ class Viewport {
 
   onScroll(deltaY: number, forceZoom = false) {
     if (this.mouseLastCoords !== undefined || forceZoom) {
-      const base = this.mouseSensitivity;
-      const newWidth = this.widthInWorldUnits * base ** deltaY;
-      if (!this.isValidWorldWidth(newWidth)) {
-        return;
-      }
-
-      let mouseWorldCoords = this.centerWorldCoords;
+      let anchor = this.centerWorldCoords;
       if (this.mouseLastCoords) {
-        mouseWorldCoords = this.canvasToWorldCoords(this.mouseLastCoords);
+        anchor = this.canvasToWorldCoords(this.mouseLastCoords);
       }
-      const centersDiff = {
-        x: this.centerWorldCoords.x - mouseWorldCoords.x,
-        y: this.centerWorldCoords.y - mouseWorldCoords.y,
-      };
-      const newCentersDiff = {
-        x: centersDiff.x * base ** deltaY,
-        y: centersDiff.y * base ** deltaY,
-      };
-      const newCenter = {
-        x: mouseWorldCoords.x + newCentersDiff.x,
-        y: mouseWorldCoords.y + newCentersDiff.y,
-      };
-      this.centerWorldCoords.x = newCenter.x;
-      this.centerWorldCoords.y = newCenter.y;
-
-      this.setWorldWidth(newWidth);
+      this.zoomAt(deltaY, anchor);
     }
+  }
+
+  /**
+   * Scale the camera around a world point. The mini map uses the current view
+   * center so its viewport rectangle grows and shrinks in place.
+   */
+  public zoomAt(deltaY: number, anchor: WorldCoords): void {
+    const base = this.mouseSensitivity;
+    const newWidth = this.widthInWorldUnits * base ** deltaY;
+    if (!this.isValidWorldWidth(newWidth)) {
+      return;
+    }
+
+    const centersDiff = {
+      x: this.centerWorldCoords.x - anchor.x,
+      y: this.centerWorldCoords.y - anchor.y,
+    };
+    const scaled = base ** deltaY;
+    this.centerWorldCoords.x = anchor.x + centersDiff.x * scaled;
+    this.centerWorldCoords.y = anchor.y + centersDiff.y * scaled;
+    this.setWorldWidth(newWidth);
   }
 
   onWindowResize() {

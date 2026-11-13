@@ -32,14 +32,8 @@ import { TooltipTrigger } from "./Tooltip";
 
 const StyledExplorePane = styled.div`
   background: ${dfstyles.colors.background};
-  position: absolute;
-  bottom: 0;
-  left: 0;
-
   padding: 0.5em;
   margin: 0.5em;
-
-  /* border: 1px solid ${dfstyles.colors.subtext}; */
   border-radius: ${dfstyles.borderRadius};
 `;
 

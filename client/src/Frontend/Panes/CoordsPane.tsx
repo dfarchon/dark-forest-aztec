@@ -3,7 +3,9 @@ import React, { useState } from "react";
 import styled from "styled-components";
 
 import GameUIManager from "../../Backend/GameLogic/GameUIManager";
+import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
+import { DFZIndex } from "../Utils/constants";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 
 class CoordsText extends React.Component<
@@ -70,38 +72,61 @@ class CoordsText extends React.Component<
 }
 
 const StyledCoordsPane = styled.div`
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  padding: 0.5em;
-
+  z-index: ${DFZIndex.MenuBar};
+  width: max-content;
+  min-width: 7em;
+  min-height: 1.6em;
   text-align: right;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+`;
 
-  width: 16em;
-  height: 4em;
+const Content = styled.div<{ $hidden: boolean }>`
+  display: ${({ $hidden }) => ($hidden ? "none" : "flex")};
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+`;
+
+const Hint = styled.span`
+  color: ${dfstyles.colors.subtext};
+  line-height: 1.6em;
+
+  &:hover {
+    color: ${dfstyles.colors.text};
+  }
 `;
 
 export function CoordsPane() {
   const [hovering, setHovering] = useState<boolean>(false);
   const [hidden, setHidden] = useState<boolean>(false);
+  // The click that reveals the pane happens while the pointer is still inside.
+  // Hold the "Click to hide" line back until the pointer leaves and returns.
+  const [suppressHideHint, setSuppressHideHint] = useState<boolean>(false);
   const uiManager = useUIManager();
+  const showHideHint = !hidden && hovering && !suppressHideHint;
 
   return (
     <StyledCoordsPane
-      onClick={() => setHidden((b) => !b)}
+      onClick={() => {
+        setSuppressHideHint(hidden);
+        setHidden((isHidden) => !isHidden);
+      }}
       onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
+      onMouseLeave={() => {
+        setHovering(false);
+        setSuppressHideHint(false);
+      }}
     >
-      {hidden ? (
-        <span>{hovering ? "Click to show" : ""}</span>
-      ) : hovering ? (
-        <span>Click to hide</span>
-      ) : (
+      {hidden && hovering && <Hint>Click to show</Hint>}
+      {showHideHint && <Hint>Click to hide</Hint>}
+      <Content $hidden={hidden || showHideHint}>
         <CoordsText uiManager={uiManager} />
-      )}
+      </Content>
     </StyledCoordsPane>
   );
 }

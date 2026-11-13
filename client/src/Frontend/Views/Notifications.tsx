@@ -177,8 +177,6 @@ const NotificationContent = styled.div`
  * The element which contains all the notifications
  */
 const NotificationsContainer = styled.div`
-  position: absolute;
-  top: 0;
-  right: 0;
+  position: relative;
   z-index: ${DFZIndex.Notification};
 `;

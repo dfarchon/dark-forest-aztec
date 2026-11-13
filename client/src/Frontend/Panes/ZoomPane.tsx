@@ -8,35 +8,48 @@ import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 
 const StyledZoomPane = styled.div`
   z-index: ${DFZIndex.MenuBar};
-  padding-left: 0.75em;
-  padding-top: 0.1em;
-  margin-top: 0;
   display: flex;
-  font-size: 1.5em;
-  flex-direction: row;
+  align-items: center;
   justify-content: flex-end;
-  height: fit-content;
-  & > a:first-child {
-    margin-right: 0.75em;
-  }
+  margin-bottom: 4px;
+  font-size: 1.5em;
+  line-height: 1;
   color: ${dfstyles.colors.subtext};
-  & > a {
-    outline: none;
+
+  & > button {
+    all: unset;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    background: transparent;
+    -webkit-tap-highlight-color: transparent;
+
+    &:first-child {
+      margin-right: 0.75em;
+    }
+
     &:hover {
       color: ${dfstyles.colors.text};
-      cursor: pointer;
     }
+
     &:active {
       color: ${dfstyles.colors.subbertext};
     }
+
     &:focus,
     &:focus-visible {
       outline: none;
+      box-shadow: none;
+      background: transparent;
+    }
+
+    &::selection {
+      background: transparent;
     }
   }
 `;
 
-function preventFocusOnMouseDown(e: React.MouseEvent<HTMLAnchorElement>) {
+function preventFocusOnMouseDown(e: React.MouseEvent<HTMLButtonElement>) {
   e.preventDefault();
 }
 
@@ -44,18 +57,20 @@ export function ZoomPane() {
   const uiEmitter = UIEmitter.getInstance();
   return (
     <StyledZoomPane>
-      <a
+      <button
+        type="button"
         onMouseDown={preventFocusOnMouseDown}
         onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomOut)}
       >
         <LongDash />
-      </a>
-      <a
+      </button>
+      <button
+        type="button"
         onMouseDown={preventFocusOnMouseDown}
         onClick={() => uiEmitter.emit(UIEmitterEvent.ZoomIn)}
       >
         +
-      </a>
+      </button>
     </StyledZoomPane>
   );
 }

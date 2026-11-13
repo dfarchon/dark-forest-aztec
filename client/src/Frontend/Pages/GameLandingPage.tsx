@@ -999,36 +999,6 @@ function describeMissingExternalWalletSupport(
   return missing.length > 0 ? missing.join(" and ") : null;
 }
 
-function BlockSyncStatus({ connection }: { connection: IndexerConnection }) {
-  const [blockNum, setBlockNum] = useState<number>(
-    connection.getCurrentBlockNumber()
-  );
-
-  useEffect(() => {
-    const sub = connection.blockNumber$.subscribe((n) => setBlockNum(n));
-    return () => sub.unsubscribe();
-  }, [connection]);
-
-  return (
-    <div
-      style={{
-        flexShrink: 0,
-        borderTop: "1px solid #333",
-        padding: "4px 8px",
-        fontSize: "11px",
-        fontFamily: "monospace",
-        color: "#666",
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-      }}
-    >
-      <span style={{ color: "#5b5" }}>●</span>
-      Block {blockNum}
-    </div>
-  );
-}
-
 const enum TerminalPromptStep {
   NONE,
   WALLET_MENU,
@@ -3649,10 +3619,6 @@ export function GameLandingPage() {
             loadingPhase={loadingPhase}
             elapsedSeconds={loadingElapsedSeconds}
           />
-          {initRenderState === InitRenderState.COMPLETE &&
-            indexerRef.current && (
-              <BlockSyncStatus connection={indexerRef.current} />
-            )}
         </TerminalWrapper>
         <div ref={topLevelContainer}></div>
       </Wrapper>

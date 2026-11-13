@@ -1,7 +1,7 @@
 import { L2_TOKEN_SYMBOL } from "@dfpunk/constants";
 import { Monomitter } from "@dfpunk/events";
 import { EthAddress, ModalName, TooltipName } from "@dfpunk/types";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
 import { Hook } from "../../_types/global/GlobalTypes";
@@ -10,10 +10,10 @@ import { weiToEth } from "../../Backend/Utils/Utils";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
-import { AlignCenterHorizontally } from "../Components/CoreUI";
-import { AccountLabel } from "../Components/Labels/Labels";
+import { TextInput } from "../Components/Input";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
 import { TooltipTrigger } from "../Panes/Tooltip";
+import dfstyles from "../Styles/dfstyles";
 import { usePlayer, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
 import { useEmitterSubscribe, useEmitterValue } from "../Utils/EmitterHooks";
@@ -23,9 +23,139 @@ import { Paused } from "./Paused";
 
 const TopBarContainer = styled.div`
   z-index: ${DFZIndex.MenuBar};
-  padding: 0 2px;
-  width: 530px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: max-content;
+  color: ${dfstyles.colors.text};
 `;
+
+const PlateRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+`;
+
+const AddressLine = styled(PlateRow)`
+  height: 26px;
+  align-items: center;
+  color: inherit;
+`;
+
+const AddressSlot = styled.div`
+  width: 11em;
+  height: 26px;
+  display: flex;
+  align-items: center;
+
+  df-text-input {
+    display: block;
+    width: 100%;
+    height: 26px;
+  }
+`;
+
+const AddressLabel = styled.span`
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 26px;
+  cursor: zoom-in;
+`;
+
+function AccountAddress() {
+  const uiManager = useUIManager();
+  const account = uiManager.getAccount() || "<no account>";
+  const [open, setOpen] = useState(false);
+
+  return (
+    <AddressSlot>
+      {open ? (
+        <TextInput
+          selected={true}
+          readonly={true}
+          value={account}
+          onBlur={() => setOpen(false)}
+        />
+      ) : (
+        <AddressLabel
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen(true);
+          }}
+        >
+          {account}
+        </AddressLabel>
+      )}
+    </AddressSlot>
+  );
+}
+
+const BlockLine = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+`;
+
+const BlockDot = styled.span<{ $flash: boolean }>`
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: ${dfstyles.colors.dfgreen};
+  animation: ${({ $flash }) =>
+    $flash ? "block-dot-flash 700ms ease-out 1" : "none"};
+
+  @keyframes block-dot-flash {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    35% {
+      opacity: 0.15;
+      transform: scale(1.8);
+      box-shadow: 0 0 8px 2px ${dfstyles.colors.dfgreen};
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: none;
+    }
+  }
+`;
+
+function BlockReadout() {
+  const uiManager = useUIManager();
+  const blockNumber = useEmitterValue(
+    uiManager.getEthConnection().blockNumber$,
+    undefined
+  );
+  const previousBlock = useRef<number | undefined>(undefined);
+  const [flashKey, setFlashKey] = useState(0);
+
+  useEffect(() => {
+    if (blockNumber === undefined) return;
+    if (
+      previousBlock.current !== undefined &&
+      previousBlock.current !== blockNumber
+    ) {
+      setFlashKey((key) => key + 1);
+    }
+    previousBlock.current = blockNumber;
+  }, [blockNumber]);
+
+  return (
+    <BlockLine>
+      <BlockDot key={flashKey} $flash={flashKey > 0} />
+      block {blockNumber ?? "…"}
+    </BlockLine>
+  );
+}
 
 const Numbers = styled.div`
   display: inline-block;
@@ -38,7 +168,7 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
   let content;
 
   if (!player.value) {
-    content = <Sub>n/a</Sub>;
+    content = <>n/a</>;
   } else {
     let formattedScore = "n/a";
     if (player.value.score !== undefined && player.value.score !== null) {
@@ -46,11 +176,9 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
     }
 
     content = (
-      <Sub>
-        <TooltipTrigger name={TooltipName.Score}>
-          score: <Text>{formattedScore}</Text>
-        </TooltipTrigger>
-      </Sub>
+      <TooltipTrigger name={TooltipName.Score}>
+        score {formattedScore}
+      </TooltipTrigger>
     );
   }
 
@@ -212,60 +340,58 @@ export function TopBar({
 
   return (
     <TopBarContainer>
-      <AlignCenterHorizontally
-        style={{ width: "100%", justifyContent: "space-around" }}
-      >
+      <AddressLine>
         <TooltipTrigger
           name={TooltipName.Empty}
-          extraContent={<Text>Your wallet address.</Text>}
+          extraContent={<Text>Click to show your wallet address.</Text>}
+          style={{ display: "flex", height: "26px", alignItems: "center" }}
         >
-          <AccountLabel includeAddressIfHasTwitter={true} width={"50px"} />
+          <AccountAddress />
         </TooltipTrigger>
+      </AddressLine>
+      <PlateRow>
         <TooltipTrigger
           name={TooltipName.Empty}
           extraContent={<Text>Your current wallet balance.</Text>}
         >
-          <Sub>
-            ({weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL})
-          </Sub>
+          <>
+            {weiToEth(balance ?? 0n).toFixed(2)} {L2_TOKEN_SYMBOL}
+          </>
         </TooltipTrigger>
-        {process.env.DF_WEBSERVER_URL && (
-          <>
-            <TooltipTrigger
-              name={TooltipName.Empty}
-              extraContent={
-                <Text>
-                  Connect your {isExternalWallet ? "wallet" : "local wallet"} to
-                  your twitter account.
-                </Text>
-              }
-            >
-              <ModalToggleButton
-                size="small"
-                modal={ModalName.TwitterVerify}
-                hook={twitterVerifyHook}
-                style={
-                  {
-                    width: !twitter ? "100px" : undefined,
-                  } as CSSStyleDeclaration & React.CSSProperties
-                }
-                text={!twitter ? "Connect" : undefined}
-              />
-            </TooltipTrigger>
-          </>
-        )}
+      </PlateRow>
+      <PlateRow>
         <BoardPlacement account={account} />
-      </AlignCenterHorizontally>
-      <AlignCenterHorizontally
-        style={{ justifyContent: "space-around", width: "100%" }}
-      >
-        {captureZones}
-        {uiManager.getSpaceJunkEnabled() && (
-          <>
-            <SpaceJunk account={account} />
-          </>
-        )}
-      </AlignCenterHorizontally>
+      </PlateRow>
+      <PlateRow>
+        <BlockReadout />
+      </PlateRow>
+      {process.env.DF_WEBSERVER_URL && (
+        <PlateRow>
+          <TooltipTrigger
+            name={TooltipName.Empty}
+            extraContent={
+              <Text>
+                Connect your {isExternalWallet ? "wallet" : "local wallet"} to
+                your twitter account.
+              </Text>
+            }
+          >
+            <ModalToggleButton
+              size="small"
+              modal={ModalName.TwitterVerify}
+              hook={twitterVerifyHook}
+              style={
+                {
+                  width: !twitter ? "100px" : undefined,
+                } as CSSStyleDeclaration & React.CSSProperties
+              }
+              text={!twitter ? "Connect" : undefined}
+            />
+          </TooltipTrigger>
+        </PlateRow>
+      )}
+      {captureZones}
+      {uiManager.getSpaceJunkEnabled() && <SpaceJunk account={account} />}
       <NetworkHealth />
       <Paused />
     </TopBarContainer>

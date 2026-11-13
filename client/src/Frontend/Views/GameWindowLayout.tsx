@@ -7,7 +7,6 @@ import {
   CanvasContainer,
   CanvasWrapper,
   MainWindow,
-  UpperLeft,
   WindowWrapper,
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
@@ -17,6 +16,7 @@ import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
 import { HelpPane } from "../Panes/HelpPane";
 import { HoverPlanetPane } from "../Panes/HoverPlanetPane";
+import { MiniMapPane } from "../Panes/MiniMapPane";
 import OnboardingPane from "../Panes/OnboardingPane";
 import { PlanetContextPane } from "../Panes/PlanetContextPane";
 import { PlanetDexPane } from "../Panes/PlanetDexPane";
@@ -27,8 +27,8 @@ import { SettingsPane } from "../Panes/SettingsPane";
 import { TransactionLogPane } from "../Panes/TransactionLogPane";
 import { TutorialPane } from "../Panes/TutorialPane";
 import { TwitterVerifyPane } from "../Panes/TwitterVerifyPane";
-import { ZoomPane } from "../Panes/ZoomPane";
 import { useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
+import { DFZIndex } from "../Utils/constants";
 import { useOnUp } from "../Utils/KeyEmitters";
 import { useBooleanSetting } from "../Utils/SettingsHooks";
 import {
@@ -235,35 +235,39 @@ export function GameWindowLayout({
 
       <MainWindow>
         <CanvasContainer>
-          {showEdgeChrome && (
-            <UpperLeft>
-              <ZoomPane />
-            </UpperLeft>
-          )}
-          <HiddenEdgeChrome $hidden={!showEdgeChrome}>
-            <SidebarPane
-              transactionLogHook={[
-                transactionLogVisible,
-                setTransactionLogVisible,
-              ]}
-              settingsHook={[settingsVisible, setSettingsVisible]}
-              helpHook={[helpVisible, setHelpVisible]}
-              pluginsHook={[pluginsVisible, setPluginsVisible]}
-              yourArtifactsHook={[
-                playerArtifactsVisible,
-                setPlayerArtifactsVisible,
-              ]}
-              planetdexHook={[planetdexVisible, setPlanetdexVisible]}
-            />
-          </HiddenEdgeChrome>
           <CanvasWrapper>
             <ControllableCanvas />
           </CanvasWrapper>
 
-          {showEdgeChrome && <NotificationsPane />}
-          {showEdgeChrome && <CoordsPane />}
+          {showEdgeChrome && (
+            <TopRightStack>
+              <CoordsPane />
+              <NotificationsPane />
+            </TopRightStack>
+          )}
+          {showEdgeChrome && (
+            <BottomRightStack>
+              <MiniMapPane />
+            </BottomRightStack>
+          )}
           <HiddenEdgeChrome $hidden={!showEdgeChrome}>
-            <ExplorePane />
+            <BottomLeftDock>
+              <SidebarPane
+                transactionLogHook={[
+                  transactionLogVisible,
+                  setTransactionLogVisible,
+                ]}
+                settingsHook={[settingsVisible, setSettingsVisible]}
+                helpHook={[helpVisible, setHelpVisible]}
+                pluginsHook={[pluginsVisible, setPluginsVisible]}
+                yourArtifactsHook={[
+                  playerArtifactsVisible,
+                  setPlayerArtifactsVisible,
+                ]}
+                planetdexHook={[planetdexVisible, setPlanetdexVisible]}
+              />
+              <ExplorePane />
+            </BottomLeftDock>
           </HiddenEdgeChrome>
 
           <HoverPlanetPane />
@@ -278,12 +282,46 @@ export function GameWindowLayout({
 
 const TopBarPaneContainer = styled.div`
   display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100vw;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: max-content;
   position: absolute;
   top: 0;
   left: 0;
+  z-index: ${DFZIndex.MenuBar};
+`;
+
+const TopRightStack = styled.div`
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: ${DFZIndex.Notification};
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin: 0.5em;
+`;
+
+const BottomRightStack = styled.div`
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  /* Above the bottom-left dock, whose box is transparent and can cover the map. */
+  z-index: ${DFZIndex.MenuBar + 1};
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin: 0.5em;
+`;
+
+const BottomLeftDock = styled.div`
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  z-index: ${DFZIndex.MenuBar};
 `;
 
 /**
