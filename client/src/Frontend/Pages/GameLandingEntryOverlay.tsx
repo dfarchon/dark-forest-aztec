@@ -2,6 +2,7 @@ import { GAME_NAME } from "@dfpunk/constants";
 import React from "react";
 import styled, { css } from "styled-components";
 
+import { PunkMark } from "../Components/PunkMark";
 import dfstyles from "../Styles/dfstyles";
 
 export type EntryModeChoice = "quick" | "standard" | "terminal";
@@ -33,6 +34,9 @@ export function GameLandingEntryOverlay({
   return (
     <Backdrop role="dialog" aria-modal aria-labelledby="entry-overlay-title">
       <Card>
+        <Logo>
+          <PunkMark width="100%" label={GAME_NAME} />
+        </Logo>
         <Title id="entry-overlay-title">{GAME_NAME}</Title>
         <Subtitle>Choose how you want to sign in</Subtitle>
         <Hint>Pick one. You can refresh the page later to switch.</Hint>
@@ -142,6 +146,11 @@ const Card = styled.div`
   border: 1px solid ${dfstyles.colors.borderDarkest};
   background: rgba(21, 21, 21, 0.96);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+`;
+
+const Logo = styled.div`
+  width: 96px;
+  margin: 0 auto 16px;
 `;
 
 const Title = styled.h2`

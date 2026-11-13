@@ -10,6 +10,7 @@ import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { Link, Title } from "../Components/CoreUI";
 import { Modal } from "../Components/Modal";
+import { PunkMark } from "../Components/PunkMark";
 import { AsciiFieldBackground } from "../Renderers/AsciiFieldBackground";
 import dfstyles from "../Styles/dfstyles";
 
@@ -128,6 +129,9 @@ export default function LandingPage() {
         <MainContentContainer>
           <Header>
             <HeroFrame>
+              <HeroLogo>
+                <PunkMark width="100%" label={GAME_NAME} />
+              </HeroLogo>
               <SignalLine>
                 The universe is dark. Your moves are private.
               </SignalLine>
@@ -630,6 +634,16 @@ const HeroFrame = styled.div`
   @media (max-width: 720px) {
     width: min(720px, calc(100vw - 32px));
     padding: 28px 20px 24px;
+  }
+`;
+
+const HeroLogo = styled.div`
+  width: 180px;
+  margin: 0 auto 18px;
+
+  @media (max-height: 820px) {
+    width: 120px;
+    margin-bottom: 12px;
   }
 `;
 
