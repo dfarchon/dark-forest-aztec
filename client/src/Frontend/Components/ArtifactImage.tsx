@@ -1,46 +1,56 @@
-import { ArtifactFileColor, artifactFileName } from "@dfpunk/gamelogic";
+import { ArtifactFileColor } from "@dfpunk/gamelogic";
+import { ARTIFACTS_THUMBS_URL, spriteFromArtifact } from "@dfpunk/renderer";
 import { Artifact } from "@dfpunk/types";
 import React from "react";
 import styled, { css } from "styled-components";
 
 import dfstyles from "../Styles/dfstyles";
 
-// export const ARTIFACT_URL =
-//   "https://d2wspbczt15cqu.cloudfront.net/v0.6.0-artifacts/";
+/** Kept for the artifact image test page. Pane icons use the viewport sprite sheet. */
 export const ARTIFACT_URL = "/img/artifacts/videos/";
 
-function getArtifactUrl(
-  thumb: boolean,
-  artifact: Artifact,
-  color: ArtifactFileColor
-): string {
-  const fileName = artifactFileName(true, thumb, artifact, color);
-  return ARTIFACT_URL + fileName;
-}
+const SPRITES_PER_ROW = 16;
 
 export function ArtifactImage({
   artifact,
   size,
-  thumb,
-  bgColor,
+  thumb: _thumb,
+  bgColor: _bgColor,
 }: {
   artifact: Artifact;
   size: number;
   thumb?: boolean;
   bgColor?: ArtifactFileColor;
 }) {
-  const url = getArtifactUrl(
-    thumb || false,
-    artifact,
-    bgColor || ArtifactFileColor.BLUE
-  );
+  const rect = spriteFromArtifact(artifact);
+  const cell = SPRITES_PER_ROW * size;
+  const x = rect.x1 * cell;
+  const y = rect.y1 * cell;
 
   return (
     <Container width={size} height={size}>
-      <img width={size} height={size} src={url} />
+      <Sprite
+        width={size}
+        height={size}
+        style={{
+          backgroundImage: `url(${ARTIFACTS_THUMBS_URL})`,
+          backgroundSize: `${cell}px ${cell}px`,
+          backgroundPosition: `-${x}px -${y}px`,
+        }}
+      />
     </Container>
   );
 }
+
+const Sprite = styled.div<{ width: number; height: number }>`
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background-repeat: no-repeat;
+  ${({ width, height }) => css`
+    width: ${width}px;
+    height: ${height}px;
+  `}
+`;
 
 const Container = styled.div`
   image-rendering: crisp-edges;
