@@ -9,7 +9,7 @@
     {
       "path": "tools/presto",
       "url": "https://github.com/Stx69/presto.git",
-      "commit": "e8dc31d19761e1f69993dff33dd99a4401c324d4"
+      "commit": "c0344eb1053445d2c507b001fb61a3f5c696dc83"
     },
     {
       "path": "tools/aztec-explorer",
