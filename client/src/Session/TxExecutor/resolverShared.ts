@@ -3,7 +3,10 @@
  * These are standalone versions of the private methods originally in StateResolver.
  */
 
-import type { PlanetEventsState } from "@dfpunk/indexer-core/TableTypes/chain";
+import type {
+  ArrivalState,
+  PlanetEventsState,
+} from "@dfpunk/indexer-core/TableTypes/chain";
 
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import {
@@ -13,19 +16,27 @@ import {
 } from "./stateConvert";
 import { arrivalZero, artifactLocationZero, artifactZero } from "./stateZeros";
 
+export type ArrivalHealFn = (
+  arrivalId: string
+) => Promise<ArrivalState | undefined>;
+
 /**
  * Load arrivals, artifacts, and artifact locations for a planet's events.
  * Returns arrays of length 20, padded with zeros for unused slots.
- * Standalone version of StateResolver.loadArrivalsForPlanetEvents().
+ *
+ * When an arrival id is listed in planet_events but missing from the indexer
+ * (missed ArrivalUpdate log), optional `healArrival` can fetch it from chain
+ * via ArrivalStorage.get_arrival_unconstrained.
  */
-export function loadArrivalsForPlanetEvents(
+export async function loadArrivalsForPlanetEvents(
   indexer: IndexerConnection,
-  planetEvents: PlanetEventsState | undefined
-): {
+  planetEvents: PlanetEventsState | undefined,
+  healArrival?: ArrivalHealFn
+): Promise<{
   arrivals: Record<string, unknown>[];
   artifacts: Record<string, unknown>[];
   artifactLocations: Record<string, unknown>[];
-} {
+}> {
   const count = planetEvents?.count ?? 0;
   const events = planetEvents?.events ?? [];
 
@@ -36,10 +47,24 @@ export function loadArrivalsForPlanetEvents(
   for (let i = 0; i < 20; i++) {
     if (i < count && events[i]?.id != null && String(events[i].id) !== "0") {
       const arrivalId = String(events[i].id);
-      const arrival = indexer.getArrival(arrivalId);
+      let arrival = indexer.getArrival(arrivalId);
+      if (!arrival && healArrival) {
+        try {
+          arrival = await healArrival(arrivalId);
+          if (arrival) {
+            console.warn(
+              `[loadArrivals] healed missing arrival ${arrivalId} from chain storage`
+            );
+          }
+        } catch (e) {
+          console.warn(
+            `[loadArrivals] failed to heal arrival ${arrivalId}:`,
+            e instanceof Error ? e.message : e
+          );
+        }
+      }
       if (arrival) {
         arrivals.push(arrivalToContract(arrival));
-        // If arrival carries an artifact, load it
         if (
           arrival.carried_artifact_id &&
           String(arrival.carried_artifact_id) !== "0"

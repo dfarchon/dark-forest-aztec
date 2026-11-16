@@ -1541,12 +1541,12 @@ export function GameLandingPage() {
           if (!chosen) {
             throw new Error("Local accounts list was unexpectedly empty.");
           }
-          // create() already restored the saved active account.
-          if (wm.getActiveAddress()?.toString() !== chosen.address) {
-            await wm.switchAccount(chosen.address, (msg) =>
-              terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
-            );
-          }
+          // Always re-register into the current PXE. Skipping when the active
+          // address string matches leaves a stale KeyStore account unbound
+          // after a local-network / fingerprint reset.
+          await wm.switchAccount(chosen.address, (msg) =>
+            terminalHandle.current?.println(msg, TerminalTextStyle.Sub)
+          );
         }
         if (generation !== quickBootstrapEffectGenRef.current) return;
 

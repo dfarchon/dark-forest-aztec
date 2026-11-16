@@ -222,7 +222,8 @@ export class ContractsAPI extends EventEmitter {
   }
 
   public getContractAddress(): EthAddress {
-    // todo: fix this
+    // Aztec splits game entrypoints across Core/Move/Artifact*; Core is the
+    // spawn/reveal surface used for identity displays and explorer links.
     return CORE_CONTRACT_ADDRESS as EthAddress;
   }
 
@@ -399,11 +400,17 @@ export class ContractsAPI extends EventEmitter {
   // =========================================================================
 
   public async getArrival(
-    arrivalId: number
+    arrivalId: number | string | bigint
   ): Promise<QueuedArrival | undefined> {
-    const raw = this.indexerConnection.getArrival(String(arrivalId));
+    // Indexer keys are decimal Field strings — never coerce via Number()
+    // (Field ids can exceed Number.MAX_SAFE_INTEGER).
+    const id =
+      typeof arrivalId === "bigint"
+        ? arrivalId.toString(10)
+        : String(arrivalId);
+    const raw = this.indexerConnection.getArrival(id);
     if (!raw) return undefined;
-    return decodeArrival(String(arrivalId), raw);
+    return decodeArrival(id, raw);
   }
 
   public async getArrivalsForPlanet(

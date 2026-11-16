@@ -1436,7 +1436,9 @@ class GameUIManager extends EventEmitter {
   }
 
   public get captureZonesEnabled(): boolean {
-    return this.contractConstants.CAPTURE_ZONES_ENABLED;
+    // Capture/invade have no Core entrypoints yet — keep UI gated off even if
+    // the onchain CaptureZonesConfig flag is enabled in a preset.
+    return false;
   }
 
   public potentialCaptureScore(planetLevel: number): number {

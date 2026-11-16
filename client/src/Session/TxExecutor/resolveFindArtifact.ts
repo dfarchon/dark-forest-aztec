@@ -10,9 +10,7 @@
  *   world)
  */
 
-import { locationIdToDecStr } from "@dfpunk/serde";
 import type { UnconfirmedFindArtifact } from "@dfpunk/types";
-import type { LocationId } from "@dfpunk/types";
 import {
   buildLocationProofInputs,
   computeLocationProofOutputs,
@@ -22,7 +20,7 @@ import type { ResolverDeps } from "./resolverHelpers";
 import {
   collectEntityTimes,
   computeTimestamp,
-  hexIdToField,
+  idToField,
   loadArtifactsForPlanet,
 } from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
@@ -55,9 +53,9 @@ export async function resolveFindArtifact(
   deps: ResolverDeps
 ): Promise<unknown[]> {
   const intentArgs = await intent.args;
-  // intentArgs = [locationIdDec, x, y, biomebase]
+  // intentArgs = [locationIdDec, x, y, biomebase] — decimal string from GameManager
   const [rawLocationId, rawX, rawY, rawBiomebase] = intentArgs;
-  let locationId = hexIdToField(rawLocationId);
+  let locationId = idToField(rawLocationId);
   const x = signedCoordToField(rawX as number | bigint);
   const y = signedCoordToField(rawY as number | bigint);
   const biomebase = Number(rawBiomebase);
@@ -89,45 +87,17 @@ export async function resolveFindArtifact(
     });
   }
 
-  const locationId_my = locationIdToDecStr(String(rawLocationId) as LocationId);
-
+  // Indexer keys are decimal Field strings (same form as locationIdToDecStr).
   const locationIdDec = String(rawLocationId);
-
-  console.log("----- test -----");
-  console.log("locationId_my", locationId_my);
-  console.log("locationIdDec", locationIdDec);
-  console.log("----- test -----");
-
   const playerAddr = deps.getPlayerAddress();
 
   // Load planet state
   const planetRaw = deps.indexer.getPlanet(locationIdDec);
   const planet = planetRaw ? planetToContract(planetRaw) : planetZero();
 
-  console.debug("-------------------------------------------------------");
-  console.debug("[FindArtifact] planet owner from indexer:", planetRaw?.owner);
-  console.debug("[FindArtifact] player address (sender):", playerAddr);
-  console.debug(
-    "[FindArtifact] planet.owner passed to contract:",
-    planet.owner
-  );
-  console.debug(
-    "[FindArtifact] owner === sender?",
-    planetRaw?.owner === playerAddr
-  );
-  console.debug(
-    "[FindArtifact] planet prospected_block_number:",
-    planetRaw?.prospected_block_number
-  );
-  console.debug(
-    "[FindArtifact] planet has_tried_finding_artifact:",
-    planetRaw?.has_tried_finding_artifact
-  );
-  console.debug("-------------------------------------------------------");
-
-  // NOTE: The private circuit no longer calls get_block_header_at (see TODO in
-  // artifact_find contract). The block-advance wait below is kept for the public
-  // function's assertion: prospected_block_number < block_number.
+  // Private find_artifact still calls get_block_header_at(prospected_block_number)
+  // for the artifact seed. Public also requires prospected_block_number < block_number.
+  // Wait until the chain has advanced past the prospect block before proving.
   const prospectBlock = Number(planetRaw?.prospected_block_number ?? 0);
   const currentBlock = await deps.chainClock.getBlockNumber();
   console.debug(
@@ -166,9 +136,10 @@ export async function resolveFindArtifact(
     : planetArtifactsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
-    planetEventsRaw
+    planetEventsRaw,
+    deps.healArrival
   );
 
   // Load owned artifacts on this planet

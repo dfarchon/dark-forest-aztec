@@ -35,6 +35,7 @@ import type {
   TxIntent,
   UnconfirmedActivateArtifact,
   UnconfirmedAdminSetWorldRadius,
+  UnconfirmedBuyHat,
   UnconfirmedCreatePlanet,
   UnconfirmedDeactivateArtifact,
   UnconfirmedDepositArtifact,
@@ -43,6 +44,7 @@ import type {
   UnconfirmedInit,
   UnconfirmedMove,
   UnconfirmedPauseGame,
+  UnconfirmedPlanetTransfer,
   UnconfirmedProspectPlanet,
   UnconfirmedReveal,
   UnconfirmedSafeSetOwner,
@@ -68,15 +70,18 @@ import type { ConfigCache } from "./ConfigCache";
 import { resolveActivateArtifact } from "./resolveActivateArtifact";
 import { resolveAdminGiveArtifact } from "./resolveAdminGiveArtifact";
 import { resolveAdminGiveSpaceship } from "./resolveAdminGiveSpaceship";
+import { resolveBuyHat } from "./resolveBuyHat";
 import { resolveDeactivateArtifact } from "./resolveDeactivateArtifact";
 import { resolveDepositArtifact } from "./resolveDepositArtifact";
 import { resolveFindArtifact } from "./resolveFindArtifact";
 import { resolveGiveSpaceships } from "./resolveGiveSpaceships";
 import { resolveProspectPlanet } from "./resolveProspectPlanet";
 import type { ResolverDeps } from "./resolverHelpers";
+import { computeTimestamp } from "./resolverHelpers";
+import { loadArrivalsForPlanetEvents } from "./resolverShared";
+import { resolveTransferPlanet } from "./resolveTransferPlanet";
 import { resolveWithdrawArtifact } from "./resolveWithdrawArtifact";
 import {
-  arrivalToContract,
   artifactLocationToContract,
   artifactToContract,
   planetArtifactsToContract,
@@ -99,7 +104,6 @@ import {
   computeWorldHash,
 } from "./stateHash";
 import {
-  arrivalZero,
   artifactLocationZero,
   artifactZero,
   planetArtifactsZero,
@@ -120,11 +124,15 @@ function signedCoordToField(v: number | bigint): bigint {
   return n < 0n ? BN254_FR_MODULUS + n : n;
 }
 
-/** Convert a hex LocationId string (no 0x prefix) to bigint for Fr encoding. */
+/** Convert LocationId (hex or decimal) to a Field bigint. */
 function hexIdToField(v: unknown): bigint {
   if (typeof v === "bigint") return v;
-  const s = String(v);
-  return BigInt(s.startsWith("0x") ? s : `0x${s}`);
+  const s = String(v).trim();
+  if (s.startsWith("0x") || s.startsWith("0X")) return BigInt(s);
+  // Prefer 64-char hex LocationId over pure-decimal (padded ids may be digit-only).
+  if (/^[0-9a-fA-F]{64}$/.test(s)) return BigInt(`0x${s}`);
+  if (/^\d+$/.test(s)) return BigInt(s);
+  return BigInt(`0x${s}`);
 }
 
 /**
@@ -273,6 +281,40 @@ export class StateResolver {
       configCache: this.configCache,
       chainClock: this.chainClock,
       getPlayerAddress: this.getPlayerAddress,
+      healArrival: (id) => this.healArrivalFromChain(id),
+    };
+  }
+
+  /**
+   * Fetch a missing arrival from ArrivalStorage packed slots (utility).
+   * Heals indexer gaps when ArrivalUpdate was missed but state is still onchain.
+   */
+  private async healArrivalFromChain(
+    arrivalId: string
+  ): Promise<
+    import("@dfpunk/indexer-core/TableTypes/chain").ArrivalState | undefined
+  > {
+    const from = AztecAddress.fromStringUnsafe(this.getPlayerAddress());
+    const raw = unwrapSimulateResult(
+      await this.arrivalStorage.methods
+        .get_arrival_unconstrained(BigInt(arrivalId))
+        .simulate({ from })
+    ) as Record<string, unknown> | undefined;
+    if (!raw || raw.id == null) return undefined;
+    const id = String(raw.id);
+    if (id === "0" || id === "0x0") return undefined;
+    return {
+      id,
+      player: String(raw.player ?? ""),
+      from_planet: String(raw.from_planet ?? 0),
+      to_planet: String(raw.to_planet ?? 0),
+      pop_arriving: BigInt(String(raw.pop_arriving ?? 0)),
+      silver_moved: BigInt(String(raw.silver_moved ?? 0)),
+      departure_time: BigInt(String(raw.departure_time ?? 0)),
+      arrival_time: BigInt(String(raw.arrival_time ?? 0)),
+      arrival_type: Number(raw.arrival_type ?? 0),
+      carried_artifact_id: String(raw.carried_artifact_id ?? 0),
+      distance: BigInt(String(raw.distance ?? 0)),
     };
   }
 
@@ -350,6 +392,13 @@ export class StateResolver {
         return resolveAdminGiveArtifact(intent, this.getDeps());
       case "adminGiveSpaceship":
         return resolveAdminGiveSpaceship(intent, this.getDeps());
+      case "buyHat":
+        return resolveBuyHat(intent as UnconfirmedBuyHat, this.getDeps());
+      case "transferPlanet":
+        return resolveTransferPlanet(
+          intent as UnconfirmedPlanetTransfer,
+          this.getDeps()
+        );
 
       default:
         throw new Error(
@@ -551,9 +600,10 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    // When ZK checks are enabled, the Poseidon2 locationId has different bytes
-    // than the hash stored in the indexer, so the contract will derive a
-    // different level.  Recompute it client-side to match.
+    // When ZK checks are enabled, reveal_proof asserts circuit perlin — never
+    // overwrite Poseidon2 perlin with stored perlin (admin create_planet may
+    // use a different perlin source). Level: recompute only for uninitialized
+    // planets; initialized planets keep their stored level.
     let level: number;
     if (snark && !snark.disable_zk_checks && !planetRaw?.is_initialized) {
       level = computePlanetLevelFromLocationId(
@@ -563,23 +613,19 @@ export class StateResolver {
         config.planetLevelThresholds as Record<string, unknown>
       );
       console.debug("[Reveal proof] computed level:", level);
+    } else if (planetRaw) {
+      level = planetRaw.planet_level;
+      if (!snark || snark.disable_zk_checks) {
+        perlin = planetRaw.perlin;
+      }
     } else {
-      level = planetRaw ? planetRaw.planet_level : 0;
-      perlin = planetRaw ? planetRaw.perlin : 0;
+      level = 0;
     }
 
-    let timestamp = BigInt(
-      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    const timestamp = computeTimestamp(
+      BigInt(Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())),
+      planetRaw ? [BigInt(planetRaw.last_updated)] : []
     );
-    if (planetRaw) {
-      const planetLastUpdated = BigInt(planetRaw.last_updated);
-      if (planetLastUpdated > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind planet last_updated=${planetLastUpdated}, advancing timestamp`
-        );
-        timestamp = planetLastUpdated;
-      }
-    }
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, Number(level)));
@@ -698,7 +744,7 @@ export class StateResolver {
       : planetArtifactsZero();
 
     // Load source arrivals, artifacts, artifact locations from planet events
-    const sourceArrivalData = this.loadArrivalsForPlanetEvents(
+    const sourceArrivalData = await this.loadArrivalsForPlanetEvents(
       sourcePlanetEventsRaw
     );
 
@@ -719,7 +765,7 @@ export class StateResolver {
       ? planetArtifactsToContract(targetPlanetArtifactsRaw)
       : planetArtifactsZero();
 
-    const targetArrivalData = this.loadArrivalsForPlanetEvents(
+    const targetArrivalData = await this.loadArrivalsForPlanetEvents(
       targetPlanetEventsRaw
     );
 
@@ -869,43 +915,32 @@ export class StateResolver {
     const levelIndex = Math.min(9, Math.max(0, targetLevelResolved));
     const planetDefaultStats = config.planetDefaultStats[levelIndex];
 
-    let timestamp = BigInt(
-      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
-    );
-    {
-      const entityTimes: bigint[] = [];
-      if (sourcePlanetRaw)
-        entityTimes.push(toBigInt(sourcePlanetRaw.last_updated));
-      if (sourcePlanetEventsRaw)
-        entityTimes.push(toBigInt(sourcePlanetEventsRaw.last_updated));
-      if (sourcePlanetArtifactsRaw)
-        entityTimes.push(toBigInt(sourcePlanetArtifactsRaw.last_updated));
-      if (targetPlanetRaw)
-        entityTimes.push(toBigInt(targetPlanetRaw.last_updated));
-      if (targetPlanetEventsRaw)
-        entityTimes.push(toBigInt(targetPlanetEventsRaw.last_updated));
-      if (targetPlanetArtifactsRaw)
-        entityTimes.push(toBigInt(targetPlanetArtifactsRaw.last_updated));
-      // Arrival departure_times (contract asserts timestamp >= departure_time)
-      for (const arr of sourceArrivalData.arrivals) {
-        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
-        if (dt !== 0n) entityTimes.push(dt);
-      }
-      for (const arr of targetArrivalData.arrivals) {
-        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
-        if (dt !== 0n) entityTimes.push(dt);
-      }
-      let maxEntityTime = 0n;
-      for (const t of entityTimes) {
-        if (t > maxEntityTime) maxEntityTime = t;
-      }
-      if (maxEntityTime > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
-        );
-        timestamp = maxEntityTime;
-      }
+    const moveEntityTimes: bigint[] = [];
+    if (sourcePlanetRaw)
+      moveEntityTimes.push(toBigInt(sourcePlanetRaw.last_updated));
+    if (sourcePlanetEventsRaw)
+      moveEntityTimes.push(toBigInt(sourcePlanetEventsRaw.last_updated));
+    if (sourcePlanetArtifactsRaw)
+      moveEntityTimes.push(toBigInt(sourcePlanetArtifactsRaw.last_updated));
+    if (targetPlanetRaw)
+      moveEntityTimes.push(toBigInt(targetPlanetRaw.last_updated));
+    if (targetPlanetEventsRaw)
+      moveEntityTimes.push(toBigInt(targetPlanetEventsRaw.last_updated));
+    if (targetPlanetArtifactsRaw)
+      moveEntityTimes.push(toBigInt(targetPlanetArtifactsRaw.last_updated));
+    // Arrival departure_times (contract asserts timestamp >= departure_time)
+    for (const arr of sourceArrivalData.arrivals) {
+      const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+      if (dt !== 0n) moveEntityTimes.push(dt);
     }
+    for (const arr of targetArrivalData.arrivals) {
+      const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+      if (dt !== 0n) moveEntityTimes.push(dt);
+    }
+    const timestamp = computeTimestamp(
+      BigInt(Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())),
+      moveEntityTimes
+    );
 
     // Log full move contract args so failures (e.g. perlin mismatch) can be debugged
     const snarkCfg = config.snarkConfig as Record<string, unknown> | undefined;
@@ -1037,7 +1072,7 @@ export class StateResolver {
       ? planetArtifactsToContract(planetArtifactsRaw)
       : planetArtifactsZero();
 
-    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+    const arrivalData = await this.loadArrivalsForPlanetEvents(planetEventsRaw);
 
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
@@ -1053,31 +1088,20 @@ export class StateResolver {
       );
     }
 
-    let timestamp = BigInt(
-      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
-    );
-    {
-      const entityTimes: bigint[] = [];
-      if (planetRaw) entityTimes.push(toBigInt(planetRaw.last_updated));
-      if (planetEventsRaw)
-        entityTimes.push(toBigInt(planetEventsRaw.last_updated));
-      if (planetArtifactsRaw)
-        entityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
-      for (const arr of arrivalData.arrivals) {
-        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
-        if (dt !== 0n) entityTimes.push(dt);
-      }
-      let maxEntityTime = 0n;
-      for (const t of entityTimes) {
-        if (t > maxEntityTime) maxEntityTime = t;
-      }
-      if (maxEntityTime > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
-        );
-        timestamp = maxEntityTime;
-      }
+    const upgradeEntityTimes: bigint[] = [];
+    if (planetRaw) upgradeEntityTimes.push(toBigInt(planetRaw.last_updated));
+    if (planetEventsRaw)
+      upgradeEntityTimes.push(toBigInt(planetEventsRaw.last_updated));
+    if (planetArtifactsRaw)
+      upgradeEntityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
+    for (const arr of arrivalData.arrivals) {
+      const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+      if (dt !== 0n) upgradeEntityTimes.push(dt);
     }
+    const timestamp = computeTimestamp(
+      BigInt(Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())),
+      upgradeEntityTimes
+    );
 
     return [
       location,
@@ -1121,7 +1145,7 @@ export class StateResolver {
       ? planetArtifactsToContract(planetArtifactsRaw)
       : planetArtifactsZero();
 
-    const arrivalData = this.loadArrivalsForPlanetEvents(planetEventsRaw);
+    const arrivalData = await this.loadArrivalsForPlanetEvents(planetEventsRaw);
 
     const playerAddr = this.getPlayerAddress();
     const playerRaw = this.indexer.getPlayer(playerAddr);
@@ -1130,32 +1154,21 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    let timestamp = BigInt(
-      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
-    );
-    {
-      const entityTimes: bigint[] = [];
-      if (planetRaw) entityTimes.push(toBigInt(planetRaw.last_updated));
-      if (planetEventsRaw)
-        entityTimes.push(toBigInt(planetEventsRaw.last_updated));
-      if (planetArtifactsRaw)
-        entityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
-      if (playerRaw) entityTimes.push(toBigInt(playerRaw.last_updated));
-      for (const arr of arrivalData.arrivals) {
-        const dt = toBigInt((arr as Record<string, unknown>).departure_time);
-        if (dt !== 0n) entityTimes.push(dt);
-      }
-      let maxEntityTime = 0n;
-      for (const t of entityTimes) {
-        if (t > maxEntityTime) maxEntityTime = t;
-      }
-      if (maxEntityTime > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
-        );
-        timestamp = maxEntityTime;
-      }
+    const withdrawEntityTimes: bigint[] = [];
+    if (planetRaw) withdrawEntityTimes.push(toBigInt(planetRaw.last_updated));
+    if (planetEventsRaw)
+      withdrawEntityTimes.push(toBigInt(planetEventsRaw.last_updated));
+    if (planetArtifactsRaw)
+      withdrawEntityTimes.push(toBigInt(planetArtifactsRaw.last_updated));
+    if (playerRaw) withdrawEntityTimes.push(toBigInt(playerRaw.last_updated));
+    for (const arr of arrivalData.arrivals) {
+      const dt = toBigInt((arr as Record<string, unknown>).departure_time);
+      if (dt !== 0n) withdrawEntityTimes.push(dt);
     }
+    const timestamp = computeTimestamp(
+      BigInt(Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())),
+      withdrawEntityTimes
+    );
 
     return [
       location,
@@ -1292,18 +1305,10 @@ export class StateResolver {
     const worldRaw = this.indexer.getWorld();
     const world = worldRaw ? worldToContract(worldRaw) : worldInitial();
 
-    let timestamp = BigInt(
-      Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())
+    const timestamp = computeTimestamp(
+      BigInt(Math.floor(intent.uiTimestamp ?? this.chainClock.nowSec())),
+      planetRaw ? [BigInt(planetRaw.last_updated)] : []
     );
-    if (planetRaw) {
-      const planetLastUpdated = BigInt(planetRaw.last_updated);
-      if (planetLastUpdated > timestamp) {
-        console.warn(
-          `[StateResolver] chainClock ${timestamp} behind planet last_updated=${planetLastUpdated}, advancing timestamp`
-        );
-        timestamp = planetLastUpdated;
-      }
-    }
 
     const [tier0, tier1, tier2, tier3] = config.planetTypeWeightsTiers;
     const levelIndex = Math.min(9, Math.max(0, level));
@@ -1338,56 +1343,16 @@ export class StateResolver {
 
   /**
    * Load arrivals, artifacts, and artifact locations for a planet's events.
-   * Returns arrays of length 20, padded with zeros for unused slots.
-   * Matches contracts/scripts/test/test-move.ts loadArrivalsForPlanetEvents().
+   * Heals missing arrivals from ArrivalStorage when the indexer skipped a log.
    */
   private loadArrivalsForPlanetEvents(
     planetEvents:
       | import("@dfpunk/indexer-core/TableTypes/chain").PlanetEventsState
       | undefined
-  ): {
-    arrivals: Record<string, unknown>[];
-    artifacts: Record<string, unknown>[];
-    artifactLocations: Record<string, unknown>[];
-  } {
-    const count = planetEvents?.count ?? 0;
-    const events = planetEvents?.events ?? [];
-
-    const arrivals: Record<string, unknown>[] = [];
-    const artifacts: Record<string, unknown>[] = [];
-    const artifactLocations: Record<string, unknown>[] = [];
-
-    for (let i = 0; i < 20; i++) {
-      if (i < count && events[i]?.id != null && String(events[i].id) !== "0") {
-        const arrivalId = String(events[i].id);
-        const arrival = this.indexer.getArrival(arrivalId);
-        if (arrival) {
-          arrivals.push(arrivalToContract(arrival));
-          // If arrival carries an artifact, load it
-          if (
-            arrival.carried_artifact_id &&
-            String(arrival.carried_artifact_id) !== "0"
-          ) {
-            const artId = String(arrival.carried_artifact_id);
-            artifacts.push(this.loadArtifactOrZero(artId));
-            artifactLocations.push(this.loadArtifactLocationOrZero(artId));
-          } else {
-            artifacts.push(artifactZero());
-            artifactLocations.push(artifactLocationZero());
-          }
-        } else {
-          arrivals.push(arrivalZero());
-          artifacts.push(artifactZero());
-          artifactLocations.push(artifactLocationZero());
-        }
-      } else {
-        arrivals.push(arrivalZero());
-        artifacts.push(artifactZero());
-        artifactLocations.push(artifactLocationZero());
-      }
-    }
-
-    return { arrivals, artifacts, artifactLocations };
+  ) {
+    return loadArrivalsForPlanetEvents(this.indexer, planetEvents, (id) =>
+      this.healArrivalFromChain(id)
+    );
   }
 
   private loadArtifactOrZero(id: string): Record<string, unknown> {
@@ -1510,7 +1475,7 @@ export class StateResolver {
     // Source arrivals batch
     for (let i = 0; i < 20; i++) {
       const arrival = sourceArrivalData.arrivals[i];
-      const arrId = BigInt(Number(arrival["id"] ?? 0));
+      const arrId = BigInt(String(arrival["id"] ?? 0));
       if (arrId === 0n) continue;
       await check(`source arrival[${i}]`, computeArrivalHash(arrival), () =>
         arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })
@@ -1554,7 +1519,7 @@ export class StateResolver {
     // Target arrivals batch
     for (let i = 0; i < 20; i++) {
       const arrival = targetArrivalData.arrivals[i];
-      const arrId = BigInt(Number(arrival["id"] ?? 0));
+      const arrId = BigInt(String(arrival["id"] ?? 0));
       if (arrId === 0n) continue;
       await check(`target arrival[${i}]`, computeArrivalHash(arrival), () =>
         arrs.methods.get_state_root_unconstrained(arrId).simulate({ from })

@@ -18,7 +18,6 @@ import type { ResolverDeps } from "./resolverHelpers";
 import {
   collectEntityTimes,
   computeTimestamp,
-  hexIdToField,
   loadArtifactsForPlanet,
 } from "./resolverHelpers";
 import { loadArrivalsForPlanetEvents } from "./resolverShared";
@@ -68,9 +67,10 @@ export async function resolveActivateArtifact(
     : planetArtifactsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
-    planetEventsRaw
+    planetEventsRaw,
+    deps.healArrival
   );
 
   // Artifacts currently on the planet (aligned with planet_artifacts_state.ids),

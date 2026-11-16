@@ -48,6 +48,8 @@ import {
   PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
   PLANET_EVENTS_STORAGE_DEPLOYER_ADDRESS,
   PLANET_EVENTS_STORAGE_DEPLOYMENT_SALT,
+  PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS,
+  PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT,
   PLANET_STORAGE_DEPLOYER_ADDRESS,
   PLANET_STORAGE_DEPLOYMENT_SALT,
   PLAYER_STORAGE_DEPLOYER_ADDRESS,
@@ -68,6 +70,7 @@ import { CoreContractArtifact } from "@dfpunk/contracts/artifacts/Core";
 import { MoveContractArtifact } from "@dfpunk/contracts/artifacts/Move";
 import { PlanetArtifactsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetArtifactsStorage";
 import { PlanetEventsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetEventsStorage";
+import { PlanetRevealedCoordsStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetRevealedCoordsStorage";
 import { PlanetStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlanetStorage";
 import { PlayerStorageContractArtifact } from "@dfpunk/contracts/artifacts/PlayerStorage";
 import { WorldStorageContractArtifact } from "@dfpunk/contracts/artifacts/WorldStorage";
@@ -330,6 +333,12 @@ async function registerGameContractsWithPxe(
       salt: PLANET_ARTIFACTS_STORAGE_DEPLOYMENT_SALT,
       artifact: PlanetArtifactsStorageContractArtifact,
       name: "PlanetArtifactsStorage",
+    },
+    {
+      deployer: PLANET_REVEALED_COORDS_STORAGE_DEPLOYER_ADDRESS,
+      salt: PLANET_REVEALED_COORDS_STORAGE_DEPLOYMENT_SALT,
+      artifact: PlanetRevealedCoordsStorageContractArtifact,
+      name: "PlanetRevealedCoordsStorage",
     },
     {
       deployer: ARRIVAL_STORAGE_DEPLOYER_ADDRESS,
@@ -773,15 +782,26 @@ export class WalletManager {
     }
 
     onStatus?.("Registering Schnorr account...");
-    await this.registerEmbeddedAccount(
+    const accountManager = await this.registerEmbeddedAccount(
       wallet,
       Fr.fromString(record.secretKey),
       Fr.fromString(record.salt),
       fqFromHex(record.signingKey)
     );
 
-    // Use the selected account address from options/list as active target.
-    this.setActive(AztecAddress.fromStringUnsafe(address), address);
+    // Always activate the address the wallet actually registered. After an
+    // Aztec upgrade or local-network reset, key derivation can differ from a
+    // stale KeyStore address and simulate then fails with "does not exist".
+    const registered = accountManager.address.toString();
+    if (registered !== record.address) {
+      console.warn(
+        `[WalletManager] Restored account address changed ${record.address} → ${registered}; updating KeyStore`
+      );
+      this.keyStore.removeAccount(record.address);
+      record.address = registered;
+      this.keyStore.saveAccount(record);
+    }
+    this.setActive(accountManager.address, registered);
   }
 
   async switchAccount(
