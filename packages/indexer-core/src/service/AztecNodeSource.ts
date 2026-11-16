@@ -159,11 +159,41 @@ const STORAGE_SPECS: Array<{
   },
 ];
 
+/**
+ * Normalize event ids to stable Map keys.
+ * - AztecAddress → 0x-hex via toString() (client player lookups / serde.address)
+ * - Field / Fr / bigint → decimal string (client locationIdToDecStr lookups)
+ *
+ * Detect AztecAddress by constructor name — Fr.toString() is also a valid
+ * 32-byte hex and would otherwise be mistaken for an address by isAddress().
+ */
 function toIdStr(v: unknown): string {
   if (v === undefined || v === null) return "";
   if (typeof v === "bigint") return String(v);
-  if (typeof v === "object" && "toString" in (v as object))
-    return (v as { toString(): string }).toString();
+  if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) {
+    return String(v);
+  }
+  if (typeof v === "object" && v !== null) {
+    const ctorName = (v as { constructor?: { name?: string } }).constructor
+      ?.name;
+    if (
+      ctorName === "AztecAddress" &&
+      typeof (v as { toString?: unknown }).toString === "function"
+    ) {
+      return (v as { toString(): string }).toString();
+    }
+    const toBigInt = (v as { toBigInt?: unknown }).toBigInt;
+    if (typeof toBigInt === "function") {
+      try {
+        return String((toBigInt as () => bigint).call(v));
+      } catch {
+        // fall through
+      }
+    }
+    if (typeof (v as { toString?: unknown }).toString === "function") {
+      return (v as { toString(): string }).toString();
+    }
+  }
   return String(v);
 }
 
@@ -244,7 +274,7 @@ async function fetchAnchoredPublicEvents(
 }
 
 export interface AztecNodeBlockSourceOptions {
-  /** L2 tip to follow. Default "proposed", matching getBlockNumber() with no argument. */
+  /** L2 tip to follow. Default "proven" (matches hosted indexer + client). */
   tipTag?: BlockTipTag;
   /**
    * Per-request timeout. A timeout or network error is retried twice (1s, then 2s)
@@ -265,7 +295,7 @@ export function createAztecNodeBlockSource(
   options?: AztecNodeBlockSourceOptions,
 ): IBlockEventSource {
   const node = createAztecNodeClient(nodeUrl) as AztecNode;
-  const tipTag = options?.tipTag ?? "proposed";
+  const tipTag = options?.tipTag ?? "proven";
   const timeoutMs = options?.requestTimeoutMs;
   const call = <T>(fn: () => Promise<T>, label: string): Promise<T> =>
     callWithBoundedRetry(fn, { label, timeoutMs });

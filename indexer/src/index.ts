@@ -114,11 +114,25 @@ async function main(): Promise<void> {
     },
   );
 
-  // 2. Create IndexerService
-  const source = createAztecNodeBlockSource(config.aztecNodeUrl, undefined, {
-    tipTag: config.indexerTipTag,
-    requestTimeoutMs: 30_000,
-  });
+  // 2. Create IndexerService — pass validated storage addresses (not package defaults alone)
+  const source = createAztecNodeBlockSource(
+    config.aztecNodeUrl,
+    {
+      WorldStorage: contracts.addresses.world,
+      PlayerStorage: contracts.addresses.player,
+      PlanetStorage: contracts.addresses.planet,
+      PlanetRevealedCoordsStorage: contracts.addresses.planetRevealedCoords,
+      PlanetEventsStorage: contracts.addresses.planetEvents,
+      PlanetArtifactsStorage: contracts.addresses.planetArtifacts,
+      ArrivalStorage: contracts.addresses.arrival,
+      ArtifactStorage: contracts.addresses.artifact,
+      ArtifactLocationStorage: contracts.addresses.artifactLocation,
+    },
+    {
+      tipTag: config.indexerTipTag,
+      requestTimeoutMs: 30_000,
+    },
+  );
   const indexer = new IndexerService({
     bootstrap: { source, startBlock: config.indexerStartBlock },
     sync: {
