@@ -117,12 +117,15 @@ fi
 }
 
 cd "${ROOT}"
+# Non-interactive local stack: never block on artifact overwrite prompts.
+export DFPUNK_FORCE_OVERWRITE=1
+
 if [[ "${sources_match}" == 1 ]]; then
   echo "[mprocs-contracts] sources unchanged; skipping compile, deploying onto this chain"
   clear_stale_env
   printf 'y\n' | pnpm --filter contracts run deploy:run
   printf 'y\n' | pnpm --filter contracts run bootstrap
-  pnpm --filter contracts run deploy:publish
+  pnpm --filter contracts run deploy:publish -- --yes
 else
   echo "[mprocs-contracts] sources changed or artifacts missing; compiling and deploying"
   clear_stale_env

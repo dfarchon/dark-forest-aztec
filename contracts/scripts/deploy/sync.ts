@@ -39,10 +39,11 @@ const ARTIFACTS_DEST = path.join(
     'artifacts'
 );
 
-type CliArgs = { id?: string };
+type CliArgs = { id?: string; yes: boolean };
 
 function parseArgs(argv: string[]): CliArgs {
     let id: string | undefined;
+    let yes = false;
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i]!;
         if (arg === '--id') {
@@ -58,12 +59,24 @@ function parseArgs(argv: string[]): CliArgs {
             id = arg.slice('--id='.length);
             continue;
         }
+        if (arg === '--yes' || arg === '-y') {
+            yes = true;
+            continue;
+        }
         throw new Error(
             `Unknown argument: ${arg}\n` +
-                'Usage: pnpm deploy:publish [--id <id>]'
+                'Usage: pnpm deploy:publish [--id <id>] [--yes|-y]'
         );
     }
-    return { id };
+    return { id, yes };
+}
+
+function shouldAutoOverwrite(yesFlag: boolean): boolean {
+    if (yesFlag) {
+        return true;
+    }
+    const force = process.env.DFPUNK_FORCE_OVERWRITE?.trim().toLowerCase();
+    return force === '1' || force === 'true' || force === 'yes';
 }
 
 function commentForKey(key: string): string {
@@ -169,13 +182,19 @@ function askConfirm(question: string): Promise<boolean> {
     });
 }
 
-async function copyArtifacts(): Promise<void> {
+async function copyArtifacts(yesFlag: boolean): Promise<void> {
     if (!fs.existsSync(ARTIFACTS_DIR)) {
         throw new Error(`Artifacts dir not found: ${ARTIFACTS_DIR}`);
     }
     if (fs.existsSync(ARTIFACTS_DEST)) {
         console.log(`Destination already exists: ${ARTIFACTS_DEST}`);
-        const ok = await askConfirm('Overwrite? (y/N): ');
+        const auto = shouldAutoOverwrite(yesFlag);
+        const ok = auto ? true : await askConfirm('Overwrite? (y/N): ');
+        if (auto) {
+            console.log(
+                'Auto-overwrite enabled (--yes / DFPUNK_FORCE_OVERWRITE).'
+            );
+        }
         if (!ok) {
             console.log('Skipped copying artifacts.');
             return;
@@ -196,7 +215,7 @@ async function main(): Promise<void> {
         `Publishing ${manifest.id} (${relativeManifestPath(network, manifest.id)})`
     );
     writeIndexTs(manifest);
-    await copyArtifacts();
+    await copyArtifacts(args.yes);
 }
 
 main().catch((err) => {
