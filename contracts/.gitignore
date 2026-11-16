@@ -1,6 +1,6 @@
 # Noir / Aztec build outputs
 target/
-build/
+/build/
 codegenCache.json
 artifacts/
 scripts/artifacts/
