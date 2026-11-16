@@ -13,9 +13,11 @@
     "dev:local": "mprocs -c mprocs.yaml",
     "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json'",
     "format": "pnpm -r run format",
+    "postinstall": "node scripts/install-nested.mjs",
     "prepare": "husky",
-    "reinstall": "pnpm store prune && pnpm install --force",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "reinstall": "pnpm store prune && pnpm install --frozen-lockfile",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "vendors": "node scripts/install-nested.mjs"
   },
   "dependencies": {
     "@aztec-labs/accounts": "6.0.0",
