@@ -77,6 +77,16 @@ function cloneToMutable(p: PlanetState): MutablePlanet {
   };
 }
 
+/**
+ * Noir is_population_capped: owned planets and SilverBank clamp to cap;
+ * unowned pirates keep space-type buff above cap (Titan/pausers must not weaken them).
+ */
+function isPopulationCapped(planet: MutablePlanet): boolean {
+  return (
+    planet.owner !== ZERO_ADDRESS || planet.planet_type === PlanetTypeSilverBank
+  );
+}
+
 /** Noir update_population: linear growth, cap, pausers/SilverBank handling. */
 function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
   if (planet.owner !== ZERO_ADDRESS && !planet.destroyed) {
@@ -93,15 +103,8 @@ function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
       }
     }
   }
-  if (planet.planet_type === PlanetTypeSilverBank) {
-    if (planet.population > planet.population_cap) {
-      planet.population = planet.population_cap;
-    }
-  }
-  if (planet.pausers > 0n) {
-    if (planet.population > planet.population_cap) {
-      planet.population = planet.population_cap;
-    }
+  if (isPopulationCapped(planet) && planet.population > planet.population_cap) {
+    planet.population = planet.population_cap;
   }
 }
 
@@ -110,6 +113,7 @@ function updateSilver(updateToTime: number, planet: MutablePlanet): void {
   if (planet.planet_type !== PlanetTypeSilverMine) return;
   if (
     planet.owner !== ZERO_ADDRESS &&
+    planet.pausers === 0n &&
     !planet.destroyed &&
     planet.silver < planet.silver_cap
   ) {
@@ -184,7 +188,7 @@ function applyArrival(planet: MutablePlanet, arrival: ArrivalLike): void {
       if (planet.population === 0n) planet.population = 1n;
     }
   }
-  if (planet.population > planet.population_cap) {
+  if (isPopulationCapped(planet) && planet.population > planet.population_cap) {
     planet.population = planet.population_cap;
   }
   const nextSilver = planet.silver + arrival.silver_moved;
