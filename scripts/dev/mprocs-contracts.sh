@@ -9,12 +9,41 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MARKER_DIR="${ROOT}/.mprocs"
 MARKER="${MARKER_DIR}/contracts.ok"
+PUBLISHED_MARKER="${MARKER_DIR}/contracts.published"
 STATE_FILE="${MARKER_DIR}/contracts-deploy.state"
 ENV_FILE="${ROOT}/contracts/.env"
 CONTRACTS_DIR="${ROOT}/contracts"
+INDEX_TS="${ROOT}/packages/contracts/src/index.ts"
 
-rm -f "${MARKER}"
+rm -f "${MARKER}" "${PUBLISHED_MARKER}"
 mkdir -p "${MARKER_DIR}"
+
+# Non-interactive local stack: never block on artifact overwrite prompts.
+export DFPUNK_FORCE_OVERWRITE=1
+
+publish_client_addresses() {
+  echo "[mprocs-contracts] publishing addresses to packages/contracts/src/index.ts"
+  (
+    cd "${ROOT}"
+    pnpm --filter contracts run deploy:publish -- --yes
+  )
+  if [[ ! -f "${INDEX_TS}" ]] || ! grep -q 'CONFIG_CONTRACT_ADDRESS' "${INDEX_TS}"; then
+    echo "[mprocs-contracts] publish did not write ${INDEX_TS}" >&2
+    exit 1
+  fi
+  # Fingerprint the published Config address so the client can wait for a fresh write.
+  python3 - "${INDEX_TS}" "${PUBLISHED_MARKER}" <<'PY'
+import re, sys
+from pathlib import Path
+index_path, out_path = Path(sys.argv[1]), Path(sys.argv[2])
+text = index_path.read_text()
+m = re.search(r'CONFIG_CONTRACT_ADDRESS\s*=\s*\n?\s*"(0x[0-9a-fA-F]+)"', text)
+if not m:
+    raise SystemExit("CONFIG_CONTRACT_ADDRESS missing from published index.ts")
+out_path.write_text(f"config {m.group(1)}\nindex {index_path}\n")
+print(f"[mprocs-contracts] published CONFIG {m.group(1)}")
+PY
+}
 
 bash "${ROOT}/scripts/dev/wait-tcp.sh" 127.0.0.1 8080 480 aztec
 
@@ -66,6 +95,9 @@ write_state() {
 
 if [[ "${sources_match}" == 1 && "${chain_has_contracts}" == 1 && "${saved_l1}" == "${l1_genesis}" ]]; then
   echo "[mprocs-contracts] sources unchanged and contracts already on this chain; skipping compile and deploy"
+  # Still republish index.ts so the client never boots on stale addresses.
+  publish_client_addresses
+  write_state
   touch "${MARKER}"
   echo "[mprocs-contracts] done (marker ${MARKER})"
   exit 0
@@ -117,19 +149,20 @@ fi
 }
 
 cd "${ROOT}"
-# Non-interactive local stack: never block on artifact overwrite prompts.
-export DFPUNK_FORCE_OVERWRITE=1
 
 if [[ "${sources_match}" == 1 ]]; then
   echo "[mprocs-contracts] sources unchanged; skipping compile, deploying onto this chain"
   clear_stale_env
   printf 'y\n' | pnpm --filter contracts run deploy:run
   printf 'y\n' | pnpm --filter contracts run bootstrap
-  pnpm --filter contracts run deploy:publish -- --yes
+  publish_client_addresses
 else
   echo "[mprocs-contracts] sources changed or artifacts missing; compiling and deploying"
   clear_stale_env
+  # deploy:start ends with deploy:publish; env DFPUNK_FORCE_OVERWRITE avoids prompts.
   printf 'y\n' | pnpm --filter contracts run deploy:start
+  # Guarantee a fresh index.ts + published marker even if start's publish was skipped.
+  publish_client_addresses
 fi
 
 write_state
