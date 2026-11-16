@@ -44,6 +44,7 @@ import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
 import { StateResolver, type StateResolverOptions } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
+import { collectTxScopes } from "./txScopes";
 import type {
   AfterTransaction,
   BeforeQueued,
@@ -264,9 +265,9 @@ export class TxExecutor {
     tx.onTransactionResponse(ser.hash);
 
     waitForTx(this.node, ser.hash, {
-      timeout: 120,
+      timeout: 180,
       dontThrowOnRevert: true,
-      waitForStatus: TxStatus.PROPOSED,
+      waitForStatus: TxStatus.PROVEN,
     })
       .then((receipt) => {
         if (receipt.hasExecutionSucceeded()) {
@@ -303,11 +304,12 @@ export class TxExecutor {
           console.warn(
             `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
           );
-          // A click-time timestamp can be outside the block-time window by the
-          // time the proof is simulated. Re-prove against the latest block.
-          tx.intent.uiTimestamp =
-            await this.chainClock.syncAndGetBlockTimestamp();
         }
+        // Always prove against the latest L2 block timestamp. Click-time or
+        // Date.now()-based values can land outside assert_public_timestamp
+        // (future or >300s old) by the time simulate/send runs.
+        tx.intent.uiTimestamp =
+          await this.chainClock.syncAndGetBlockTimestamp();
 
         // 1. Processing
         tx.state = "Processing";
@@ -367,9 +369,15 @@ export class TxExecutor {
             }
           }
         }
+        // Same scope list for every method (move, reveal, artifacts, admin, init).
+        const additionalScopes = await collectTxScopes(
+          this.walletManager.getWallet(),
+          sponsoredFpcAddress
+        );
         const sendOptsNoWait = useSponsoredFpc
           ? ({
               from: this.walletManager.getActiveAddress()!,
+              additionalScopes,
               fee: {
                 paymentMethod: new SponsoredFeePaymentMethod(
                   sponsoredFpcAddress!
@@ -379,10 +387,12 @@ export class TxExecutor {
             } satisfies SendInteractionOptions<NoWait>)
           : ({
               from: this.walletManager.getActiveAddress()!,
+              additionalScopes,
               wait: NO_WAIT,
             } satisfies SendInteractionOptions<NoWait>);
         const simulateOpts = {
           from: sendOptsNoWait.from,
+          additionalScopes,
           fee: sendOptsNoWait.fee,
         };
 
@@ -445,9 +455,10 @@ export class TxExecutor {
         // 7. Wait for confirmation — v0.6 line 385
         //    Aztec equivalent of ethConnection.waitForTransaction(hash)
         const receipt = await waitForTx(this.node, submitted, {
-          timeout: 120,
+          timeout: 180,
           dontThrowOnRevert: true,
-          waitForStatus: TxStatus.PROPOSED,
+          // Align with IndexerConnection + ChainClock tipTag ("proven").
+          waitForStatus: TxStatus.PROVEN,
         });
 
         // 8. Check result — v0.6 lines 386-397

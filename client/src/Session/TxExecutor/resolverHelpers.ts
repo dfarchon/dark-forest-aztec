@@ -6,6 +6,7 @@ import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { GameConfig } from "./ConfigCache";
 import type { ConfigCache } from "./ConfigCache";
+import type { ArrivalHealFn } from "./resolverShared";
 import { artifactLocationToContract, artifactToContract } from "./stateConvert";
 import { artifactLocationZero, artifactZero } from "./stateZeros";
 
@@ -17,36 +18,52 @@ export interface ResolverDeps {
   configCache: ConfigCache;
   chainClock: ChainClock;
   getPlayerAddress: () => string;
+  /** Optional: fetch a missing arrival from ArrivalStorage packed slots. */
+  healArrival?: ArrivalHealFn;
 }
 
-/** Convert a hex LocationId string (no 0x prefix) to bigint for Fr encoding. */
-export function hexIdToField(v: unknown): bigint {
+/**
+ * Convert a location/artifact id to a Field bigint.
+ * Accepts bigint, 0x-hex, bare 64-char hex LocationId, or decimal string
+ * (as produced by locationIdToDecStr / artifactIdToDecStr).
+ *
+ * 64-char hex is checked before pure-decimal so padded LocationIds that only
+ * use digits 0-9 (e.g. ...00003039) are not misread as decimal.
+ */
+export function idToField(v: unknown): bigint {
   if (typeof v === "bigint") return v;
-  const s = String(v);
-  return BigInt(s.startsWith("0x") ? s : `0x${s}`);
+  const s = String(v).trim();
+  if (s.startsWith("0x") || s.startsWith("0X")) return BigInt(s);
+  if (/^[0-9a-fA-F]{64}$/.test(s)) return BigInt(`0x${s}`);
+  if (/^\d+$/.test(s)) return BigInt(s);
+  return BigInt(`0x${s}`);
+}
+
+/** @deprecated Prefer idToField — kept for call sites that pass hex LocationIds. */
+export function hexIdToField(v: unknown): bigint {
+  return idToField(v);
 }
 
 /**
  * Compute a safe timestamp: max of baseTimestamp and all entity last_updated times.
- * Uses the raw chain block timestamp (not extrapolated) to avoid sending a
- * timestamp ahead of the L2 block time on devnet.
+ * `baseTimestamp` must be the latest L2 block timestamp (see TxExecutor sync).
+ * Private circuits require timestamp >= entity last_updated; public circuits
+ * require timestamp <= block time — so entity times ahead of the tip are fatal.
  */
 export function computeTimestamp(
   baseTimestamp: bigint,
   entityTimes: bigint[]
 ): bigint {
-  let timestamp = baseTimestamp;
   let maxEntityTime = 0n;
   for (const t of entityTimes) {
     if (t > maxEntityTime) maxEntityTime = t;
   }
-  if (maxEntityTime > timestamp) {
-    console.warn(
-      `[StateResolver] chainClock ${timestamp} behind entity state (max last_updated=${maxEntityTime}), advancing timestamp`
+  if (maxEntityTime > baseTimestamp) {
+    throw new Error(
+      `[StateResolver] chain block timestamp ${baseTimestamp} is behind entity last_updated=${maxEntityTime}. Wait for the next block and retry.`
     );
-    timestamp = maxEntityTime;
   }
-  return timestamp;
+  return baseTimestamp;
 }
 
 /**
