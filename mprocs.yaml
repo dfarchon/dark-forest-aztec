@@ -1,0 +1,66 @@
+# Local stack launcher (requires global `mprocs`: https://github.com/pvolok/mprocs)
+# Order: Anvil (L1) → Aztec local-network → compile/deploy contracts → client
+# Every process starts with the stack, including the Aztec explorer
+# indexer, API, and frontend.
+#
+# Usage (from repo root):
+#   pnpm run dev:local
+#   # or: mprocs
+#
+# Stop any existing listeners on :8545 / :8080 / :5100 / :5173 / :8082 first if ports are busy.
+
+proc_list_title: dfpunk local
+scrollback: 8000
+
+procs:
+  anvil:
+    cwd: <CONFIG_DIR>
+    # Mine only when a transaction arrives. No interval blocks.
+    shell: anvil --host 127.0.0.1 --port 8545
+
+  aztec:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-aztec.sh
+    env:
+      ETHEREUM_HOSTS: http://127.0.0.1:8545
+      SEQ_MIN_TX_PER_BLOCK: "1"
+      SEQ_BLOCK_DURATION_MS: "6000"
+
+  contracts:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-contracts.sh
+    env:
+      # nargo/aztec compile uses Rayon; cap it so the rest of the stack keeps CPU.
+      RAYON_NUM_THREADS: "16"
+
+  ticker:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-ticker.sh
+
+  client:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-client.sh
+
+  otterscan:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-otterscan.sh
+
+  aztec-exp-mongoDB:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-explorer-mongo.sh
+
+  aztec-exp-indexer:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-explorer-indexer.sh
+
+  aztec-exp-api:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-explorer-api.sh
+
+  azt-exp-aztec-scan:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-explorer-frontend.sh
+
+  presto:
+    cwd: <CONFIG_DIR>
+    shell: bash scripts/dev/mprocs-presto.sh
