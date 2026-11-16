@@ -1,10 +1,10 @@
 /**
- * Runs after the root `pnpm install --frozen-lockfile`.
+ * Runs after the root `pnpm install --frozen-lockfile` (package.json postinstall).
  * Clones missing tools at the commits in tools/vendor-pins.json, copies
- * overlays, then installs each tree from its own lockfile.
+ * overlays, then installs each tree from its own lockfile with --frozen-lockfile.
  *
  * Anvil, the Aztec CLI, and MongoDB are host binaries, not npm packages.
- * tools/aztec-explorer is vendored in this repo (it has no upstream checkout).
+ * Otterscan, Presto, and Aztec Explorer are cloned via tools/vendor-pins.json.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -25,23 +25,39 @@ if (vendor.status !== 0) {
   process.exit(vendor.status ?? 1);
 }
 
-/** Keep Otterscan engines.node / .nvmrc aligned with tooling/TOOLCHAIN.pins. */
+/**
+ * Keep Otterscan engines.node / .nvmrc aligned with the tracked overlay pin.
+ * Prefer tools/overlays/otherscan/.nvmrc; fall back to tooling/TOOLCHAIN.pins
+ * if present (optional local pin file).
+ */
 function syncOtherscanNodePin() {
-  const pins = Object.fromEntries(
-    readFileSync(join(root, "tooling/TOOLCHAIN.pins"), "utf8")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i), line.slice(i + 1)];
-      }),
-  );
-  const nodeVersion = pins.NODE_VERSION;
-  if (!nodeVersion) {
-    console.error("[install-nested] missing NODE_VERSION in tooling/TOOLCHAIN.pins");
-    process.exit(1);
+  let nodeVersion;
+  const overlayNvmrc = join(root, "tools/overlays/otherscan/.nvmrc");
+  const toolchainPins = join(root, "tooling/TOOLCHAIN.pins");
+
+  if (existsSync(overlayNvmrc)) {
+    nodeVersion = readFileSync(overlayNvmrc, "utf8").trim();
+  } else if (existsSync(toolchainPins)) {
+    const pins = Object.fromEntries(
+      readFileSync(toolchainPins, "utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#") && line.includes("="))
+        .map((line) => {
+          const i = line.indexOf("=");
+          return [line.slice(0, i), line.slice(i + 1)];
+        }),
+    );
+    nodeVersion = pins.NODE_VERSION;
   }
+
+  if (!nodeVersion) {
+    console.log(
+      "[install-nested] skip otherscan node pin sync (no overlay .nvmrc / TOOLCHAIN.pins)",
+    );
+    return;
+  }
+
   const otherscanDir = join(root, "tools/otherscan");
   const pkgPath = join(otherscanDir, "package.json");
   if (!existsSync(pkgPath)) {
@@ -71,7 +87,9 @@ function run(job) {
       );
       return;
     }
-    console.error(`[install-nested] ${job.label}: cannot run ${job.command} (${result.error.message})`);
+    console.error(
+      `[install-nested] ${job.label}: cannot run ${job.command} (${result.error.message})`,
+    );
     process.exit(1);
   }
   if (result.status !== 0) {
@@ -103,6 +121,7 @@ const jobs = [
     // Local mprocs runs the Rust presto-server binary. Bun is only for this
     // vendored JS workspace. A missing bun must not fail the root install.
     optionalCommand: true,
+    optional: true,
   },
 ];
 

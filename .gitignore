@@ -63,10 +63,13 @@ local-docs/
 .mprocs/
 
 # Vendor clones: pinned in tools/vendor-pins.json, fetched by
-# scripts/dev/ensure-vendor-clones.sh. Keep overlays/ and vendor-pins.json tracked.
-tools/aztec-explorer/
-tools/otherscan/
-tools/presto/
+# scripts/dev/ensure-vendor-clones.sh (via scripts/install-nested.mjs on
+# postinstall). Keep overlays/ and vendor-pins.json tracked.
+# Ignore every local checkout/runtime under tools/ except those tracked paths.
+tools/*
+!tools/vendor-pins.json
+!tools/overlays/
+!tools/overlays/**
 
 ############################################
 # Others
