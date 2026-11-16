@@ -57,6 +57,18 @@ temp/
 local-docs/
 
 ############################################
+# Local process / vendor runtime
+############################################
+# mprocs state markers (deploy-ok, etc.)
+.mprocs/
+
+# Vendor clones: pinned in tools/vendor-pins.json, fetched by
+# scripts/dev/ensure-vendor-clones.sh. Keep overlays/ and vendor-pins.json tracked.
+tools/aztec-explorer/
+tools/otherscan/
+tools/presto/
+
+############################################
 # Others
 ############################################
 darkforest-v0.6/

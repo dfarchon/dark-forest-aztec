@@ -1,0 +1,17 @@
+{
+  "erigonURL": "http://127.0.0.1:8545",
+  "experimental": false,
+  "assetsURLPrefix": "http://localhost:5175",
+  "sourcify": {
+    "sources": {
+      "Local Sourcify Repo": {
+        "url": "http://127.0.0.1:5555/repository",
+        "backendFormat": "RepositoryV2"
+      },
+      "Sourcify Servers": {
+        "url": "https://repo.sourcify.dev",
+        "backendFormat": "RepositoryV1"
+      }
+    }
+  }
+}
