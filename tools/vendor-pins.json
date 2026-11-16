@@ -3,7 +3,7 @@
     {
       "path": "tools/otherscan",
       "url": "https://github.com/Stx69/otterscan.git",
-      "commit": "4974ce475ea00f4e7118fd390a989a814dc814ef",
+      "commit": "9f452fd56e1e017c2e3d7f0c4316357f3c3c5ad0",
       "overlay": "tools/overlays/otherscan"
     },
     {
@@ -14,7 +14,7 @@
     {
       "path": "tools/aztec-explorer",
       "url": "https://github.com/Stx69/aztec-explorer.git",
-      "commit": "ceced357d407090dce7ee356423e57953031491c"
+      "commit": "64b5f386702b6b74060d6ad0720e6c067701f1b8"
     }
   ]
 }
