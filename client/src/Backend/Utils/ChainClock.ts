@@ -5,6 +5,8 @@
  * (e.g. local devnet time drift). All game-time calculations (energy growth,
  * arrival ETAs, etc.) must use chain time, not Date.now().
  *
+ * Tip tag defaults to "proven" so TX timestamps match the hosted indexer tip.
+ *
  * Usage:
  *   const clock = new ChainClock(node);
  *   await clock.syncFromNode();       // initial sync
@@ -13,14 +15,21 @@
  */
 
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import type { BlockTipTag } from "@dfpunk/indexer-core";
 
 const defaultMonotonicNow = (): number =>
   typeof performance === "undefined" ? Date.now() : performance.now();
+
+export type ChainClockOptions = {
+  /** L2 tip used for timestamps / block numbers. Default "proven". */
+  tipTag?: BlockTipTag;
+};
 
 export class ChainClock {
   private readonly node: AztecNode;
   private readonly wallNow: () => number;
   private readonly monotonicNow: () => number;
+  private readonly tipTag: BlockTipTag;
 
   /** Chain time minus client time, in milliseconds. */
   private offsetMs = 0;
@@ -54,11 +63,13 @@ export class ChainClock {
   constructor(
     node: AztecNode,
     wallNow: () => number = Date.now,
-    monotonicNow: () => number = defaultMonotonicNow
+    monotonicNow: () => number = defaultMonotonicNow,
+    options?: ChainClockOptions
   ) {
     this.node = node;
     this.wallNow = wallNow;
     this.monotonicNow = monotonicNow;
+    this.tipTag = options?.tipTag ?? "proven";
   }
 
   /** Sync the clock from a known chain timestamp (seconds). */
@@ -92,10 +103,10 @@ export class ChainClock {
     await this.syncFromNode();
   }
 
-  /** Fetch the latest L2 block timestamp and sync. */
+  /** Fetch the tip L2 block timestamp and sync. */
   async syncFromNode(): Promise<void> {
     try {
-      const block = await this.node.getBlock("latest");
+      const block = await this.node.getBlock(this.tipTag);
       if (block) {
         const ts = Number(block.header.globalVariables.timestamp);
         if (ts > 0) {
@@ -108,7 +119,7 @@ export class ChainClock {
   }
 
   /**
-   * Current chain time in milliseconds (latest L2 block timestamp from last sync).
+   * Current chain time in milliseconds (tip L2 block timestamp from last sync).
    * Caller must have triggered at least one sync (e.g. at init) before using.
    */
   now(): number {
@@ -152,9 +163,9 @@ export class ChainClock {
     return this.lastChainTimestampSec;
   }
 
-  /** Fetch the latest L2 block number from the node. */
+  /** Fetch the tip L2 block number from the node. */
   async getBlockNumber(): Promise<number> {
-    return Number(await this.node.getBlockNumber());
+    return Number(await this.node.getBlockNumber(this.tipTag));
   }
 
   private advanceDisplayClock(monotonicMs: number): void {

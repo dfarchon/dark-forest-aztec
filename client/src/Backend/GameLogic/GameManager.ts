@@ -1176,7 +1176,7 @@ class GameManager extends EventEmitter {
 
     let arrival: QueuedArrival | undefined;
     if (artifact.onVoyageId !== undefined) {
-      arrival = await this.contractsAPI.getArrival(Number(artifact.onVoyageId));
+      arrival = await this.contractsAPI.getArrival(artifact.onVoyageId);
     }
     const nowSec = this.chainClock.nowSec();
     this.entityStore.replaceArtifactFromChainData(artifact, arrival, nowSec);
@@ -1223,9 +1223,7 @@ class GameManager extends EventEmitter {
       }
 
       if (artifact.onVoyageId !== undefined) {
-        const arrival = await this.contractsAPI.getArrival(
-          Number(artifact.onVoyageId)
-        );
+        const arrival = await this.contractsAPI.getArrival(artifact.onVoyageId);
         if (arrival) {
           if (show) {
             console.log("Arrival ID:", artifact.onVoyageId);
@@ -3436,13 +3434,11 @@ class GameManager extends EventEmitter {
     const planet = this.entityStore.getPlanetWithLocation(planetLoc);
 
     try {
-      if (!planetLoc) {
-        console.error("planet not found");
+      if (!planetLoc || !planet) {
         throw new Error("[TX ERROR] Planet not found");
       }
-      if (!planet) {
-        console.error("planet not found");
-        throw new Error("[TX ERROR] Planet not found");
+      if (planet.owner !== this.account) {
+        throw new Error("[TX ERROR] You must own this planet to buy a hat");
       }
 
       localStorage.setItem(
@@ -3458,14 +3454,15 @@ class GameManager extends EventEmitter {
         methodName: "buyHat",
         args: Promise.resolve([locationIdToDecStr(planetId)]),
         locationId: planetId,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
-      // Always await the submitTransaction so we can catch rejections
-      const tx = await this.contractsAPI.submitTransaction(txIntent);
-
-      return tx;
+      return await this.contractsAPI.submitTransaction(txIntent);
     } catch (e) {
-      this.getNotificationsManager().txInitError("buyHat", e.message);
+      this.getNotificationsManager().txInitError(
+        "buyHat",
+        e instanceof Error ? e.message : String(e)
+      );
       throw e;
     }
   }
@@ -3483,13 +3480,14 @@ class GameManager extends EventEmitter {
         }
         const planetLoc = this.entityStore.getLocationOfPlanet(planetId);
         if (!planetLoc) {
-          console.error("planet not found");
           throw new Error("[TX ERROR] Planet not found");
         }
         const planet = this.entityStore.getPlanetWithLocation(planetLoc);
         if (!planet) {
-          console.error("planet not found");
           throw new Error("[TX ERROR] Planet not found");
+        }
+        if (planet.owner !== this.account) {
+          throw new Error("[TX ERROR] You must own this planet to transfer it");
         }
       }
 
@@ -3507,16 +3505,33 @@ class GameManager extends EventEmitter {
         args: Promise.resolve([locationIdToDecStr(planetId), newOwner]),
         planetId,
         newOwner,
+        uiTimestamp: Math.floor(this.chainClock.nowSec()),
       };
 
-      // Always await the submitTransaction so we can catch rejections
-      const tx = await this.contractsAPI.submitTransaction(txIntent);
-
-      return tx;
+      return await this.contractsAPI.submitTransaction(txIntent);
     } catch (e) {
-      this.getNotificationsManager().txInitError("transferPlanet", e.message);
+      this.getNotificationsManager().txInitError(
+        "transferPlanet",
+        e instanceof Error ? e.message : String(e)
+      );
       throw e;
     }
+  }
+
+  public async invadePlanet(_planetId: LocationId): Promise<never> {
+    const err = new Error(
+      "invadePlanet / capture zones are not implemented onchain yet"
+    );
+    this.getNotificationsManager().txInitError("invadePlanet", err.message);
+    throw err;
+  }
+
+  public async capturePlanet(_planetId: LocationId): Promise<never> {
+    const err = new Error(
+      "capturePlanet / capture zones are not implemented onchain yet"
+    );
+    this.getNotificationsManager().txInitError("capturePlanet", err.message);
+    throw err;
   }
 
   /**

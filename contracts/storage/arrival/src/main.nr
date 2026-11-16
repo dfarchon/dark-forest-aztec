@@ -77,21 +77,49 @@ pub contract ArrivalStorage {
         assert(id == state.id, "id mismatch");
         let block_number = self.context.block_number();
         let (root, log) = ArrivalUpdate::encode_update(id, block_number, state);
-        self.storage.state_roots.at(id).write(root);
-        let slots = arrival_encoding::pack(state);
-        let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
-        for i in 0..7 {
-            if slots[i] != 0 {
-                self.context.raw_storage_write(slot + i as Field, [slots[i]]);
-            } else {
-                let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
-                if previous[0] != 0 {
-                    self.context.raw_storage_write(slot + i as Field, [0]);
+        let previous_root = self.storage.state_roots.at(id).read();
+        // Skip packed storage writes when unchanged, but always emit the public
+        // log so indexers can heal a missed ArrivalUpdate without a full resync.
+        if previous_root != root {
+            self.storage.state_roots.at(id).write(root);
+            let slots = arrival_encoding::pack(state);
+            let slot = self.storage.stored_arrivals.at(id).get_storage_slot();
+            for i in 0..7 {
+                if slots[i] != 0 {
+                    self.context.raw_storage_write(slot + i as Field, [slots[i]]);
+                } else {
+                    let previous: [Field; 1] = self.context.raw_storage_read(slot + i as Field);
+                    if previous[0] != 0 {
+                        self.context.raw_storage_write(slot + i as Field, [0]);
+                    }
                 }
             }
         }
         unsafe {
             aztec::oracle::avm::emit_public_log(log.as_vector());
+        }
+    }
+
+    /// Re-emit ArrivalUpdate logs from packed storage for the given ids.
+    /// Used after hash verification so a missed indexer log can heal without
+    /// rewriting roots. No-ops for zero / uninitialized ids.
+    #[external("public")]
+    fn reemit_batch(ids: [Field; 20], count: u32) {
+        self.internal.assert_authorized();
+        assert(count <= 20, "count exceeds batch size");
+        let block_number = self.context.block_number();
+        for i in 0..20 {
+            if (i as u32) < count {
+                let id = ids[i];
+                if (id != 0) & (self.storage.state_roots.at(id).read() != 0) {
+                    let state =
+                        arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read());
+                    let (_, log) = ArrivalUpdate::encode_update(id, block_number, state);
+                    unsafe {
+                        aztec::oracle::avm::emit_public_log(log.as_vector());
+                    }
+                }
+            }
         }
     }
 

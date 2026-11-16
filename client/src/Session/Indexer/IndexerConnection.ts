@@ -77,7 +77,14 @@ export interface IndexerConnectionConfig {
   pollIntervalMs?: number;
   /** Max blocks per getBlockUpdates call. Default 100. */
   maxBlocksPerRequest?: number;
-  /** L2 tip to follow. Default "proposed", matching transaction receipts. */
+  /**
+   * L2 tip to follow. Default "proven" — matches hosted indexer bootstrap,
+   * ChainClock, and TxExecutor waitForStatus(PROVEN).
+   *
+   * Catch-up after a bootstrap snapshot is intentional: the hosted snapshot
+   * may lag the live proven tip, so IndexerService applies remaining blocks
+   * from snapshot height → proven before returning from initialize().
+   */
   tipTag?: BlockTipTag;
   /** Per-request timeout for Aztec node calls. Default 30000. */
   requestTimeoutMs?: number;
@@ -539,7 +546,7 @@ export async function createIndexerConnection(
     config.nodeUrl,
     config.contractAddresses,
     {
-      tipTag: config.tipTag ?? "proposed",
+      tipTag: config.tipTag ?? "proven",
       requestTimeoutMs: config.requestTimeoutMs ?? 30_000,
     }
   );

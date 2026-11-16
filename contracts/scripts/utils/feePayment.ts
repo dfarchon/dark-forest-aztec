@@ -59,7 +59,7 @@ export async function getSponsoredPFCContract() {
 }
 
 /**
- * Strict parser for `FEE_PAYMENT_MODE`. Default: `sponsored`.
+ * Strict parser for `FEE_PAYMENT_MODE`. There is no default: a missing value throws.
  * Accepts only `sponsored` | `account` (case-insensitive).
  */
 export function getFeePaymentMode(): FeePaymentMode {

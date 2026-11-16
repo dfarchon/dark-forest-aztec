@@ -1,4 +1,5 @@
 export * from "./EngineConsts";
+export * from "./TextureManager";
 export * from "./EngineUtils";
 export * from "./Entities/SpriteRenderer";
 export * from "./Renderer";

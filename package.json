@@ -9,6 +9,8 @@
   "main": "index.js",
   "scripts": {
     "clean": "pnpm -r run clean && del-cli dist node_modules",
+    "dev": "mprocs -c mprocs.yaml",
+    "dev:local": "mprocs -c mprocs.yaml",
     "fix:package-json": "sort-package-json package.json 'client/package.json' 'contracts/package.json' 'packages/*/package.json'",
     "format": "pnpm -r run format",
     "prepare": "husky",

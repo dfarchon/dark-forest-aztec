@@ -90,8 +90,7 @@ export function CapturePlanetButton({
 
   const invade = useCallback(() => {
     if (!planetWrapper.value) return;
-    // @ts-expect-error TODO: invadePlanet not implemented yet (capture feature)
-    gameManager.invadePlanet(planetWrapper.value.locationId);
+    void gameManager.invadePlanet(planetWrapper.value.locationId);
   }, [gameManager, planetWrapper]);
 
   const shouldShowCapture = useMemo(() => {
@@ -139,8 +138,7 @@ export function CapturePlanetButton({
 
   const capture = useCallback(() => {
     if (!planetWrapper.value) return;
-    // @ts-expect-error TODO: capturePlanet not implemented yet (capture feature)
-    gameManager.capturePlanet(planetWrapper.value.locationId);
+    void gameManager.capturePlanet(planetWrapper.value.locationId);
   }, [gameManager, planetWrapper]);
 
   return (
