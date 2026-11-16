@@ -57,9 +57,10 @@ export async function resolveProspectPlanet(
     : planetArtifactsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
-    planetEventsRaw
+    planetEventsRaw,
+    deps.healArrival
   );
 
   // Load owned artifacts on this planet

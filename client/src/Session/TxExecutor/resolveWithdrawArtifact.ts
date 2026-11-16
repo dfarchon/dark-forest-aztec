@@ -57,9 +57,10 @@ export async function resolveWithdrawArtifact(
     : planetEventsZero();
 
   // Load arrivals from planet events
-  const arrivalData = loadArrivalsForPlanetEvents(
+  const arrivalData = await loadArrivalsForPlanetEvents(
     deps.indexer,
-    planetEventsRaw
+    planetEventsRaw,
+    deps.healArrival
   );
 
   // Load the specific artifact being withdrawn
