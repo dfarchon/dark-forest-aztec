@@ -994,6 +994,8 @@ export function BoothGuidePane({
     retainFogCamera.current = false;
     stopCameraTour();
     const enteringFog = page === "fog" && pageAtEntry.current !== "fog";
+    const returningHome =
+      page === "review" && pageAtEntry.current === "controls";
     pageAtEntry.current = page;
     const preserveMoveSelection =
       page === "move" && stepId !== "selectMovePlanet";
@@ -1003,7 +1005,7 @@ export function BoothGuidePane({
         (page === "ships" && stepId !== "selectShipPlanet")
     );
     if (!keepReveal) {
-      if (page === "cover") {
+      if (page === "cover" || returningHome) {
         stopHomeReturn.current = playDampedReturn(
           homeRestFrame(uiManager, Viewport.getInstance())
         );
