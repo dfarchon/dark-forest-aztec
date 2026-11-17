@@ -4,7 +4,6 @@ import { biomeName, isLocatable, isSpaceShip } from "@dfpunk/gamelogic";
 import { planetHasBonus } from "@dfpunk/hexgen";
 // import { EthConnection } from '@dfpunk/network';
 import { GameGLManager, Renderer } from "@dfpunk/renderer";
-import { isUnconfirmedMoveTx } from "@dfpunk/serde";
 import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
@@ -62,6 +61,7 @@ import { MiningPattern } from "../Miner/MiningPatterns";
 import { coordsEqual } from "../Utils/Coordinates";
 import GameManager, { GameManagerEvent } from "./GameManager";
 import { GameObjects } from "./GameObjects";
+import { moveEnergy, requestMove } from "./MoveRequest";
 import { PluginManager } from "./PluginManager";
 import TutorialManager, { TutorialState } from "./TutorialManager";
 import { ViewportEntities } from "./ViewportEntities";
@@ -573,15 +573,12 @@ class GameUIManager extends EventEmitter {
         const from = mouseDownPlanet;
         const to = mouseUpOverPlanet;
 
-        // TODO: the following code block needs to be in a Planet class
-        let effectiveEnergy = from.energy;
-        for (const unconfirmedMove of from.transactions?.getTransactions(
-          isUnconfirmedMoveTx
-        ) ?? []) {
-          effectiveEnergy -= unconfirmedMove.intent.forces;
-        }
-        const effPercent = Math.min(this.getForcesSending(from.locationId), 98);
-        let forces = Math.floor((effectiveEnergy * effPercent) / 100);
+        const {
+          effectiveEnergy,
+          effPercent,
+          forces: requestedForces,
+        } = moveEnergy(from, this.getForcesSending(from.locationId));
+        let forces = requestedForces;
 
         // make it so you leave one force behind
         if (this.isSendingShip(mouseDownPlanet.locationId)) {
@@ -634,38 +631,20 @@ class GameUIManager extends EventEmitter {
           );
           const artifact = this.getArtifactSending(from.locationId);
 
-          void this.gameManager
-            .move(
-              from.locationId,
-              to.locationId,
-              forces,
-              silver,
-              artifact?.id,
-              abandoning,
-              false,
-              from.lastUpdated
-            )
-            .then(async (tx) => {
-              uiEmitter.emit(UIEmitterEvent.MoveQueued, from.locationId);
-              await tx.submittedPromise;
-              uiEmitter.emit(
-                UIEmitterEvent.MoveSubmitted,
-                from.locationId,
-                to.locationId,
-                artifact?.id
-              );
-            })
-            .catch((error: unknown) => {
-              uiEmitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
-              console.error("[UI Move] Submission failed", error);
-            });
-          tutorialManager.acceptInput(TutorialState.SendFleet);
-          uiEmitter.emit(
-            UIEmitterEvent.SendCompleted,
+          void requestMove(
+            this.gameManager,
             from.locationId,
             to.locationId,
-            artifact?.id
-          );
+            forces,
+            silver,
+            artifact?.id,
+            abandoning,
+            false,
+            from.lastUpdated
+          ).catch((error: unknown) => {
+            console.error("[UI Move] Submission failed", error);
+          });
+          tutorialManager.acceptInput(TutorialState.SendFleet);
         } else {
           uiEmitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
           uiEmitter.emit(UIEmitterEvent.SendCompleted, from.locationId);

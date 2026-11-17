@@ -3,6 +3,7 @@ import { isUnconfirmedMoveTx } from "@dfpunk/serde";
 import type { Artifact, LocatablePlanet } from "@dfpunk/types";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
+import { requestMove } from "../../../Backend/GameLogic/MoveRequest";
 import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
 
 type ShipMove = { ship: Artifact; from: LocatablePlanet; to: LocatablePlanet };
@@ -121,38 +122,15 @@ export async function sendGuideShip(ui: GameUIManager): Promise<void> {
       "No available ship and destination. Wait for your ship to arrive or continue without this step."
     );
   const { ship, from, to } = move;
-  const emitter = UIEmitter.getInstance();
-  try {
-    const queued = ui
-      .getGameManager()
-      .move(
-        from.locationId,
-        to.locationId,
-        0,
-        0,
-        ship.id,
-        false,
-        false,
-        from.lastUpdated
-      );
-    emitter.emit(
-      UIEmitterEvent.SendCompleted,
-      from.locationId,
-      to.locationId,
-      ship.id
-    );
-    // The lesson has completed; continue tracking the transaction in the background.
-    const tx = await queued;
-    emitter.emit(UIEmitterEvent.MoveQueued, from.locationId);
-    await tx.submittedPromise;
-    emitter.emit(
-      UIEmitterEvent.MoveSubmitted,
-      from.locationId,
-      to.locationId,
-      ship.id
-    );
-  } catch (error) {
-    emitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
-    throw error;
-  }
+  await requestMove(
+    ui.getGameManager(),
+    from.locationId,
+    to.locationId,
+    0,
+    0,
+    ship.id,
+    false,
+    false,
+    from.lastUpdated
+  );
 }
