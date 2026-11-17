@@ -21,7 +21,6 @@ import dfstyles from "../Styles/dfstyles";
 import { EventsPage } from "./EventsPage";
 import { GameLandingPage } from "./GameLandingPage";
 import { GifMaker } from "./GifMaker";
-import { GuidePreviewPage } from "./GuidePreviewPage";
 import LandingPage from "./LandingPage";
 import { NotFoundPage } from "./NotFoundPage";
 import {
@@ -100,7 +99,6 @@ function App() {
                 <Navigate to={quickGuidePlayPath(defaultAddress)} replace />
               }
             />
-            <Route path="/booth/preview" element={<GuidePreviewPage />} />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/" element={<LandingPage />} />
             <Route

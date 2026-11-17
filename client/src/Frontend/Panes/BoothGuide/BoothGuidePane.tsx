@@ -22,6 +22,7 @@ import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
 import { controlsPage } from "./ControlsPage";
 import { fogPage } from "./FogPage";
 import { GuideAssistGate, needsGuideMouse } from "./guideAssist";
+import { type CameraMotion, playGuideCamera } from "./guideCamera";
 import {
   chapterSteps,
   following,
@@ -51,17 +52,12 @@ import { PlanetHalo, planetPage } from "./PlanetPage";
 import { reviewPage } from "./ReviewPage";
 import { shipPage } from "./ShipPage";
 
-const IDLE_RETURN_MS = 4 * 60 * 1000;
 const QUICK_ADVANCE_MS = 350;
 const PAGE_HOLD_MS = 3000;
 const PANEL_WIDTH = 320;
 const PANEL_VISIBLE_MARGIN = 48;
-const ZOOM_OUT_MS = 1400;
-const UNIVERSE_REVEAL_MS = 2200;
 const CLOSE_RADII = 28;
 const HOME_REST_SPACINGS = 2;
-const RETURN_MS = 1200;
-const MINED_REVEAL_MS = 2100;
 const MINED_FRAME_PAD = 1.55;
 export const SEND_PERCENT = 50;
 export const SLIDER_ASIDE = 10;
@@ -73,7 +69,6 @@ const FRAME_ZOOM_SLACK = 0.15;
 
 export type { PageId, StepId, TaskId } from "./guideChapters";
 type DockPhase = "waiting" | "demonstrating" | "running" | "done";
-type TourPhase = "ready" | "out" | "done";
 
 export type StepCopy = {
   label: string;
@@ -397,23 +392,6 @@ function clampPosition(
   };
 }
 
-function easeInOut(t: number): number {
-  const clamped = Math.min(1, Math.max(0, t));
-  return clamped < 0.5
-    ? 2 * clamped * clamped
-    : 1 - (-2 * clamped + 2) ** 2 / 2;
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function lerpLog(a: number, b: number, t: number): number {
-  const start = Math.log(Math.max(a, 1));
-  const end = Math.log(Math.max(b, 1));
-  return Math.exp(start + (end - start) * t);
-}
-
 function clampWidth(width: number, viewport: Viewport): number {
   return Math.min(
     viewport.maxWorldWidth,
@@ -598,260 +576,12 @@ function moveGuideFrame(ui: GameUIManager, viewport: Viewport): ViewFrame {
   };
 }
 
-function playViewTour(
-  target: ViewFrame,
-  onPhase: (phase: TourPhase) => void
-): () => void {
-  const viewport = Viewport.getInstance();
-  const startCenter = { ...viewport.centerWorldCoords };
-  const startWidth = viewport.widthInWorldUnits;
-  const started = performance.now();
-  let frame = 0;
-  let stopped = false;
-  let lastPhase: TourPhase | null = null;
-
-  const report = (phase: TourPhase) => {
-    if (phase === lastPhase) return;
-    lastPhase = phase;
-    onPhase(phase);
-  };
-
-  const tick = (now: number) => {
-    if (stopped) return;
-    const elapsed = now - started;
-    report("out");
-    if (elapsed < ZOOM_OUT_MS) {
-      const t = easeInOut(elapsed / ZOOM_OUT_MS);
-      applyView(
-        viewport,
-        {
-          x: lerp(startCenter.x, target.center.x, t),
-          y: lerp(startCenter.y, target.center.y, t),
-        },
-        lerpLog(startWidth, target.width, t)
-      );
-    } else {
-      applyView(viewport, target.center, target.width);
-      report("done");
-      stopped = true;
-      return;
-    }
-    frame = requestAnimationFrame(tick);
-  };
-
-  frame = requestAnimationFrame(tick);
-  return () => {
-    stopped = true;
-    cancelAnimationFrame(frame);
-  };
-}
-
-function playUniverseReveal(
-  target: ViewFrame,
-  onPhase: (phase: TourPhase) => void
-): () => void {
-  const viewport = Viewport.getInstance();
-  const startCenter = { ...viewport.centerWorldCoords };
-  const startWidth = Math.max(viewport.widthInWorldUnits, 1);
-  const goalWidth = Math.max(target.width, 1);
-  const started = performance.now();
-  let frame = 0;
-  let stopped = false;
-  let lastPhase: TourPhase | null = null;
-
-  const report = (phase: TourPhase) => {
-    if (phase === lastPhase) return;
-    lastPhase = phase;
-    onPhase(phase);
-  };
-
-  const tick = (now: number) => {
-    if (stopped) return;
-    const elapsed = now - started;
-    report("out");
-    if (elapsed < UNIVERSE_REVEAL_MS) {
-      const ease = easeInOut(elapsed / UNIVERSE_REVEAL_MS);
-      const width = lerpLog(startWidth, goalWidth, ease);
-      const blend = Math.min(1, ease * (width / goalWidth));
-      applyView(
-        viewport,
-        {
-          x: lerp(startCenter.x, target.center.x, blend),
-          y: lerp(startCenter.y, target.center.y, blend),
-        },
-        width
-      );
-    } else {
-      applyView(viewport, target.center, target.width);
-      report("done");
-      stopped = true;
-      return;
-    }
-    frame = requestAnimationFrame(tick);
-  };
-
-  frame = requestAnimationFrame(tick);
-  return () => {
-    stopped = true;
-    cancelAnimationFrame(frame);
-  };
-}
-
-function playPlanetApproach(
-  target: ViewFrame,
-  onPhase: (phase: TourPhase) => void
-): () => void {
-  const viewport = Viewport.getInstance();
-  const startCenter = { ...viewport.centerWorldCoords };
-  const startWidth = Math.max(viewport.widthInWorldUnits, 1);
-  const goalWidth = Math.max(target.width, 1);
-  const started = performance.now();
-  let frame = 0;
-  let stopped = false;
-  let lastPhase: TourPhase | null = null;
-
-  const report = (phase: TourPhase) => {
-    if (phase === lastPhase) return;
-    lastPhase = phase;
-    onPhase(phase);
-  };
-
-  const tick = (now: number) => {
-    if (stopped) return;
-    const elapsed = now - started;
-    report("out");
-    if (elapsed < UNIVERSE_REVEAL_MS) {
-      const ease = easeInOut(elapsed / UNIVERSE_REVEAL_MS);
-      const width = lerpLog(startWidth, goalWidth, ease);
-      const k = Math.min(1, Math.max(0, (1 - ease) * (width / startWidth)));
-      applyView(
-        viewport,
-        {
-          x: lerp(target.center.x, startCenter.x, k),
-          y: lerp(target.center.y, startCenter.y, k),
-        },
-        width
-      );
-    } else {
-      applyView(viewport, target.center, target.width);
-      report("done");
-      stopped = true;
-      return;
-    }
-    frame = requestAnimationFrame(tick);
-  };
-
-  frame = requestAnimationFrame(tick);
-  return () => {
-    stopped = true;
-    cancelAnimationFrame(frame);
-  };
-}
-
 function playDampedReturn(target: ViewFrame, onReady?: () => void): () => void {
-  const viewport = Viewport.getInstance();
-  const emitter = UIEmitter.getInstance();
-  const startCenter = { ...viewport.centerWorldCoords };
-  const startWidth = Math.max(viewport.widthInWorldUnits, 1);
-  const goalWidth = Math.max(target.width, 1);
-  const started = performance.now();
-  let frameId = 0;
-  let stopped = false;
-
-  const halt = () => {
-    if (stopped) return;
-    stopped = true;
-    cancelAnimationFrame(frameId);
-    emitter.removeListener(UIEmitterEvent.CanvasMouseDown, onUser);
-    emitter.removeListener(UIEmitterEvent.CanvasScroll, onUser);
-    emitter.removeListener(UIEmitterEvent.ZoomIn, onUser);
-    emitter.removeListener(UIEmitterEvent.ZoomOut, onUser);
-  };
-  const onUser = () => {
-    halt();
-    onReady?.();
-  };
-
-  const tick = (now: number) => {
-    if (stopped) return;
-    if (now - started >= RETURN_MS) {
-      applyView(viewport, target.center, target.width);
-      halt();
-      onReady?.();
-      return;
-    }
-    const s = easeInOut((now - started) / RETURN_MS);
-    const width = lerpLog(startWidth, goalWidth, s);
-    const k = (1 - s) * (width / startWidth);
-    applyView(
-      viewport,
-      {
-        x: target.center.x - (target.center.x - startCenter.x) * k,
-        y: target.center.y - (target.center.y - startCenter.y) * k,
-      },
-      width
-    );
-    frameId = requestAnimationFrame(tick);
-  };
-
-  emitter.on(UIEmitterEvent.CanvasMouseDown, onUser);
-  emitter.on(UIEmitterEvent.CanvasScroll, onUser);
-  emitter.on(UIEmitterEvent.ZoomIn, onUser);
-  emitter.on(UIEmitterEvent.ZoomOut, onUser);
-  frameId = requestAnimationFrame(tick);
-  return halt;
+  return playGuideCamera(Viewport.getInstance(), target, "return", onReady);
 }
 
 function playMinedReveal(target: ViewFrame, onReady?: () => void): () => void {
-  const viewport = Viewport.getInstance();
-  const emitter = UIEmitter.getInstance();
-  const startCenter = { ...viewport.centerWorldCoords };
-  const startWidth = Math.max(viewport.widthInWorldUnits, 1);
-  const goalWidth = Math.max(target.width, 1);
-  const started = performance.now();
-  let frameId = 0;
-  let stopped = false;
-
-  const halt = () => {
-    if (stopped) return;
-    stopped = true;
-    cancelAnimationFrame(frameId);
-    emitter.removeListener(UIEmitterEvent.CanvasMouseDown, onUser);
-    emitter.removeListener(UIEmitterEvent.CanvasScroll, onUser);
-    emitter.removeListener(UIEmitterEvent.ZoomIn, onUser);
-    emitter.removeListener(UIEmitterEvent.ZoomOut, onUser);
-  };
-  const onUser = () => {
-    halt();
-    onReady?.();
-  };
-
-  const tick = (now: number) => {
-    if (stopped) return;
-    if (now - started >= MINED_REVEAL_MS) {
-      applyView(viewport, target.center, target.width);
-      halt();
-      onReady?.();
-      return;
-    }
-    const t = easeInOut((now - started) / MINED_REVEAL_MS);
-    applyView(
-      viewport,
-      {
-        x: lerp(startCenter.x, target.center.x, t),
-        y: lerp(startCenter.y, target.center.y, t),
-      },
-      lerpLog(startWidth, goalWidth, t)
-    );
-    frameId = requestAnimationFrame(tick);
-  };
-
-  emitter.on(UIEmitterEvent.CanvasMouseDown, onUser);
-  emitter.on(UIEmitterEvent.CanvasScroll, onUser);
-  emitter.on(UIEmitterEvent.ZoomIn, onUser);
-  emitter.on(UIEmitterEvent.ZoomOut, onUser);
-  frameId = requestAnimationFrame(tick);
-  return halt;
+  return playGuideCamera(Viewport.getInstance(), target, "mined", onReady);
 }
 
 export function focusHome(ui: GameUIManager): void {
@@ -1067,11 +797,9 @@ function PlayCopy() {
 export function BoothGuidePane({
   onComplete,
   onClose,
-  exhibition = false,
 }: {
   onComplete: () => void;
   onClose: () => void;
-  exhibition?: boolean;
 }) {
   const uiManager = useUIManager();
   const [terminalReveal] = useSetting(uiManager, Setting.TerminalReveal);
@@ -1186,25 +914,6 @@ export function BoothGuidePane({
   useEffect(() => {
     blurPanelFocus(panelRef.current);
   }, [page, stepId, phase]);
-
-  useEffect(() => {
-    if (!exhibition || page === "cover" || phase === "running") return;
-    const returnToCover = () => openRef.current("cover", null);
-    let timer = window.setTimeout(returnToCover, IDLE_RETURN_MS);
-    const bump = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(returnToCover, IDLE_RETURN_MS);
-    };
-    window.addEventListener("pointerdown", bump);
-    window.addEventListener("keydown", bump);
-    window.addEventListener("wheel", bump);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("pointerdown", bump);
-      window.removeEventListener("keydown", bump);
-      window.removeEventListener("wheel", bump);
-    };
-  }, [page, exhibition, phase]);
 
   useEffect(() => {
     if (page === "play" && !reportedComplete.current) {
@@ -1376,6 +1085,21 @@ export function BoothGuidePane({
     setNotice(null);
     setPhase("running");
 
+    const play = (
+      motion: CameraMotion,
+      target: ViewFrame,
+      onDone: () => void
+    ) => {
+      stopTour.current = playGuideCamera(
+        Viewport.getInstance(),
+        target,
+        motion,
+        () => {
+          stopTour.current = null;
+          onDone();
+        }
+      );
+    };
     void (async () => {
       try {
         await TASK_PAGES[task].assist({
@@ -1384,27 +1108,9 @@ export function BoothGuidePane({
           finish: () => finishRef.current(),
           isDone: () => phaseRef.current === "done",
           isCurrent: () => entryRef.current === generation,
-          playTour: (target, onDone) => {
-            stopTour.current = playViewTour(target, (tourPhase) => {
-              if (tourPhase !== "done") return;
-              stopTour.current = null;
-              onDone();
-            });
-          },
-          playReveal: (target, onDone) => {
-            stopTour.current = playUniverseReveal(target, (tourPhase) => {
-              if (tourPhase !== "done") return;
-              stopTour.current = null;
-              onDone();
-            });
-          },
-          playApproach: (target, onDone) => {
-            stopTour.current = playPlanetApproach(target, (tourPhase) => {
-              if (tourPhase !== "done") return;
-              stopTour.current = null;
-              onDone();
-            });
-          },
+          playTour: (target, onDone) => play("tour", target, onDone),
+          playReveal: (target, onDone) => play("reveal", target, onDone),
+          playApproach: (target, onDone) => play("approach", target, onDone),
         });
       } catch (error) {
         if (entryRef.current !== generation || phaseRef.current !== "running")
@@ -1654,11 +1360,9 @@ export function BoothGuidePane({
             <Btn size="small" onClick={resetToCover}>
               Back to start
             </Btn>
-            {!exhibition && (
-              <Btn size="small" onClick={onClose}>
-                Close guide
-              </Btn>
-            )}
+            <Btn size="small" onClick={onClose}>
+              Close guide
+            </Btn>
           </div>
         </DragBar>
         <Body data-guide-body>
@@ -1668,13 +1372,11 @@ export function BoothGuidePane({
           {page === "play" && (
             <>
               <PlayCopy />
-              {!exhibition && (
-                <BrightAction>
-                  <Btn size="stretch" onClick={onClose}>
-                    Start playing
-                  </Btn>
-                </BrightAction>
-              )}
+              <BrightAction>
+                <Btn size="stretch" onClick={onClose}>
+                  Start playing
+                </Btn>
+              </BrightAction>
             </>
           )}
           {taskPage && TaskIntro && stepId && (

@@ -32,8 +32,11 @@ live in `src/Frontend/Panes/BoothGuide`.
 
 Mouse-related assisted actions demonstrate the gesture before performing it.
 Energy assistance drags the actual local slider. The virtual cursor itself
-never synthesizes DOM clicks. Sending energy or ships calls the same game
-manager and transaction executor as manual sending, using the current account.
+never synthesizes DOM clicks. Manual and assisted sends share the same pending
+energy calculation and transaction-event handler. Camera animations also share
+one driver while preserving each exercise’s timing and interpolation. Sending
+energy or ships calls the same game manager and transaction executor as manual
+sending, using the current account.
 The lesson advances after a valid local send request; proof generation and
 transaction status continue in the background and failures remain in the log.
 
@@ -54,10 +57,7 @@ with shared ranks for tied scores, current-player highlighting, and pagination.
 Scores are read from the existing live indexer snapshot without extra RPCs or
 transactions. The separate Score button still opens scoring help.
 
-## Local preview and checks
-
-`/booth/preview` remains a separate, transaction-free mouse demo. It needs no
-wallet, node or prover and does not represent real gameplay state.
+## Local checks
 
 Use the project’s Node and pnpm versions, then start the client with `pnpm dev`.
 Configure the existing `.env` and Connection settings for the intended network;
