@@ -169,7 +169,12 @@ function OnboardKeys({ advance }: { advance: () => void }) {
     !!credentials?.signingKey;
 
   function downloadPrivacyInfo() {
-    if (!credentials || !canDownloadPrivacy) return;
+    if (
+      !credentials ||
+      !canDownloadPrivacy ||
+      uiManager.getGameManager().isExhibitionAccount()
+    )
+      return;
     try {
       const payload = {
         secretKey: credentials.secretKey,

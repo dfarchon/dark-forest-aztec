@@ -34,9 +34,11 @@ export class KeyStore {
   private readonly accountsKey: string;
   private readonly activeKey: string;
   private readonly fingerprintKey: string;
+  private readonly exhibition: boolean;
 
   constructor(prefix?: string) {
     const p = prefix ?? DEFAULT_PREFIX;
+    this.exhibition = p.startsWith("dfpunk:booth:");
     this.accountsKey = `${p}:accounts`;
     this.activeKey = `${p}:active`;
     this.fingerprintKey = `${p}:networkFingerprint`;
@@ -53,6 +55,7 @@ export class KeyStore {
         "KeyStore: invalid AccountRecord — missing required fields"
       );
     }
+    if (this.exhibition) record = { ...record, purpose: "exhibition" };
     const accounts = this.readAccounts();
     const idx = accounts.findIndex((a) => a.address === record.address);
     if (idx >= 0) {
@@ -152,7 +155,14 @@ export class KeyStore {
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter(isValidRecord);
+      // Also classify accounts saved before the purpose field was introduced.
+      return parsed
+        .filter(isValidRecord)
+        .map((record) =>
+          this.exhibition
+            ? { ...record, purpose: "exhibition" as const }
+            : record
+        );
     } catch {
       return [];
     }

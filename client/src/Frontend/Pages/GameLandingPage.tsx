@@ -66,6 +66,7 @@ import {
   WalletClosedError,
   WalletManager,
 } from "../../Session/WalletManager";
+import { canExportAccount } from "../../Session/WalletManager/accountExport";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
 import type {
   AccountRecord,
@@ -172,6 +173,7 @@ function printGameLandingDebugConfig({
 }
 
 function downloadQuickJoinAccountBackup(gameUIManager: GameUIManager): boolean {
+  if (gameUIManager.getGameManager().isExhibitionAccount()) return false;
   const credentials = gameUIManager.getAccountCredentials();
   const account = gameUIManager.getAccount();
   const homeCoordinates = gameUIManager.getGameManager().getHomeCoords();
@@ -218,6 +220,7 @@ function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
   >("idle");
 
   const downloadAccount = () => {
+    if (!canExportAccount(account)) return;
     try {
       const json = JSON.stringify(account, null, 2);
       const blob = new Blob([json], { type: "application/json" });
@@ -235,6 +238,8 @@ function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
       setDownloadState("failed");
     }
   };
+
+  if (!canExportAccount(account)) return null;
 
   return (
     <DownloadAccountInfoRow>
@@ -3289,10 +3294,11 @@ export function GameLandingPage() {
 
       gameUIManager
         .getGameManager()
-        .on(GameManagerEvent.InitializedPlayer, () => {
+        .once(GameManagerEvent.InitializedPlayer, () => {
           setTimeout(() => {
             if (
               skipTerminalPromptsRef.current &&
+              !gameUIManager.getGameManager().isExhibitionAccount() &&
               !quickJoinBackupAttemptedRef.current
             ) {
               quickJoinBackupAttemptedRef.current = true;

@@ -132,6 +132,7 @@ import { TerminalTextStyle } from "../../Frontend/Utils/TerminalTypes";
 import UIEmitter from "../../Frontend/Utils/UIEmitter";
 import { TerminalHandle } from "../../Frontend/Views/Terminal";
 import { ThrottledConcurrentQueue } from "../../Session/TxExecutor";
+import { canExportAccount } from "../../Session/WalletManager/accountExport";
 import MinerManager, {
   HomePlanetMinerChunkStore,
   MinerManagerEvent,
@@ -2043,7 +2044,7 @@ class GameManager extends EventEmitter {
     const record = this.contractsAPI
       .getWalletManager()
       .getActiveAccountRecord();
-    if (!record) return undefined;
+    if (!canExportAccount(record)) return undefined;
     return {
       secretKey: record.secretKey,
       salt: record.salt,
@@ -2053,6 +2054,13 @@ class GameManager extends EventEmitter {
 
   isExternalWallet(): boolean {
     return this.contractsAPI.getWalletManager().isExternalWallet();
+  }
+
+  isExhibitionAccount(): boolean {
+    return (
+      this.contractsAPI.getWalletManager().getActiveAccountRecord()?.purpose ===
+      "exhibition"
+    );
   }
 
   /**

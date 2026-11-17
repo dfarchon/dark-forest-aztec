@@ -50,56 +50,65 @@ export function PrivatePane({
       onClose={onClose}
     >
       <StyledPrivatePane>
-        <div className="field">
-          <div className="field-label">
-            <Sub>
-              <u>Secret Key</u>
-            </Sub>
-          </div>
-          <div>
-            <TextPreview
-              text={credentials?.secretKey}
-              focusedWidth={"150px"}
-              unFocusedWidth={"150px"}
-            />
-          </div>
-        </div>
-        <div className="field">
-          <div className="field-label">
-            <Sub>
-              <u>Salt</u>
-            </Sub>
-          </div>
-          <div>
-            <TextPreview
-              text={credentials?.salt}
-              focusedWidth={"150px"}
-              unFocusedWidth={"150px"}
-            />
-          </div>
-        </div>
-        <div className="field">
-          <div className="field-label">
-            <Sub>
-              <u>Signing Key</u>
-            </Sub>
-          </div>
-          <div>
-            <TextPreview
-              text={credentials?.signingKey}
-              focusedWidth={"150px"}
-              unFocusedWidth={"150px"}
-            />
-          </div>
-        </div>
-        <div className="field">
-          <div className="field-label">
-            <Sub>
-              <u>Home Coords</u>
-            </Sub>
-          </div>
-          <div>{home}</div>
-        </div>
+        {uiManager.getGameManager().isExhibitionAccount() ? (
+          <p>
+            This shared tutorial account is excluded from personal account
+            backups.
+          </p>
+        ) : (
+          <>
+            <div className="field">
+              <div className="field-label">
+                <Sub>
+                  <u>Secret Key</u>
+                </Sub>
+              </div>
+              <div>
+                <TextPreview
+                  text={credentials?.secretKey}
+                  focusedWidth={"150px"}
+                  unFocusedWidth={"150px"}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <div className="field-label">
+                <Sub>
+                  <u>Salt</u>
+                </Sub>
+              </div>
+              <div>
+                <TextPreview
+                  text={credentials?.salt}
+                  focusedWidth={"150px"}
+                  unFocusedWidth={"150px"}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <div className="field-label">
+                <Sub>
+                  <u>Signing Key</u>
+                </Sub>
+              </div>
+              <div>
+                <TextPreview
+                  text={credentials?.signingKey}
+                  focusedWidth={"150px"}
+                  unFocusedWidth={"150px"}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <div className="field-label">
+                <Sub>
+                  <u>Home Coords</u>
+                </Sub>
+              </div>
+              <div>{home}</div>
+            </div>
+          </>
+        )}
       </StyledPrivatePane>
     </ModalPane>
   );

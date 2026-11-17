@@ -38,6 +38,8 @@ export interface WalletManagerConfig {
  * initializerless account contract (Fr secret/salt + Fq signing key hex).
  */
 export interface AccountRecord {
+  /** Shared experience accounts must not be offered as personal backups. */
+  purpose?: "exhibition";
   address: string;
   secretKey: string;
   salt: string;

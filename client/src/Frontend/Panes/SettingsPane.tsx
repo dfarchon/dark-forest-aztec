@@ -143,6 +143,7 @@ export function SettingsPane({
     uiManager,
     Setting.TerminalReveal
   );
+  const isExhibitionAccount = uiManager.getGameManager().isExhibitionAccount();
   const isExternalWallet = uiManager.getGameManager().isExternalWallet();
   const account = useAccount(uiManager);
   const isDevelopment = process.env.NODE_ENV !== "production";
@@ -557,7 +558,13 @@ export function SettingsPane({
 
         {/* Gas price section removed: Aztec uses sponsored fee payment */}
 
-        {!isExternalWallet ? (
+        {isExhibitionAccount ? (
+          <Section>
+            <SectionHeader>Experience Account</SectionHeader>
+            This is a shared tutorial account. It is excluded from personal
+            account backups.
+          </Section>
+        ) : !isExternalWallet ? (
           <Section>
             <SectionHeader>Wallet Keys</SectionHeader>
             Your secret key, together with your home planet's coordinates, grant
