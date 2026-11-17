@@ -31,6 +31,7 @@ export const IconType = {
   Broadcast: "Broadcast" as IconType,
   Hat: "Hat" as IconType,
   Help: "Help" as IconType,
+  Guide: "Guide" as IconType,
   Leaderboard: "Leaderboard" as IconType,
   Lock: "Lock" as IconType,
   PlanetDex: "PlanetDex" as IconType,
@@ -144,6 +145,8 @@ export class DarkForestIcon extends LitElement {
         return HatIcon();
       case IconType.Help:
         return HelpIcon();
+      case IconType.Guide:
+        return GuideIcon();
       case IconType.Leaderboard:
         return LeaderboardIcon();
       case IconType.Lock:
@@ -400,6 +403,14 @@ function HatIcon() {
   return svg`
     <svg version="1.1" xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" viewBox="0 0 512 512">
       <path d="M416 248.575v-104.575c0-26.51-71.635-48-160-48s-160 21.49-160 48v104.575c-58.519 20.526-96 52.058-96 87.425 0 61.855 114.615 112 256 112s256-50.145 256-112c0-35.367-37.48-66.899-96-87.425zM416 336c0 26.51-71.635 48-160 48s-160-21.49-160-48v-64c0 26.51 71.635 48 160 48s160-21.49 160-48v64z" />
+    </svg>
+  `;
+}
+
+function GuideIcon() {
+  return svg`
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11 6C8.7 4.5 5.7 4.1 2 5v13.7c3.5-.8 6.5-.3 9 1.3V6zm2 0c2.3-1.5 5.3-1.9 9-1v13.7c-3.5-.8-6.5-.3-9 1.3V6z" />
     </svg>
   `;
 }

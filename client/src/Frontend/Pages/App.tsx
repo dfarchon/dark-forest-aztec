@@ -3,9 +3,17 @@ import "./Test/TestPageStyles.css";
 import { CORE_CONTRACT_ADDRESS } from "@dfpunk/contracts";
 import { address } from "@dfpunk/serde";
 import React from "react";
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { createGlobalStyle } from "styled-components";
 
+import { quickGuidePlayPath } from "../../config/guideEntry";
 import { Theme } from "../Components/Theme";
 import { ExternalWalletProvider } from "../Contexts/ExternalWalletContext";
 import { LandingPageBackground } from "../Renderers/LandingPageCanvas";
@@ -13,6 +21,7 @@ import dfstyles from "../Styles/dfstyles";
 import { EventsPage } from "./EventsPage";
 import { GameLandingPage } from "./GameLandingPage";
 import { GifMaker } from "./GifMaker";
+import { GuidePreviewPage } from "./GuidePreviewPage";
 import LandingPage from "./LandingPage";
 import { NotFoundPage } from "./NotFoundPage";
 import {
@@ -56,6 +65,25 @@ function TestHub() {
   );
 }
 
+function PlayRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={`/play/${defaultAddress}${search}${hash}`} replace />;
+}
+
+function PlayGameRoute() {
+  const { contract } = useParams<{ contract: string }>();
+  const { search, hash } = useLocation();
+  if (new URLSearchParams(search).has("booth")) {
+    return (
+      <Navigate
+        to={`${quickGuidePlayPath(contract ?? defaultAddress, search)}${hash}`}
+        replace
+      />
+    );
+  }
+  return <GameLandingPage />;
+}
+
 function App() {
   return (
     <>
@@ -64,11 +92,15 @@ function App() {
       <Theme color="dark" scale="medium">
         <ExternalWalletProvider>
           <Routes>
+            <Route path="/play" element={<PlayRedirect />} />
+            <Route path="/play/:contract" element={<PlayGameRoute />} />
             <Route
-              path="/play"
-              element={<Navigate to={`/play/${defaultAddress}`} replace />}
+              path="/booth"
+              element={
+                <Navigate to={quickGuidePlayPath(defaultAddress)} replace />
+              }
             />
-            <Route path="/play/:contract" element={<GameLandingPage />} />
+            <Route path="/booth/preview" element={<GuidePreviewPage />} />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/" element={<LandingPage />} />
             <Route

@@ -11,12 +11,12 @@ import {
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
+import { UserGuide } from "../Panes/BoothGuide/UserGuide";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
 import { HelpPane } from "../Panes/HelpPane";
 import { HoverPlanetPane } from "../Panes/HoverPlanetPane";
 import { MiniMapPane } from "../Panes/MiniMapPane";
-import OnboardingPane from "../Panes/OnboardingPane";
 import { PlanetContextPane } from "../Panes/PlanetContextPane";
 import { PlanetDexPane } from "../Panes/PlanetDexPane";
 import { PlayerArtifactsPane } from "../Panes/PlayerArtifactsPane";
@@ -24,7 +24,6 @@ import { PluginLibraryPane } from "../Panes/PluginLibraryPane";
 import { PrivatePane } from "../Panes/PrivatePane";
 import { SettingsPane } from "../Panes/SettingsPane";
 import { TransactionLogPane } from "../Panes/TransactionLogPane";
-import { TutorialPane } from "../Panes/TutorialPane";
 import { TwitterVerifyPane } from "../Panes/TwitterVerifyPane";
 import { useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
@@ -108,12 +107,6 @@ export function GameWindowLayout({
   const modalsContainerCB = useCallback((node: HTMLDivElement) => {
     setModalsContainer(node);
   }, []);
-
-  const [onboardingVisible, setOnboardingVisible] = useBooleanSetting(
-    uiManager,
-    Setting.NewPlayer
-  );
-  const tutorialHook = useBooleanSetting(uiManager, Setting.TutorialOpen);
 
   const selected = useSelectedPlanet(uiManager).value;
   const [selectedPlanetVisible, setSelectedPlanetVisible] =
@@ -309,11 +302,6 @@ export function GameWindowLayout({
         )}
       </div>
 
-      <OnboardingPane
-        visible={onboardingVisible}
-        onClose={() => setOnboardingVisible(false)}
-      />
-
       <MainWindow>
         <CanvasContainer>
           <CanvasWrapper>
@@ -337,7 +325,6 @@ export function GameWindowLayout({
                 minimapEdgeArmed.current = true;
               }}
             />
-            <TutorialPane tutorialHook={tutorialHook} />
           </UniverseFade>
           <HiddenEdgeChrome $hidden={!showEdgeChrome}>
             <BottomLeftDock>
@@ -361,6 +348,11 @@ export function GameWindowLayout({
 
           <HoverPlanetPane />
           <ArtifactHoverPane />
+
+          <UserGuide
+            universeView={universeView}
+            setUniverseView={setUniverseView}
+          />
         </CanvasContainer>
       </MainWindow>
     </WindowWrapper>

@@ -16,7 +16,7 @@ import {
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { address } from "@dfpunk/serde";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import styled from "styled-components";
 
 import GameManager, {
@@ -44,6 +44,7 @@ import {
   isProductionLike,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
+import { isGuideEntry } from "../../config/guideEntry";
 import { resolveQuickJoinAccount } from "../../config/quickJoin";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import { resolveExternalWalletCapabilities } from "../../Session/ExternalWallet/capabilityValidation";
@@ -1030,6 +1031,8 @@ const enum TerminalPromptStep {
 
 export function GameLandingPage() {
   const { contract } = useParams<{ contract: string }>();
+  const { search } = useLocation();
+  const guideEntry = isGuideEntry(search);
   const {
     discoverWallets,
     initiateConnection,
@@ -3522,6 +3525,12 @@ export function GameLandingPage() {
       void advanceState(terminalHandle);
     }
   }, [terminalHandle, topLevelContainer, advanceState, entryMode]);
+
+  useEffect(() => {
+    if (guideEntry && entryMode === "pending") {
+      handleEntryModeSelected("quick");
+    }
+  }, [guideEntry, entryMode, handleEntryModeSelected]);
 
   const terminalOptionMode: TerminalOptionMode =
     entryMode === "standard" || entryMode === "quick" ? "buttons" : "classic";
