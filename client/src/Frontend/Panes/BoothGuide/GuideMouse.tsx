@@ -389,7 +389,7 @@ function resolvePose(
     }
     case "readScoring": {
       const at = controlPoint("score");
-      return at ? { kind: "hover", at } : { kind: "hide" };
+      return at ? { kind: "click", at } : { kind: "hide" };
     }
     case "pauseExplorer":
     case "resumeExplorer": {
