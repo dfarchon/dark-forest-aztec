@@ -634,20 +634,42 @@ class GameUIManager extends EventEmitter {
           );
           const artifact = this.getArtifactSending(from.locationId);
 
-          this.gameManager.move(
+          void this.gameManager
+            .move(
+              from.locationId,
+              to.locationId,
+              forces,
+              silver,
+              artifact?.id,
+              abandoning,
+              false,
+              from.lastUpdated
+            )
+            .then(async (tx) => {
+              uiEmitter.emit(UIEmitterEvent.MoveQueued, from.locationId);
+              await tx.submittedPromise;
+              uiEmitter.emit(
+                UIEmitterEvent.MoveSubmitted,
+                from.locationId,
+                to.locationId,
+                artifact?.id
+              );
+            })
+            .catch((error: unknown) => {
+              uiEmitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
+              console.error("[UI Move] Submission failed", error);
+            });
+          tutorialManager.acceptInput(TutorialState.SendFleet);
+          uiEmitter.emit(
+            UIEmitterEvent.SendCompleted,
             from.locationId,
             to.locationId,
-            forces,
-            silver,
-            artifact?.id,
-            abandoning,
-            false,
-            from.lastUpdated
+            artifact?.id
           );
-          tutorialManager.acceptInput(TutorialState.SendFleet);
+        } else {
+          uiEmitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
+          uiEmitter.emit(UIEmitterEvent.SendCompleted, from.locationId);
         }
-
-        uiEmitter.emit(UIEmitterEvent.SendCompleted, from.locationId);
       }
 
       this.isChoosingTargetPlanet = false;
@@ -668,11 +690,19 @@ class GameUIManager extends EventEmitter {
 
   public startExplore() {
     this.gameManager.startExplore();
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.ExplorerChanged,
+      this.isMining()
+    );
   }
 
   public stopExplore() {
     this.gameManager.stopExplore();
     this.minerLocation = undefined;
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.ExplorerChanged,
+      this.isMining()
+    );
   }
 
   public toggleExplore() {

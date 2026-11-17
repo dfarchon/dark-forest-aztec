@@ -24,7 +24,17 @@ export const enum UIEmitterEvent {
 
   SendInitiated = "SendInitiated",
   SendCancelled = "SendCancelled",
+  // Local send gesture finished. Valid requests also carry (from, to, artifactId).
+  // This does not mean the transaction has been submitted or confirmed.
   SendCompleted = "SendCompleted",
+  // Emitted only after move submission succeeds or fails, rather than after a canvas click.
+  MoveSubmitted = "MoveSubmitted",
+  MoveFailed = "MoveFailed",
+  MoveQueued = "MoveQueued",
+  ExplorerChanged = "ExplorerChanged",
+  SetTerminalVisible = "SetTerminalVisible",
+  TerminalVisibilityChanged = "TerminalVisibilityChanged",
+  OpenScoringHelp = "OpenScoringHelp",
 
   DepositArtifact = "DepositArtifact",
   DepositToPlanet = "DepositToPlanet",

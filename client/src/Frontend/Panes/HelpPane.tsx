@@ -1,5 +1,5 @@
 import { ArtifactRarity, ModalName } from "@dfpunk/types";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import styled from "styled-components";
 
 import { dfArchonLinks, externalLinks } from "../../config/externalLinks";
@@ -23,11 +23,36 @@ const HelpContent = styled.div`
 export function HelpPane({
   visible,
   onClose,
+  scoringRequest = 0,
 }: {
   visible: boolean;
   onClose: () => void;
+  scoringRequest?: number;
 }) {
   const uiManager = useUIManager();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scoringRef = useRef<HTMLDivElement>(null);
+  const lastScrolledRequest = useRef(0);
+
+  useEffect(() => {
+    if (
+      !visible ||
+      scoringRequest === 0 ||
+      scoringRequest === lastScrolledRequest.current
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      const content = contentRef.current;
+      const scoring = scoringRef.current;
+      if (!content || !scoring) return;
+      content.scrollTop +=
+        scoring.getBoundingClientRect().top -
+        content.getBoundingClientRect().top -
+        8;
+      lastScrolledRequest.current = scoringRequest;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [visible, scoringRequest]);
 
   const silverScoreValue = uiManager.getSilverScoreValue();
   const artifactPointValues = uiManager.getArtifactPointValues();
@@ -39,7 +64,7 @@ export function HelpPane({
       visible={visible}
       onClose={onClose}
     >
-      <HelpContent>
+      <HelpContent ref={contentRef}>
         {uiManager.isRoundOver() && (
           <Section>
             <SectionHeader>Round Complete</SectionHeader>
@@ -76,7 +101,7 @@ export function HelpPane({
           artifacts on planets to boost stats.
         </Section>
 
-        <Section>
+        <Section ref={scoringRef} data-help-section="scoring">
           <SectionHeader>Scoring</SectionHeader>
           This round&apos;s score comes from two activities: discovering
           artifacts with your Gear ship, and withdrawing silver from{" "}

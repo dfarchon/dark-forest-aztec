@@ -49,6 +49,15 @@ const StyledSendResources = styled.div`
   gap: 8px;
 `;
 
+const ResourceControls = styled.div<{ $disabled: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  ${({ $disabled }) =>
+    $disabled &&
+    `pointer-events: none; & * { pointer-events: none !important; }`}
+`;
+
 const StyledShowPercent = styled.div`
   display: inline-block;
 
@@ -131,6 +140,7 @@ function ResourceBar({
         <ShowPercent value={value} setValue={setValue} />
       </Row>
       <Slider
+        data-booth-target={isSilver ? "silver-slider" : "energy-slider"}
         variant="filled"
         labelVisibility="none"
         min={0}
@@ -139,6 +149,9 @@ function ResourceBar({
         step={1}
         disabled={disabled}
         onChange={(e: Event) => {
+          setValue(parseInt((e.target as HTMLInputElement).value, 10));
+        }}
+        onCommit={(e: Event) => {
           setValue(parseInt((e.target as HTMLInputElement).value, 10));
         }}
       />
@@ -212,6 +225,7 @@ function SendRow({
     <MaybeShortcutButton
       size="stretch"
       onClick={toggleSending}
+      data-booth-target="send"
       active={sending}
       shortcutKey={TOGGLE_SEND}
       shortcutText={TOGGLE_SEND}
@@ -300,7 +314,7 @@ export function SendResources({
         updateSilverSending(current + (key === "+" ? 10 : -10));
       }
     },
-    { enabled: !disableDefaultShortcuts }
+    { enabled: !disableDefaultShortcuts && !isSendingShip }
   );
 
   const artifacts = usePlanetInactiveArtifacts(p, uiManager);
@@ -348,25 +362,33 @@ export function SendResources({
   }
 
   return (
-    <StyledSendResources>
+    <StyledSendResources data-guide-send-planet={locationId}>
       {owned && !p.value?.destroyed && (
-        <>
-          <ResourceBar
-            selected={p.value}
-            value={energySending}
-            setValue={updateEnergySending}
-            disabled={disableSliders}
-          />
-          {p.value && p.value.silver > 0 && (
+        <TooltipTrigger
+          name={isSendingShip ? TooltipName.ShipResourcesDisabled : undefined}
+          style={{ display: "block" }}
+        >
+          <ResourceControls
+            $disabled={isSendingShip}
+            aria-disabled={isSendingShip}
+          >
             <ResourceBar
               selected={p.value}
-              value={silverSending}
-              setValue={updateSilverSending}
+              value={energySending}
+              setValue={updateEnergySending}
               disabled={disableSliders}
-              isSilver
             />
-          )}
-        </>
+            {p.value && p.value.silver > 0 && (
+              <ResourceBar
+                selected={p.value}
+                value={silverSending}
+                setValue={updateSilverSending}
+                disabled={disableSliders}
+                isSilver
+              />
+            )}
+          </ResourceControls>
+        </TooltipTrigger>
       )}
       {p.value && artifacts.length > 0 && (
         <SelectArtifactRow

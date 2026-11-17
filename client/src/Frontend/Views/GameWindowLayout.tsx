@@ -76,6 +76,7 @@ export function GameWindowLayout({
   const [helpVisible, setHelpVisible] = useState<boolean>(
     isModalOpen(ModalName.Help)
   );
+  const [scoringHelpRequest, setScoringHelpRequest] = useState(0);
   const [transactionLogVisible, setTransactionLogVisible] = useState<boolean>(
     isModalOpen(ModalName.TransactionLog)
   );
@@ -127,6 +128,38 @@ export function GameWindowLayout({
     uiManager.setOverlayContainer(modalsContainer);
   }, [uiManager, modalsContainer]);
 
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    const openScoring = () => {
+      // Reopen minimized Help at its saved position and focus Scoring on every click.
+      modalManager.setModalState(ModalName.Help, "open");
+      setScoringHelpRequest((request) => request + 1);
+      setHelpVisible(true);
+    };
+    emitter.on(UIEmitterEvent.OpenScoringHelp, openScoring);
+    return () => {
+      emitter.removeListener(UIEmitterEvent.OpenScoringHelp, openScoring);
+    };
+  }, [modalManager]);
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    emitter.on(UIEmitterEvent.SetTerminalVisible, setTerminalVisible);
+    return () => {
+      emitter.removeListener(
+        UIEmitterEvent.SetTerminalVisible,
+        setTerminalVisible
+      );
+    };
+  }, [setTerminalVisible]);
+
+  useEffect(() => {
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.TerminalVisibilityChanged,
+      terminalVisible
+    );
+  }, [terminalVisible]);
+
   const account = uiManager.getAccount();
   const terminalSettingLoaded = React.useRef(false);
   useEffect(() => {
@@ -157,6 +190,17 @@ export function GameWindowLayout({
     () => setSelectedPlanetVisible(!!selected),
     [selected, setSelectedPlanetVisible]
   );
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    // Selecting the same planet again must also reopen a dismissed panel.
+    const reopen = () =>
+      setSelectedPlanetVisible(!!uiManager.getSelectedPlanet());
+    emitter.on(UIEmitterEvent.GamePlanetSelected, reopen);
+    return () => {
+      emitter.removeListener(UIEmitterEvent.GamePlanetSelected, reopen);
+    };
+  }, [uiManager]);
 
   const [disableDefaultShortcuts] = useBooleanSetting(
     uiManager,
@@ -215,7 +259,12 @@ export function GameWindowLayout({
 
       {/* all modals rendered into here */}
       <div ref={modalsContainerCB}>
-        <HelpPane visible={helpVisible} onClose={() => setHelpVisible(false)} />
+        <HelpPane
+          key={`help-${scoringHelpRequest}`}
+          visible={helpVisible}
+          scoringRequest={scoringHelpRequest}
+          onClose={() => setHelpVisible(false)}
+        />
         <TransactionLogPane
           visible={transactionLogVisible}
           onClose={() => setTransactionLogVisible(false)}
@@ -272,10 +321,10 @@ export function GameWindowLayout({
           </CanvasWrapper>
 
           <UniverseFade $hidden={!showEdgeChrome}>
-            <TopRightStack>
+            <TopRightStack data-guide-obstacle>
               <NotificationsPane />
             </TopRightStack>
-            <BottomRightStack $open={minimapOpen}>
+            <BottomRightStack $open={minimapOpen} data-guide-obstacle>
               <MiniMapPane />
             </BottomRightStack>
             <MiniMapEdge
