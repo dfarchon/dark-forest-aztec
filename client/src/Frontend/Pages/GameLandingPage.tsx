@@ -1350,7 +1350,9 @@ export function GameLandingPage() {
       }
       walletManagerRef.current = undefined;
       await current.destroy();
-      const replaced = walletManagerRef.current;
+      const replaced = (
+        walletManagerRef as React.MutableRefObject<WalletManager | undefined>
+      ).current;
       if (replaced && !replaced.isClosed()) {
         return replaced;
       }

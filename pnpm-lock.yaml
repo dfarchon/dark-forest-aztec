@@ -227,6 +227,9 @@ importers:
       '@aztec-labs/simulator':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)(zod@4.6.7)
+      '@aztec-labs/sqlite3mc-wasm':
+        specifier: 6.0.0
+        version: 6.0.0
       '@aztec-labs/wallets':
         specifier: 6.0.0
         version: 6.0.0(typescript@5.9.3)(zod@4.6.7)
