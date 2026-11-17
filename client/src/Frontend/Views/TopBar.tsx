@@ -10,6 +10,7 @@ import { weiToEth } from "../../Backend/Utils/Utils";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
+import { Icon, IconType } from "../Components/Icons";
 import { TextInput } from "../Components/Input";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
 import { CoordsPane } from "../Panes/CoordsPane";
@@ -18,7 +19,9 @@ import dfstyles from "../Styles/dfstyles";
 import { usePlayer, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
 import { useEmitterSubscribe, useEmitterValue } from "../Utils/EmitterHooks";
+import { scoreboardRank } from "../Utils/scoreboard";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
+import { useScoreboard } from "../Utils/useScoreboard";
 import { ModalToggleButton } from "./ModalIcon";
 import { NetworkHealth } from "./NetworkHealth";
 import { Paused } from "./Paused";
@@ -216,6 +219,31 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
   return <Numbers>{content}</Numbers>;
 }
 
+function ScoreboardStatus() {
+  const ui = useUIManager();
+  const { rows, loading, error } = useScoreboard();
+  const rank = scoreboardRank(rows, ui.getAccount());
+  return (
+    <ScoreReadout
+      type="button"
+      aria-label="Open scoreboard"
+      title="View the full scoreboard"
+      onClick={(event) => {
+        event.stopPropagation();
+        UIEmitter.getInstance().emit(UIEmitterEvent.OpenScoreboard);
+      }}
+    >
+      <Icon type={IconType.Leaderboard} style={{ marginRight: 4 }} />
+      scoreboard{" "}
+      {error
+        ? "unavailable"
+        : loading
+          ? "…"
+          : `${rank === undefined ? "—" : `#${rank}`} / ${rows.length.toLocaleString()}`}
+    </ScoreReadout>
+  );
+}
+
 function SpaceJunk({ account }: { account: EthAddress | undefined }) {
   const uiManager = useUIManager();
 
@@ -380,6 +408,9 @@ export function TopBar({
           <AccountAddress />
         </TooltipTrigger>
       </AddressLine>
+      <PlateRow>
+        <ScoreboardStatus />
+      </PlateRow>
       <PlateRow>
         <TooltipTrigger
           name={TooltipName.Empty}
