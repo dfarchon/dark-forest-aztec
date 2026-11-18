@@ -22,7 +22,6 @@ import { PlanetDexPane } from "../Panes/PlanetDexPane";
 import { PlayerArtifactsPane } from "../Panes/PlayerArtifactsPane";
 import { PluginLibraryPane } from "../Panes/PluginLibraryPane";
 import { PrivatePane } from "../Panes/PrivatePane";
-import { ScoreboardPane } from "../Panes/ScoreboardPane";
 import { SettingsPane } from "../Panes/SettingsPane";
 import { TransactionLogPane } from "../Panes/TransactionLogPane";
 import { TwitterVerifyPane } from "../Panes/TwitterVerifyPane";
@@ -77,10 +76,6 @@ export function GameWindowLayout({
     isModalOpen(ModalName.Help)
   );
   const [scoringHelpRequest, setScoringHelpRequest] = useState(0);
-  const [scoreboardVisible, setScoreboardVisible] = useState(
-    isModalOpen(ModalName.Leaderboard)
-  );
-  const [scoreboardRequest, setScoreboardRequest] = useState(0);
   const [transactionLogVisible, setTransactionLogVisible] = useState<boolean>(
     isModalOpen(ModalName.TransactionLog)
   );
@@ -125,19 +120,6 @@ export function GameWindowLayout({
   useEffect(() => {
     uiManager.setOverlayContainer(modalsContainer);
   }, [uiManager, modalsContainer]);
-
-  useEffect(() => {
-    const emitter = UIEmitter.getInstance();
-    const open = () => {
-      modalManager.setModalState(ModalName.Leaderboard, "open");
-      setScoreboardRequest((request) => request + 1);
-      setScoreboardVisible(true);
-    };
-    emitter.on(UIEmitterEvent.OpenScoreboard, open);
-    return () => {
-      emitter.removeListener(UIEmitterEvent.OpenScoreboard, open);
-    };
-  }, [modalManager]);
 
   useEffect(() => {
     const emitter = UIEmitter.getInstance();
@@ -270,11 +252,6 @@ export function GameWindowLayout({
 
       {/* all modals rendered into here */}
       <div ref={modalsContainerCB}>
-        <ScoreboardPane
-          key={`scoreboard-${scoreboardRequest}`}
-          visible={scoreboardVisible}
-          onClose={() => setScoreboardVisible(false)}
-        />
         <HelpPane
           key={`help-${scoringHelpRequest}`}
           visible={helpVisible}
