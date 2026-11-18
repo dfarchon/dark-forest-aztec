@@ -15,6 +15,7 @@ import {
   type StepId,
   type TaskId,
 } from "./guideChapters";
+import { findDeselectPoint } from "./guideDeselect";
 import { moveGuideFrame } from "./guideEnergy";
 import { STEPS, TASK_PAGES } from "./guidePages";
 import { clearLocalControls } from "./guidePlanets";
@@ -339,6 +340,14 @@ export function useGuideController(onComplete: () => void) {
       !guideShipLesson(uiManager)
     ) {
       open("ships", "deselect");
+      return;
+    }
+    // The assist button can still clear the selection when every map target is covered.
+    if (
+      stepId === "deselect" &&
+      !findDeselectPoint(uiManager, Viewport.getInstance())
+    ) {
+      executeAssist(entryRef.current, stepId, page);
       return;
     }
     if (needsGuideMouse(stepId)) {

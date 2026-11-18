@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from "react";
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import Viewport from "../../Game/Viewport";
 import type { PageId, StepId } from "./guideChapters";
+import { findDeselectPoint } from "./guideDeselect";
 import { gameCanvas, targetElement } from "./guideElements";
 import { guideEnergyTarget } from "./guideEnergy";
 import { GuidePointer } from "./GuidePointer";
@@ -20,9 +21,6 @@ import {
 } from "./guidePointerTargets";
 import { guideShipLesson } from "./guideShip";
 import { terminalGuide } from "./guideTerminal";
-
-const CURSOR_W = 86;
-const CURSOR_H = 99;
 
 export type GuideMouseProps = {
   assist?: { id: number; onComplete: () => void };
@@ -80,46 +78,6 @@ function clampToRect(point: Point, rect: DOMRect, inset: number): Point {
   };
 }
 
-function overlapsPanel(
-  panel: HTMLElement | null,
-  x: number,
-  y: number
-): boolean {
-  if (!panel) return false;
-  const rect = panel.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return false;
-  return (
-    x < rect.right &&
-    x + CURSOR_W > rect.left &&
-    y < rect.bottom &&
-    y + CURSOR_H > rect.top
-  );
-}
-
-function scrollAnchor(panel: HTMLElement | null): Point | null {
-  const rect = canvasRect();
-  if (!rect) return null;
-  const center = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
-  if (!overlapsPanel(panel, center.x, center.y)) return center;
-  const panelRect = panel?.getBoundingClientRect();
-  const candidates = panelRect
-    ? [
-        { x: panelRect.right + 28, y: center.y },
-        { x: center.x, y: panelRect.bottom + 28 },
-        { x: rect.left + rect.width * 0.72, y: rect.top + rect.height * 0.62 },
-      ]
-    : [];
-  for (const candidate of candidates) {
-    const clamped = clampToRect(candidate, rect, 48);
-    if (inside(rect, clamped, 0) && !overlapsPanel(panel, clamped.x, clamped.y))
-      return clamped;
-  }
-  return center;
-}
-
 function planetTip(ui: GameUIManager, planet: LocatablePlanet): Point | null {
   const viewport = tryViewport();
   const canvas = gameCanvas();
@@ -175,7 +133,6 @@ function safe<T>(fn: () => T): T | undefined {
 
 function resolvePose(
   props: GuideMouseProps,
-  panel: HTMLElement | null,
   darkWorld: WorldCoords | undefined
 ): Pose {
   if (
@@ -233,10 +190,6 @@ function resolvePose(
       );
       return at ? { kind: "click", at } : { kind: "hide" };
     }
-    case "deselect": {
-      const at = scrollAnchor(panel);
-      return at ? { kind: "click", at } : { kind: "hide" };
-    }
     case "readScoring": {
       const at = controlPoint("score");
       return at ? { kind: "click", at } : { kind: "hide" };
@@ -282,6 +235,7 @@ export function GuideMouse(props: GuideMouseProps) {
     };
   }, [props.stepId, terminal.target]);
   const goal = useRef<{ key: string; value?: number }>({ key: "" });
+  const deselectPoint = useRef<Point>();
   const energy = useRef<{
     planet: NonNullable<ReturnType<GameUIManager["getSelectedPlanet"]>>;
     from: number;
@@ -317,6 +271,14 @@ export function GuideMouse(props: GuideMouseProps) {
         }
       }}
       pose={() => {
+        if (props.stepId === "deselect") {
+          const viewport = tryViewport();
+          const at =
+            viewport &&
+            findDeselectPoint(props.ui, viewport, deselectPoint.current);
+          deselectPoint.current = at;
+          return at ? { kind: "click", at } : { kind: "hide" };
+        }
         const now = performance.now();
         if (props.stepId === "setEnergy") {
           const selected = props.ui.getSelectedPlanet();
@@ -352,7 +314,6 @@ export function GuideMouse(props: GuideMouseProps) {
         }
         return resolvePose(
           props,
-          props.panelRef.current,
           props.stepId === "clickDark" ? safe(props.darkPatch) : undefined
         );
       }}

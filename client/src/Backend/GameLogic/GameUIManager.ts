@@ -1181,9 +1181,12 @@ class GameUIManager extends EventEmitter {
     return isSpaceShip(this.artifactSending[planetId]?.artifactType);
   }
 
+  public getPlanetAtPointer(coords: WorldCoords): LocatablePlanet | undefined {
+    return this.viewportEntities.getNearestVisiblePlanet(coords);
+  }
+
   public isOverOwnPlanet(coords: WorldCoords): Planet | undefined {
-    const res = this.viewportEntities.getNearestVisiblePlanet(coords);
-    const planet: LocatablePlanet | undefined = res;
+    const planet = this.getPlanetAtPointer(coords);
     if (!planet) {
       return undefined;
     }
@@ -1501,7 +1504,7 @@ class GameUIManager extends EventEmitter {
     this.mouseHoveringOverCoords = coords;
     let hoveringPlanet = undefined;
 
-    const res = this.viewportEntities.getNearestVisiblePlanet(coords);
+    const res = this.getPlanetAtPointer(coords);
     if (res) {
       hoveringPlanet = res;
       this.mouseHoveringOverCoords = res.location.coords;
