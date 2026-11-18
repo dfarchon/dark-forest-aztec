@@ -13,7 +13,6 @@ export const Slider = createComponent({
   elementClass: DarkForestSlider,
   events: {
     onChange: "input",
-    onCommit: "change",
   },
 });
 

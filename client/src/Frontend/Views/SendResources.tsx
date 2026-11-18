@@ -151,9 +151,6 @@ function ResourceBar({
         onChange={(e: Event) => {
           setValue(parseInt((e.target as HTMLInputElement).value, 10));
         }}
-        onCommit={(e: Event) => {
-          setValue(parseInt((e.target as HTMLInputElement).value, 10));
-        }}
       />
     </>
   );
