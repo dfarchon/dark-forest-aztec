@@ -2,10 +2,9 @@ import React from "react";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
-import type { GuidePage, WatchHooks } from "./BoothGuidePane";
-import { armSend } from "./BoothGuidePane";
-import { fogPage } from "./FogPage";
 import { chapterSteps } from "./guideChapters";
+import { guideDeselect } from "./guideDeselect";
+import { armSend } from "./guidePlanets";
 import { guidePlanetControlPoint } from "./guidePointerTargets";
 import {
   beginGuideShip,
@@ -13,6 +12,7 @@ import {
   sendGuideShip,
   watchGuideShipMove,
 } from "./guideShip";
+import type { GuidePage, WatchHooks } from "./guideTypes";
 
 function ShipIntro() {
   return (
@@ -46,7 +46,7 @@ function prepareShipPanel(ui: GameUIManager, withShip: boolean): boolean {
 }
 
 function watchShip(hooks: WatchHooks): () => void {
-  if (hooks.stepId === "deselect") return fogPage.watch(hooks);
+  if (hooks.stepId === "deselect") return guideDeselect.watch(hooks);
   const { ui, stepId, finish, reject, notify, isSettled, isRunning } = hooks;
   let move = guideShipLesson(ui);
   const emitter = UIEmitter.getInstance();
@@ -146,12 +146,12 @@ export const shipPage: GuidePage = {
       running: "Sending your ship.",
       done: "Ship move requested. The transaction continues in the background.",
     },
-    deselect: fogPage.copy.deselect,
+    deselect: guideDeselect.copy,
   },
   Intro: ShipIntro,
   open: (ui, step) => {
     if (step === "deselect") {
-      fogPage.open(ui, step);
+      guideDeselect.open(ui, step);
       return;
     }
     const move =
@@ -173,7 +173,7 @@ export const shipPage: GuidePage = {
   assist: async (hooks) => {
     const { ui, stepId, finish } = hooks;
     if (stepId === "deselect") {
-      await fogPage.assist(hooks);
+      await guideDeselect.assist(hooks);
       return;
     }
     const move = guideShipLesson(ui);

@@ -4,6 +4,8 @@ import React, { useEffect, useRef } from "react";
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import Viewport from "../../Game/Viewport";
 import type { PageId, StepId } from "./guideChapters";
+import { gameCanvas, targetElement } from "./guideElements";
+import { guideEnergyTarget } from "./guideEnergy";
 import { GuidePointer } from "./GuidePointer";
 import type {
   GuidePoint as Point,
@@ -18,7 +20,6 @@ import {
 } from "./guidePointerTargets";
 import { guideShipLesson } from "./guideShip";
 import { terminalGuide } from "./guideTerminal";
-import { guideEnergyTarget } from "./MovePage";
 
 const CURSOR_W = 86;
 const CURSOR_H = 99;
@@ -43,11 +44,6 @@ function tryViewport(): Viewport | undefined {
   } catch {
     return undefined;
   }
-}
-
-function gameCanvas(): HTMLCanvasElement | null {
-  const canvas = document.querySelector("canvas[data-game-canvas]");
-  return canvas instanceof HTMLCanvasElement ? canvas : null;
 }
 
 function canvasRect(): DOMRect | null {
@@ -425,9 +421,7 @@ export function GuideMouse(props: GuideMouseProps) {
   );
   useEffect(() => {
     if (props.stepId !== "hideTerminal") return;
-    const element = document.querySelector(
-      `[data-booth-target="${terminal.target}"]`
-    );
+    const element = targetElement(terminal.target);
     element?.setAttribute("data-guide-active", "true");
     return () => {
       element?.removeAttribute("data-guide-active");

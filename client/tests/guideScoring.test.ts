@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { WatchHooks } from "../src/Frontend/Panes/BoothGuide/BoothGuidePane";
+import type { WatchHooks } from "../src/Frontend/Panes/BoothGuide/guideTypes";
 import { reviewPage } from "../src/Frontend/Panes/BoothGuide/ReviewPage";
 import UIEmitter, { UIEmitterEvent } from "../src/Frontend/Utils/UIEmitter";
 

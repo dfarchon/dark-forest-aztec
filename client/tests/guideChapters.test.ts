@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { TASK_PAGES } from "../src/Frontend/Panes/BoothGuide/guidePages";
+
 import {
   GUIDE_CHAPTERS,
   PAGE_ORDER,
@@ -8,6 +10,28 @@ import {
   following,
   isPageFinale,
 } from "../src/Frontend/Panes/BoothGuide/guideChapters";
+
+test("each registered chapter owns its steps, copy and behavior contract", () => {
+  for (const chapter of GUIDE_CHAPTERS) {
+    const page = TASK_PAGES[chapter.id];
+    assert.equal(page.id, chapter.id);
+    assert.deepEqual(page.steps, chapter.steps);
+    for (const step of chapter.steps) {
+      const copy = page.copy[step];
+      assert.ok(copy, `${chapter.id}/${step} has no copy`);
+      for (const field of [
+        "label",
+        "hint",
+        "button",
+        "running",
+        "done",
+      ] as const)
+        assert.ok(copy[field].length > 0, `${step}/${field}`);
+    }
+    for (const action of ["open", "watch", "assist"] as const)
+      assert.equal(typeof page[action], "function");
+  }
+});
 
 test("chapters preserve every existing exercise once and keep the original page workload", () => {
   const steps = GUIDE_CHAPTERS.flatMap((chapter) => [...chapter.steps]);

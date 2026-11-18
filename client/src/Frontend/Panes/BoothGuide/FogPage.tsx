@@ -2,16 +2,6 @@ import { CursorState, ModalManagerEvent, WorldCoords } from "@dfpunk/types";
 import React from "react";
 
 import GameUIManager from "../../../Backend/GameLogic/GameUIManager";
-import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
-import type {
-  AssistHooks,
-  GuidePage,
-  StepCopy,
-  StepId,
-  WatchHooks,
-} from "./BoothGuidePane";
-import { sourcePlanet } from "./BoothGuidePane";
-import { findOnScreenDarkPatch } from "./BoothGuidePane";
 import { chapterSteps } from "./guideChapters";
 import {
   confirmGuideFogMove,
@@ -19,44 +9,16 @@ import {
   guideFogTarget,
   isGuideFogDestination,
 } from "./guideFog";
+import type {
+  AssistHooks,
+  GuidePage,
+  StepCopy,
+  StepId,
+  WatchHooks,
+} from "./guideTypes";
+import { findOnScreenDarkPatch } from "./guideWorld";
 
-const copy: Record<
-  | "deselect"
-  | "pressExplore"
-  | "clickDark"
-  | "pauseExplorer"
-  | "resumeExplorer"
-  | "hideTerminal",
-  StepCopy
-> = {
-  deselect: {
-    label: "Click empty space to deselect",
-    hint: "Click empty space on the map. This clears the selected planet and reveals explorer controls.",
-    button: "Deselect my planet",
-    running: "Clearing the selection.",
-    done: "Nothing is selected. Explorer controls are available.",
-  },
-  pauseExplorer: {
-    label: "Pause your explorer",
-    hint: "Click Pause in the bottom-left explorer controls.",
-    button: "Pause the explorer",
-    running: "Pausing exploration.",
-    done: "Exploration is paused. Your discovered map is kept.",
-  },
-  resumeExplorer: {
-    label: "Resume exploring",
-    hint: "Click Explore in the same controls to continue uncovering the map.",
-    button: "Resume exploration",
-    running: "Resuming exploration.",
-    done: "Your explorer is running again.",
-  },
-  hideTerminal: {
-    label: "Hide the terminal",
-    hint: "Click the terminal icon at the far-right edge to hide or reopen the log. Edge mode also supports hovering over the edge. Settings → Terminal selects the mode.",
-    button: "Hide the terminal",
-    running: "Hiding the terminal.",
-    done: "Terminal hidden. You can reopen it any time.",
-  },
+const copy: Record<"pressExplore" | "clickDark", StepCopy> = {
   pressExplore: {
     label: "Press Move on the bottom-left explorer",
     hint: "With nothing selected, press Move on the explorer at the bottom left.",
@@ -85,19 +47,6 @@ function FogIntro() {
 }
 
 function openFog(ui: GameUIManager, step: StepId): void {
-  if (step === "deselect") {
-    const planet = sourcePlanet(ui);
-    if (planet) ui.setSelectedPlanet(planet);
-    return;
-  }
-  if (step === "pauseExplorer") {
-    ui.startExplore();
-    return;
-  }
-  if (step === "hideTerminal") {
-    UIEmitter.getInstance().emit(UIEmitterEvent.SetTerminalVisible, true);
-    return;
-  }
   if (step !== "clickDark") return;
   guideFogTarget(ui).reset();
   ui.getModalManager().setCursorState(CursorState.TargetingExplorer);
@@ -107,33 +56,6 @@ function watchFog(hooks: WatchHooks): () => void {
   const { ui, stepId, finish } = hooks;
   const modal = ui.getModalManager();
 
-  if (stepId === "deselect") {
-    let ready = false;
-    const sub = ui.selectedPlanetId$.subscribe((id) => {
-      if (ready && !id) finish();
-    });
-    ready = true;
-    return () => sub.unsubscribe();
-  }
-  const emitter = UIEmitter.getInstance();
-  if (stepId === "pauseExplorer" || stepId === "resumeExplorer") {
-    const changed = (mining: boolean) => {
-      if (mining === (stepId === "resumeExplorer")) finish();
-    };
-    emitter.on(UIEmitterEvent.ExplorerChanged, changed);
-    return () => {
-      emitter.removeListener(UIEmitterEvent.ExplorerChanged, changed);
-    };
-  }
-  if (stepId === "hideTerminal") {
-    const changed = (visible: boolean) => {
-      if (!visible) finish();
-    };
-    emitter.on(UIEmitterEvent.TerminalVisibilityChanged, changed);
-    return () => {
-      emitter.removeListener(UIEmitterEvent.TerminalVisibilityChanged, changed);
-    };
-  }
   if (stepId === "pressExplore") {
     const onCursor = (state: CursorState) => {
       if (state === CursorState.TargetingExplorer) finish();
@@ -184,22 +106,6 @@ function watchFog(hooks: WatchHooks): () => void {
 
 async function assistFog(hooks: AssistHooks): Promise<void> {
   const { ui, stepId } = hooks;
-  if (stepId === "deselect") {
-    ui.setSelectedPlanet(undefined);
-    return;
-  }
-  if (stepId === "pauseExplorer") {
-    ui.stopExplore();
-    return;
-  }
-  if (stepId === "resumeExplorer") {
-    ui.startExplore();
-    return;
-  }
-  if (stepId === "hideTerminal") {
-    UIEmitter.getInstance().emit(UIEmitterEvent.SetTerminalVisible, false);
-    return;
-  }
   if (stepId === "pressExplore") {
     ui.getModalManager().setCursorState(CursorState.TargetingExplorer);
     return;

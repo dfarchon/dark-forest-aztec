@@ -1,8 +1,8 @@
 import React from "react";
 
 import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
-import type { GuidePage } from "./BoothGuidePane";
 import { chapterSteps } from "./guideChapters";
+import type { GuidePage } from "./guideTypes";
 
 function ReviewIntro() {
   return (
