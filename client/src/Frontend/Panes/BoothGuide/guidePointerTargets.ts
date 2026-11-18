@@ -1,3 +1,6 @@
+import type { DarkForestSlider } from "@dfpunk/ui";
+
+import { planetPanel } from "./guideElements";
 import type { GuidePoint, GuidePointerPose } from "./guidePointerMotion";
 
 function visibleControl(
@@ -85,13 +88,10 @@ export function guidePlanetControlPoint(
   name: string,
   planetId: string
 ): GuidePoint | null {
-  return guideControlPoint(
-    name,
-    document.querySelector(`[data-guide-send-planet="${planetId}"]`)
-  );
+  return guideControlPoint(name, planetPanel(planetId));
 }
 
-/** Uses the actual range input geometry, including Lit's open shadow root. */
+/** Use the slider's public geometry API, never its private shadow DOM. */
 export function guideSliderPose(
   name: string,
   value: number,
@@ -100,21 +100,10 @@ export function guideSliderPose(
   const marker = visibleControl(name);
   if (!marker || !Number.isFinite(value) || !Number.isFinite(destination))
     return { kind: "hide" };
-  // Spectrum's native range input sits inside its small thumb. The controls
-  // element describes the full travel, without the host's label/number field.
-  const trackRect = marker.shadowRoot
-    ?.querySelector("#controls")
-    ?.getBoundingClientRect();
-  const input =
-    marker.shadowRoot?.querySelector('input[type="range"]') ??
-    marker.querySelector('input[type="range"]');
-  const inputRect = input?.getBoundingClientRect();
-  const rect =
-    trackRect && trackRect.width >= 24 && trackRect.height >= 2
-      ? trackRect
-      : inputRect && inputRect.width >= 24 && inputRect.height >= 2
-        ? inputRect
-        : marker.getBoundingClientRect();
+  const slider = marker as HTMLElement &
+    Partial<Pick<DarkForestSlider, "getSliderGeometry">>;
+  if (!slider.getSliderGeometry) return { kind: "hide" };
+  const { bounds: rect, inset, handleY: y } = slider.getSliderGeometry();
   if (
     rect.width < 24 ||
     rect.height < 2 ||
@@ -124,14 +113,6 @@ export function guideSliderPose(
     rect.top > window.innerHeight
   )
     return { kind: "hide" };
-  const inset = rect === trackRect ? 0 : 10;
-  const handleRect = marker.shadowRoot
-    ?.querySelector(".handle")
-    ?.getBoundingClientRect();
-  const y =
-    handleRect && handleRect.width > 1 && handleRect.height > 1
-      ? handleRect.top + handleRect.height / 2
-      : rect.top + rect.height / 2;
   const at = (v: number) => ({
     x:
       rect.left +

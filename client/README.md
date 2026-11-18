@@ -30,6 +30,27 @@ The chapters cover the map and zoom, sending energy, moving ships, exploring
 fog, explorer/terminal controls, and scoring/account safety. Guide components
 live in `src/Frontend/Panes/BoothGuide`.
 
+## Guide structure and review order
+
+- `BoothGuidePane` only composes the guide. `GuidePanel`, `GuideOverlay`,
+  `GuideIntro`, and `guidePanelStyles` render its existing layout and hints.
+- `useGuideController` owns step progression, assisted actions and cancellation;
+  `useGuideWindow` owns dragging and window events. `guideTypes` defines their
+  shared contracts, and `guidePages` registers the six independent chapters.
+- Chapters use `guidePlanets`, `guideWorld`, `guideEnergy`, `guideDeselect` and
+  the existing send helpers. They never import another chapter or the main panel.
+- `guideElements` and `guidePointerTargets` own DOM targeting. Slider guidance
+  reads `DarkForestSlider.getSliderGeometry()`; only the slider component knows
+  its internal Spectrum markup. This read-only API does not change slider input.
+- `guideArchitecture.test.ts` guards runtime import cycles and these boundaries.
+  Review chapter behavior separately from view changes and shared game adapters.
+
+The normal game still shares `MoveRequest` with assisted sends. Changes to that
+module require checking ordinary energy, silver, ship and abandon requests as
+well as immediate tutorial progression and delayed submission failures.
+
+## Guide interactions
+
 Mouse-related assisted actions demonstrate the gesture before performing it.
 Energy assistance drags the actual local slider. The virtual cursor itself
 never synthesizes DOM clicks. Manual and assisted sends share the same pending

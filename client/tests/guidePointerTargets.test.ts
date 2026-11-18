@@ -17,7 +17,7 @@ function rect(left: number, top: number, width: number, height: number) {
   };
 }
 
-test("the real Spectrum slider follows its controls and thumb instead of the tiny native input", () => {
+test("slider guidance uses the public track geometry and ignores disabled controls", () => {
   const globals = globalThis as unknown as Record<string, unknown>;
   const saved = Object.fromEntries(
     ["HTMLElement", "document", "window"].map((k) => [
@@ -34,16 +34,9 @@ test("the real Spectrum slider follows its controls and thumb instead of the tin
     getBoundingClientRect() {
       return this.bounds;
     }
-    shadowRoot = {
-      querySelector: (selector: string) => ({
-        getBoundingClientRect: () =>
-          selector === "#controls"
-            ? rect(112, 230, 276, 24)
-            : selector === ".handle"
-              ? rect(132, 234, 16, 16)
-              : rect(139, 240, 1, 1),
-      }),
-    };
+    getSliderGeometry() {
+      return { bounds: rect(112, 230, 276, 24), inset: 0, handleY: 242 };
+    }
   }
   try {
     const hidden = new Element();
