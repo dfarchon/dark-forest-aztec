@@ -10,14 +10,18 @@ import { weiToEth } from "../../Backend/Utils/Utils";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
+import { Icon, IconType } from "../Components/Icons";
 import { TextInput } from "../Components/Input";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
 import { CoordsPane } from "../Panes/CoordsPane";
+import { scoreboardRank } from "../Panes/Scoreboard/scoreboard";
+import { useScoreboard } from "../Panes/Scoreboard/useScoreboard";
 import { TooltipTrigger } from "../Panes/Tooltip";
 import dfstyles from "../Styles/dfstyles";
 import { usePlayer, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
 import { useEmitterSubscribe, useEmitterValue } from "../Utils/EmitterHooks";
+import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 import { ModalToggleButton } from "./ModalIcon";
 import { NetworkHealth } from "./NetworkHealth";
 import { Paused } from "./Paused";
@@ -162,6 +166,26 @@ const Numbers = styled.div`
   display: inline-block;
 `;
 
+const ScoreReadout = styled.button`
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+
+  &:hover {
+    color: ${dfstyles.colors.dfpink};
+  }
+
+  &:focus-visible {
+    outline: 1px solid ${dfstyles.colors.dfpink};
+    outline-offset: 2px;
+  }
+`;
+
 function BoardPlacement({ account }: { account: EthAddress | undefined }) {
   const uiManager = useUIManager();
   const player = usePlayer(uiManager, account);
@@ -184,6 +208,31 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
   }
 
   return <Numbers>{content}</Numbers>;
+}
+
+function ScoreboardStatus() {
+  const ui = useUIManager();
+  const { rows, loading, error } = useScoreboard();
+  const rank = scoreboardRank(rows, ui.getAccount());
+  return (
+    <ScoreReadout
+      type="button"
+      aria-label="Open scoreboard"
+      title="View the full scoreboard"
+      onClick={(event) => {
+        event.stopPropagation();
+        UIEmitter.getInstance().emit(UIEmitterEvent.OpenScoreboard);
+      }}
+    >
+      <Icon type={IconType.Leaderboard} style={{ marginRight: 4 }} />
+      scoreboard{" "}
+      {error
+        ? "unavailable"
+        : loading
+          ? "…"
+          : `${rank === undefined ? "—" : `#${rank}`} / ${rows.length.toLocaleString()}`}
+    </ScoreReadout>
+  );
 }
 
 function SpaceJunk({ account }: { account: EthAddress | undefined }) {
@@ -350,6 +399,9 @@ export function TopBar({
           <AccountAddress />
         </TooltipTrigger>
       </AddressLine>
+      <PlateRow>
+        <ScoreboardStatus />
+      </PlateRow>
       <PlateRow>
         <TooltipTrigger
           name={TooltipName.Empty}

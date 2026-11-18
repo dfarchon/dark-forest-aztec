@@ -26,6 +26,8 @@ export const enum UIEmitterEvent {
   SendCancelled = "SendCancelled",
   SendCompleted = "SendCompleted",
 
+  OpenScoreboard = "OpenScoreboard",
+
   DepositArtifact = "DepositArtifact",
   DepositToPlanet = "DepositToPlanet",
 
