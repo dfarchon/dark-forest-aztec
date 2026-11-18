@@ -28,6 +28,7 @@
     "@aztec-labs/foundation": "6.0.0",
     "@aztec-labs/noir-contracts.js": "6.0.0",
     "@aztec-labs/simulator": "6.0.0",
+    "@aztec-labs/sqlite3mc-wasm": "6.0.0",
     "@aztec-labs/wallets": "6.0.0",
     "@dfpunk/constants": "workspace:*",
     "@dfpunk/contracts": "workspace:*",
