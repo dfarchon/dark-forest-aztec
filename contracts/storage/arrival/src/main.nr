@@ -100,29 +100,6 @@ pub contract ArrivalStorage {
         }
     }
 
-    /// Re-emit ArrivalUpdate logs from packed storage for the given ids.
-    /// Used after hash verification so a missed indexer log can heal without
-    /// rewriting roots. No-ops for zero / uninitialized ids.
-    #[external("public")]
-    fn reemit_batch(ids: [Field; 20], count: u32) {
-        self.internal.assert_authorized();
-        assert(count <= 20, "count exceeds batch size");
-        let block_number = self.context.block_number();
-        for i in 0..20 {
-            if (i as u32) < count {
-                let id = ids[i];
-                if (id != 0) & (self.storage.state_roots.at(id).read() != 0) {
-                    let state =
-                        arrival_encoding::unpack(id, self.storage.stored_arrivals.at(id).read());
-                    let (_, log) = ArrivalUpdate::encode_update(id, block_number, state);
-                    unsafe {
-                        aztec::oracle::avm::emit_public_log(log.as_vector());
-                    }
-                }
-            }
-        }
-    }
-
     /// Atomically increment the event ID counter and return the new value.
     /// Used by move_public to allocate unique IDs for arrivals/events
     /// without touching the World state hash.

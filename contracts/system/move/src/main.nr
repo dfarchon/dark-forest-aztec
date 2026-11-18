@@ -603,6 +603,10 @@ contract Move {
             arrival_type = ArrivalType::Wormhole;
         }
 
+        // move_public clears this artifact's location. The arrival batch must not
+        // write that same id, or it would replace the cleared location.
+        let mut burned_artifact_id: Field = 0;
+
         // _checkPhotoid: if the source planet has an active PhotoidCannon whose
         // activation delay has elapsed, apply a temporary speed/range boost and
         // deactivate it. Only applies to non-spaceship moves.
@@ -615,6 +619,7 @@ contract Move {
                 );
 
             if is_photoid {
+                burned_artifact_id = source_activated_artifact_id;
                 let r = source_activated_artifact.rarity as u32;
                 let range_boosts: [u128; 6] = [100, 200, 200, 200, 200, 200];
                 let speed_boosts: [u128; 6] = [100, 500, 1000, 1500, 2000, 2500];
@@ -768,38 +773,98 @@ contract Move {
 
         // Stamp last_updated only on rows whose other fields changed. An unchanged
         // row keeps its stored hash, and freshness still accepts the older stamp.
-        let source_events_dirty = new_source_planet_events_state != source_planet_events_state;
-        let source_artifacts_dirty =
+        let source_events_changed = new_source_planet_events_state != source_planet_events_state;
+        let source_artifacts_changed =
             new_source_planet_artifacts_state != source_planet_artifacts_state;
-        let target_artifacts_dirty =
+        let target_artifacts_changed =
             new_target_planet_artifacts_state != target_planet_artifacts_state;
 
         new_source_planet.last_updated = timestamp;
-        if source_events_dirty {
+        if source_events_changed {
             new_source_planet_events_state.last_updated = timestamp;
         }
-        if source_artifacts_dirty {
+        if source_artifacts_changed {
             new_source_planet_artifacts_state.last_updated = timestamp;
         }
+
+        // A landing changes planet_id or voyage_id. Anything still in transit keeps
+        // its stored location hash. The moved artifact and a burned photoid are
+        // written later by move_public, so their arrival slots are not written here.
+        let mut source_arrival_location_writes: [bool; 20] = [false; 20];
         for i in 0..20 {
             if i < original_source_arrivals_count & (source_arrivals[i].carried_artifact_id != 0) {
-                new_source_arrival_artifact_locations[i].last_updated = timestamp;
+                let location_changed = (
+                    new_source_arrival_artifact_locations[i].planet_id
+                        != source_arrival_artifact_locations[i].planet_id
+                )
+                    | (
+                        new_source_arrival_artifact_locations[i].voyage_id
+                            != source_arrival_artifact_locations[i].voyage_id
+                    );
+                if location_changed {
+                    new_source_arrival_artifact_locations[i].last_updated = timestamp;
+                    source_arrival_location_writes[i] = true;
+                }
             }
         }
 
         new_target_planet.last_updated = timestamp;
         new_target_planet_events_state.last_updated = timestamp;
-        if target_artifacts_dirty {
+        if target_artifacts_changed {
             new_target_planet_artifacts_state.last_updated = timestamp;
         }
+
+        let mut target_arrival_location_writes: [bool; 20] = [false; 20];
         for i in 0..20 {
             if i < original_target_arrivals_count & (target_arrivals[i].carried_artifact_id != 0) {
-                new_target_arrival_artifact_locations[i].last_updated = timestamp;
+                let location_changed = (
+                    new_target_arrival_artifact_locations[i].planet_id
+                        != target_arrival_artifact_locations[i].planet_id
+                )
+                    | (
+                        new_target_arrival_artifact_locations[i].voyage_id
+                            != target_arrival_artifact_locations[i].voyage_id
+                    );
+                if location_changed {
+                    new_target_arrival_artifact_locations[i].last_updated = timestamp;
+                    target_arrival_location_writes[i] = true;
+                }
             }
         }
 
         // A read-only activated artifact (wormhole, unfired photoid) keeps its
         // last_updated. The photoid-fire branch above already stamps the burned one.
+
+        // Authenticate arrival inputs before move_public writes a voyage location
+        // for an artifact that just landed. Empty queues are not enqueued.
+        if original_source_arrivals_count > 0 {
+            self.enqueue_self.verify_and_write_arrival_locations(
+                original_source_arrivals_count,
+                source_arrival_ids,
+                source_arrival_hashes,
+                source_arrival_artifact_ids,
+                source_arrival_artifact_hashes,
+                source_arrival_artifact_location_hashes,
+                new_source_arrival_artifact_locations,
+                source_arrival_location_writes,
+                moved_artifact_id,
+                burned_artifact_id,
+            );
+        }
+        if original_target_arrivals_count > 0 {
+            self.enqueue_self.verify_and_write_arrival_locations(
+                original_target_arrivals_count,
+                target_arrival_ids,
+                target_arrival_hashes,
+                target_arrival_artifact_ids,
+                target_arrival_artifact_hashes,
+                target_arrival_artifact_location_hashes,
+                new_target_arrival_artifact_locations,
+                target_arrival_location_writes,
+                moved_artifact_id,
+                burned_artifact_id,
+            );
+        }
 
         // Pass hashes and computed results to public for verification and storage
         self.enqueue_self.move_public(
@@ -834,37 +899,15 @@ contract Move {
             new_source_activated_artifact_location,
         );
 
-        // Unchanged rows and empty arrival queues are not enqueued at all.
-        if source_events_dirty {
+        // Unchanged event and artifact rows are not enqueued.
+        if source_events_changed {
             self.enqueue_self.write_planet_events(source_loc, new_source_planet_events_state);
         }
-        if source_artifacts_dirty {
+        if source_artifacts_changed {
             self.enqueue_self.write_planet_artifacts(source_loc, new_source_planet_artifacts_state);
         }
-        if target_artifacts_dirty {
+        if target_artifacts_changed {
             self.enqueue_self.write_planet_artifacts(target_loc, new_target_planet_artifacts_state);
-        }
-        if original_source_arrivals_count > 0 {
-            self.enqueue_self.verify_and_write_arrival_locations(
-                original_source_arrivals_count,
-                source_arrival_ids,
-                source_arrival_hashes,
-                source_arrival_artifact_ids,
-                source_arrival_artifact_hashes,
-                source_arrival_artifact_location_hashes,
-                new_source_arrival_artifact_locations,
-            );
-        }
-        if original_target_arrivals_count > 0 {
-            self.enqueue_self.verify_and_write_arrival_locations(
-                original_target_arrivals_count,
-                target_arrival_ids,
-                target_arrival_hashes,
-                target_arrival_artifact_ids,
-                target_arrival_artifact_hashes,
-                target_arrival_artifact_location_hashes,
-                new_target_arrival_artifact_locations,
-            );
         }
     }
 
@@ -1084,7 +1127,10 @@ contract Move {
         self.call(planet_artifacts_storage.set(location, state));
     }
 
-    /// Authenticate a non-empty arrival batch, then store its artifact locations.
+    /// Authenticate a non-empty arrival batch, then store locations that landed and stay.
+    /// Runs before move_public. Slots in `location_writes` are the ones whose planet or
+    /// voyage changed. `skip_artifact_id_0` and `skip_artifact_id_1` are written later
+    /// with their final location; id 0 means that skip slot is unused.
     #[external("public")]
     #[only_self]
     fn verify_and_write_arrival_locations(
@@ -1095,6 +1141,9 @@ contract Move {
         artifact_hashes: [Field; 20],
         artifact_location_hashes: [Field; 20],
         artifact_locations: [ArtifactLocation; 20],
+        location_writes: [bool; 20],
+        skip_artifact_id_0: Field,
+        skip_artifact_id_1: Field,
     ) {
         let arrivals_storage = ArrivalStorage::at(self.storage.arrivals_storage_address.read());
         let artifact_storage = ArtifactStorage::at(self.storage.artifact_storage_address.read());
@@ -1117,10 +1166,19 @@ contract Move {
             )),
             "Artifact location hash mismatch",
         );
-        // Re-emit ArrivalUpdate logs so indexers heal any missed create logs.
-        self.call(arrivals_storage.reemit_batch(arrival_ids, count));
+
+        let mut write_ids = artifact_ids;
+        for i in 0..20 {
+            if i < count {
+                let skipped = ((skip_artifact_id_0 != 0) & (artifact_ids[i] == skip_artifact_id_0))
+                    | ((skip_artifact_id_1 != 0) & (artifact_ids[i] == skip_artifact_id_1));
+                if (!location_writes[i]) | skipped {
+                    write_ids[i] = 0;
+                }
+            }
+        }
         self.call(artifact_location_storage.set_arrival_locations_max20(
-            artifact_ids,
+            write_ids,
             artifact_locations,
             count,
         ));

@@ -443,14 +443,14 @@ contract Core {
 
         // Stamp last_updated only on rows whose other fields changed. An unchanged
         // row keeps its stored hash, and freshness still accepts the older stamp.
-        let events_dirty = new_planet_events_state != planet_events_state;
-        let artifacts_dirty = new_planet_artifacts_state != planet_artifacts_state;
+        let events_changed = new_planet_events_state != planet_events_state;
+        let artifacts_changed = new_planet_artifacts_state != planet_artifacts_state;
 
         new_planet.last_updated = timestamp;
-        if events_dirty {
+        if events_changed {
             new_planet_events_state.last_updated = timestamp;
         }
-        if artifacts_dirty {
+        if artifacts_changed {
             new_planet_artifacts_state.last_updated = timestamp;
         }
         for i in 0..20 {
@@ -475,10 +475,10 @@ contract Core {
         );
 
         // Unchanged rows and empty arrival queues are not enqueued at all.
-        if events_dirty {
+        if events_changed {
             self.enqueue_self.write_planet_events(location, new_planet_events_state);
         }
-        if artifacts_dirty {
+        if artifacts_changed {
             self.enqueue_self.write_planet_artifacts(location, new_planet_artifacts_state);
         }
         if original_arrivals_count > 0 {
@@ -636,14 +636,14 @@ contract Core {
         new_player.score += score;
 
         // Stamp last_updated only on rows whose other fields changed.
-        let events_dirty = new_planet_events_state != planet_events_state;
-        let artifacts_dirty = new_planet_artifacts_state != planet_artifacts_state;
+        let events_changed = new_planet_events_state != planet_events_state;
+        let artifacts_changed = new_planet_artifacts_state != planet_artifacts_state;
 
         new_planet.last_updated = timestamp;
-        if events_dirty {
+        if events_changed {
             new_planet_events_state.last_updated = timestamp;
         }
-        if artifacts_dirty {
+        if artifacts_changed {
             new_planet_artifacts_state.last_updated = timestamp;
         }
         for i in 0..20 {
@@ -667,10 +667,10 @@ contract Core {
             new_player,
         );
 
-        if events_dirty {
+        if events_changed {
             self.enqueue_self.write_planet_events(location, new_planet_events_state);
         }
-        if artifacts_dirty {
+        if artifacts_changed {
             self.enqueue_self.write_planet_artifacts(location, new_planet_artifacts_state);
         }
         if original_arrivals_count > 0 {
@@ -1208,8 +1208,6 @@ contract Core {
             )),
             "Artifact location hash mismatch",
         );
-        // Re-emit ArrivalUpdate logs so indexers heal any missed create logs.
-        self.call(arrival_storage.reemit_batch(arrival_ids, count));
         self.call(artifact_location_storage.set_arrival_locations_max20(
             artifact_ids,
             artifact_locations,
@@ -1232,7 +1230,9 @@ contract Core {
 
         let mut new_planet = planet_state;
         new_planet.hat_level = planet_state.hat_level + 1;
-        new_planet.last_updated = timestamp;
+        // A hat does not settle the planet. Bumping last_updated without a lazy
+        // update would drop accrued growth and make later settlement of already-due
+        // arrivals underflow (update_to_time < last_updated), permanently bricking the planet.
 
         self.enqueue_self.buy_hat_public(
             planet_id,
@@ -1270,11 +1270,18 @@ contract Core {
     }
 
     /// Owner transfers planet ownership to another address.
+    /// Due arrivals are settled against the current owner first. Voyages that have
+    /// not arrived stay queued and later resolve against the new owner.
     #[external("private")]
     fn transfer_planet(
         planet_id: Field,
         timestamp: u64,
         planet_state: Planet,
+        planet_artifacts_state: PlanetArtifacts,
+        planet_events_state: PlanetEvents,
+        arrivals: [Arrival; 20],
+        arrival_artifacts: [Artifact; 20],
+        arrival_artifact_locations: [ArtifactLocation; 20],
         new_owner: AztecAddress,
         world: World,
     ) {
@@ -1283,25 +1290,99 @@ contract Core {
         assert(planet_state != Planet::zero(), "Planet is not initialized");
         assert(planet_state.owner == sender, "Only owner can transfer planet");
         assert(!planet_state.destroyed, "Planet is destroyed");
+        // is_home_planet stays set after capture. Transferring it strands
+        // give_spaceships, which requires both the current owner and home_planet_id.
+        assert(!planet_state.is_home_planet, "Cannot transfer a home planet");
         assert(new_owner != AztecAddress::zero(), "Cannot transfer to zero address");
         assert(new_owner != sender, "Cannot transfer to self");
-        assert(timestamp >= planet_state.last_updated, "Timestamp must be >= planet last_updated");
+        assert_planet_timestamp_freshness(
+            timestamp,
+            planet_state,
+            planet_artifacts_state,
+            planet_events_state,
+            arrivals,
+            arrival_artifacts,
+            arrival_artifact_locations,
+        );
 
-        let planet_state_hash = compute_planet_state_hash(planet_state);
+        let (_, planet_state_hash, planet_artifacts_state_hash, planet_events_state_hash, arrival_ids, arrival_hashes, arrival_artifact_ids, arrival_artifact_hashes, arrival_artifact_location_hashes, original_arrivals_count) = compute_planet_hashes(
+            planet_id,
+            planet_state,
+            planet_artifacts_state,
+            planet_events_state,
+            arrivals,
+            arrival_artifacts,
+            arrival_artifact_locations,
+        );
         let world_hash = compute_world_hash(world);
 
-        let mut new_planet = planet_state;
+        let refreshed_states = refresh_planet_v1(
+            timestamp,
+            planet_id,
+            planet_state,
+            planet_events_state,
+            arrivals,
+            arrival_artifacts,
+            arrival_artifact_locations,
+            planet_artifacts_state,
+        );
+
+        let mut new_planet = refreshed_states.0;
+        let mut new_planet_events_state = refreshed_states.1;
+        let mut new_planet_artifacts_state = refreshed_states.2;
+        let mut new_arrival_artifact_locations = refreshed_states.3;
+
+        // A due arrival may have conquered the planet. Only the post-settlement owner can transfer.
+        assert(new_planet.owner == sender, "Only owner can transfer planet");
         new_planet.owner = new_owner;
+
+        // Stamp last_updated only on rows whose other fields changed. An unchanged
+        // row keeps its stored hash, and freshness still accepts the older stamp.
+        // The planet row's last_updated comes from refresh_planet_v1's lazy update.
+        let events_changed = new_planet_events_state != planet_events_state;
+        let artifacts_changed = new_planet_artifacts_state != planet_artifacts_state;
+
         new_planet.last_updated = timestamp;
+        if events_changed {
+            new_planet_events_state.last_updated = timestamp;
+        }
+        if artifacts_changed {
+            new_planet_artifacts_state.last_updated = timestamp;
+        }
+        for i in 0..20 {
+            if i < original_arrivals_count & (arrivals[i].carried_artifact_id != 0) {
+                new_arrival_artifact_locations[i].last_updated = timestamp;
+            }
+        }
 
         self.enqueue_self.transfer_planet_public(
             planet_id,
             sender,
             timestamp,
             planet_state_hash,
+            planet_artifacts_state_hash,
+            planet_events_state_hash,
             world_hash,
             new_planet,
         );
+
+        if events_changed {
+            self.enqueue_self.write_planet_events(planet_id, new_planet_events_state);
+        }
+        if artifacts_changed {
+            self.enqueue_self.write_planet_artifacts(planet_id, new_planet_artifacts_state);
+        }
+        if original_arrivals_count > 0 {
+            self.enqueue_self.verify_and_write_arrival_locations(
+                original_arrivals_count,
+                arrival_ids,
+                arrival_hashes,
+                arrival_artifact_ids,
+                arrival_artifact_hashes,
+                arrival_artifact_location_hashes,
+                new_arrival_artifact_locations,
+            );
+        }
     }
 
     #[external("public")]
@@ -1311,21 +1392,36 @@ contract Core {
         sender: AztecAddress,
         timestamp: u64,
         planet_state_hash: Field,
+        planet_artifacts_state_hash: Field,
+        planet_events_state_hash: Field,
         world_hash: Field,
         new_planet: Planet,
     ) {
         let actual_timestamp = self.context.timestamp();
         assert_public_timestamp(timestamp, actual_timestamp);
 
-        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
         let world_storage = WorldStorage::at(self.storage.world_storage_address.read());
+        let planet_storage = PlanetStorage::at(self.storage.planet_storage_address.read());
+        let planet_artifacts_storage =
+            PlanetArtifactsStorage::at(self.storage.planet_artifacts_storage_address.read());
+        let planet_events_storage =
+            PlanetEventsStorage::at(self.storage.planet_events_storage_address.read());
 
         assert(
             self.view(planet_storage.verify_hash(planet_id, planet_state_hash)),
             "Planet state hash mismatch",
         );
+        assert(
+            self.view(planet_artifacts_storage.verify_hash(planet_id, planet_artifacts_state_hash)),
+            "Planet artifacts state hash mismatch",
+        );
+        assert(
+            self.view(planet_events_storage.verify_hash(planet_id, planet_events_state_hash)),
+            "Planet events state hash mismatch",
+        );
         assert(self.view(world_storage.verify_hash(0, world_hash)), "World state hash mismatch");
-        // Sender must still own the preimage; new_planet.owner is the recipient.
+        // Private settlement requires sender to still own the planet before writing
+        // new_planet.owner as the recipient. This only rejects a transfer to sender.
         assert(sender != new_planet.owner, "Transfer owner mismatch");
         assert(new_planet.owner != AztecAddress::zero(), "Cannot transfer to zero address");
         self.call(planet_storage.set(planet_id, new_planet));

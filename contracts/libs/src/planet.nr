@@ -286,24 +286,24 @@ pub fn validate_upgrade_planet(
 
 /// Noir port of Solidity `LibPlanet.getRefreshedPlanet`.
 /// artifacts[i] corresponds to arrivals[i].carried_artifact_id (aligned with arrivals).
+///
+/// Fastpath: with an empty arrival queue nothing can land, so only the lazy
+/// growth update is needed (skips the 20x20 pending-event scan).
 pub fn get_refreshed_planet(
     location_id: Field,
     timestamp: u64,
-    mut planet: Planet,
+    planet: Planet,
     planet_events: PlanetEvents,
     arrivals: [Arrival; 20],
     artifacts: [Artifact; 20],
     planet_artifacts_state: PlanetArtifacts,
 ) -> (Planet, PlanetEvents, PlanetArtifacts) {
-    let res = apply_pending_events(timestamp, planet, planet_events, arrivals, artifacts);
-
-    planet = res.0;
-    let events_to_remove = res.1;
-    let artifacts_to_add = res.2;
-
-    planet = update_planet(timestamp, planet);
-
-    (planet, events_to_remove, artifacts_to_add)
+    if planet_events.count == 0 {
+        (update_planet(timestamp, planet), PlanetEvents::zero(), PlanetArtifacts::zero())
+    } else {
+        let res = apply_pending_events(timestamp, planet, planet_events, arrivals, artifacts);
+        (update_planet(timestamp, res.0), res.1, res.2)
+    }
 }
 
 /// Noir port of Solidity `LibPlanet.applySpaceshipArrive`.
@@ -385,21 +385,15 @@ pub fn refresh_planet_v1(
 ) -> (Planet, PlanetEvents, PlanetArtifacts, [ArtifactLocation; 20]) {
     // assert(planet.is_initialized, "Planet is not initialized");
 
-    // Fastpath: with an empty arrival queue nothing can land, so only the lazy
-    // growth update is needed (skips the 20x20 pending-event scan).
-    let result = if planet_events_state.count == 0 {
-        (update_planet(timestamp, planet), PlanetEvents::zero(), PlanetArtifacts::zero())
-    } else {
-        get_refreshed_planet(
-            location_id,
-            timestamp,
-            planet,
-            planet_events_state,
-            arrivals,
-            artifacts,
-            planet_artifacts_state,
-        )
-    };
+    let result = get_refreshed_planet(
+        location_id,
+        timestamp,
+        planet,
+        planet_events_state,
+        arrivals,
+        artifacts,
+        planet_artifacts_state,
+    );
 
     planet = result.0;
     let events_to_remove = result.1;
@@ -462,20 +456,15 @@ pub fn refresh_planet_v2(
     let mut new_planet_events_state = planet_events_state;
     let mut new_planet_artifacts_state = planet_artifacts_state;
 
-    // Fastpath: see refresh_planet_v1.
-    let result = if new_planet_events_state.count == 0 {
-        (update_planet(timestamp, new_planet), PlanetEvents::zero(), PlanetArtifacts::zero())
-    } else {
-        get_refreshed_planet(
-            location_id,
-            timestamp,
-            new_planet,
-            new_planet_events_state,
-            arrivals,
-            arrival_artifacts,
-            new_planet_artifacts_state,
-        )
-    };
+    let result = get_refreshed_planet(
+        location_id,
+        timestamp,
+        new_planet,
+        new_planet_events_state,
+        arrivals,
+        arrival_artifacts,
+        new_planet_artifacts_state,
+    );
 
     new_planet = result.0;
     let events_to_remove = result.1;
