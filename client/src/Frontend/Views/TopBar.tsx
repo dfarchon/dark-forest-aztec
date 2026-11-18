@@ -177,6 +177,10 @@ const ScoreReadout = styled.button`
     color: ${dfstyles.colors.dfpink};
   }
 
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
   &:focus-visible {
     outline: 1px solid ${dfstyles.colors.dfpink};
     outline-offset: 2px;
