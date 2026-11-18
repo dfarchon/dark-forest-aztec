@@ -1,50 +1,25 @@
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import type Viewport from "../../Game/Viewport";
-import { gameCanvas } from "./guideElements";
-import type { GuidePoint } from "./guidePointerMotion";
+import { findMapPoint } from "./guideMapPoint";
 import { sourcePlanet } from "./guidePlanets";
+import type { GuidePoint } from "./guidePointerMotion";
 import type { GuidePage, StepCopy } from "./guideTypes";
-
-// Prefer the center, then sample progressively closer to the canvas edges.
-const samplePositions = [0.5, 0.25, 0.75, 0.125, 0.875, 0.04, 0.96];
 
 export function findDeselectPoint(
   ui: GameUIManager,
   viewport: Viewport,
   previous?: GuidePoint
 ): GuidePoint | undefined {
-  const canvas = gameCanvas();
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  const left = Math.max(0, rect.left);
-  const top = Math.max(0, rect.top);
-  const width = Math.min(window.innerWidth, rect.right) - left;
-  const height = Math.min(window.innerHeight, rect.bottom) - top;
-  if (width <= 0 || height <= 0) return;
-
-  const isEmpty = ({ x, y }: GuidePoint) => {
-    if (document.elementFromPoint(x, y) !== canvas) return false;
-    // Match ControllableCanvas mouse coordinates and the game's planet hit test.
-    const world = viewport.canvasToWorldCoords({
-      x: x - rect.left,
-      y: y - rect.top,
-    });
-    return (
+  return findMapPoint(
+    viewport,
+    (world) =>
       !ui.getPlanetAtPointer(world) &&
       !ui.getPlanetWithCoords({
         x: Math.round(world.x),
         y: Math.round(world.y),
-      })
-    );
-  };
-
-  if (previous && isEmpty(previous)) return previous;
-  for (const row of samplePositions) {
-    for (const column of samplePositions) {
-      const point = { x: left + width * column, y: top + height * row };
-      if (isEmpty(point)) return point;
-    }
-  }
+      }),
+    previous
+  );
 }
 
 /** Shared deselection exercise, independent of any chapter. */

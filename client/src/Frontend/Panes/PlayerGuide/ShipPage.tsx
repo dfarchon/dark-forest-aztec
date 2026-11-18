@@ -181,6 +181,16 @@ export const shipPage: GuidePage = {
       throw new Error(
         "No idle ship is available. Wait for it to arrive or skip this exercise."
       );
+    if (stepId === "selectShipPlanet" || stepId === "moveShip") {
+      const expected = stepId === "moveShip" ? move.to : move.from;
+      if (
+        ui.getPlanetWithCoords(hooks.mapTarget)?.locationId !==
+        expected.locationId
+      )
+        throw new Error(
+          "The ship target changed. Try the demonstration again."
+        );
+    }
     if (stepId === "selectShipPlanet") {
       ui.setSelectedPlanet(move.from);
       finish();

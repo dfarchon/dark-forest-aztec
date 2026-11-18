@@ -1,4 +1,4 @@
-import { Setting } from "@dfpunk/types";
+import { Setting, type WorldCoords } from "@dfpunk/types";
 import { useEffect, useRef, useState } from "react";
 
 import Viewport from "../../Game/Viewport";
@@ -16,15 +16,17 @@ import {
   type TaskId,
 } from "./guideChapters";
 import { findDeselectPoint } from "./guideDeselect";
-import { moveGuideFrame } from "./guideEnergy";
+import { moveGuideFrame, moveLessonPlanet } from "./guideEnergy";
+import { revealGuidePlanet } from "./guideMapPoint";
 import { STEPS, TASK_PAGES } from "./guidePages";
-import { clearLocalControls } from "./guidePlanets";
+import { clearLocalControls, sourcePlanet } from "./guidePlanets";
 import { GuidePointerSequence } from "./guidePointerSequence";
 import { guideShip, guideShipLesson } from "./guideShip";
 import { terminalGuide } from "./guideTerminal";
 import { type DockPhase, PAGE_HOLD_MS, type ViewFrame } from "./guideTypes";
 import {
   coordsFrame,
+  findOnScreenDarkPatch,
   homeRestFrame,
   minerAlreadyFramed,
   minerCenterFrame,
@@ -283,7 +285,12 @@ export function useGuideController(onComplete: () => void) {
     };
   }, [entry, stepId, page, uiManager, assistGate]);
 
-  const executeAssist = (generation: number, step: StepId, task: TaskId) => {
+  const executeAssist = (
+    generation: number,
+    step: StepId,
+    task: TaskId,
+    mapTarget?: WorldCoords
+  ) => {
     if (entryRef.current !== generation || phaseRef.current === "done") return;
     setAssistId(null);
     phaseRef.current = "running";
@@ -310,6 +317,7 @@ export function useGuideController(onComplete: () => void) {
         await TASK_PAGES[task].assist({
           ui: uiManager,
           stepId: step,
+          mapTarget,
           finish: () => finishRef.current(),
           isDone: () => phaseRef.current === "done",
           isCurrent: () => entryRef.current === generation,
@@ -332,6 +340,14 @@ export function useGuideController(onComplete: () => void) {
     })();
   };
 
+  const lessonPlanet = () => {
+    if (stepId === "selectPlanet") return sourcePlanet(uiManager);
+    if (stepId === "selectShipPlanet" || stepId === "moveShip") {
+      const move = guideShipLesson(uiManager);
+      return stepId === "moveShip" ? move?.to : move?.from;
+    }
+    if (stepId) return moveLessonPlanet(uiManager, stepId);
+  };
   const runAssist = () => {
     if (!stepId || !isTask(page) || phaseRef.current !== "waiting") return;
     if (
@@ -340,6 +356,17 @@ export function useGuideController(onComplete: () => void) {
       !guideShipLesson(uiManager)
     ) {
       open("ships", "deselect");
+      return;
+    }
+    const planet = lessonPlanet();
+    if (planet && !revealGuidePlanet(uiManager, planet)) {
+      setNotice("Move a window aside to reveal the map, then try again.");
+      return;
+    }
+    if (stepId === "clickDark" && !findOnScreenDarkPatch(uiManager)) {
+      setNotice(
+        "No unexplored patch is visible. Move a window aside, pan the map, or zoom out, then try again."
+      );
       return;
     }
     // The assist button can still clear the selection when every map target is covered.
@@ -379,7 +406,17 @@ export function useGuideController(onComplete: () => void) {
     const timer = window.setTimeout(
       () =>
         cancel(
-          "The target is not ready. Check that its panel is open, then try again."
+          stepId &&
+            [
+              "selectPlanet",
+              "selectMovePlanet",
+              "clickNearby",
+              "selectShipPlanet",
+              "moveShip",
+              "clickDark",
+            ].includes(stepId)
+            ? "No map target is clickable. Move a window aside or pan the map, then try again."
+            : "The target is not ready. Check that its panel is open, then try again."
         ),
       10000
     );
@@ -394,7 +431,7 @@ export function useGuideController(onComplete: () => void) {
       window.removeEventListener("wheel", onInput, true);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [assistId, assistGate]);
+  }, [assistId, assistGate, stepId]);
 
   const resetToCover = () => {
     open("cover", null);
@@ -427,7 +464,7 @@ export function useGuideController(onComplete: () => void) {
       : "";
   const TaskIntro = taskPage?.Intro;
 
-  const onAssistComplete = () => {
+  const onAssistComplete = (mapTarget?: WorldCoords) => {
     if (
       !stepId ||
       !isTask(page) ||
@@ -435,10 +472,11 @@ export function useGuideController(onComplete: () => void) {
       !assistGate.complete(assistId!, entryRef.current)
     )
       return;
-    executeAssist(entryRef.current, stepId, page);
+    executeAssist(entryRef.current, stepId, page, mapTarget);
   };
 
   return {
+    lessonPlanet,
     ...panelWindow,
     page,
     stepId,

@@ -3,7 +3,7 @@ import type { LocatablePlanet } from "@dfpunk/types";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import Viewport from "../../Game/Viewport";
-import { gameCanvas, guidePanel } from "./guideElements";
+import { guidePlanetPoint } from "./guideMapPoint";
 import { pickTarget, sourcePlanet } from "./guidePlanets";
 import {
   SEND_PERCENT,
@@ -95,15 +95,17 @@ export function guideMovePlanet(
     planet,
     ...viewPlacement(planet),
   }));
-  const inner = placed.filter((item) => item.rim <= VIEW_RIM);
-  const pool = (inner.length > 0 ? inner : placed).slice();
-  pool.sort(
+  placed.sort(
     (a, b) =>
+      Number(a.rim > VIEW_RIM) - Number(b.rim > VIEW_RIM) ||
       a.center - b.center ||
       b.planet.energy - a.planet.energy ||
       a.planet.locationId.localeCompare(b.planet.locationId)
   );
-  return pool[0]?.planet;
+  return (
+    placed.find(({ rim, planet }) => rim <= 1 && guidePlanetPoint(ui, planet))
+      ?.planet ?? placed[0]?.planet
+  );
 }
 
 function planetsInSendRange(
@@ -126,49 +128,6 @@ function planetsInSendRange(
   }
 }
 
-function planetScreenSpot(
-  ui: GameUIManager,
-  planet: LocatablePlanet
-): { x: number; y: number; radius: number } | null {
-  let viewport: Viewport;
-  try {
-    viewport = Viewport.getInstance();
-  } catch {
-    return null;
-  }
-  const canvas = gameCanvas();
-  if (!canvas) return null;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return null;
-  const local = viewport.worldToCanvasCoords(planet.location.coords);
-  const scale = canvas.width > 0 ? rect.width / canvas.width : 1;
-  const rad = Math.max(ui.getRadiusOfPlanetLevel(planet.planetLevel), 1);
-  return {
-    x: rect.left + local.x * scale,
-    y:
-      rect.top +
-      local.y * (canvas.height > 0 ? rect.height / canvas.height : 1),
-    radius: Math.max(viewport.worldToCanvasDist(rad) * scale, 10),
-  };
-}
-
-function underGuidePanel(ui: GameUIManager, planet: LocatablePlanet): boolean {
-  const panel = guidePanel();
-  if (!(panel instanceof HTMLElement)) return false;
-  const panelRect = panel.getBoundingClientRect();
-  if (panelRect.width < 2 || panelRect.height < 2) return false;
-  const spot = planetScreenSpot(ui, planet);
-  if (!spot) return false;
-  const pad = 16;
-  const left = panelRect.left - pad;
-  const right = panelRect.right + pad;
-  const top = panelRect.top - pad;
-  const bottom = panelRect.bottom + pad;
-  const x = Math.max(left, Math.min(spot.x, right));
-  const y = Math.max(top, Math.min(spot.y, bottom));
-  return (spot.x - x) ** 2 + (spot.y - y) ** 2 <= spot.radius ** 2;
-}
-
 export function guideNearbyPlanet(
   ui: GameUIManager,
   from: LocatablePlanet,
@@ -178,35 +137,33 @@ export function guideNearbyPlanet(
     .map((planet) => ({ planet, ...viewPlacement(planet) }))
     .filter((item) => item.rim <= 1);
   if (onScreen.length === 0) return pickTarget(ui, from, false, percent);
-  const clear = onScreen.filter((item) => !underGuidePanel(ui, item.planet));
-  const pool = clear.length > 0 ? clear : onScreen;
-  pool.sort(
+  onScreen.sort(
     (a, b) =>
       a.center - b.center ||
       a.planet.locationId.localeCompare(b.planet.locationId)
   );
-  return pool[0].planet;
+  return (
+    onScreen.find(({ planet }) => guidePlanetPoint(ui, planet))?.planet ??
+    onScreen[0].planet
+  );
 }
 
-export function moveHaloPlanets(
+export function moveLessonPlanet(
   ui: GameUIManager,
   stepId: StepId
-): LocatablePlanet[] {
+): LocatablePlanet | undefined {
   if (stepId === "selectMovePlanet") {
-    const planet = guideMovePlanet(ui);
-    return planet ? [planet] : [];
+    return guideMovePlanet(ui);
   }
-  if (stepId !== "clickNearby") return [];
+  if (stepId !== "clickNearby") return;
   const from = selectedMovePlanet(ui);
-  if (!from) return [];
+  if (!from) return;
   const percent = ui.getForcesSending(from.locationId);
-  const reach =
-    percent !== SLIDER_ASIDE && canReachNearbyPlanet(ui, from, percent)
-      ? percent
-      : sufficientSendPercent(ui, from);
-  if (reach === undefined) return [];
-  const planet = guideNearbyPlanet(ui, from, reach);
-  return planet ? [planet] : [];
+  return guideNearbyPlanet(
+    ui,
+    from,
+    percent === SLIDER_ASIDE ? SEND_PERCENT : percent
+  );
 }
 
 export function moveGuideFrame(

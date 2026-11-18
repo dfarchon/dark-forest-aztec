@@ -6,8 +6,6 @@ import { useUIManager } from "../../Utils/AppHooks";
 import { chapterSteps } from "./guideChapters";
 import {
   canReachNearbyPlanet,
-  guideMovePlanet,
-  guideNearbyPlanet,
   moveSourcePlanet,
   sufficientSendPercent,
 } from "./guideEnergy";
@@ -125,10 +123,10 @@ function watchMove(hooks: WatchHooks): () => void {
     } else if (recovering) {
       recovering = false;
       showCoach(null);
-      if (stepId === "clickNearby") {
-        const from = moveSourcePlanet(ui);
-        if (from) armSend(ui, from);
-      }
+    }
+    if (ready && stepId === "clickNearby" && !ui.isSendingForces()) {
+      const from = moveSourcePlanet(ui);
+      if (from) armSend(ui, from);
     }
   }, 250);
   return () => {
@@ -218,8 +216,14 @@ function watchMoveAction(hooks: WatchHooks): () => void {
 async function assistMove(hooks: AssistHooks): Promise<void> {
   const { ui, stepId, finish, isCurrent } = hooks;
   if (stepId === "selectMovePlanet") {
-    const from = guideMovePlanet(ui);
-    if (!from) throw new Error("Your planet is not on the map yet.");
+    const from = ui.getPlanetWithCoords(hooks.mapTarget);
+    if (
+      !from ||
+      !isLocatable(from) ||
+      !ui.isOwnedByMe(from) ||
+      from.energy <= 1
+    )
+      throw new Error("Your planet is not on the map yet.");
     ui.setSelectedPlanet(from);
     finish();
     return;
@@ -254,8 +258,14 @@ async function assistMove(hooks: AssistHooks): Promise<void> {
   const percent = ui.getForcesSending(from.locationId);
   const sending = percent === SLIDER_ASIDE ? SEND_PERCENT : percent;
   if (sending !== percent) ui.setForcesSending(from.locationId, sending);
-  const target = guideNearbyPlanet(ui, from, sending);
-  if (!target) throw new Error("No planet in range from here.");
+  const target = ui.getPlanetWithCoords(hooks.mapTarget);
+  if (
+    !target ||
+    !isLocatable(target) ||
+    target.destroyed ||
+    target.locationId === from.locationId
+  )
+    throw new Error("No planet in range from here.");
   if (
     ui.getSelectedPlanet()?.locationId !== from.locationId ||
     !ui.isSendingForces()

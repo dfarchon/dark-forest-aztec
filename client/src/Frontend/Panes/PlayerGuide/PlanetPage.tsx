@@ -1,3 +1,4 @@
+import { isLocatable } from "@dfpunk/gamelogic";
 import React from "react";
 
 import GameUIManager from "../../../Backend/GameLogic/GameUIManager";
@@ -9,7 +10,6 @@ import {
   guideZoomInCenter,
   guideZoomOutCenter,
 } from "./guideManualZoom";
-import { sourcePlanet } from "./guidePlanets";
 import type {
   AssistHooks,
   GuidePage,
@@ -221,8 +221,9 @@ async function assistPlanet(hooks: AssistHooks): Promise<void> {
     return;
   }
   if (stepId !== "selectPlanet") return;
-  const planet = sourcePlanet(ui);
-  if (!planet) throw new Error("Your planet is not on the map yet.");
+  const planet = ui.getPlanetWithCoords(hooks.mapTarget);
+  if (!planet || !isLocatable(planet))
+    throw new Error("Your planet is not on the map yet.");
   ui.setSelectedPlanet(planet);
   ui.centerPlanet(planet);
   if (isDone()) return;

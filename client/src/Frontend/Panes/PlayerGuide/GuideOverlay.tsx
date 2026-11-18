@@ -1,10 +1,7 @@
 import React from "react";
 
-import { moveHaloPlanets } from "./guideEnergy";
 import { GuideMouse } from "./GuideMouse";
-import { sourcePlanet } from "./guidePlanets";
 import { GuideScrollWheel } from "./GuideScrollWheel";
-import { guideShipLesson } from "./guideShip";
 import { findOnScreenDarkPatch } from "./guideWorld";
 import { PlanetHalo } from "./PlanetHalo";
 import type { GuideController } from "./useGuideController";
@@ -22,6 +19,10 @@ export function GuideOverlay({ controller }: { controller: GuideController }) {
     pointerReadyEntry,
     onAssistComplete,
   } = controller;
+  const planets = () => {
+    const planet = controller.lessonPlanet();
+    return planet ? [planet] : [];
+  };
   return (
     <>
       {page === "planet" &&
@@ -33,31 +34,12 @@ export function GuideOverlay({ controller }: { controller: GuideController }) {
             direction={stepId === "zoom" ? "down" : "up"}
           />
         )}
-      {page === "planet" && stepId === "selectPlanet" && (
-        <PlanetHalo
-          ui={uiManager}
-          planets={() => {
-            const planet = sourcePlanet(uiManager);
-            return planet ? [planet] : [];
-          }}
-        />
-      )}
-      {(stepId === "selectMovePlanet" ||
+      {(stepId === "selectPlanet" ||
+        stepId === "selectMovePlanet" ||
         stepId === "clickNearby" ||
         stepId === "moveShip" ||
         stepId === "selectShipPlanet") && (
-        <PlanetHalo
-          ui={uiManager}
-          planets={() => {
-            if (stepId === "moveShip" || stepId === "selectShipPlanet") {
-              const move = guideShipLesson(uiManager);
-              return move
-                ? [stepId === "selectShipPlanet" ? move.from : move.to]
-                : [];
-            }
-            return moveHaloPlanets(uiManager, stepId);
-          }}
-        />
+        <PlanetHalo ui={uiManager} planets={planets} />
       )}
       {(phase === "waiting" || phase === "demonstrating") &&
         pointerReadyEntry === entry &&
@@ -81,27 +63,7 @@ export function GuideOverlay({ controller }: { controller: GuideController }) {
             page={page}
             stepId={stepId}
             panelRef={panelRef}
-            planets={() => {
-              if (page === "planet" && stepId === "selectPlanet") {
-                const planet = sourcePlanet(uiManager);
-                return planet ? [planet] : [];
-              }
-              if (
-                stepId === "selectMovePlanet" ||
-                stepId === "clickNearby" ||
-                stepId === "moveShip" ||
-                stepId === "selectShipPlanet"
-              ) {
-                if (stepId === "moveShip" || stepId === "selectShipPlanet") {
-                  const move = guideShipLesson(uiManager);
-                  return move
-                    ? [stepId === "selectShipPlanet" ? move.from : move.to]
-                    : [];
-                }
-                return moveHaloPlanets(uiManager, stepId);
-              }
-              return [];
-            }}
+            planets={planets}
             darkPatch={() => findOnScreenDarkPatch(uiManager)}
           />
         )}

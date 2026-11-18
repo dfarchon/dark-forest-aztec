@@ -34,6 +34,7 @@ export type WatchHooks = {
 };
 
 export type AssistHooks = {
+  mapTarget?: WorldCoords;
   ui: GameUIManager;
   stepId: StepId;
   finish: () => void;

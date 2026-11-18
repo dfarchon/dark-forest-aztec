@@ -5,8 +5,9 @@ import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import Viewport from "../../Game/Viewport";
 import type { PageId, StepId } from "./guideChapters";
 import { findDeselectPoint } from "./guideDeselect";
-import { gameCanvas, targetElement } from "./guideElements";
+import { targetElement } from "./guideElements";
 import { guideEnergyTarget } from "./guideEnergy";
+import { guidePlanetPoint, guideWorldPoint } from "./guideMapPoint";
 import { GuidePointer } from "./GuidePointer";
 import type {
   GuidePoint as Point,
@@ -23,7 +24,7 @@ import { guideShipLesson } from "./guideShip";
 import { terminalGuide } from "./guideTerminal";
 
 export type GuideMouseProps = {
-  assist?: { id: number; onComplete: () => void };
+  assist?: { id: number; onComplete: (mapTarget?: WorldCoords) => void };
   sequence: GuidePointerSequence;
   entry: number;
   ui: GameUIManager;
@@ -40,87 +41,6 @@ function tryViewport(): Viewport | undefined {
   } catch {
     return undefined;
   }
-}
-
-function canvasRect(): DOMRect | null {
-  const canvas = gameCanvas();
-  if (!canvas) return null;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return null;
-  return rect;
-}
-
-function worldToClient(world: WorldCoords): Point | null {
-  const viewport = tryViewport();
-  const canvas = gameCanvas();
-  if (!viewport || !canvas) return null;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return null;
-  const local = viewport.worldToCanvasCoords(world);
-  const scaleX = canvas.width > 0 ? rect.width / canvas.width : 1;
-  const scaleY = canvas.height > 0 ? rect.height / canvas.height : 1;
-  return { x: rect.left + local.x * scaleX, y: rect.top + local.y * scaleY };
-}
-
-function inside(rect: DOMRect, point: Point, slop = 0): boolean {
-  return (
-    point.x >= rect.left - slop &&
-    point.x <= rect.right + slop &&
-    point.y >= rect.top - slop &&
-    point.y <= rect.bottom + slop
-  );
-}
-
-function clampToRect(point: Point, rect: DOMRect, inset: number): Point {
-  return {
-    x: Math.min(rect.right - inset, Math.max(rect.left + inset, point.x)),
-    y: Math.min(rect.bottom - inset, Math.max(rect.top + inset, point.y)),
-  };
-}
-
-function planetTip(ui: GameUIManager, planet: LocatablePlanet): Point | null {
-  const viewport = tryViewport();
-  const canvas = gameCanvas();
-  const center = worldToClient(planet.location.coords);
-  if (!viewport || !canvas || !center) return null;
-  const rect = canvas.getBoundingClientRect();
-  if (!inside(rect, center, 0)) return null;
-  const rad = Math.max(ui.getRadiusOfPlanetLevel(planet.planetLevel), 1);
-  const scale = canvas.width > 0 ? rect.width / canvas.width : 1;
-  const screenRad = Math.max(viewport.worldToCanvasDist(rad) * scale, 10);
-  return clampToRect(
-    { x: center.x + screenRad * 0.7, y: center.y + screenRad * 0.7 },
-    rect,
-    8
-  );
-}
-
-function pickOnScreenPlanet(
-  planets: LocatablePlanet[],
-  nearest: boolean
-): LocatablePlanet | undefined {
-  const rect = canvasRect();
-  if (!rect) return undefined;
-  const visible = planets.filter((planet) => {
-    const point = worldToClient(planet.location.coords);
-    return point ? inside(rect, point, 0) : false;
-  });
-  if (visible.length === 0) return undefined;
-  if (!nearest || visible.length === 1) return visible[0];
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  let best = visible[0];
-  let bestD = Infinity;
-  for (const planet of visible) {
-    const point = worldToClient(planet.location.coords);
-    if (!point) continue;
-    const dist = (point.x - cx) ** 2 + (point.y - cy) ** 2;
-    if (dist < bestD) {
-      bestD = dist;
-      best = planet;
-    }
-  }
-  return best;
 }
 
 function safe<T>(fn: () => T): T | undefined {
@@ -158,14 +78,11 @@ function resolvePose(
         )
           return { kind: "hide" };
       }
-      const planets = safe(() => props.planets()) ?? [];
-      const planet = pickOnScreenPlanet(
-        planets,
-        props.stepId === "clickNearby"
-      );
-      if (!planet) return { kind: "hide" };
-      const at = planetTip(props.ui, planet);
-      return at ? { kind: "click", at } : { kind: "hide" };
+      const planet = props.planets()[0];
+      const at = planet && guidePlanetPoint(props.ui, planet);
+      return at
+        ? { kind: "click", at, mapTarget: planet.location.coords }
+        : { kind: "hide" };
     }
     case "pressSend": {
       const at = controlPoint("send");
@@ -212,10 +129,10 @@ function resolvePose(
     }
     case "clickDark": {
       if (!darkWorld) return { kind: "hide" };
-      const at = worldToClient(darkWorld);
-      const rect = canvasRect();
-      if (!at || !rect || !inside(rect, at, 0)) return { kind: "hide" };
-      return { kind: "click", at };
+      const at = guideWorldPoint(darkWorld);
+      return at
+        ? { kind: "click", at, mapTarget: darkWorld }
+        : { kind: "hide" };
     }
     default:
       return { kind: "hide" };

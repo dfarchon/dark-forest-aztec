@@ -1,3 +1,4 @@
+import type { WorldCoords } from "@dfpunk/types";
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
@@ -114,7 +115,7 @@ export type GuidePointerProps = {
   pose: () => GuidePointerPose;
   onFrame?: (frame: GuidePointerFrame) => void;
   onEndpoint?: (point: GuidePoint) => void;
-  onComplete?: () => void;
+  onComplete?: (mapTarget?: WorldCoords) => void;
 };
 
 /** Shared visual layer. It never synthesizes DOM clicks or slider input. */
@@ -138,6 +139,8 @@ export function GuidePointer(props: GuidePointerProps) {
       clockStart = 0,
       lastCycle = -1;
     let reported = false;
+    let lastPoint: GuidePoint | null = null;
+    let travelFrom: GuidePoint | null = null;
     const reset = () => {
       clockKey = "";
     };
@@ -157,15 +160,26 @@ export function GuidePointer(props: GuidePointerProps) {
       } catch {
         /* Target not ready. */
       }
-      const key = `${current.animationKey}:${pose.kind}:${pose.kind === "drag" ? (pose.thenScroll ?? "") : ""}`;
+      const mapTarget = pose.kind === "click" ? pose.mapTarget : undefined;
+      const mapKey =
+        pose.kind === "click" && mapTarget
+          ? [
+              mapTarget.x,
+              mapTarget.y,
+              Math.round(pose.at.x),
+              Math.round(pose.at.y),
+            ].join(",")
+          : "";
+      const key = `${current.animationKey}:${pose.kind}:${mapKey}:${pose.kind === "drag" ? (pose.thenScroll ?? "") : ""}`;
       if (key !== clockKey) {
+        travelFrom = mapKey ? lastPoint : null;
         clockKey = key;
         clockStart = now;
         lastCycle = -1;
       }
       const sample = sampleGuidePointer(
         pose,
-        origin,
+        travelFrom ?? origin,
         now - clockStart,
         reduced.matches
       );
@@ -177,6 +191,7 @@ export function GuidePointer(props: GuidePointerProps) {
         cursor.style.visibility = "hidden";
       } else {
         const at = sample.at;
+        lastPoint = at;
         cursor.style.visibility = "visible";
         cursor.style.opacity = String(sample.opacity);
         cursor.style.transform = `translate3d(${at.x}px, ${at.y}px, 0)`;
@@ -193,7 +208,7 @@ export function GuidePointer(props: GuidePointerProps) {
       current.onFrame?.(sample);
       if (sample.complete && !reported) {
         reported = true;
-        current.onComplete?.();
+        current.onComplete?.(mapTarget);
       }
       frame = requestAnimationFrame(tick);
     };

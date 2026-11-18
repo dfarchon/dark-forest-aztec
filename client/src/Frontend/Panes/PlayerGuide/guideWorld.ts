@@ -2,7 +2,6 @@ import { type LocatablePlanet, type WorldCoords } from "@dfpunk/types";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import Viewport from "../../Game/Viewport";
-import { gameCanvas, guidePanel } from "./guideElements";
 import {
   fogChunkCenter,
   guideFogTarget,
@@ -10,6 +9,7 @@ import {
   isGuideFogTarget,
   pickGuideFogTarget,
 } from "./guideFog";
+import { guideWorldPoint } from "./guideMapPoint";
 import { locatableHome, sourcePlanet } from "./guidePlanets";
 import { type ViewFrame } from "./guideTypes";
 const CLOSE_RADII = 28;
@@ -91,27 +91,7 @@ export function findOnScreenDarkPatch(
       !isGuideFogTarget(ui, point, view, origin)
     )
       return false;
-    const panel = guidePanel();
-    const canvas = gameCanvas();
-    if (
-      !(panel instanceof HTMLElement) ||
-      !(canvas instanceof HTMLCanvasElement)
-    )
-      return true;
-    const bounds = panel.getBoundingClientRect(),
-      rect = canvas.getBoundingClientRect();
-    const local = viewport.worldToCanvasCoords(point);
-    const x =
-      rect.left + local.x * (canvas.width > 0 ? rect.width / canvas.width : 1);
-    const y =
-      rect.top +
-      local.y * (canvas.height > 0 ? rect.height / canvas.height : 1);
-    return (
-      x < bounds.left - 20 ||
-      x > bounds.right + 20 ||
-      y < bounds.top - 20 ||
-      y > bounds.bottom + 20
-    );
+    return Boolean(guideWorldPoint(point));
   };
   return guideFogTarget(ui).resolve(
     performance.now(),

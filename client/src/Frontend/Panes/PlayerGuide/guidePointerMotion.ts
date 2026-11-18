@@ -1,7 +1,9 @@
+import type { WorldCoords } from "@dfpunk/types";
+
 export type GuidePoint = { x: number; y: number };
 export type GuidePointerPose =
   | { kind: "hide" }
-  | { kind: "click"; at: GuidePoint }
+  | { kind: "click"; at: GuidePoint; mapTarget?: WorldCoords }
   | { kind: "hover"; at: GuidePoint }
   | { kind: "scroll"; at: GuidePoint; direction: "up" | "down" }
   | {

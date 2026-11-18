@@ -16,7 +16,6 @@ import type {
   StepId,
   WatchHooks,
 } from "./guideTypes";
-import { findOnScreenDarkPatch } from "./guideWorld";
 
 const copy: Record<"pressExplore" | "clickDark", StepCopy> = {
   pressExplore: {
@@ -111,8 +110,8 @@ async function assistFog(hooks: AssistHooks): Promise<void> {
     return;
   }
   if (stepId !== "clickDark") return;
-  const coords = findOnScreenDarkPatch(ui);
-  if (!coords)
+  const coords = hooks.mapTarget;
+  if (!coords || !isGuideFogDestination(ui, coords))
     throw new Error(
       "No unexplored patch is visible. Zoom out or pan toward the edge of the explored map, then try again."
     );
