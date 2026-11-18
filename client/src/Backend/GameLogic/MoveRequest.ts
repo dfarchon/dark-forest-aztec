@@ -29,9 +29,7 @@ export async function requestMove(
     const queued = game.move(...args);
     emitter.emit(UIEmitterEvent.SendCompleted, from, to, artifact);
     const tx = await queued;
-    emitter.emit(UIEmitterEvent.MoveQueued, from);
     await tx.submittedPromise;
-    emitter.emit(UIEmitterEvent.MoveSubmitted, from, to, artifact);
   } catch (error) {
     emitter.emit(UIEmitterEvent.MoveFailed, from);
     throw error;
