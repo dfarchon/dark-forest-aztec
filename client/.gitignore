@@ -13,6 +13,3 @@ vite.config.ts.timestamp-*
 .env
 .env.*
 !.env.example
-
-# Shared, disposable exhibition credentials (generated locally)
-public/booth-accounts.json
