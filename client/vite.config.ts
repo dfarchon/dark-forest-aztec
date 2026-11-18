@@ -1,11 +1,38 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 const require = createRequire(import.meta.url);
+
+function guardLegacyAccountFile(): Plugin {
+  const filename = "booth-accounts.json";
+  let publicDir: string;
+  return {
+    name: "guard-legacy-account-file",
+    apply: "build",
+    configResolved(config) {
+      publicDir = config.publicDir;
+    },
+    buildStart() {
+      if (publicDir && existsSync(join(publicDir, filename))) {
+        this.error(
+          `Move ${filename} outside the public directory before building.`
+        );
+      }
+    },
+    writeBundle({ dir }) {
+      if (dir && existsSync(join(dir, filename))) {
+        this.error(
+          `Build output contains ${filename}. Remove it before publishing.`
+        );
+      }
+    },
+  };
+}
 
 /**
  * sqlite3mc's loader resolves `sqlite3.wasm` and `sqlite3-opfs-async-proxy.js`
@@ -50,6 +77,7 @@ export default defineConfig({
     format: "es",
   },
   plugins: [
+    guardLegacyAccountFile(),
     emitSqliteRuntimeAssets(),
     react(),
     nodePolyfills({
