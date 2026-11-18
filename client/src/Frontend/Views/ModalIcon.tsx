@@ -7,7 +7,7 @@ import { Spacer } from "../Components/CoreUI";
 import { Icon, IconType } from "../Components/Icons";
 import { MaybeShortcutButton } from "../Components/MaybeShortcutButton";
 
-export const ModalIconText = styled.span`
+const ModalIconText = styled.span`
   flex-grow: 1;
   display: flex;
   justify-content: center;

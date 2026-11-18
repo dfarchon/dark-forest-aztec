@@ -720,13 +720,13 @@ export function SettingsPane({
         </Section>
 
         <Section>
-          <SectionHeader>Restart Player Guide</SectionHeader>
+          <SectionHeader>Reset Tutorial</SectionHeader>
           <Spacer height={8} />
           <Btn
             size="stretch"
             onClick={() => TutorialManager.getInstance(uiManager).reset()}
           >
-            Restart Player Guide
+            Reset Tutorial
           </Btn>
         </Section>
 

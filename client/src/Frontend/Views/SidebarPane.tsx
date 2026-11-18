@@ -3,12 +3,8 @@ import React, { useState } from "react";
 import styled from "styled-components";
 
 import { Hook } from "../../_types/global/GlobalTypes";
-import TutorialManager from "../../Backend/GameLogic/TutorialManager";
-import { BorderlessPane, EmSpacer, Spacer } from "../Components/CoreUI";
-import { Icon, IconType } from "../Components/Icons";
-import { MaybeShortcutButton } from "../Components/MaybeShortcutButton";
+import { BorderlessPane, EmSpacer } from "../Components/CoreUI";
 import dfstyles from "../Styles/dfstyles";
-import { useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
 import {
   TOGGLE_HELP_PANE,
@@ -18,7 +14,7 @@ import {
   TOGGLE_YOUR_ARTIFACTS_PANE,
   TOGGLE_YOUR_PLANETS_DEX_PANE,
 } from "../Utils/ShortcutConstants";
-import { ModalIconText, ModalToggleButton } from "./ModalIcon";
+import { ModalToggleButton } from "./ModalIcon";
 
 export function SidebarPane({
   settingsHook,
@@ -36,7 +32,6 @@ export function SidebarPane({
   transactionLogHook: Hook<boolean>;
 }) {
   const [sidebarHovered, setSidebarHovered] = useState<boolean>(false);
-  const uiManager = useUIManager();
 
   return (
     <WindowTogglesPaneContainer
@@ -118,25 +113,6 @@ export function SidebarPane({
             shortcutKey={TOGGLE_TRANSACTIONS_PANE}
             shortcutText={sidebarHovered ? TOGGLE_TRANSACTIONS_PANE : undefined}
           />
-        </ToolButtonFrame>
-        <EmSpacer height={0.5} />
-        <ToolButtonFrame $active={false}>
-          <MaybeShortcutButton
-            size="stretch"
-            aria-label="Open player guide"
-            title="Player Guide"
-            onClick={() => TutorialManager.getInstance(uiManager).reset()}
-          >
-            <ModalIconText>
-              <Icon type={IconType.Guide} />
-              {sidebarHovered && (
-                <>
-                  <Spacer width={8} />
-                  Player Guide
-                </>
-              )}
-            </ModalIconText>
-          </MaybeShortcutButton>
         </ToolButtonFrame>
       </BorderlessPane>
     </WindowTogglesPaneContainer>
