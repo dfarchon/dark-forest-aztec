@@ -33,9 +33,7 @@ export type GuideMouseProps = {
   stepId: StepId;
   panelRef: { readonly current: HTMLElement | null };
   planets: () => LocatablePlanet[];
-  focusPlanet: () => LocatablePlanet | undefined;
   darkPatch: () => WorldCoords | undefined;
-  zoomNeedsDrag: () => boolean;
 };
 
 function tryViewport(): Viewport | undefined {
@@ -122,134 +120,6 @@ function scrollAnchor(panel: HTMLElement | null): Point | null {
   return center;
 }
 
-function nudgeOffPanel(
-  from: Point,
-  to: Point,
-  panel: HTMLElement | null,
-  rect: DOMRect
-): { from: Point; to: Point } {
-  if (!panel) return { from, to };
-  if (
-    !overlapsPanel(panel, from.x, from.y) &&
-    !overlapsPanel(panel, to.x, to.y)
-  )
-    return { from, to };
-  const panelRect = panel.getBoundingClientRect();
-  const shiftX = panelRect.right + 28 - Math.min(from.x, to.x);
-  if (shiftX > 0 && Math.max(from.x, to.x) + shiftX < rect.right - 36) {
-    return {
-      from: { x: from.x + shiftX, y: from.y },
-      to: { x: to.x + shiftX, y: to.y },
-    };
-  }
-  const shiftY = panelRect.bottom + 28 - Math.min(from.y, to.y);
-  if (shiftY > 0 && Math.max(from.y, to.y) + shiftY < rect.bottom - 36) {
-    return {
-      from: { x: from.x, y: from.y + shiftY },
-      to: { x: to.x, y: to.y + shiftY },
-    };
-  }
-  return { from, to };
-}
-
-function dragTowardMapCenter(
-  panel: HTMLElement | null
-): { from: Point; to: Point } | null {
-  const rect = canvasRect();
-  const origin = worldToClient({ x: 0, y: 0 });
-  if (!rect || !origin) return null;
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  let dx = origin.x - cx;
-  let dy = origin.y - cy;
-  if (Math.hypot(dx, dy) < 30) {
-    dx = -1;
-    dy = -0.35;
-  }
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const travel = 130;
-  const to = clampToRect(
-    { x: cx + ux * travel * 0.5, y: cy + uy * travel * 0.5 },
-    rect,
-    40
-  );
-  const from = clampToRect(
-    { x: to.x - ux * travel, y: to.y - uy * travel },
-    rect,
-    40
-  );
-  return nudgeOffPanel(from, to, panel, rect);
-}
-
-function emptyStart(
-  target: Point,
-  rect: DOMRect,
-  panel: HTMLElement | null
-): Point | null {
-  const inset = Math.min(120, rect.width * 0.18, rect.height * 0.18);
-  const xs = [
-    rect.left + inset,
-    rect.left + rect.width / 2,
-    rect.right - inset,
-  ];
-  const ys = [
-    rect.top + inset,
-    rect.top + rect.height / 2,
-    rect.bottom - inset,
-  ];
-  let bestClear: Point | null = null;
-  let bestClearD = 80 * 80;
-  let bestAny: Point | null = null;
-  let bestAnyD = -1;
-  for (const x of xs) {
-    for (const y of ys) {
-      const point = { x, y };
-      if (!inside(rect, point, 0)) continue;
-      const dist = (x - target.x) ** 2 + (y - target.y) ** 2;
-      if (dist > bestAnyD) {
-        bestAnyD = dist;
-        bestAny = point;
-      }
-      if (!overlapsPanel(panel, x, y) && dist > bestClearD) {
-        bestClearD = dist;
-        bestClear = point;
-      }
-    }
-  }
-  return bestClear ?? bestAny;
-}
-
-function dragTowardPlanet(
-  planet: LocatablePlanet,
-  panel: HTMLElement | null
-): { from: Point; to: Point } | null {
-  const rect = canvasRect();
-  const center = worldToClient(planet.location.coords);
-  if (!rect || !center) return null;
-  const from = emptyStart(center, rect, panel);
-  if (!from) return null;
-  const dx = center.x - from.x;
-  const dy = center.y - from.y;
-  const len = Math.hypot(dx, dy) || 1;
-  let travel = Math.min(150, Math.max(90, len * 0.4));
-  let to = clampToRect(
-    { x: from.x + (dx / len) * travel, y: from.y + (dy / len) * travel },
-    rect,
-    36
-  );
-  while (travel > 48 && overlapsPanel(panel, to.x, to.y)) {
-    travel -= 18;
-    to = clampToRect(
-      { x: from.x + (dx / len) * travel, y: from.y + (dy / len) * travel },
-      rect,
-      36
-    );
-  }
-  return { from, to };
-}
-
 function planetTip(ui: GameUIManager, planet: LocatablePlanet): Point | null {
   const viewport = tryViewport();
   const canvas = gameCanvas();
@@ -315,22 +185,6 @@ function resolvePose(
   )
     return { kind: "hide" };
   switch (props.stepId) {
-    case "zoom": {
-      if (safe(() => props.zoomNeedsDrag())) {
-        const drag = dragTowardMapCenter(panel);
-        return drag ? { kind: "drag", ...drag } : { kind: "hide" };
-      }
-      const at = scrollAnchor(panel);
-      return at ? { kind: "scroll", at, direction: "down" } : { kind: "hide" };
-    }
-    case "zoomIn": {
-      const planet = safe(() => props.focusPlanet());
-      if (!planet) return { kind: "hide" };
-      const drag = dragTowardPlanet(planet, panel);
-      return drag
-        ? { kind: "drag", ...drag, thenScroll: "up" }
-        : { kind: "hide" };
-    }
     case "selectPlanet":
     case "selectMovePlanet":
     case "selectShipPlanet":

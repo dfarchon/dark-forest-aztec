@@ -5,11 +5,7 @@ import { GuideMouse } from "./GuideMouse";
 import { sourcePlanet } from "./guidePlanets";
 import { GuideScrollWheel } from "./GuideScrollWheel";
 import { guideShipLesson } from "./guideShip";
-import {
-  findOnScreenDarkPatch,
-  scrolledOutFully,
-  universeOnScreen,
-} from "./guideWorld";
+import { findOnScreenDarkPatch } from "./guideWorld";
 import { PlanetHalo } from "./PlanetHalo";
 import type { GuideController } from "./useGuideController";
 export function GuideOverlay({ controller }: { controller: GuideController }) {
@@ -106,11 +102,7 @@ export function GuideOverlay({ controller }: { controller: GuideController }) {
               }
               return [];
             }}
-            focusPlanet={() => sourcePlanet(uiManager)}
             darkPatch={() => findOnScreenDarkPatch(uiManager)}
-            zoomNeedsDrag={() =>
-              !universeOnScreen(uiManager) && scrolledOutFully()
-            }
           />
         )}
     </>

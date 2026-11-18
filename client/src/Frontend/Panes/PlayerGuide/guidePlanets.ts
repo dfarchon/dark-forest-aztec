@@ -1,5 +1,5 @@
 import { isLocatable } from "@dfpunk/gamelogic";
-import { CursorState, type LocatablePlanet, type Planet } from "@dfpunk/types";
+import type { LocatablePlanet, Planet } from "@dfpunk/types";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
@@ -75,7 +75,6 @@ export function clearLocalControls(
 ): void {
   UIEmitter.getInstance().emit(UIEmitterEvent.SendCancelled);
   if (!preserveSelection) ui.setSelectedPlanet(undefined);
-  ui.getModalManager().setCursorState(CursorState.Normal);
 }
 
 export function armSend(ui: GameUIManager, planet: LocatablePlanet): void {
