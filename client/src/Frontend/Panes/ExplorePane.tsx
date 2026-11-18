@@ -184,7 +184,7 @@ export function ExplorePane() {
         name={TooltipName.MiningTarget}
       >
         <MaybeShortcutButton
-          data-booth-target="explore-move"
+          data-guide-target="explore-move"
           onClick={doTarget}
           onShortcutPressed={doTarget}
           shortcutKey={TOGGLE_TARGETTING}
@@ -202,7 +202,7 @@ export function ExplorePane() {
         name={TooltipName.MiningPause}
       >
         <MaybeShortcutButton
-          data-booth-target="explore-toggle"
+          data-guide-target="explore-toggle"
           onClick={doExplore}
           onShortcutPressed={doExplore}
           shortcutKey={TOGGLE_EXPLORE}

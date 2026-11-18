@@ -11,7 +11,6 @@ import {
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
-import { UserGuide } from "../Panes/BoothGuide/UserGuide";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
 import { HelpPane } from "../Panes/HelpPane";
@@ -20,6 +19,7 @@ import { MiniMapPane } from "../Panes/MiniMapPane";
 import { PlanetContextPane } from "../Panes/PlanetContextPane";
 import { PlanetDexPane } from "../Panes/PlanetDexPane";
 import { PlayerArtifactsPane } from "../Panes/PlayerArtifactsPane";
+import { UserGuide } from "../Panes/PlayerGuide/UserGuide";
 import { PluginLibraryPane } from "../Panes/PluginLibraryPane";
 import { PrivatePane } from "../Panes/PrivatePane";
 import { SettingsPane } from "../Panes/SettingsPane";

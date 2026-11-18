@@ -8,7 +8,7 @@ function visibleControl(
   root: ParentNode = document
 ): HTMLElement | undefined {
   return Array.from(
-    root.querySelectorAll(`[data-booth-target="${name}"]`)
+    root.querySelectorAll(`[data-guide-target="${name}"]`)
   ).find((element): element is HTMLElement => {
     if (
       !(element instanceof HTMLElement) ||

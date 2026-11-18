@@ -4,11 +4,11 @@ export function gameCanvas(): HTMLCanvasElement | null {
   return canvas instanceof HTMLCanvasElement ? canvas : null;
 }
 export function guidePanel(): HTMLElement | null {
-  return document.querySelector<HTMLElement>("[data-booth-panel]");
+  return document.querySelector<HTMLElement>("[data-guide-panel]");
 }
 export function planetPanel(planetId: string): Element | null {
   return document.querySelector(`[data-guide-send-planet="${planetId}"]`);
 }
 export function targetElement(name: string): Element | null {
-  return document.querySelector(`[data-booth-target="${name}"]`);
+  return document.querySelector(`[data-guide-target="${name}"]`);
 }

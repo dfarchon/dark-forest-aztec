@@ -88,7 +88,7 @@ export function ArtifactThumb({
 
   return (
     <StyledArtifactThumb
-      data-booth-target={
+      data-guide-target={
         onArtifactChange && isSpaceShip(artifact.artifactType) && !enemy
           ? `ship-${artifact.id}`
           : undefined

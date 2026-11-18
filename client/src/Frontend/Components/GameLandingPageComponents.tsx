@@ -2,16 +2,14 @@ import { Setting } from "@dfpunk/types";
 import React, {
   Dispatch,
   SetStateAction,
-  useEffect,
   useLayoutEffect,
-  useMemo,
+  useRef,
 } from "react";
 import styled, { css } from "styled-components";
 
 import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
 import { useSetting } from "../Utils/SettingsHooks";
-import { TerminalRevealController } from "../Utils/terminalReveal";
 import UIEmitter, { UIEmitterEvent } from "../Utils/UIEmitter";
 
 export const enum InitRenderState {
@@ -154,17 +152,6 @@ export function TerminalWrapper({
   );
 }
 
-const revealTerminalStatus = css`
-  &:hover > [data-terminal-status],
-  &:focus-within > [data-terminal-status],
-  &[data-guide-active] > [data-terminal-status] {
-    transform: translate(0, -50%);
-    border-color: ${dfstyles.colors.dfpink};
-    color: ${dfstyles.colors.dfpink};
-    background: ${dfstyles.colors.backgrounddark};
-  }
-`;
-
 const StyledTerminalToggler = styled.div<{
   initRender: InitRenderState;
 }>`
@@ -175,10 +162,10 @@ const StyledTerminalToggler = styled.div<{
   height: auto;
   width: 1.3em;
 
-  background: transparent;
+  background: ${dfstyles.colors.text};
   z-index: 1000;
 
-  color: ${dfstyles.colors.text};
+  color: ${dfstyles.colors.background};
 
   display: ${({ initRender }) =>
     initRender !== InitRenderState.NONE ? "flex" : "none"};
@@ -186,101 +173,23 @@ const StyledTerminalToggler = styled.div<{
   justify-content: center;
   align-items: center;
 
+  opacity: 0;
+
   &:hover {
-    background: rgba(255, 180, 193, 0.15);
+    opacity: 1;
     cursor: pointer;
   }
 
   &[data-guide-active] {
+    opacity: 1;
     background: ${dfstyles.colors.dfpink};
   }
 
-  ${revealTerminalStatus}
-`;
-
-const TerminalStatusBadge = styled.button<{ $open: boolean }>`
-  position: absolute;
-  right: 0;
-  top: 50%;
-  /* Leave an 8px handle visible at the viewport edge. */
-  transform: translate(24px, -50%);
-  width: 32px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-  appearance: none;
-  cursor: pointer;
-  border: 1px solid
-    ${({ $open }) =>
-      $open ? dfstyles.colors.dfpink : dfstyles.colors.borderDark};
-  border-right: 0;
-  border-radius: 6px 0 0 6px;
-  background: ${dfstyles.colors.background};
-  color: ${({ $open }) =>
-    $open ? dfstyles.colors.dfpink : dfstyles.colors.text};
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  pointer-events: auto;
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 150ms ease,
-    color 150ms ease,
-    background 150ms ease;
-
-  svg {
-    width: 24px;
-    height: 24px;
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${dfstyles.colors.dfpink};
-    outline-offset: -3px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
+  & span {
+    font-size: 1.25em;
+    transform: scaleY(2);
   }
 `;
-
-function TerminalStatusIcon({
-  open,
-  onClick,
-}: {
-  open: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <TerminalStatusBadge
-      type="button"
-      $open={open}
-      data-terminal-status
-      aria-label={open ? "Hide terminal" : "Show terminal"}
-      aria-expanded={open}
-      title={`${open ? "Hide" : "Show"} terminal`}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="1.5" y="5" width="15" height="14" rx="2" />
-        <path d="M2 9h14M5 12l2 2-2 2M10 16h3" />
-        <path d={open ? "M20 9l3 3-3 3" : "M23 9l-3 3 3 3"} />
-      </svg>
-    </TerminalStatusBadge>
-  );
-}
 
 const EdgeRevealStrip = styled.div<{
   initRender: InitRenderState;
@@ -293,47 +202,35 @@ const EdgeRevealStrip = styled.div<{
   z-index: 1000;
   display: ${({ initRender }) =>
     initRender !== InitRenderState.NONE ? "block" : "none"};
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(255, 180, 193, 0.15);
-  }
 
   &[data-guide-active] {
     background: ${dfstyles.colors.dfpink};
     box-shadow: 0 0 8px ${dfstyles.colors.dfpink};
   }
-
-  ${revealTerminalStatus}
 `;
 
 function EdgeReveal({
-  terminalEnabled,
   setTerminalEnabled,
   initRender,
 }: {
-  terminalEnabled: boolean;
   setTerminalEnabled: Dispatch<SetStateAction<boolean>>;
   initRender: InitRenderState;
 }) {
-  const reveal = useMemo(
-    () =>
-      new TerminalRevealController(() => setTerminalEnabled((open) => !open)),
-    [setTerminalEnabled]
-  );
-  useEffect(() => () => reveal.leave(), [reveal]);
+  const armed = useRef(true);
 
   return (
     <EdgeRevealStrip
-      data-booth-target="terminal-edge"
-      title={`Terminal ${terminalEnabled ? "expanded" : "collapsed"}. Hover the edge or click the icon to ${terminalEnabled ? "hide" : "show"}.`}
-      aria-label={`Terminal ${terminalEnabled ? "expanded" : "collapsed"}`}
+      data-guide-target="terminal-edge"
       initRender={initRender}
-      onMouseEnter={reveal.enter}
-      onMouseLeave={reveal.leave}
-    >
-      <TerminalStatusIcon open={terminalEnabled} onClick={reveal.click} />
-    </EdgeRevealStrip>
+      onMouseEnter={() => {
+        if (!armed.current) return;
+        armed.current = false;
+        setTerminalEnabled((open) => !open);
+      }}
+      onMouseLeave={() => {
+        armed.current = true;
+      }}
+    />
   );
 }
 
@@ -362,7 +259,6 @@ export function InGameTerminalChrome({
   }
   return (
     <EdgeReveal
-      terminalEnabled={terminalEnabled}
       setTerminalEnabled={setTerminalEnabled}
       initRender={initRender}
     />
@@ -385,15 +281,11 @@ export function TerminalToggler({
 
   return (
     <StyledTerminalToggler
-      data-booth-target="terminal-toggle"
-      title={`${terminalEnabled ? "Hide" : "Show"} terminal`}
+      data-guide-target="terminal-toggle"
       initRender={initRender}
       onClick={() => setTerminalEnabled((b: boolean): boolean => !b)}
     >
-      <TerminalStatusIcon
-        open={terminalEnabled}
-        onClick={() => setTerminalEnabled((open) => !open)}
-      />
+      <span>{terminalEnabled ? ">" : "<"}</span>
     </StyledTerminalToggler>
   );
 }

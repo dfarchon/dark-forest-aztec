@@ -16,7 +16,7 @@ import {
 import { ConfigContract } from "@dfpunk/contracts/artifacts/Config";
 import { address } from "@dfpunk/serde";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import styled from "styled-components";
 
 import GameManager, {
@@ -44,7 +44,6 @@ import {
   isProductionLike,
 } from "../../config/env";
 import { externalLinks } from "../../config/externalLinks";
-import { isGuideEntry } from "../../config/guideEntry";
 import { resolveQuickJoinAccount } from "../../config/quickJoin";
 import { makeContractsAPI } from "../../ContractsAPI/ContractsAPI";
 import { resolveExternalWalletCapabilities } from "../../Session/ExternalWallet/capabilityValidation";
@@ -67,7 +66,6 @@ import {
   WalletClosedError,
   WalletManager,
 } from "../../Session/WalletManager";
-import { canExportAccount } from "../../Session/WalletManager/accountExport";
 import { KeyStore } from "../../Session/WalletManager/KeyStore";
 import type {
   AccountRecord,
@@ -174,7 +172,6 @@ function printGameLandingDebugConfig({
 }
 
 function downloadQuickJoinAccountBackup(gameUIManager: GameUIManager): boolean {
-  if (gameUIManager.getGameManager().isExhibitionAccount()) return false;
   const credentials = gameUIManager.getAccountCredentials();
   const account = gameUIManager.getAccount();
   const homeCoordinates = gameUIManager.getGameManager().getHomeCoords();
@@ -221,7 +218,6 @@ function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
   >("idle");
 
   const downloadAccount = () => {
-    if (!canExportAccount(account)) return;
     try {
       const json = JSON.stringify(account, null, 2);
       const blob = new Blob([json], { type: "application/json" });
@@ -239,8 +235,6 @@ function DownloadAccountInfoButton({ account }: { account: AccountRecord }) {
       setDownloadState("failed");
     }
   };
-
-  if (!canExportAccount(account)) return null;
 
   return (
     <DownloadAccountInfoRow>
@@ -1031,8 +1025,6 @@ const enum TerminalPromptStep {
 
 export function GameLandingPage() {
   const { contract } = useParams<{ contract: string }>();
-  const { search } = useLocation();
-  const guideEntry = isGuideEntry(search);
   const {
     discoverWallets,
     initiateConnection,
@@ -3297,11 +3289,10 @@ export function GameLandingPage() {
 
       gameUIManager
         .getGameManager()
-        .once(GameManagerEvent.InitializedPlayer, () => {
+        .on(GameManagerEvent.InitializedPlayer, () => {
           setTimeout(() => {
             if (
               skipTerminalPromptsRef.current &&
-              !gameUIManager.getGameManager().isExhibitionAccount() &&
               !quickJoinBackupAttemptedRef.current
             ) {
               quickJoinBackupAttemptedRef.current = true;
@@ -3525,12 +3516,6 @@ export function GameLandingPage() {
       void advanceState(terminalHandle);
     }
   }, [terminalHandle, topLevelContainer, advanceState, entryMode]);
-
-  useEffect(() => {
-    if (guideEntry && entryMode === "pending") {
-      handleEntryModeSelected("quick");
-    }
-  }, [guideEntry, entryMode, handleEntryModeSelected]);
 
   const terminalOptionMode: TerminalOptionMode =
     entryMode === "standard" || entryMode === "quick" ? "buttons" : "classic";

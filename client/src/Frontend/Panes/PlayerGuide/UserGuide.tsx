@@ -1,15 +1,13 @@
 import { Setting } from "@dfpunk/types";
 import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 
 import TutorialManager, {
   TutorialManagerEvent,
   TutorialState,
 } from "../../../Backend/GameLogic/TutorialManager";
-import { clearGuideSearch, isGuideEntry } from "../../../config/guideEntry";
 import { useUIManager } from "../../Utils/AppHooks";
 import { useBooleanSetting } from "../../Utils/SettingsHooks";
-import { BoothGuidePane } from "./BoothGuidePane";
+import { PlayerGuidePane } from "./PlayerGuidePane";
 
 /** Share the existing per-account tutorial settings and reset action. */
 export function UserGuide({
@@ -20,11 +18,7 @@ export function UserGuide({
   setUniverseView: (value: boolean) => void;
 }) {
   const ui = useUIManager();
-  const { pathname, search, hash } = useLocation();
-  const navigate = useNavigate();
-  const requested = isGuideEntry(search);
-  const [newPlayer, setNewPlayer] = useBooleanSetting(ui, Setting.NewPlayer);
-  const [open, setOpen] = useBooleanSetting(ui, Setting.TutorialOpen);
+  const [open] = useBooleanSetting(ui, Setting.TutorialOpen);
   const [completed, setCompleted] = useBooleanSetting(
     ui,
     Setting.TutorialCompleted
@@ -33,17 +27,7 @@ export function UserGuide({
   const [finished, setFinished] = useState(false);
   const [session, setSession] = useState(0);
   const manager = TutorialManager.getInstance(ui);
-  const visible =
-    !closed && (requested || finished || (!completed && (newPlayer || open)));
-
-  const clearEntry = () => {
-    if (new URLSearchParams(search).has("guide")) {
-      navigate(
-        { pathname, search: clearGuideSearch(search), hash },
-        { replace: true }
-      );
-    }
-  };
+  const visible = !closed && (finished || (open && !completed));
 
   useEffect(() => {
     const reset = (state: TutorialState) => {
@@ -64,22 +48,16 @@ export function UserGuide({
 
   if (!visible) return null;
   return (
-    <BoothGuidePane
+    <PlayerGuidePane
       key={session}
       onComplete={() => {
         setFinished(true);
-        setNewPlayer(false);
-        setOpen(false);
         manager.complete();
-        clearEntry();
       }}
       onClose={() => {
         setClosed(true);
         setFinished(false);
-        setNewPlayer(false);
-        setOpen(false);
         setCompleted(true);
-        clearEntry();
       }}
     />
   );

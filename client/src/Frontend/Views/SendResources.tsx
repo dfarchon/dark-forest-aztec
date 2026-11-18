@@ -140,7 +140,7 @@ function ResourceBar({
         <ShowPercent value={value} setValue={setValue} />
       </Row>
       <Slider
-        data-booth-target={isSilver ? "silver-slider" : "energy-slider"}
+        data-guide-target={isSilver ? "silver-slider" : "energy-slider"}
         variant="filled"
         labelVisibility="none"
         min={0}
@@ -225,7 +225,7 @@ function SendRow({
     <MaybeShortcutButton
       size="stretch"
       onClick={toggleSending}
-      data-booth-target="send"
+      data-guide-target="send"
       active={sending}
       shortcutKey={TOGGLE_SEND}
       shortcutText={TOGGLE_SEND}

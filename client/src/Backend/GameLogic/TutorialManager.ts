@@ -81,7 +81,6 @@ class TutorialManager extends EventEmitter {
     };
     setBooleanSetting(config, Setting.TutorialOpen, true);
     setBooleanSetting(config, Setting.TutorialCompleted, false);
-    setBooleanSetting(config, Setting.NewPlayer, true);
     this.setTutorialState(TutorialState.None);
   }
 

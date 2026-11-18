@@ -70,7 +70,7 @@ export function GuidePanel({
       ref={panelRef}
       role="region"
       aria-label="Player guide"
-      data-booth-panel
+      data-guide-panel
       style={{
         left: position.x,
         top: position.y,

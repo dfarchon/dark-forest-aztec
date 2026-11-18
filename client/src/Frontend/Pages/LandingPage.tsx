@@ -6,7 +6,6 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 
 import { externalLinks } from "../../config/externalLinks";
-import { quickGuidePlayPath } from "../../config/guideEntry";
 import { Btn } from "../Components/Btn";
 import { ConnectionSettingsModal } from "../Components/ConnectionSettingsModal";
 import { Link, Title } from "../Components/CoreUI";
@@ -161,14 +160,6 @@ export default function LandingPage() {
                     Enter Universe
                   </Btn>
                 </PrimaryAction>
-                <SecondaryAction>
-                  <Btn
-                    size="large"
-                    onClick={() => navigate(quickGuidePlayPath(defaultAddress))}
-                  >
-                    Player Guide
-                  </Btn>
-                </SecondaryAction>
                 <SecondaryAction ref={networkSettingsRef}>
                   <Btn size="large" onClick={toggleConnectionSettings}>
                     Settings
@@ -179,7 +170,6 @@ export default function LandingPage() {
                 </Btn> */}
               </ButtonWrapper>
             </HeroFrame>
-
             <SettingsModalBoundary>
               <ConnectionSettingsModal
                 open={connectionSettingsOpen}

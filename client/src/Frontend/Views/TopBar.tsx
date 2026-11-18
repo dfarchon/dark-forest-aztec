@@ -207,7 +207,7 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
             UIEmitter.getInstance().emit(UIEmitterEvent.OpenScoringHelp);
           }}
         >
-          <span data-booth-target="score">score</span> {formattedScore}
+          <span data-guide-target="score">score</span> {formattedScore}
         </ScoreReadout>
       </TooltipTrigger>
     );

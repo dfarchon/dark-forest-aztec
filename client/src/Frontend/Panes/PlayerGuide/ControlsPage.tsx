@@ -34,7 +34,7 @@ export const controlsPage: GuidePage = {
     },
     hideTerminal: {
       label: "Hide the terminal",
-      hint: "Click the terminal icon at the far-right edge to hide or reopen the log. Edge mode also supports hovering over the edge. Settings → Terminal selects the mode.",
+      hint: "Hover over the far-right edge in Edge mode, or click the arrow in Bar mode, to hide the terminal. Settings → Terminal selects the mode.",
       button: "Hide the terminal",
       running: "Hiding the terminal.",
       done: "Terminal hidden. You can reopen it any time.",
