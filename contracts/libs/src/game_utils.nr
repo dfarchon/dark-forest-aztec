@@ -657,6 +657,33 @@ mod tests {
         in_transit.voyage_id = 9;
         assert(!is_artifact_in_inventory(in_transit));
     }
+
+    #[test]
+    fn debuff_restores_stats_without_ratcheting_or_inflation() {
+        let mut planet = ::types::storage::planet::Planet::zero();
+        planet.population_cap = 100_000;
+        planet.population_growth = 19;
+        planet.range = 99;
+        planet.speed = 75;
+        planet.defense = 15;
+
+        let mut pyramid = ::types::storage::artifact::Artifact::zero();
+        pyramid.artifact_type = ::types::storage::artifact::ArtifactType::Pyramid;
+        pyramid.rarity = ::types::storage::artifact::ArtifactRarity::Common;
+        let upgrade = super::_get_upgrade_for_artifact(pyramid);
+        assert_eq(upgrade.def_multiplier, 105);
+
+        let mut current = planet;
+        for _ in 0..20 {
+            current = super::_buff_planet(1, current, upgrade).1;
+            current = super::_debuff_planet(1, current, upgrade).1;
+        }
+        assert(current == planet);
+
+        let mut zero_planet = ::types::storage::planet::Planet::zero();
+        zero_planet = super::_debuff_planet(1, zero_planet, upgrade).1;
+        assert_eq(zero_planet.defense, 0);
+    }
 }
 
 /// Noir port of Solidity `LibGameUtils.isArtifactOnPlanet`.
@@ -748,13 +775,19 @@ pub fn _buff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) ->
     (location_id, planet)
 }
 
+fn debuff_stat(value: u128, multiplier: u128) -> u128 {
+    (value * 100 + multiplier - 1) / multiplier
+}
+
 /// Noir port of Solidity `LibGameUtils._debuffPlanet`.
+/// Rounds up so `debuff(buff(v, m), m) == v` for every multiplier `m >= 100`,
+/// preventing 0-cooldown artifacts from ratcheting low stats down toward 0.
 pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) -> (Field, Planet) {
-    planet.population_cap = (planet.population_cap * 100) / upgrade.pop_cap_multiplier;
-    planet.population_growth = (planet.population_growth * 100) / upgrade.pop_gro_multiplier;
-    planet.range = (planet.range * 100) / upgrade.range_multiplier;
-    planet.speed = (planet.speed * 100) / upgrade.speed_multiplier;
-    planet.defense = (planet.defense * 100) / upgrade.def_multiplier;
+    planet.population_cap = debuff_stat(planet.population_cap, upgrade.pop_cap_multiplier);
+    planet.population_growth = debuff_stat(planet.population_growth, upgrade.pop_gro_multiplier);
+    planet.range = debuff_stat(planet.range, upgrade.range_multiplier);
+    planet.speed = debuff_stat(planet.speed, upgrade.speed_multiplier);
+    planet.defense = debuff_stat(planet.defense, upgrade.def_multiplier);
     (location_id, planet)
 }
 
