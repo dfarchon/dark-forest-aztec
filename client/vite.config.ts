@@ -7,6 +7,47 @@ import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 const require = createRequire(import.meta.url);
 
+const NOIR_ARTIFACT_PREFIX = "\0noir-artifact:";
+
+/** Pre-loads large Noir `/artifacts/*.json` files as single `JSON.parse(...)` modules so Rollup AST memory stays within standard Node heap limits. */
+function compactNoirArtifactJson(): Plugin {
+  return {
+    name: "compact-noir-artifact-json",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!source.includes(".json")) return null;
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      if (!resolved || resolved.external) return null;
+      const clean = resolved.id.replace(/\\/g, "/").split("?")[0];
+      if (
+        clean.endsWith("-metadata.json") ||
+        !/\/artifacts\/[^/]+\.json$/.test(clean)
+      ) {
+        return null;
+      }
+      return {
+        id: `${NOIR_ARTIFACT_PREFIX}${clean}.mjs`,
+        moduleSideEffects: false,
+      };
+    },
+    load(id) {
+      if (!id.startsWith(NOIR_ARTIFACT_PREFIX) || !id.endsWith(".mjs"))
+        return null;
+      const filePath = id.slice(NOIR_ARTIFACT_PREFIX.length, -4);
+      const minified = JSON.stringify(
+        JSON.parse(readFileSync(filePath, "utf8"))
+      );
+      return {
+        code: `export default /* #__PURE__ */ JSON.parse(${JSON.stringify(minified)});`,
+        map: { mappings: "" },
+      };
+    },
+  };
+}
+
 /**
  * sqlite3mc's loader resolves `sqlite3.wasm` and `sqlite3-opfs-async-proxy.js`
  * via dynamic paths relative to the emitted worker chunk. Vite hashes the wasm
@@ -50,6 +91,7 @@ export default defineConfig({
     format: "es",
   },
   plugins: [
+    compactNoirArtifactJson(),
     emitSqliteRuntimeAssets(),
     react(),
     nodePolyfills({
@@ -80,6 +122,27 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const clean = id
+            .replace(NOIR_ARTIFACT_PREFIX, "")
+            .replace(/\.mjs$/, "")
+            .replace(/\\/g, "/")
+            .split("?")[0];
+          if (clean.endsWith("-metadata.json")) return;
+          const match = clean.match(/\/artifacts\/([^/]+)\.json$/);
+          if (!match) return;
+          if (clean.includes("/fog-sdk/")) {
+            return `fog-artifact-${match[1]}`;
+          }
+          if (clean.includes("/packages/contracts/")) {
+            return `df-artifact-${match[1]}`;
+          }
+          return `aztec-artifact-${match[1]}`;
+        },
+      },
+    },
   },
   resolve: {
     dedupe: [

@@ -13,6 +13,7 @@ import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
+import { FOG_NAME_MODAL_ID, FogNamePane } from "../Panes/FogNamePane";
 import { Guide } from "../Panes/Guide/Guide";
 import { HelpPane } from "../Panes/HelpPane";
 import { HoverPlanetPane } from "../Panes/HoverPlanetPane";
@@ -92,6 +93,9 @@ export function GameWindowLayout({
   );
   const [twitterVerifyVisible, setTwitterVerifyVisible] = useState<boolean>(
     isModalOpen(ModalName.TwitterVerify)
+  );
+  const [fogNameVisible, setFogNameVisible] = useState<boolean>(
+    isModalOpen(FOG_NAME_MODAL_ID)
   );
   const [settingsVisible, setSettingsVisible] = useState<boolean>(
     isModalOpen(ModalName.Settings)
@@ -262,6 +266,7 @@ export function GameWindowLayout({
                 twitterVerifyVisible,
                 setTwitterVerifyVisible,
               ]}
+              fogNameHook={[fogNameVisible, setFogNameVisible]}
             />
           </BorderlessPane>
         </TopBarPaneContainer>
@@ -292,6 +297,10 @@ export function GameWindowLayout({
         <TwitterVerifyPane
           visible={twitterVerifyVisible}
           onClose={() => setTwitterVerifyVisible(false)}
+        />
+        <FogNamePane
+          visible={fogNameVisible}
+          onClose={() => setFogNameVisible(false)}
         />
         <SettingsPane
           visible={settingsVisible}

@@ -2,8 +2,9 @@ import { ModalName } from "@dfpunk/types";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
+import { addressesEqual, useActiveAccount } from "../../../Session/FogName";
 import { Btn } from "../../Components/Btn";
-import { TextPreview } from "../../Components/TextPreview";
+import { AccountLabel } from "../../Components/Labels/Labels";
 import dfstyles from "../../Styles/dfstyles";
 import { useUIManager } from "../../Utils/AppHooks";
 import { ModalPane } from "../../Views/ModalPane";
@@ -20,7 +21,7 @@ export function ScoreboardPane({
   onClose: () => void;
 }) {
   const ui = useUIManager();
-  const account = ui.getAccount();
+  const account = useActiveAccount(ui);
   const { rows, loading, error, refresh } = useScoreboard(visible);
   const [page, setPage] = useState(0);
   const [locateRequest, setLocateRequest] = useState(0);
@@ -29,9 +30,7 @@ export function ScoreboardPane({
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages - 1);
   const rank = scoreboardRank(rows, account);
-  const myIndex = rows.findIndex(
-    (row) => row.address.toLowerCase() === account?.toLowerCase()
-  );
+  const myIndex = rows.findIndex((row) => addressesEqual(row.address, account));
 
   useEffect(() => {
     if (locateRequest === 0) return;
@@ -98,8 +97,7 @@ export function ScoreboardPane({
                 {rows
                   .slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
                   .map((row) => {
-                    const mine =
-                      row.address.toLowerCase() === account?.toLowerCase();
+                    const mine = addressesEqual(row.address, account);
                     return (
                       <tr
                         key={row.address}
@@ -108,10 +106,9 @@ export function ScoreboardPane({
                       >
                         <td>{row.rank === undefined ? "—" : `#${row.rank}`}</td>
                         <td>
-                          <TextPreview
-                            text={row.address}
-                            focusedWidth="240px"
-                            unFocusedWidth="180px"
+                          <AccountLabel
+                            ethAddress={row.address}
+                            width="180px"
                           />
                           {mine && <You>you</You>}
                         </td>

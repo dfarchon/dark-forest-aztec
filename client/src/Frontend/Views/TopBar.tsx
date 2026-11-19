@@ -10,10 +10,12 @@ import { weiToEth } from "../../Backend/Utils/Utils";
 
 // Stub type for when CaptureZoneGenerator is re-enabled
 type CaptureZonesGeneratedEvent = { nextChangeBlock: number };
+import { useActiveAccount, useVerifiedFogName } from "../../Session/FogName";
 import { Icon, IconType } from "../Components/Icons";
 import { TextInput } from "../Components/Input";
 import { Gold, Red, Sub, Text, White } from "../Components/Text";
 import { CoordsPane } from "../Panes/CoordsPane";
+import { FogNameButton } from "../Panes/FogNamePane";
 import { scoreboardRank } from "../Panes/Scoreboard/scoreboard";
 import { useScoreboard } from "../Panes/Scoreboard/useScoreboard";
 import { TooltipTrigger } from "../Panes/Tooltip";
@@ -74,7 +76,9 @@ const AddressLabel = styled.span`
 
 function AccountAddress() {
   const uiManager = useUIManager();
-  const account = uiManager.getAccount() || "<no account>";
+  const rawAccount = useActiveAccount(uiManager);
+  const account = rawAccount || "<no account>";
+  const verifiedName = useVerifiedFogName(uiManager, rawAccount);
   const [open, setOpen] = useState(false);
 
   return (
@@ -88,12 +92,13 @@ function AccountAddress() {
         />
       ) : (
         <AddressLabel
+          title={rawAccount}
           onClick={(event) => {
             event.stopPropagation();
             setOpen(true);
           }}
         >
-          {account}
+          {verifiedName ?? account}
         </AddressLabel>
       )}
     </AddressSlot>
@@ -223,10 +228,9 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
   return <Numbers>{content}</Numbers>;
 }
 
-function ScoreboardStatus() {
-  const ui = useUIManager();
+function ScoreboardStatus({ account }: { account: EthAddress | undefined }) {
   const { rows, loading, error } = useScoreboard();
-  const rank = scoreboardRank(rows, ui.getAccount());
+  const rank = scoreboardRank(rows, account);
   return (
     <ScoreReadout
       type="button"
@@ -374,13 +378,16 @@ function CaptureZones({
 
 export function TopBar({
   twitterVerifyHook,
+  fogNameHook,
 }: {
   twitterVerifyHook: Hook<boolean>;
+  fogNameHook?: Hook<boolean>;
 }) {
   const uiManager = useUIManager();
   const isExternalWallet = uiManager.getGameManager().isExternalWallet();
-  const player = usePlayer(uiManager);
-  const account = player.value?.address;
+  const activeAccount = useActiveAccount(uiManager);
+  const player = usePlayer(uiManager, activeAccount);
+  const account = player.value?.address ?? activeAccount;
   const twitter = player.value?.twitter;
   const balance = useEmitterValue(
     uiManager.getMyBalance$(),
@@ -411,9 +418,10 @@ export function TopBar({
         >
           <AccountAddress />
         </TooltipTrigger>
+        {fogNameHook && <FogNameButton hook={fogNameHook} />}
       </AddressLine>
       <PlateRow>
-        <ScoreboardStatus />
+        <ScoreboardStatus account={account} />
       </PlateRow>
       <PlateRow>
         <TooltipTrigger
