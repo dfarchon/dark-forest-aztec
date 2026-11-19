@@ -748,16 +748,6 @@ pub fn _buff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) ->
     (location_id, planet)
 }
 
-/// Noir port of Solidity `LibGameUtils._debuffPlanet`.
-pub fn _debuff_planet(location_id: Field, mut planet: Planet, upgrade: Upgrade) -> (Field, Planet) {
-    planet.population_cap = (planet.population_cap * 100) / upgrade.pop_cap_multiplier;
-    planet.population_growth = (planet.population_growth * 100) / upgrade.pop_gro_multiplier;
-    planet.range = (planet.range * 100) / upgrade.range_multiplier;
-    planet.speed = (planet.speed * 100) / upgrade.speed_multiplier;
-    planet.defense = (planet.defense * 100) / upgrade.def_multiplier;
-    (location_id, planet)
-}
-
 /// Noir port of Solidity `LibGameUtils.checkPlanetDOS`.
 ///
 /// planets support a limited amount of incoming arrivals

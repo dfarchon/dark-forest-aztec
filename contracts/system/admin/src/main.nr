@@ -156,7 +156,7 @@ contract Admin {
         assert(planet_valid, "Planet state is not valid");
         // The zero planet hashes to 0 and so passes `verify` on an empty slot.
         assert(planet_state != Planet::zero(), "Planet is not initialized");
-        assert(planet_state.defense != 0, "Planet defense is 0");
+        assert(planet_state.effective_defense() != 0, "Planet defense is 0");
 
         let mut new_planet_state = planet_state;
         new_planet_state.owner = new_owner;

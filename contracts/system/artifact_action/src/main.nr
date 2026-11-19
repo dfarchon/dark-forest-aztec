@@ -43,8 +43,8 @@ contract ArtifactAction {
         compute_planet_state_hash, compute_world_hash,
     };
     use ::libs::game_utils::{
-        _buff_planet, _debuff_planet, _get_biome, _get_upgrade_for_artifact,
-        _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
+        _get_biome, _get_upgrade_for_artifact, _put_artifact_on_planet,
+        _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
         artifact_rarity_from_planet_level, assert_no_other_artifact_activated, is_activated,
         is_artifact_on_planet,
     };
@@ -335,8 +335,6 @@ contract ArtifactAction {
             );
 
             // An already-active artifact must not be activated again.
-            // Otherwise _buff_planet runs twice but deactivation only debuffs once,
-            // leaving a permanent stat boost (several types have a 0h cooldown).
             assert(!is_activated(new_artifact), "artifact is already activated");
 
             // At most one active artifact per planet (checked against the
@@ -405,9 +403,10 @@ contract ArtifactAction {
                 new_planet_artifacts_state = take_artifact_off_planet_result.3;
             }
 
-            let upgrade = _get_upgrade_for_artifact(new_artifact);
-            let buff_planet_result = _buff_planet(location_id, new_planet, upgrade);
-            new_planet = buff_planet_result.1;
+            if !should_deactivate_and_burn {
+                new_planet.artifact_multipliers =
+                    _get_upgrade_for_artifact(new_artifact).artifact_multipliers();
+            }
         }
 
         new_artifact.activations += 1;
@@ -743,9 +742,7 @@ contract ArtifactAction {
             new_planet_artifacts_state = take_artifact_off_planet_result.3;
         }
 
-        let upgrade = _get_upgrade_for_artifact(new_artifact);
-        let debuff_planet_result = _debuff_planet(location_id, new_planet, upgrade);
-        new_planet = debuff_planet_result.1;
+        new_planet.artifact_multipliers = 0;
 
         new_planet.last_updated = timestamp;
         new_planet_events_state.last_updated = timestamp;

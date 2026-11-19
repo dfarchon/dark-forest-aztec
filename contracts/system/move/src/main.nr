@@ -40,8 +40,8 @@ contract Move {
     use ::types::system_storage_addresses::MoveSystemStorageAddresses;
 
     use ::libs::game_utils::{
-        _buff_planet, _debuff_planet, _get_upgrade_for_artifact, _take_artifact_off_planet,
-        is_activated, is_artifact_on_planet, revert_if_bad_snark_perlin_flags,
+        _buff_planet, _take_artifact_off_planet, is_activated, is_artifact_on_planet,
+        revert_if_bad_snark_perlin_flags,
     };
 
     use ::libs::batch_utils::{
@@ -657,12 +657,7 @@ contract Move {
                     last_updated: timestamp,
                 };
 
-                // Reverse the permanent artifact buff (defense reduction) that was
-                // applied when the PhotoidCannon was activated on this planet.
-                let permanent_upgrade = _get_upgrade_for_artifact(new_source_activated_artifact);
-                let debuff_result =
-                    _debuff_planet(args.old_loc, new_source_planet, permanent_upgrade);
-                new_source_planet = debuff_result.1;
+                new_source_planet.artifact_multipliers = 0;
             }
         }
 
@@ -678,8 +673,12 @@ contract Move {
 
         // todo: how to handle SPACE_JUNK_ENABLE = true
 
-        let buff_planet_result = _buff_planet(args.old_loc, new_source_planet, temporary_upgrade);
-        new_source_planet = buff_planet_result.1;
+        // Project effective stats only for this voyage. The stored base survives rounding.
+        let base_source_planet = new_source_planet;
+        new_source_planet.range = base_source_planet.effective_range();
+        new_source_planet.speed = base_source_planet.effective_speed();
+        new_source_planet.population_cap = base_source_planet.effective_population_cap();
+        new_source_planet = _buff_planet(args.old_loc, new_source_planet, temporary_upgrade).1;
 
         let mut travel_time: u64 = (effectiveDistTimesHundred / new_source_planet.speed) as u64;
 
@@ -759,9 +758,7 @@ contract Move {
             new_moved_artifact_location.last_updated = timestamp;
         }
 
-        let debuff_planet_result =
-            _debuff_planet(args.old_loc, new_source_planet, temporary_upgrade);
-        new_source_planet = debuff_planet_result.1;
+        new_source_planet = base_source_planet;
 
         new_source_planet.silver -= silver_moved;
         new_source_planet.population = remaining_origin_planet_population;

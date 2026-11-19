@@ -48,13 +48,15 @@ pub fn update_silver(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Updates population using linear growth formula (similar to silver growth).
 /// Uses simple linear growth instead of exponential formula from ABDKMath64x64.
 pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
+    let population_cap = planet.effective_population_cap();
+    let population_growth = planet.effective_population_growth();
     if (planet.owner != AztecAddress::zero()) & !planet.destroyed {
         // Use linear growth formula similar to silver growth
-        if planet.population < planet.population_cap {
+        if planet.population < population_cap {
             let time_diff: u128 = (update_to_time - planet.last_updated) as u128;
-            let population_gained: u128 = planet.population_growth * time_diff;
+            let population_gained: u128 = population_growth * time_diff;
 
-            let max_population: u128 = planet.population_cap;
+            let max_population: u128 = population_cap;
             let current_population: u128 = planet.population + population_gained;
             let new_population: u128 = if max_population < current_population {
                 max_population
@@ -72,8 +74,8 @@ pub fn update_population(update_to_time: u64, mut planet: Planet) -> Planet {
     }
     // unowned or destroyed planets don't increase in population
 
-    if is_population_capped(planet) & (planet.population > planet.population_cap) {
-        planet.population = planet.population_cap;
+    if is_population_capped(planet) & (planet.population > population_cap) {
+        planet.population = population_cap;
     }
 
     planet
@@ -106,6 +108,8 @@ pub fn update_planet(update_to_time: u64, mut planet: Planet) -> Planet {
 /// Assumes that the planet last updated time is equal to the arrival time trigger.
 /// Returns (carried_artifact_id, updated_planet).
 pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
+    let defense = planet.effective_defense();
+    let population_cap = planet.effective_population_cap();
     // ArrivalType enum values: Unknown=0, Normal=1, Photoid=2, Wormhole=3
     let wormhole_type: u8 = ArrivalType::Wormhole;
 
@@ -120,7 +124,7 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
             if arrival.arrival_type == wormhole_type {
                 // if this is a wormhole arrival to a planet that isn't owned by the initiator of
                 // the move, then don't move any energy
-            } else if planet.defense == 0 {
+            } else if defense == 0 {
                 // Dividing by defense is undefined at 0. Attacker power is unbounded,
                 // so any positive fleet captures and the garrison adds nothing.
                 planet.owner = if arrival.player == AztecAddress::zero() {
@@ -132,11 +136,10 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
                 if planet.population == 0 {
                     planet.population = 1;
                 }
-            } else if planet.population > (arrival.pop_arriving * 100) / planet.defense {
+            } else if planet.population > (arrival.pop_arriving * 100) / defense {
                 // handles if the planet population is bigger than the arriving ships
                 // simply reduce the amount of planet population by the arriving ships
-                planet.population =
-                    planet.population - ((arrival.pop_arriving * 100) / planet.defense);
+                planet.population = planet.population - ((arrival.pop_arriving * 100) / defense);
             } else {
                 // handles if the planet population is equal or less the arriving ships
                 // reduce the arriving ships amount with the current population and the
@@ -147,8 +150,7 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
                 } else {
                     arrival.player
                 };
-                planet.population =
-                    arrival.pop_arriving - ((planet.population * planet.defense) / 100);
+                planet.population = arrival.pop_arriving - ((planet.population * defense) / 100);
                 if planet.population == 0 {
                     // make sure pop is never 0
                     planet.population = 1;
@@ -157,8 +159,8 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
         }
     }
 
-    if is_population_capped(planet) & (planet.population > planet.population_cap) {
-        planet.population = planet.population_cap;
+    if is_population_capped(planet) & (planet.population > population_cap) {
+        planet.population = population_cap;
     }
 
     let max_silver: u128 = planet.silver_cap;

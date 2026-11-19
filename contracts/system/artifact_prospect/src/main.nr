@@ -41,8 +41,8 @@ contract ArtifactProspect {
         compute_owned_artifact_hashes, compute_planet_hashes, compute_world_hash,
     };
     use ::libs::game_utils::{
-        _buff_planet, _debuff_planet, _default_planet, _get_biome, _get_upgrade_for_artifact,
-        _put_artifact_on_planet, _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
+        _default_planet, _get_biome, _get_upgrade_for_artifact, _put_artifact_on_planet,
+        _random_artifact_type_and_level_bonus, _take_artifact_off_planet,
         artifact_rarity_from_planet_level, is_artifact_on_planet,
     };
     use ::libs::planet::{refresh_planet_v1, refresh_planet_v2};
