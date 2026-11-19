@@ -35,6 +35,7 @@ export function SidebarPane({
 
   return (
     <WindowTogglesPaneContainer
+      data-guide-obstacle
       onMouseEnter={() => setSidebarHovered(true)}
       onMouseLeave={() => setSidebarHovered(false)}
     >

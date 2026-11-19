@@ -4,7 +4,6 @@ import { biomeName, isLocatable, isSpaceShip } from "@dfpunk/gamelogic";
 import { planetHasBonus } from "@dfpunk/hexgen";
 // import { EthConnection } from '@dfpunk/network';
 import { GameGLManager, Renderer } from "@dfpunk/renderer";
-import { isUnconfirmedMoveTx } from "@dfpunk/serde";
 import type { WorldConfig } from "@dfpunk/types";
 import {
   Artifact,
@@ -62,6 +61,7 @@ import { MiningPattern } from "../Miner/MiningPatterns";
 import { coordsEqual } from "../Utils/Coordinates";
 import GameManager, { GameManagerEvent } from "./GameManager";
 import { GameObjects } from "./GameObjects";
+import { moveEnergy, requestMove } from "./MoveRequest";
 import { PluginManager } from "./PluginManager";
 import TutorialManager, { TutorialState } from "./TutorialManager";
 import { ViewportEntities } from "./ViewportEntities";
@@ -573,15 +573,12 @@ class GameUIManager extends EventEmitter {
         const from = mouseDownPlanet;
         const to = mouseUpOverPlanet;
 
-        // TODO: the following code block needs to be in a Planet class
-        let effectiveEnergy = from.energy;
-        for (const unconfirmedMove of from.transactions?.getTransactions(
-          isUnconfirmedMoveTx
-        ) ?? []) {
-          effectiveEnergy -= unconfirmedMove.intent.forces;
-        }
-        const effPercent = Math.min(this.getForcesSending(from.locationId), 98);
-        let forces = Math.floor((effectiveEnergy * effPercent) / 100);
+        const {
+          effectiveEnergy,
+          effPercent,
+          forces: requestedForces,
+        } = moveEnergy(from, this.getForcesSending(from.locationId));
+        let forces = requestedForces;
 
         // make it so you leave one force behind
         if (this.isSendingShip(mouseDownPlanet.locationId)) {
@@ -634,7 +631,8 @@ class GameUIManager extends EventEmitter {
           );
           const artifact = this.getArtifactSending(from.locationId);
 
-          this.gameManager.move(
+          void requestMove(
+            this.gameManager,
             from.locationId,
             to.locationId,
             forces,
@@ -643,11 +641,14 @@ class GameUIManager extends EventEmitter {
             abandoning,
             false,
             from.lastUpdated
-          );
+          ).catch((error: unknown) => {
+            console.error("[UI Move] Submission failed", error);
+          });
           tutorialManager.acceptInput(TutorialState.SendFleet);
+        } else {
+          uiEmitter.emit(UIEmitterEvent.MoveFailed, from.locationId);
+          uiEmitter.emit(UIEmitterEvent.SendCompleted, from.locationId);
         }
-
-        uiEmitter.emit(UIEmitterEvent.SendCompleted, from.locationId);
       }
 
       this.isChoosingTargetPlanet = false;
@@ -668,11 +669,19 @@ class GameUIManager extends EventEmitter {
 
   public startExplore() {
     this.gameManager.startExplore();
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.ExplorerChanged,
+      this.isMining()
+    );
   }
 
   public stopExplore() {
     this.gameManager.stopExplore();
     this.minerLocation = undefined;
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.ExplorerChanged,
+      this.isMining()
+    );
   }
 
   public toggleExplore() {
@@ -1172,9 +1181,12 @@ class GameUIManager extends EventEmitter {
     return isSpaceShip(this.artifactSending[planetId]?.artifactType);
   }
 
+  public getPlanetAtPointer(coords: WorldCoords): LocatablePlanet | undefined {
+    return this.viewportEntities.getNearestVisiblePlanet(coords);
+  }
+
   public isOverOwnPlanet(coords: WorldCoords): Planet | undefined {
-    const res = this.viewportEntities.getNearestVisiblePlanet(coords);
-    const planet: LocatablePlanet | undefined = res;
+    const planet = this.getPlanetAtPointer(coords);
     if (!planet) {
       return undefined;
     }
@@ -1492,7 +1504,7 @@ class GameUIManager extends EventEmitter {
     this.mouseHoveringOverCoords = coords;
     let hoveringPlanet = undefined;
 
-    const res = this.viewportEntities.getNearestVisiblePlanet(coords);
+    const res = this.getPlanetAtPointer(coords);
     if (res) {
       hoveringPlanet = res;
       this.mouseHoveringOverCoords = res.location.coords;

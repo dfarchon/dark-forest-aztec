@@ -180,6 +180,10 @@ const ScoreReadout = styled.button`
     color: ${dfstyles.colors.dfpink};
   }
 
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
   &:focus-visible {
     outline: 1px solid ${dfstyles.colors.dfpink};
     outline-offset: 2px;
@@ -202,7 +206,16 @@ function BoardPlacement({ account }: { account: EthAddress | undefined }) {
 
     content = (
       <TooltipTrigger name={TooltipName.Score}>
-        score {formattedScore}
+        <ScoreReadout
+          type="button"
+          aria-label="Open scoring help"
+          onClick={(event) => {
+            event.stopPropagation();
+            UIEmitter.getInstance().emit(UIEmitterEvent.OpenScoringHelp);
+          }}
+        >
+          <span data-guide-target="score">score</span> {formattedScore}
+        </ScoreReadout>
       </TooltipTrigger>
     );
   }
@@ -389,7 +402,7 @@ export function TopBar({
   const captureZones = null;
 
   return (
-    <TopBarContainer>
+    <TopBarContainer data-guide-obstacle>
       <AddressLine>
         <TooltipTrigger
           name={TooltipName.Empty}

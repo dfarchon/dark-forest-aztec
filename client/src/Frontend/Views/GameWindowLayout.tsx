@@ -13,10 +13,10 @@ import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
+import { Guide } from "../Panes/Guide/Guide";
 import { HelpPane } from "../Panes/HelpPane";
 import { HoverPlanetPane } from "../Panes/HoverPlanetPane";
 import { MiniMapPane } from "../Panes/MiniMapPane";
-import OnboardingPane from "../Panes/OnboardingPane";
 import { PlanetContextPane } from "../Panes/PlanetContextPane";
 import { PlanetDexPane } from "../Panes/PlanetDexPane";
 import { PlayerArtifactsPane } from "../Panes/PlayerArtifactsPane";
@@ -25,7 +25,6 @@ import { PrivatePane } from "../Panes/PrivatePane";
 import { ScoreboardPane } from "../Panes/Scoreboard/ScoreboardPane";
 import { SettingsPane } from "../Panes/SettingsPane";
 import { TransactionLogPane } from "../Panes/TransactionLogPane";
-import { TutorialPane } from "../Panes/TutorialPane";
 import { TwitterVerifyPane } from "../Panes/TwitterVerifyPane";
 import { useSelectedPlanet, useUIManager } from "../Utils/AppHooks";
 import { DFZIndex } from "../Utils/constants";
@@ -81,6 +80,7 @@ export function GameWindowLayout({
     isModalOpen(ModalName.Leaderboard)
   );
   const [scoreboardRequest, setScoreboardRequest] = useState(0);
+  const [scoringHelpRequest, setScoringHelpRequest] = useState(0);
   const [transactionLogVisible, setTransactionLogVisible] = useState<boolean>(
     isModalOpen(ModalName.TransactionLog)
   );
@@ -113,12 +113,6 @@ export function GameWindowLayout({
     setModalsContainer(node);
   }, []);
 
-  const [onboardingVisible, setOnboardingVisible] = useBooleanSetting(
-    uiManager,
-    Setting.NewPlayer
-  );
-  const tutorialHook = useBooleanSetting(uiManager, Setting.TutorialOpen);
-
   const selected = useSelectedPlanet(uiManager).value;
   const [selectedPlanetVisible, setSelectedPlanetVisible] =
     useState<boolean>(!!selected);
@@ -144,6 +138,38 @@ export function GameWindowLayout({
       emitter.removeListener(UIEmitterEvent.OpenScoreboard, open);
     };
   }, [modalManager]);
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    const openScoring = () => {
+      // Reopen minimized Help at its saved position and focus Scoring on every click.
+      modalManager.setModalState(ModalName.Help, "open");
+      setScoringHelpRequest((request) => request + 1);
+      setHelpVisible(true);
+    };
+    emitter.on(UIEmitterEvent.OpenScoringHelp, openScoring);
+    return () => {
+      emitter.removeListener(UIEmitterEvent.OpenScoringHelp, openScoring);
+    };
+  }, [modalManager]);
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    emitter.on(UIEmitterEvent.SetTerminalVisible, setTerminalVisible);
+    return () => {
+      emitter.removeListener(
+        UIEmitterEvent.SetTerminalVisible,
+        setTerminalVisible
+      );
+    };
+  }, [setTerminalVisible]);
+
+  useEffect(() => {
+    UIEmitter.getInstance().emit(
+      UIEmitterEvent.TerminalVisibilityChanged,
+      terminalVisible
+    );
+  }, [terminalVisible]);
 
   const account = uiManager.getAccount();
   const terminalSettingLoaded = React.useRef(false);
@@ -175,6 +201,17 @@ export function GameWindowLayout({
     () => setSelectedPlanetVisible(!!selected),
     [selected, setSelectedPlanetVisible]
   );
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    // Selecting the same planet again must also reopen a dismissed panel.
+    const reopen = () =>
+      setSelectedPlanetVisible(!!uiManager.getSelectedPlanet());
+    emitter.on(UIEmitterEvent.GamePlanetSelected, reopen);
+    return () => {
+      emitter.removeListener(UIEmitterEvent.GamePlanetSelected, reopen);
+    };
+  }, [uiManager]);
 
   const [disableDefaultShortcuts] = useBooleanSetting(
     uiManager,
@@ -238,7 +275,12 @@ export function GameWindowLayout({
           visible={scoreboardVisible}
           onClose={() => setScoreboardVisible(false)}
         />
-        <HelpPane visible={helpVisible} onClose={() => setHelpVisible(false)} />
+        <HelpPane
+          key={`help-${scoringHelpRequest}`}
+          visible={helpVisible}
+          scoringRequest={scoringHelpRequest}
+          onClose={() => setHelpVisible(false)}
+        />
         <TransactionLogPane
           visible={transactionLogVisible}
           onClose={() => setTransactionLogVisible(false)}
@@ -283,11 +325,6 @@ export function GameWindowLayout({
         )}
       </div>
 
-      <OnboardingPane
-        visible={onboardingVisible}
-        onClose={() => setOnboardingVisible(false)}
-      />
-
       <MainWindow>
         <CanvasContainer>
           <CanvasWrapper>
@@ -295,10 +332,10 @@ export function GameWindowLayout({
           </CanvasWrapper>
 
           <UniverseFade $hidden={!showEdgeChrome}>
-            <TopRightStack>
+            <TopRightStack data-guide-obstacle>
               <NotificationsPane />
             </TopRightStack>
-            <BottomRightStack $open={minimapOpen}>
+            <BottomRightStack $open={minimapOpen} data-guide-obstacle>
               <MiniMapPane />
             </BottomRightStack>
             <MiniMapEdge
@@ -311,7 +348,6 @@ export function GameWindowLayout({
                 minimapEdgeArmed.current = true;
               }}
             />
-            <TutorialPane tutorialHook={tutorialHook} />
           </UniverseFade>
           <HiddenEdgeChrome $hidden={!showEdgeChrome}>
             <BottomLeftDock>
@@ -335,6 +371,11 @@ export function GameWindowLayout({
 
           <HoverPlanetPane />
           <ArtifactHoverPane />
+
+          <Guide
+            universeView={universeView}
+            setUniverseView={setUniverseView}
+          />
         </CanvasContainer>
       </MainWindow>
     </WindowWrapper>

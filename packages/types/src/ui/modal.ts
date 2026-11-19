@@ -53,6 +53,7 @@ export const ModalManagerEvent = {
 export type TooltipName = Abstract<string, "TooltipName">;
 
 export const TooltipName = {
+  ShipResourcesDisabled: "ShipResourcesDisabled" as TooltipName,
   SilverGrowth: "SilverGrowth" as TooltipName,
   SilverCap: "SilverCap" as TooltipName,
   Silver: "Silver" as TooltipName,
