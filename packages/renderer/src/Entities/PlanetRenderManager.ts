@@ -474,6 +474,8 @@ export class PlanetRenderManager implements PlanetRenderManagerType {
       let atkString = "";
       if (uiManager.isOwnedByMe(planet) || planet.energy === 0) {
         atkString += ` (+${formatNumber(myAtk)})`;
+      } else if (toPlanet.defense === 0) {
+        atkString += ` (capture, +${formatNumber(myAtk)})`;
       } else {
         atkString += ` (-${formatNumber((myAtk * 100) / toPlanet.defense)})`;
       }
