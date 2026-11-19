@@ -170,6 +170,11 @@ function applyArrival(planet: MutablePlanet, arrival: ArrivalLike): void {
   } else {
     if (arrival.arrival_type === ArrivalTypeWormhole) {
       // no energy change
+    } else if (planet.defense === 0n) {
+      planet.owner =
+        arrival.player === ZERO_ADDRESS ? planet.owner : arrival.player;
+      planet.population = arrival.pop_arriving;
+      if (planet.population === 0n) planet.population = 1n;
     } else if (
       planet.population >
       (arrival.pop_arriving * 100n) / planet.defense

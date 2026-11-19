@@ -117,13 +117,21 @@ pub fn apply_arrival(mut planet: Planet, arrival: Arrival) -> (Field, Planet) {
             // simply increase the population if so
             planet.population = planet.population + arrival.pop_arriving;
         } else {
-            assert(
-                (arrival.arrival_type == wormhole_type) | (planet.defense != 0),
-                "Planet defense is 0",
-            );
             if arrival.arrival_type == wormhole_type {
                 // if this is a wormhole arrival to a planet that isn't owned by the initiator of
                 // the move, then don't move any energy
+            } else if planet.defense == 0 {
+                // Dividing by defense is undefined at 0. Attacker power is unbounded,
+                // so any positive fleet captures and the garrison adds nothing.
+                planet.owner = if arrival.player == AztecAddress::zero() {
+                    planet.owner
+                } else {
+                    arrival.player
+                };
+                planet.population = arrival.pop_arriving;
+                if planet.population == 0 {
+                    planet.population = 1;
+                }
             } else if planet.population > (arrival.pop_arriving * 100) / planet.defense {
                 // handles if the planet population is bigger than the arriving ships
                 // simply reduce the amount of planet population by the arriving ships

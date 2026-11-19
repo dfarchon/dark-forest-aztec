@@ -214,6 +214,15 @@ export const arrive = (
     if (arrival.arrivalType === ArrivalType.Wormhole) {
       // if this is a wormhole arrival to a planet that isn't owned by the initiator of
       // the move, then don't move any energy
+    } else if (toPlanet.defense === 0) {
+      // Same limit as the contract: attacker power is unbounded, so the fleet captures.
+      if (arrival.player !== EMPTY_ADDRESS) {
+        toPlanet.owner = arrival.player;
+      }
+      toPlanet.energy = energyArriving;
+      if (toPlanet.energy <= 0) {
+        toPlanet.energy = 1 / CONTRACT_PRECISION;
+      }
     }
     // attacking enemy - includes emptyAddress
     else if (

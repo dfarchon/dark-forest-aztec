@@ -61,12 +61,15 @@ fn arrival_from(player: AztecAddress, arrival_type: u8) -> Arrival {
     arrival
 }
 
-#[test(should_fail_with = "Planet defense is 0")]
-unconstrained fn enemy_arrival_on_zero_defense_fails() {
-    let _ = apply_arrival(
-        defenseless_planet(),
-        arrival_from(enemy(), ArrivalType::Normal),
-    );
+/// Defense 0 makes attacker power unbounded, so a positive hostile fleet captures.
+#[test]
+unconstrained fn enemy_arrival_on_zero_defense_captures() {
+    let mut planet = defenseless_planet();
+    planet.population = 40;
+    planet.population_cap = 1000;
+    let (_, captured) = apply_arrival(planet, arrival_from(enemy(), ArrivalType::Normal));
+    assert_eq(captured.owner, enemy());
+    assert_eq(captured.population, 100);
 }
 
 #[test]
