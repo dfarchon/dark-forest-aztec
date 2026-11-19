@@ -138,11 +138,6 @@ export function TerminalWrapper({
 }: LandingWrapperProps & { universeView?: boolean }) {
   return (
     <StyledTerminalWrapper
-      data-guide-obstacle={
-        terminalEnabled && initRender !== InitRenderState.NONE && !universeView
-          ? true
-          : undefined
-      }
       initRender={initRender}
       terminalEnabled={terminalEnabled}
       $universeView={universeView}

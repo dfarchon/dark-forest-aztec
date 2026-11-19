@@ -402,7 +402,7 @@ export function TopBar({
   const captureZones = null;
 
   return (
-    <TopBarContainer data-guide-obstacle>
+    <TopBarContainer>
       <AddressLine>
         <TooltipTrigger
           name={TooltipName.Empty}

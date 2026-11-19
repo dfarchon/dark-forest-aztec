@@ -1,6 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 
+import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
 import { Btn } from "../../Components/Btn";
+import {
+  canPrepareAccountBackup,
+  downloadAccountBackup,
+} from "./downloadAccountBackup";
 import {
   chapterSteps,
   isPageFinale,
@@ -12,6 +17,7 @@ import {
 } from "./guideChapters";
 import { CoverCopy, PlayCopy } from "./GuideIntro";
 import {
+  BackupAction,
   Body,
   BrightAction,
   CompleteCelebration,
@@ -26,6 +32,10 @@ import {
 } from "./guidePanelStyles";
 import { PAGE_HOLD_MS } from "./guideTypes";
 import type { GuideController } from "./useGuideController";
+
+const EXTERNAL_ACCOUNT_HINT =
+  "Keys stay in your connected wallet, so there is no account file to download here.";
+
 function pageTitle(page: PageId): string {
   if (!isTask(page)) return page === "cover" ? "Visitor guide" : "You can play";
   return `Page ${TASK_ORDER.indexOf(page) + 1} / ${TASK_ORDER.length}`;
@@ -33,6 +43,40 @@ function pageTitle(page: PageId): string {
 
 function firstStep(page: PageId): StepId | null {
   return chapterSteps(page)[0] ?? null;
+}
+
+function AccountBackupDownload({ ui }: { ui: GameUIManager }) {
+  const [status, setStatus] = useState<"downloaded" | "failed" | null>(null);
+  const ready = canPrepareAccountBackup(ui);
+
+  return (
+    <BackupAction>
+      <Btn
+        size="stretch"
+        disabled={!ready}
+        onClick={() => {
+          const result = downloadAccountBackup(ui);
+          if (result === "downloaded") setStatus("downloaded");
+          else if (result === "failed") setStatus("failed");
+        }}
+      >
+        Download account backup
+      </Btn>
+      {!ready && (
+        <DockStatus $done={false}>
+          Could not prepare the account backup.
+        </DockStatus>
+      )}
+      {ready && status === "downloaded" && (
+        <DockStatus $done>Downloaded.</DockStatus>
+      )}
+      {ready && status === "failed" && (
+        <DockStatus $done={false}>
+          Could not download the account backup.
+        </DockStatus>
+      )}
+    </BackupAction>
+  );
 }
 
 export function GuidePanel({
@@ -45,7 +89,6 @@ export function GuidePanel({
   const {
     panelRef,
     position,
-    panelMaxHeight,
     onHandlePointerDown,
     onHandlePointerMove,
     onHandlePointerUp,
@@ -60,11 +103,16 @@ export function GuidePanel({
     pageCountdown,
     dockText,
     shipUnavailable,
+    uiManager,
     runAssist,
     previous,
     next,
     navLocked,
   } = controller;
+  const externalWallet =
+    stepId === "accountSafety" && uiManager.getGameManager().isExternalWallet();
+  const accountHint =
+    externalWallet && phase === "waiting" ? EXTERNAL_ACCOUNT_HINT : dockText;
   return (
     <Panel
       ref={panelRef}
@@ -74,7 +122,6 @@ export function GuidePanel({
       style={{
         left: position.x,
         top: position.y,
-        maxHeight: panelMaxHeight ?? `calc(100% - ${position.y}px - 16px)`,
       }}
     >
       <DragBar
@@ -92,7 +139,7 @@ export function GuidePanel({
           </Btn>
         </div>
       </DragBar>
-      <Body data-guide-body>
+      <Body>
         {page === "cover" && (
           <CoverCopy onStart={() => open("planet", "zoom")} />
         )}
@@ -156,13 +203,18 @@ export function GuidePanel({
                 </div>
               </CompleteCelebration>
             )}
-            <DockStatus $done={phase === "done"}>{dockText}</DockStatus>
+            <DockStatus $done={phase === "done"}>{accountHint}</DockStatus>
+            {phase === "waiting" &&
+              stepId === "accountSafety" &&
+              !externalWallet && <AccountBackupDownload ui={uiManager} />}
             {phase === "waiting" && (
               <BrightAction>
                 <p>
                   {shipUnavailable
                     ? "This exercise needs an available ship:"
-                    : (step.assistLead ?? "We can do this part:")}
+                    : externalWallet
+                      ? "When you are ready:"
+                      : (step.assistLead ?? "We can do this part:")}
                 </p>
                 <Btn size="stretch" onClick={runAssist}>
                   {shipUnavailable ? "Skip ship exercise" : step.button}

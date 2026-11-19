@@ -35,7 +35,6 @@ export function SidebarPane({
 
   return (
     <WindowTogglesPaneContainer
-      data-guide-obstacle
       onMouseEnter={() => setSidebarHovered(true)}
       onMouseLeave={() => setSidebarHovered(false)}
     >
@@ -122,7 +121,8 @@ export function SidebarPane({
 const WindowTogglesPaneContainer = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: max-content;
   pointer-events: auto;
 `;
 
@@ -130,4 +130,14 @@ const ToolButtonFrame = styled.div<{ $active: boolean }>`
   border-left: 2px solid
     ${({ $active }) => ($active ? dfstyles.colors.dfgreen : "transparent")};
   padding-left: 4px;
+  width: 100%;
+  box-sizing: border-box;
+
+  > df-shortcut-button,
+  > df-button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+  }
 `;

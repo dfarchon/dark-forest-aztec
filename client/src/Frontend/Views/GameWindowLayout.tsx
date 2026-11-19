@@ -332,10 +332,10 @@ export function GameWindowLayout({
           </CanvasWrapper>
 
           <UniverseFade $hidden={!showEdgeChrome}>
-            <TopRightStack data-guide-obstacle>
+            <TopRightStack>
               <NotificationsPane />
             </TopRightStack>
-            <BottomRightStack $open={minimapOpen} data-guide-obstacle>
+            <BottomRightStack $open={minimapOpen}>
               <MiniMapPane />
             </BottomRightStack>
             <MiniMapEdge

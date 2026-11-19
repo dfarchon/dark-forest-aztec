@@ -11,7 +11,6 @@ export const Panel = styled.aside`
   flex-direction: column;
   width: ${PANEL_WIDTH}px;
   padding: 12px;
-  overflow: hidden;
   background: ${dfstyles.colors.backgroundlighter};
   color: ${dfstyles.colors.text};
   border: 1px solid ${dfstyles.colors.border};
@@ -31,10 +30,7 @@ export const Panel = styled.aside`
   }
 `;
 
-export const Body = styled.div`
-  min-height: 0;
-  overflow-y: auto;
-`;
+export const Body = styled.div``;
 
 export const DragBar = styled.div`
   display: flex;
@@ -51,6 +47,18 @@ export const DragBar = styled.div`
 
   &:active {
     cursor: grabbing;
+  }
+
+  > div {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  df-button {
+    display: inline-flex;
+    flex: none;
   }
 `;
 
@@ -148,6 +156,21 @@ export const CompleteCelebration = styled.div`
     border: 2px solid ${dfstyles.colors.dfpink};
     border-radius: 50%;
     box-shadow: 0 0 8px ${dfstyles.colors.dfpink};
+  }
+`;
+
+export const BackupAction = styled.div`
+  margin-top: 12px;
+
+  df-button {
+    width: 100%;
+    --df-button-color: ${dfstyles.colors.dfgreen};
+    --df-button-border: 1px solid ${dfstyles.colors.dfgreen};
+    --df-button-hover-border: 1px solid ${dfstyles.colors.dfgreen};
+  }
+
+  p {
+    margin: 8px 0 0;
   }
 `;
 

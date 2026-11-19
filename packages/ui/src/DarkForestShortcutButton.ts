@@ -51,9 +51,16 @@ export class DarkForestShortcutButton extends DarkForestButton {
           0 -1px 1px #adb5bd;
         background-color: #343a40;
         color: ${unsafeCSS(dfstyles.colors.text)};
-        flex: 0;
+        flex: 0 0 auto;
         height: fit-content;
         margin: 1px 5px 5px;
+      }
+
+      /* Fill a stretched host; leave the keycap at the trailing edge.
+         Shrink-wrapped hosts stay content-sized because flex-grow has no free space. */
+      .button.stretch {
+        flex: 1 1 auto;
+        width: auto;
       }
 
       .keyboardButton:focus,

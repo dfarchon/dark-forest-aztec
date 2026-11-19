@@ -232,7 +232,6 @@ export function ModalPane({
   } else {
     return (
       <Modal
-        data-guide-obstacle
         style={style}
         width={width}
         minimized={minimized}

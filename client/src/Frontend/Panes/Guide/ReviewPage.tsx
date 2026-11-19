@@ -27,9 +27,9 @@ export const reviewPage: GuidePage = {
     },
     accountSafety: {
       label: "Keep personal accounts safe",
-      hint: "This guide uses the same account as normal play. For a local wallet, export your keys and home coordinates from Settings before clearing browser storage. Never share that backup.",
-      button: "I understand account safety",
-      assistLead: "Read the account guidance, then continue:",
+      hint: "This is your real game account, stored in this browser. Download a backup of your secret key, salt, signing key, and home coordinates before you clear site data or switch browsers. Keep that file private. Anyone who has it can use this account.",
+      button: "Continue",
+      assistLead: "Download a private backup, then continue:",
       running: "Finishing the guide.",
       done: "You are ready to play.",
     },

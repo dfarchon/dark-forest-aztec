@@ -180,7 +180,8 @@ const Hint = styled.p`
 const ButtonCol = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: 100%;
   gap: 12px;
 `;
 
@@ -246,17 +247,20 @@ const primaryStyles = css`
 `;
 
 const BigBtn = styled.button<{ $variant?: "primary" | "default" }>`
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   height: 48px;
-  min-width: calc(19ch + 50px);
   padding: 4px 24px;
   margin: 0;
   font-family: inherit;
   font-size: 16pt;
   line-height: 1;
-  text-align: left;
+  text-align: center;
+  white-space: nowrap;
   border-radius: 4px;
   border: 1px solid ${dfstyles.colors.borderDark};
   background: transparent;
@@ -298,8 +302,9 @@ const BigBtn = styled.button<{ $variant?: "primary" | "default" }>`
 `;
 
 const PrimaryRow = styled.div`
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  width: 100%;
   gap: 8px;
 `;
 
@@ -307,6 +312,7 @@ const GearBtn = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 48px;
   width: 48px;
   height: 48px;
   padding: 0;

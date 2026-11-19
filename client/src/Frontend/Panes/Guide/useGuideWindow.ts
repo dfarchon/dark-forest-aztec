@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { useGuidePanelPlacement } from "./guidePanelPlacement";
 import type { DockPhase, PageId, StepId } from "./guideTypes";
 const PANEL_WIDTH = 320;
 const PANEL_VISIBLE_MARGIN = 48;
@@ -58,12 +57,6 @@ export function useGuideWindow(
     top: number;
   } | null>(null);
   const [position, setPosition] = useState({ x: 56, y: 52 });
-  const panelMaxHeight = useGuidePanelPlacement(
-    panelRef,
-    position,
-    setPosition,
-    dragOrigin
-  );
   useEffect(() => {
     const stopButtonKeys = (event: KeyboardEvent) => {
       if (event.key !== " " && event.key !== "Enter" && event.code !== "Space")
@@ -129,7 +122,6 @@ export function useGuideWindow(
   return {
     panelRef,
     position,
-    panelMaxHeight,
     onHandlePointerDown,
     onHandlePointerMove,
     onHandlePointerUp,

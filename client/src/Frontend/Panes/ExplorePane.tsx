@@ -177,7 +177,7 @@ export function ExplorePane() {
   };
 
   return (
-    <StyledExplorePane data-guide-obstacle>
+    <StyledExplorePane>
       {/* button which allows player to preposition the center of their miner */}
       <TooltipTrigger
         style={{ display: "inline-block" }}
