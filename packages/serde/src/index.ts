@@ -1,5 +1,6 @@
 export * from "./address";
 export * from "./artifact";
+export * from "./artifactStats";
 export * from "./artifact_location";
 export * from "./arrival";
 export * from "./chain_state";

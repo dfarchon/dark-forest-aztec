@@ -72,6 +72,7 @@ export interface PlanetState {
   space_junk: bigint;
   has_tried_finding_artifact: boolean;
   prospected_block_number: number;
+  artifact_multipliers?: bigint;
 }
 
 // ---------------------------------------------------------------------------

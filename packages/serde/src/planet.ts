@@ -8,6 +8,7 @@ import type {
   SpaceType,
   UpgradeState,
 } from "@dfpunk/types";
+import { effectivePlanetStat } from "./artifactStats";
 import { address } from "./address";
 import { locationIdFromHexStr, locationIdFromDecStr } from "./location";
 import type { PlanetState } from "./chain_state";
@@ -45,13 +46,33 @@ export function decodePlanet(key: string, state: PlanetState): Planet {
     planetLevel: state.planet_level as PlanetLevel,
     planetType: state.planet_type as PlanetType,
     isHomePlanet: state.is_home_planet,
-    energyCap: Number(state.population_cap) / precision,
-    energyGrowth: Number(state.population_growth) / precision,
+    energyCap:
+      Number(
+        effectivePlanetStat(
+          state.population_cap,
+          state.artifact_multipliers,
+          "population_cap",
+        ),
+      ) / precision,
+    energyGrowth:
+      Number(
+        effectivePlanetStat(
+          state.population_growth,
+          state.artifact_multipliers,
+          "population_growth",
+        ),
+      ) / precision,
     silverCap: Number(state.silver_cap) / precision,
     silverGrowth: Number(state.silver_growth) / precision,
-    range: Number(state.range),
-    defense: Number(state.defense),
-    speed: Number(state.speed),
+    range: Number(
+      effectivePlanetStat(state.range, state.artifact_multipliers, "range"),
+    ),
+    defense: Number(
+      effectivePlanetStat(state.defense, state.artifact_multipliers, "defense"),
+    ),
+    speed: Number(
+      effectivePlanetStat(state.speed, state.artifact_multipliers, "speed"),
+    ),
     energy: Number(state.population) / precision,
     silver: Number(state.silver) / precision,
     spaceJunk: Number(state.space_junk),

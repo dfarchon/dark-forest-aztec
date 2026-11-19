@@ -212,6 +212,9 @@ export function rawToPlanetState(r: Raw): PlanetState {
     space_junk: toBigInt(r.space_junk),
     has_tried_finding_artifact: toBool(r.has_tried_finding_artifact),
     prospected_block_number: toU32(r.prospected_block_number),
+    ...(r.artifact_multipliers == null
+      ? {}
+      : { artifact_multipliers: toBigInt(r.artifact_multipliers) }),
   };
 }
 

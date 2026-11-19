@@ -60,6 +60,7 @@ export interface PlanetState {
   space_junk: Numberish;
   has_tried_finding_artifact: boolean;
   prospected_block_number: number;
+  artifact_multipliers?: Numberish;
 }
 
 export interface PlanetRevealedCoordsState {
