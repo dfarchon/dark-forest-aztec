@@ -96,6 +96,7 @@ export function flattenState(
         space_junk: u128(row.space_junk),
         has_tried_finding_artifact: bool(row.has_tried_finding_artifact),
         prospected_block_number: row.prospected_block_number,
+        artifact_multipliers: u64(row.artifact_multipliers ?? 0n),
       };
     }
     case "planet_revealed_coords_update": {

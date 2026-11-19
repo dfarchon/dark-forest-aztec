@@ -97,6 +97,7 @@ export function serializePlanet(p: Record<string, unknown>): Fieldable[] {
     big(p.space_junk),
     bool(p.has_tried_finding_artifact),
     num(p.prospected_block_number),
+    ...(p.artifact_multipliers == null ? [] : [big(p.artifact_multipliers)]),
   ];
 }
 

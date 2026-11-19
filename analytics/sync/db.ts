@@ -24,6 +24,14 @@ export function openDatabase(dbPath: string): Database.Database {
     db.exec(createEventTableSql(table));
     db.exec(createEventIndexSql(table));
   }
+  const planetColumns = db.pragma("table_info(planet_update)") as {
+    name: string;
+  }[];
+  if (!planetColumns.some((column) => column.name === "artifact_multipliers")) {
+    db.exec(
+      "ALTER TABLE planet_update ADD COLUMN artifact_multipliers INTEGER DEFAULT 0",
+    );
+  }
   return db;
 }
 

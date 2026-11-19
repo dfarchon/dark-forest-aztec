@@ -142,6 +142,9 @@ export function planetToContract(s: PlanetState): Record<string, unknown> {
     space_junk: toBigint(s.space_junk),
     has_tried_finding_artifact: s.has_tried_finding_artifact,
     prospected_block_number: s.prospected_block_number,
+    ...(s.artifact_multipliers == null
+      ? {}
+      : { artifact_multipliers: toBigint(s.artifact_multipliers) }),
   };
 }
 

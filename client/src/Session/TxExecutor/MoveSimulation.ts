@@ -14,6 +14,8 @@ import type {
   PlanetState,
 } from "@dfpunk/indexer-core/TableTypes/chain";
 
+import { effectivePlanetStat } from "@dfpunk/serde";
+
 // Contract enum values (u8)
 const ArrivalTypeWormhole = 3;
 const PlanetTypeSilverMine = 1;
@@ -46,6 +48,7 @@ interface MutablePlanet {
   owner: string;
   population_cap: bigint;
   population_growth: bigint;
+  artifact_multipliers?: bigint;
   pausers: bigint;
   planet_type: number;
   silver_cap: bigint;
@@ -63,13 +66,18 @@ function cloneToMutable(p: PlanetState): MutablePlanet {
     silver: p.silver,
     last_updated: Number(p.last_updated), // contract u64, seconds
     owner: p.owner,
-    population_cap: p.population_cap,
+    population_cap: effectivePlanetStat(
+      p.population_cap,
+      p.artifact_multipliers,
+      "population_cap"
+    ),
     population_growth: p.population_growth,
+    artifact_multipliers: p.artifact_multipliers,
     pausers: p.pausers,
     planet_type: p.planet_type,
     silver_cap: p.silver_cap,
     silver_growth: p.silver_growth,
-    defense: p.defense,
+    defense: effectivePlanetStat(p.defense, p.artifact_multipliers, "defense"),
     is_home_planet: p.is_home_planet,
     energy_gro_doublers: p.energy_gro_doublers,
     silver_gro_doublers: p.silver_gro_doublers,
@@ -82,7 +90,12 @@ function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
   if (planet.owner !== ZERO_ADDRESS && !planet.destroyed) {
     if (planet.population < planet.population_cap) {
       const timeDiff = BigInt(Math.max(0, updateToTime - planet.last_updated));
-      const populationGained = planet.population_growth * timeDiff;
+      const populationGained =
+        effectivePlanetStat(
+          planet.population_growth,
+          planet.artifact_multipliers,
+          "population_growth"
+        ) * timeDiff;
       const maxPop = planet.population_cap;
       const currentPop = planet.population + populationGained;
       const newPopulation = maxPop < currentPop ? maxPop : currentPop;
@@ -93,15 +106,12 @@ function updatePopulation(updateToTime: number, planet: MutablePlanet): void {
       }
     }
   }
-  if (planet.planet_type === PlanetTypeSilverBank) {
-    if (planet.population > planet.population_cap) {
-      planet.population = planet.population_cap;
-    }
-  }
-  if (planet.pausers > 0n) {
-    if (planet.population > planet.population_cap) {
-      planet.population = planet.population_cap;
-    }
+  if (
+    (planet.owner !== ZERO_ADDRESS ||
+      planet.planet_type === PlanetTypeSilverBank) &&
+    planet.population > planet.population_cap
+  ) {
+    planet.population = planet.population_cap;
   }
 }
 
@@ -189,7 +199,11 @@ function applyArrival(planet: MutablePlanet, arrival: ArrivalLike): void {
       if (planet.population === 0n) planet.population = 1n;
     }
   }
-  if (planet.population > planet.population_cap) {
+  if (
+    (planet.owner !== ZERO_ADDRESS ||
+      planet.planet_type === PlanetTypeSilverBank) &&
+    planet.population > planet.population_cap
+  ) {
     planet.population = planet.population_cap;
   }
   const nextSilver = planet.silver + arrival.silver_moved;

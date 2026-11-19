@@ -99,6 +99,7 @@ const STATE: Record<EventTableName, ColumnSpec[]> = {
     ]),
     col("has_tried_finding_artifact", "INTEGER", 0),
     col("prospected_block_number", "INTEGER", 0),
+    col("artifact_multipliers", "INTEGER", 0),
   ],
   planet_revealed_coords_update: texts(["location_id", "x", "y", "revealer"]),
   planet_events_update: [
