@@ -34,6 +34,8 @@ export const enum UIEmitterEvent {
   TerminalVisibilityChanged = "TerminalVisibilityChanged",
   OpenScoringHelp = "OpenScoringHelp",
 
+  OpenScoreboard = "OpenScoreboard",
+
   DepositArtifact = "DepositArtifact",
   DepositToPlanet = "DepositToPlanet",
 
