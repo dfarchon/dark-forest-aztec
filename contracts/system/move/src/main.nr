@@ -571,7 +571,7 @@ contract Move {
         }
 
         let mut effectiveDistTimesHundred: u128 = args.max_dist * 100;
-        let mut arrival_type = ArrivalType::Normal;
+        let mut fired_photoid = false;
         let mut temporary_upgrade = Upgrade::zero();
 
         // _checkWormhole: if an active Wormhole artifact on either planet
@@ -592,7 +592,8 @@ contract Move {
             false
         };
 
-        if source_has_wormhole | target_has_wormhole {
+        let used_wormhole = source_has_wormhole | target_has_wormhole;
+        if used_wormhole {
             let wormhole_rarity = if source_has_wormhole {
                 source_activated_artifact.rarity
             } else {
@@ -600,7 +601,6 @@ contract Move {
             };
             let speed_boosts: [u128; 6] = [1, 2, 4, 8, 16, 32];
             effectiveDistTimesHundred /= speed_boosts[wormhole_rarity as u32];
-            arrival_type = ArrivalType::Wormhole;
         }
 
         // _checkPhotoid: if the source planet has an active PhotoidCannon whose
@@ -625,7 +625,7 @@ contract Move {
                     speed_multiplier: speed_boosts[r],
                     def_multiplier: 100,
                 };
-                arrival_type = ArrivalType::Photoid;
+                fired_photoid = true;
 
                 // Deactivate the photoid artifact
                 new_source_activated_artifact.last_deactivated = timestamp;
@@ -719,6 +719,7 @@ contract Move {
         assert(!is_spaceship_move | (pop_moved == 0), "spaceship moves must be 0 energy moves");
 
         // Create the new arrival (id is a placeholder; allocated in move_public)
+        let arrival_type = ArrivalType::for_move(used_wormhole, fired_photoid);
         let new_arrival = Arrival {
             id: 0,
             // Ship arrivals belong to no player, so they never count as the controller's attack.
