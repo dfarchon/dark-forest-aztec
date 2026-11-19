@@ -8,7 +8,8 @@
  *
  * Noir type → Fieldable mapping:
  *   Field        → bigint
- *   u8/u32/u64   → number  (fits in JS number)
+ *   u8/u32       → number
+ *   u64          → bigint for full-width timestamps
  *   u128         → bigint
  *   bool         → boolean
  *   AztecAddress → bigint  (the inner Field)
@@ -145,8 +146,8 @@ export function serializeArrival(a: Record<string, unknown>): Fieldable[] {
     big(a.to_planet),
     big(a.pop_arriving),
     big(a.silver_moved),
-    num(a.departure_time),
-    num(a.arrival_time),
+    big(a.departure_time),
+    big(a.arrival_time),
     num(a.arrival_type),
     big(a.carried_artifact_id),
     big(a.distance),
