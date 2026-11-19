@@ -48,4 +48,5 @@ export const HIGH_LEVEL_PLANET = {
     space_junk: 60n,
     has_tried_finding_artifact: false,
     prospected_block_number: 0,
+    artifact_multipliers: 0n,
 };

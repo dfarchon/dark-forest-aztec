@@ -16,9 +16,11 @@ mod token_mint;
 use ::aztec::protocol::address::AztecAddress;
 use ::aztec::protocol::traits::FromField;
 use ::libs::game_utils::_buff_planet;
+use ::libs::game_utils::_get_upgrade_for_artifact;
 use ::libs::lazy_update::{apply_arrival, update_planet};
 use ::libs::move_decay::decayed_pop_arriving;
 use ::libs::planet::{_initialize_planet, validate_upgrade_planet};
+use ::libs::planet::{apply_spaceship_arrive, apply_spaceship_depart};
 use ::types::args::DFPInitPlanetArgs;
 use ::types::config::{
     default_stats::PlanetDefaultStats,
@@ -30,6 +32,7 @@ use ::types::storage::{
     arrival::{Arrival, ArrivalType},
     planet::{Planet, PlanetType, SpaceType, UpgradeBranch},
 };
+use ::types::storage::artifact::{Artifact, ArtifactType};
 
 global PLAIN_LOCATION: Field = 0x1111111111111111111111111111111111111111111111111111111111111111;
 global BOOSTED_LOCATION: Field = 0x0101010101010101010101010101010101010101010101010101010101010101;
@@ -465,4 +468,36 @@ unconstrained fn worst_case_intermediates_stay_below_2_pow_100() {
 
         assert_all_actions_ok(BOOSTED_LOCATION, planet);
     }
+}
+
+#[test]
+fn active_artifact_preserves_base_and_intervening_upgrades_and_ships() {
+    let mut base = Planet::zero();
+    base.defense = 7;
+    base.range = 23;
+    base.speed = 17;
+    base.population_growth = 13;
+    let mut cannon = Artifact::zero();
+    cannon.artifact_type = ArtifactType::PhotoidCannon;
+    cannon.rarity = 5;
+    let mut active = base;
+    active.artifact_multipliers = _get_upgrade_for_artifact(cannon).artifact_multipliers();
+    assert_eq(active.effective_defense(), 0);
+    let upgraded = _buff_planet(1, active, upgrade_for(D)).1;
+    let mut expected = _buff_planet(1, base, upgrade_for(D)).1;
+    let mut ship = Artifact::zero();
+    ship.artifact_type = ArtifactType::ShipMothership;
+    let mut with_ship = apply_spaceship_arrive(ship, upgraded);
+    expected = apply_spaceship_arrive(ship, expected);
+    with_ship.artifact_multipliers = 0;
+    assert(with_ship == expected);
+    let mut shield = cannon;
+    shield.artifact_type = ArtifactType::PlanetaryShield;
+    with_ship.artifact_multipliers = _get_upgrade_for_artifact(shield).artifact_multipliers();
+    assert_eq(with_ship.effective_speed(), expected.speed * 20 / 100);
+    assert_eq(with_ship.effective_range(), expected.range * 20 / 100);
+    assert_eq(with_ship.effective_defense(), expected.defense * 650 / 100);
+    let mut departed = apply_spaceship_depart(ship, with_ship, 1);
+    departed.artifact_multipliers = 0;
+    assert(departed == apply_spaceship_depart(ship, expected, 1));
 }

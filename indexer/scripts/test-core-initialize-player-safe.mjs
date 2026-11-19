@@ -82,6 +82,7 @@ function planetZero() {
     space_junk: 0n,
     has_tried_finding_artifact: false,
     prospected_block_number: 0,
+    artifact_multipliers: 0n,
   };
 }
 
