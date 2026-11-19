@@ -7,10 +7,10 @@ import TutorialManager, {
 } from "../../../Backend/GameLogic/TutorialManager";
 import { useUIManager } from "../../Utils/AppHooks";
 import { useBooleanSetting } from "../../Utils/SettingsHooks";
-import { PlayerGuidePane } from "./PlayerGuidePane";
+import { GuidePane } from "./GuidePane";
 
 /** Share the existing per-account tutorial settings and reset action. */
-export function UserGuide({
+export function Guide({
   universeView,
   setUniverseView,
 }: {
@@ -48,7 +48,7 @@ export function UserGuide({
 
   if (!visible) return null;
   return (
-    <PlayerGuidePane
+    <GuidePane
       key={session}
       onComplete={() => {
         setFinished(true);

@@ -13,13 +13,13 @@ import ControllableCanvas from "../Game/ControllableCanvas";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
+import { Guide } from "../Panes/Guide/Guide";
 import { HelpPane } from "../Panes/HelpPane";
 import { HoverPlanetPane } from "../Panes/HoverPlanetPane";
 import { MiniMapPane } from "../Panes/MiniMapPane";
 import { PlanetContextPane } from "../Panes/PlanetContextPane";
 import { PlanetDexPane } from "../Panes/PlanetDexPane";
 import { PlayerArtifactsPane } from "../Panes/PlayerArtifactsPane";
-import { UserGuide } from "../Panes/PlayerGuide/UserGuide";
 import { PluginLibraryPane } from "../Panes/PluginLibraryPane";
 import { PrivatePane } from "../Panes/PrivatePane";
 import { SettingsPane } from "../Panes/SettingsPane";
@@ -349,7 +349,7 @@ export function GameWindowLayout({
           <HoverPlanetPane />
           <ArtifactHoverPane />
 
-          <UserGuide
+          <Guide
             universeView={universeView}
             setUniverseView={setUniverseView}
           />

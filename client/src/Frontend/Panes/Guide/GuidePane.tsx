@@ -5,7 +5,7 @@ import { GuidePanel } from "./GuidePanel";
 import { useGuideController } from "./useGuideController";
 
 /** Compose the guide; chapter behavior, game adapters and rendering stay separate. */
-export function PlayerGuidePane({
+export function GuidePane({
   onComplete,
   onClose,
 }: {

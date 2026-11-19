@@ -69,7 +69,7 @@ export function GuidePanel({
     <Panel
       ref={panelRef}
       role="region"
-      aria-label="Player guide"
+      aria-label="Guide"
       data-guide-panel
       style={{
         left: position.x,
