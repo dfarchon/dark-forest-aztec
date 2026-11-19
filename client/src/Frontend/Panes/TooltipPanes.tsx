@@ -132,6 +132,13 @@ export function BonusTooltipPane() {
   );
 }
 
+const ShipResourcesDisabledTooltipPane = () => (
+  <>
+    Ships move without sending energy or silver. Your planet keeps its
+    resources.
+  </>
+);
+
 export function SilverTooltipPane() {
   return (
     <>
@@ -512,6 +519,8 @@ const ArtifactStored = () => <>This planet has a powerful artifact on it!</>;
 const HashesPerSec = () => <>hashes / sec</>;
 
 export function TooltipContent({ name }: { name: TooltipName | undefined }) {
+  if (name === TooltipName.ShipResourcesDisabled)
+    return <ShipResourcesDisabledTooltipPane />;
   if (name === TooltipName.SilverGrowth) return <SilverGrowthTooltipPane />;
   if (name === TooltipName.SilverCap) return <SilverCapTooltipPane />;
   if (name === TooltipName.Silver) return <SilverTooltipPane />;

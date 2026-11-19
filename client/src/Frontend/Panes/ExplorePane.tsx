@@ -177,13 +177,14 @@ export function ExplorePane() {
   };
 
   return (
-    <StyledExplorePane>
+    <StyledExplorePane data-guide-obstacle>
       {/* button which allows player to preposition the center of their miner */}
       <TooltipTrigger
         style={{ display: "inline-block" }}
         name={TooltipName.MiningTarget}
       >
         <MaybeShortcutButton
+          data-guide-target="explore-move"
           onClick={doTarget}
           onShortcutPressed={doTarget}
           shortcutKey={TOGGLE_TARGETTING}
@@ -201,6 +202,7 @@ export function ExplorePane() {
         name={TooltipName.MiningPause}
       >
         <MaybeShortcutButton
+          data-guide-target="explore-toggle"
           onClick={doExplore}
           onShortcutPressed={doExplore}
           shortcutKey={TOGGLE_EXPLORE}

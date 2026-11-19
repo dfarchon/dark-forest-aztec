@@ -138,6 +138,11 @@ export function TerminalWrapper({
 }: LandingWrapperProps & { universeView?: boolean }) {
   return (
     <StyledTerminalWrapper
+      data-guide-obstacle={
+        terminalEnabled && initRender !== InitRenderState.NONE && !universeView
+          ? true
+          : undefined
+      }
       initRender={initRender}
       terminalEnabled={terminalEnabled}
       $universeView={universeView}
@@ -175,6 +180,11 @@ const StyledTerminalToggler = styled.div<{
     cursor: pointer;
   }
 
+  &[data-guide-active] {
+    opacity: 1;
+    background: ${dfstyles.colors.dfpink};
+  }
+
   & span {
     font-size: 1.25em;
     transform: scaleY(2);
@@ -192,6 +202,11 @@ const EdgeRevealStrip = styled.div<{
   z-index: 1000;
   display: ${({ initRender }) =>
     initRender !== InitRenderState.NONE ? "block" : "none"};
+
+  &[data-guide-active] {
+    background: ${dfstyles.colors.dfpink};
+    box-shadow: 0 0 8px ${dfstyles.colors.dfpink};
+  }
 `;
 
 function EdgeReveal({
@@ -205,6 +220,7 @@ function EdgeReveal({
 
   return (
     <EdgeRevealStrip
+      data-guide-target="terminal-edge"
       initRender={initRender}
       onMouseEnter={() => {
         if (!armed.current) return;
@@ -265,6 +281,7 @@ export function TerminalToggler({
 
   return (
     <StyledTerminalToggler
+      data-guide-target="terminal-toggle"
       initRender={initRender}
       onClick={() => setTerminalEnabled((b: boolean): boolean => !b)}
     >

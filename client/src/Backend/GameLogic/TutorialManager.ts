@@ -41,7 +41,10 @@ class TutorialManager extends EventEmitter {
   }
 
   static getInstance(uiManager: GameUIManager) {
-    if (!TutorialManager.instance) {
+    if (
+      !TutorialManager.instance ||
+      TutorialManager.instance.uiManager !== uiManager
+    ) {
       TutorialManager.instance = new TutorialManager(uiManager);
     }
 
@@ -77,6 +80,7 @@ class TutorialManager extends EventEmitter {
       account: this.uiManager.getAccount(),
     };
     setBooleanSetting(config, Setting.TutorialOpen, true);
+    setBooleanSetting(config, Setting.TutorialCompleted, false);
     this.setTutorialState(TutorialState.None);
   }
 

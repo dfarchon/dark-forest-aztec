@@ -10,6 +10,38 @@ export class DarkForestSlider extends Slider {
   // Not part of LitElement but let's tack on the tagName for easier registration
   static tagName = "df-slider";
 
+  /** Public, read-only geometry for overlays; callers need not know Spectrum's DOM. */
+  public getSliderGeometry(): {
+    bounds: DOMRect;
+    inset: number;
+    handleY: number;
+  } {
+    const track = this.shadowRoot
+      ?.querySelector("#controls")
+      ?.getBoundingClientRect();
+    const input = (
+      this.shadowRoot?.querySelector('input[type="range"]') ??
+      this.querySelector('input[type="range"]')
+    )?.getBoundingClientRect();
+    const bounds =
+      track && track.width >= 24 && track.height >= 2
+        ? track
+        : input && input.width >= 24 && input.height >= 2
+          ? input
+          : this.getBoundingClientRect();
+    const handle = this.shadowRoot
+      ?.querySelector(".handle")
+      ?.getBoundingClientRect();
+    return {
+      bounds,
+      inset: bounds === track ? 0 : 10,
+      handleY:
+        handle && handle.width > 1 && handle.height > 1
+          ? handle.top + handle.height / 2
+          : bounds.top + bounds.height / 2,
+    };
+  }
+
   public static get styles(): CSSResultArray {
     const customStyles = css`
       :host {

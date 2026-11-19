@@ -88,6 +88,15 @@ export function ArtifactThumb({
 
   return (
     <StyledArtifactThumb
+      data-guide-target={
+        onArtifactChange && isSpaceShip(artifact.artifactType) && !enemy
+          ? `ship-${artifact.id}`
+          : undefined
+      }
+      role={onArtifactChange ? "button" : undefined}
+      aria-label={
+        isSpaceShip(artifact.artifactType) ? "Select ship" : "Select artifact"
+      }
       active={selectedArtifact?.id === artifact.id}
       enemy={enemy}
       onClick={click}

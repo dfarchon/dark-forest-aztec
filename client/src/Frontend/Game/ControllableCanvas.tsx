@@ -214,7 +214,7 @@ export default function ControllableCanvas() {
   return (
     <CanvasWrapper style={{ cursor: targeting ? "crosshair" : undefined }}>
       <canvas ref={glRef} width={width} height={height} />
-      <canvas ref={canvasRef} width={width} height={height} />
+      <canvas ref={canvasRef} data-game-canvas width={width} height={height} />
       <canvas ref={bufferRef} id="buffer" />
     </CanvasWrapper>
   );
