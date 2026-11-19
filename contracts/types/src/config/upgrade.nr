@@ -11,6 +11,22 @@ pub struct Upgrade {
 }
 
 impl Upgrade {
+    pub fn artifact_multipliers(self) -> u64 {
+        let percentages = [
+            self.pop_cap_multiplier,
+            self.pop_gro_multiplier,
+            self.range_multiplier,
+            self.speed_multiplier,
+            self.def_multiplier,
+        ];
+        let mut packed: u64 = 0;
+        for i in 0..5 {
+            assert(percentages[i] <= 1023);
+            packed = packed | (percentages[i] as u64) << ((10 * i) as u64);
+        }
+        packed
+    }
+
     pub fn zero() -> Self {
         Self {
             pop_cap_multiplier: 100,

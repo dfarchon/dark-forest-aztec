@@ -42,9 +42,35 @@ pub struct Planet {
     pub space_junk: u128,
     pub has_tried_finding_artifact: bool,
     pub prospected_block_number: u32,
+    /// Five 10-bit percentages in cap, growth, range, speed, defense order. Zero means inactive.
+    pub artifact_multipliers: u64,
 }
 
 impl Planet {
+    fn with_artifact_multiplier(self, base: u128, shift: u64) -> u128 {
+        if self.artifact_multipliers == 0 {
+            base
+        } else {
+            let percent = ((self.artifact_multipliers >> shift) & 1023) as u128;
+            base * percent / 100
+        }
+    }
+    pub fn effective_population_cap(self) -> u128 {
+        self.with_artifact_multiplier(self.population_cap, 0)
+    }
+    pub fn effective_population_growth(self) -> u128 {
+        self.with_artifact_multiplier(self.population_growth, 10)
+    }
+    pub fn effective_range(self) -> u128 {
+        self.with_artifact_multiplier(self.range, 20)
+    }
+    pub fn effective_speed(self) -> u128 {
+        self.with_artifact_multiplier(self.speed, 30)
+    }
+    pub fn effective_defense(self) -> u128 {
+        self.with_artifact_multiplier(self.defense, 40)
+    }
+
     pub fn zero() -> Self {
         Planet {
             // location_id: 0 as Field,
@@ -80,6 +106,7 @@ impl Planet {
             space_junk: 0,
             has_tried_finding_artifact: false,
             prospected_block_number: 0,
+            artifact_multipliers: 0,
         }
     }
 }
