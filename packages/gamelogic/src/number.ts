@@ -3,6 +3,7 @@
  * Uses K/M/B/T/q/Q suffixes for thousands and above.
  */
 export const formatNumber = (num: number, smallDec = 0): string => {
+  if (!Number.isFinite(num)) return "—";
   if (num < 1000) {
     if (`${num}` === num.toFixed(0)) {
       return `${num.toFixed(0)}`;

@@ -16,7 +16,7 @@ pub fn assert_move_distance(x1: Field, y1: Field, x2: Field, y2: Field, distance
     check_coordinate_range(y1);
     check_coordinate_range(x2);
     check_coordinate_range(y2);
-    distance.assert_max_bit_size::<33>();
+    distance.assert_max_bit_size::<64>();
     let d = distance as u128;
     assert(d > 0, "Move distance must be positive");
     let dx = x1 - x2;

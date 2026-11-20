@@ -89,7 +89,7 @@ pub fn checked_arrival_time(departure: u64, distance_times_hundred: u128, speed:
     assert(speed > 0, "Planet speed must be positive");
     let duration = distance_times_hundred / speed;
     let travel_time = if duration == 0 { 1 } else { duration };
-    assert(travel_time < 18446744073709551615 - departure as u128, "Arrival time out of range");
+    assert(travel_time < u64::max_value() as u128 - departure as u128, "Arrival time out of range");
     departure + travel_time as u64
 }
 
