@@ -183,13 +183,7 @@ export function ArtifactDetailsBody({
     return null;
   }
 
-  const account = (addr: EthAddress) => {
-    const twitter = uiManager?.getPlayer(addr)?.twitter;
-    if (twitter) {
-      return "@" + twitter;
-    }
-    return <TextPreview text={addr} />;
-  };
+  const account = (addr: EthAddress) => <AccountLabel ethAddress={addr} />;
 
   const owner = () => {
     if (!artifact) return "";

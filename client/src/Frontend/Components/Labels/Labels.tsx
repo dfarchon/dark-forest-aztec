@@ -4,6 +4,7 @@ import { EthAddress } from "@dfpunk/types";
 import colorFn from "color";
 import React from "react";
 
+import { useActiveAccount, useVerifiedFogName } from "../../../Session/FogName";
 import { usePlayer, useUIManager } from "../../Utils/AppHooks";
 import { Link } from "../CoreUI";
 import { Sub } from "../Text";
@@ -21,7 +22,35 @@ export function AccountLabel({
   style?: React.CSSProperties;
 }) {
   const uiManager = useUIManager();
+  const currentAccount = useActiveAccount(uiManager);
   const player = usePlayer(uiManager, ethAddress);
+  const targetAddress =
+    ethAddress === EMPTY_ADDRESS ? undefined : ethAddress || currentAccount;
+  const verifiedFogName = useVerifiedFogName(uiManager, targetAddress);
+
+  if (ethAddress === EMPTY_ADDRESS) {
+    return <>nobody</>;
+  }
+
+  const fallbackText = targetAddress || "<no account>";
+
+  if (verifiedFogName !== undefined) {
+    return (
+      <span style={style} title={targetAddress}>
+        {verifiedFogName}
+        {includeAddressIfHasTwitter && (
+          <Sub>
+            {" "}
+            <TextPreview
+              text={fallbackText}
+              unFocusedWidth={"50px"}
+              focusedWidth={"50px"}
+            />
+          </Sub>
+        )}
+      </span>
+    );
+  }
 
   if (player.value !== undefined && player.value.twitter !== undefined) {
     const color = colorFn(getPlayerColor(player.value.address))
@@ -34,7 +63,7 @@ export function AccountLabel({
           <Sub>
             {" "}
             <TextPreview
-              text={ethAddress || uiManager.getAccount() || "<no account>"}
+              text={fallbackText}
               unFocusedWidth={"50px"}
               focusedWidth={"50px"}
             />
@@ -44,13 +73,9 @@ export function AccountLabel({
     );
   }
 
-  if (ethAddress === EMPTY_ADDRESS) {
-    return <>nobody</>;
-  }
-
   return (
     <TextPreview
-      text={ethAddress || uiManager.getAccount() || "<no account>"}
+      text={fallbackText}
       unFocusedWidth={width ?? "150px"}
       focusedWidth={width ?? "150px"}
     />

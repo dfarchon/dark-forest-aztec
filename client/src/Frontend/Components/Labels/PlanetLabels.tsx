@@ -5,8 +5,13 @@ import { Planet, PlanetType, PlanetTypeNames } from "@dfpunk/types";
 import React from "react";
 
 import { getPlanetRank } from "../../../Backend/Utils/Utils";
+import {
+  addressesEqual,
+  useActiveAccount,
+  useVerifiedFogName,
+} from "../../../Session/FogName";
 import dfstyles from "../../Styles/dfstyles";
-import { useAccount, usePlayer, useUIManager } from "../../Utils/AppHooks";
+import { usePlayer, useUIManager } from "../../Utils/AppHooks";
 import { EmSpacer } from "../CoreUI";
 import { Colored, Sub, Subber, White } from "../Text";
 import { TextPreview } from "../TextPreview";
@@ -236,7 +241,7 @@ export const PlanetRank = ({ planet }: { planet: Planet | undefined }) => {
 };
 
 /**
- * Either 'yours' in green text,
+ * Either 'yours!' in green text, a verified `.fog` name, Twitter handle, or raw address.
  */
 export function PlanetOwnerLabel({
   planet,
@@ -248,8 +253,17 @@ export function PlanetOwnerLabel({
   colorWithOwnerColor?: boolean;
 }) {
   const uiManager = useUIManager();
-  const account = useAccount(uiManager);
+  const account = useActiveAccount(uiManager);
   const owner = usePlayer(uiManager, planet?.owner);
+  const isAbbreviatedSelf = Boolean(
+    planet && abbreviateOwnAddress && addressesEqual(planet.owner, account)
+  );
+  const verifiedFogName = useVerifiedFogName(
+    uiManager,
+    planet && planet.owner !== EMPTY_ADDRESS && !isAbbreviatedSelf
+      ? planet.owner
+      : undefined
+  );
 
   const defaultColor = dfstyles.colors.subtext;
 
@@ -257,14 +271,21 @@ export function PlanetOwnerLabel({
 
   if (planet.owner === EMPTY_ADDRESS) return <Sub>Unclaimed</Sub>;
 
-  if (abbreviateOwnAddress && planet.owner === account) {
+  if (isAbbreviatedSelf) {
     return <Colored color={dfstyles.colors.dfgreen}>yours!</Colored>;
   }
 
   const color = colorWithOwnerColor
     ? defaultColor
     : getPlayerColor(planet.owner);
-  if (planet.owner && owner.value?.twitter) {
+  if (verifiedFogName !== undefined) {
+    return (
+      <Colored color={color}>
+        <span title={planet.owner}>{verifiedFogName}</span>
+      </Colored>
+    );
+  }
+  if (owner.value?.twitter) {
     return <TwitterLink color={color} twitter={owner.value.twitter} />;
   }
 
