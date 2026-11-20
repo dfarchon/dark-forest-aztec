@@ -133,7 +133,7 @@ interface ArrivalLike {
   player: string;
   pop_arriving: bigint;
   silver_moved: bigint;
-  arrival_time: number;
+  arrival_time: bigint;
   arrival_type: number;
 }
 
@@ -147,7 +147,7 @@ function toArrivalLike(r: Record<string, unknown> | ArrivalState): ArrivalLike {
       player: a.player,
       pop_arriving: a.pop_arriving,
       silver_moved: a.silver_moved,
-      arrival_time: Number(a.arrival_time), // contract u64, seconds
+      arrival_time: a.arrival_time,
       arrival_type: a.arrival_type,
     };
   }
@@ -156,7 +156,7 @@ function toArrivalLike(r: Record<string, unknown> | ArrivalState): ArrivalLike {
     player: String(rec.player ?? ZERO_ADDRESS),
     pop_arriving: toBigint(rec.pop_arriving),
     silver_moved: toBigint(rec.silver_moved),
-    arrival_time: toNumber(rec.arrival_time), // contract u64, seconds
+    arrival_time: toBigint(rec.arrival_time),
     arrival_type: toNumber(rec.arrival_type),
   };
 }
@@ -244,7 +244,7 @@ function applyPendingEvents(
   for (let iter = 0; iter < maxIter; iter++) {
     if (count === 0) break;
 
-    let earliestTime = Number(MAX_U64);
+    let earliestTime = MAX_U64;
     let earliestIndex = -1;
 
     for (let i = 0; i < 20; i++) {
@@ -260,10 +260,10 @@ function applyPendingEvents(
     }
 
     if (earliestIndex < 0 || earliestTime > currentTimestamp) break;
-    if (earliestTime === Number(MAX_U64)) break;
 
     const arrivalLike = toArrivalLike(arrivals[earliestIndex]!);
-    updatePlanet(arrivalLike.arrival_time, planet);
+    // Only due events reach this point, bounded by the client clock.
+    updatePlanet(Number(earliestTime), planet);
     const eventId = String(planetEvents.events[earliestIndex]!.id);
     eventsToRemove.add(eventId);
     applyArrival(planet, arrivalLike);

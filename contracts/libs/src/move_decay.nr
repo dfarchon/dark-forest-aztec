@@ -83,3 +83,28 @@ fn level8_rank3_tenth_percent_reaches_nearby() {
     assert(nearby > 0);
     assert(nearby < pop);
 }
+
+/// Travel takes at least one second. The event queue reserves u64::MAX as its sentinel.
+pub fn checked_arrival_time(departure: u64, distance_times_hundred: u128, speed: u128) -> u64 {
+    assert(speed > 0, "Planet speed must be positive");
+    let duration = distance_times_hundred / speed;
+    let travel_time = if duration == 0 { 1 } else { duration };
+    assert(travel_time < u64::max_value() as u128 - departure as u128, "Arrival time out of range");
+    departure + travel_time as u64
+}
+
+#[test]
+fn checked_time_boundaries() {
+    assert_eq(checked_arrival_time(7, 1, 2), 8);
+    assert_eq(checked_arrival_time(1, 18446744073709551613, 1), 18446744073709551614);
+}
+
+#[test(should_fail)]
+fn reserved_timestamp_is_rejected() {
+    let _ = checked_arrival_time(1, 18446744073709551614, 1);
+}
+
+#[test(should_fail)]
+fn duration_must_fit_before_narrowing() {
+    let _ = checked_arrival_time(0, 18446744073709551616, 1);
+}

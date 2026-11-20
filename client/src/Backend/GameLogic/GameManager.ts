@@ -146,6 +146,7 @@ import {
 import { SerializedPlugin } from "../Plugins/SerializedPlugin";
 import PersistentChunkStore from "../Storage/PersistentChunkStore";
 import { easeInAnimation, emojiEaseOutAnimation } from "../Utils/Animation";
+import { ceilMoveDistance } from "../Utils/Coordinates";
 import { ChainClock } from "../Utils/ChainClock";
 import { weiToEth } from "../Utils/Utils";
 import { hexifyBigIntNestedArray } from "../Utils/Utils";
@@ -3281,10 +3282,7 @@ class GameManager extends EventEmitter {
       const oldY = oldLocation.coords.y;
       const newX = newLocation.coords.x;
       const newY = newLocation.coords.y;
-      const xDiff = newX - oldX;
-      const yDiff = newY - oldY;
-
-      const distMax = Math.ceil(Math.sqrt(xDiff ** 2 + yDiff ** 2));
+      const distMax = ceilMoveDistance(oldLocation.coords, newLocation.coords);
 
       // Contract will automatically send full forces/silver on abandon
       const shipsMoved = !abandoning ? forces : 0;

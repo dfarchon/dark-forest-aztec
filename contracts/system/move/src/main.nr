@@ -49,7 +49,7 @@ contract Move {
         assert_public_timestamp, compute_artifact_and_location_hashes, compute_artifact_hash,
         compute_config_hashes, compute_planet_hashes, compute_world_hash,
     };
-    use ::libs::move_decay::decayed_pop_arriving;
+    use ::libs::move_decay::{checked_arrival_time, decayed_pop_arriving};
     use ::libs::planet::{
         apply_spaceship_depart, check_player_init, initialize_planet_with_defaults,
         refresh_planet_v1, refresh_planet_v2,
@@ -281,6 +281,8 @@ contract Move {
             assert(expected_target == target_loc, "Move proof: target location hash mismatch");
             assert(expected_perlin == target_perlin, "Move proof: target perlin mismatch");
         }
+
+        circuits::move::assert_move_distance(x1, y1, x2, y2, max_dist as Field);
 
         let sender = self.msg_sender();
         assert(!world.paused, "Game is paused");
@@ -681,11 +683,11 @@ contract Move {
         let buff_planet_result = _buff_planet(args.old_loc, new_source_planet, temporary_upgrade);
         new_source_planet = buff_planet_result.1;
 
-        let mut travel_time: u64 = (effectiveDistTimesHundred / new_source_planet.speed) as u64;
-
-        if travel_time == 0 {
-            travel_time = 1;
-        }
+        let arrival_time = checked_arrival_time(
+            timestamp,
+            effectiveDistTimesHundred,
+            new_source_planet.speed,
+        );
 
         // All checks pass. Execute move
         // Push the new event into the planetEvents array for target location
@@ -733,7 +735,7 @@ contract Move {
             pop_arriving,
             silver_moved,
             departure_time: timestamp,
-            arrival_time: timestamp + travel_time,
+            arrival_time,
             arrival_type,
             carried_artifact_id: moved_artifact_id,
             distance: args.max_dist,

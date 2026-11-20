@@ -7,8 +7,14 @@ import {
   HIGH_LEVEL_PLANET,
   HIGH_LEVEL_PLANET_LABEL,
 } from "../../contracts/scripts/check/high-level-planet-sample.ts";
-import { planetToContract } from "../src/Session/TxExecutor/stateConvert.ts";
-import { computePlanetHash } from "../src/Session/TxExecutor/stateHash.ts";
+import {
+  arrivalToContract,
+  planetToContract,
+} from "../src/Session/TxExecutor/stateConvert.ts";
+import {
+  computePlanetHash,
+  serializeArrival,
+} from "../src/Session/TxExecutor/stateHash.ts";
 
 // Hash the Noir test contracts/tests/state_hash checks for the same planet.
 function noirHash(): string {
@@ -32,4 +38,23 @@ function noirHash(): string {
 test("level 8 rank 3 planet hashes like the contract after planetToContract", async () => {
   const hash = await computePlanetHash(planetToContract(HIGH_LEVEL_PLANET));
   assert.equal(BigInt(hash.toString()), BigInt(noirHash()));
+});
+
+test("arrival timestamps retain all u64 bits in the ABI and state commitment", () => {
+  const departure = (1n << 53n) + 1n;
+  const arrival = (1n << 64n) - 2n;
+  const state = arrivalToContract({
+    id: "1",
+    player: "0x01",
+    from_planet: "2",
+    to_planet: "3",
+    pop_arriving: 1n,
+    silver_moved: 0n,
+    departure_time: departure,
+    arrival_time: arrival,
+    arrival_type: 1,
+    carried_artifact_id: "0",
+    distance: 1n,
+  });
+  assert.deepEqual(serializeArrival(state).slice(6, 8), [departure, arrival]);
 });
