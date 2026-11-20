@@ -29,18 +29,16 @@ import {
 
 export { FogError };
 
-export const FOG_NAMESERVER_URL = "https://fog-testnet.huantian233.workers.dev";
+export const FOG_NAMESERVER_URL = "https://fog-mainnet.huantian233.workers.dev";
 
-const FOG_DEPLOYMENT = {
-  chainId: 11155111n,
-  chainIdString: "11155111",
-  rollupVersion: 679261766n,
-  rollupVersionString: "679261766",
-  l1Rollup: "0x1f435a7f2da358caf887a470faeee7d5d5f4efba",
+export const FOG_DEPLOYMENT = {
+  chainId: 1n,
+  chainIdString: "1",
+  rollupVersion: 2070860440n,
+  rollupVersionString: "2070860440",
+  l1Rollup: "0xe37a2663cc9c119ba41572c40fab0bbb23a5402f",
   registry:
-    "0x2d4dcccfab0afa50d15d4ec3fd7c3ef4beac112a0379bb51102ffd8a18969bd7",
-  sponsoredFpc:
-    "0x2d8fff82a3b0c15d0a89169e7d8d043e079ab94d52031f1de1e4972ebad169d3",
+    "0x1fa493d7fe8b41fff6b6dc9999b3c8a64d3cb47c50283aa75da089a16c20b7e1",
 } as const;
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -167,10 +165,16 @@ export type InspectableAztecNode = AztecNode & {
   }>;
 };
 
+export type FogWriteSdk = Pick<
+  typeof import("fog-sdk"),
+  "connectFog" | "setPrimary" | "clearPrimary"
+>;
+
 export interface FogNameServiceOptions {
   readonly getNode: () => InspectableAztecNode | undefined;
   readonly getActiveAddress: () => string | undefined;
   readonly getBurnerSession: () => BurnerWalletSession | undefined;
+  readonly loadSdk?: () => Promise<FogWriteSdk>;
 }
 
 const INITIAL_PRIMARY: ActiveAccountPrimaryState = { status: "unknown" };
@@ -404,18 +408,25 @@ export class FogNameService {
 
   private async withBurnerFogContext<T>(
     expectedBurnerAddress: string | undefined,
-    run: (sdk: typeof import("fog-sdk"), ctx: FogContext) => Promise<T>
+    run: (sdk: FogWriteSdk, ctx: FogContext) => Promise<T>
   ): Promise<T> {
     const session = this.requireBurnerSession(expectedBurnerAddress);
     const initialNode = this.opts.getNode();
     const reader = await this.ensureVerifiedReader();
     this.assertSessionUnchanged(session, initialNode);
-    const sdk = await import("fog-sdk");
+    const sdk = await (this.opts.loadSdk
+      ? this.opts.loadSdk()
+      : import("fog-sdk"));
     this.assertSessionUnchanged(session, initialNode);
 
+    if (session.useSponsoredFpc && !session.sponsoredFpcAddress) {
+      throw new FogError(
+        "wrong_deployment",
+        "Sponsored FPC enabled without a configured FPC address"
+      );
+    }
     const sponsoredFpc = session.useSponsoredFpc
-      ? (session.sponsoredFpcAddress ??
-        requireNonZeroAztecAddress(FOG_DEPLOYMENT.sponsoredFpc, "sponsoredFpc"))
+      ? session.sponsoredFpcAddress
       : undefined;
 
     const ctx = await sdk.connectFog(reader, {
@@ -517,7 +528,7 @@ export class FogNameService {
       this.cachedReader = undefined;
       throw new FogError(
         "wrong_deployment",
-        "Connected Fog registry does not match pinned testnet deployment."
+        "Connected Fog registry does not match pinned mainnet deployment."
       );
     }
     this.cachedReader = { node, reader };

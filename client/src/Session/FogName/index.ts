@@ -17,6 +17,7 @@ import {
 } from "../../config/connection";
 import {
   addressesEqual,
+  FOG_DEPLOYMENT,
   FOG_NAMESERVER_URL,
   FogError,
   FogNameService,
@@ -28,6 +29,7 @@ import {
 
 export {
   addressesEqual,
+  FOG_DEPLOYMENT,
   FOG_NAMESERVER_URL,
   FogError,
   type FogNameServiceState,
@@ -43,6 +45,16 @@ interface BoundSession {
 const sessions = new WeakMap<GameUIManager, BoundSession>();
 let cachedNode: { url: string; node: InspectableAztecNode } | undefined;
 
+export function getAztecNodeClientOptions(
+  url: string
+): { maxBatchSize?: number } | undefined {
+  const hostname = new URL(url).hostname.toLowerCase();
+  if (hostname === "drpc.org" || hostname.endsWith(".drpc.org")) {
+    return { maxBatchSize: 3 };
+  }
+  return undefined;
+}
+
 function getSharedAztecNode(): InspectableAztecNode | undefined {
   if (typeof window === "undefined") return undefined;
   let url = "";
@@ -55,9 +67,7 @@ function getSharedAztecNode(): InspectableAztecNode | undefined {
   if (cachedNode?.url === url) return cachedNode.node;
   let opts: { maxBatchSize?: number } | undefined;
   try {
-    if (new URL(url).hostname === "aztec-testnet.drpc.org") {
-      opts = { maxBatchSize: 3 };
-    }
+    opts = getAztecNodeClientOptions(url);
   } catch {
     return undefined;
   }
