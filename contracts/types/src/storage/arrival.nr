@@ -42,4 +42,23 @@ pub mod ArrivalType {
     pub global Normal: u8 = 1;
     pub global Photoid: u8 = 2;
     pub global Wormhole: u8 = 3;
+
+    /// The route determines whether energy may battle on landing, even if a cannon fired.
+    pub fn for_move(used_wormhole: bool, fired_photoid: bool) -> u8 {
+        if used_wormhole {
+            Wormhole
+        } else if fired_photoid {
+            Photoid
+        } else {
+            Normal
+        }
+    }
+
+    #[test]
+    fn route_takes_precedence_over_weapon() {
+        assert_eq(for_move(false, false), Normal);
+        assert_eq(for_move(false, true), Photoid);
+        assert_eq(for_move(true, false), Wormhole);
+        assert_eq(for_move(true, true), Wormhole);
+    }
 }

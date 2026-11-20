@@ -125,6 +125,24 @@ fn max_rank(space_type: u8) -> u32 {
     max as u32
 }
 
+#[test]
+fn simultaneous_cannon_and_wormhole_settle_as_wormhole() {
+    let mut target = Planet::zero();
+    target.population = 12;
+    target.population_cap = 100;
+    target.defense = 100;
+    let mut fleet = Arrival::zero();
+    fleet.player = enemy();
+    fleet.pop_arriving = 5;
+    fleet.arrival_type = ArrivalType::for_move(true, true);
+    let hostile = apply_arrival(target, fleet).1;
+    assert(hostile.owner == target.owner);
+    assert_eq(hostile.population, 12);
+    target.owner = fleet.player;
+    let friendly = apply_arrival(target, fleet).1;
+    assert_eq(friendly.population, 17);
+}
+
 /// Owned, full of energy and silver, no upgrades.
 fn new_planet(location: Field, level: u8, planet_type: u8, space_type: u8) -> Planet {
     let args = DFPInitPlanetArgs {
