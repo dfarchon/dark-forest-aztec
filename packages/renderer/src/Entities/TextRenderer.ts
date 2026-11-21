@@ -33,6 +33,7 @@ export class TextRenderer
   quad2Buffer: number[];
 
   glyphData: Map<string, GlyphInfo>;
+  missingGlyphs: Set<string>;
 
   texIdx: number;
   rendererType = RendererType.Text;
@@ -42,6 +43,7 @@ export class TextRenderer
     this.bufferCanvas = manager.renderer.bufferCanvas;
 
     this.glyphData = new Map<string, GlyphInfo>();
+    this.missingGlyphs = new Set<string>();
     this.createGlyphs();
 
     this.texIdx = this.manager.getTexIdx();
@@ -137,10 +139,12 @@ export class TextRenderer
     anchor: TextAnchor = TextAnchor.Top,
     zIdx: number = RenderZIndex.DEFAULT,
   ): void {
-    const dX = text.length * screenW * align;
+    // The atlas has no em dash. Draw the hyphen that is already in the sheet.
+    const draw = text.split("—").join("-");
+    const dX = draw.length * screenW * align;
     const dY = -screenH * anchor;
 
-    text
+    draw
       .split("")
       .forEach((char: string, i: number) =>
         this.queueGlyph(char, x - dX + i * screenW, y + dY, color, zIdx),
@@ -162,7 +166,10 @@ export class TextRenderer
 
     const info = this.glyphData.get(glyph);
     if (!info) {
-      console.error("could not find glyph: " + glyph);
+      if (!this.missingGlyphs.has(glyph)) {
+        this.missingGlyphs.add(glyph);
+        console.error("could not find glyph: " + glyph);
+      }
       return;
     }
 

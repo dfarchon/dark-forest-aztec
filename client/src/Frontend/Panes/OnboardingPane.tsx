@@ -65,7 +65,7 @@ function OnboardMoney({ advance }: { advance: () => void }) {
   const uiManager = useUIManager();
   const account = useAccount(uiManager);
 
-  const explorerAddressLink = `https://testnet.aztecscan.xyz/address/${account}`;
+  const explorerAddressLink = `https://aztecscan.xyz/address/${account}`;
 
   return (
     <StyledOnboardingContent>

@@ -111,6 +111,15 @@ const StyledTerminalWrapper = styled.div<{
       transform: translateX(${terminalEnabled ? "0" : "100%"});
       opacity: ${$universeView ? 0 : 1};
       ${$universeView ? "pointer-events: none;" : ""}
+      ${terminalEnabled && !$universeView
+        ? css`
+            & [data-terminal-link],
+            & [data-terminal-link] * {
+              pointer-events: auto !important;
+              cursor: pointer;
+            }
+          `
+        : ""}
       transition:
         transform 0.4s cubic-bezier(0.22, 1.2, 0.36, 1),
         opacity 0.3s ease;

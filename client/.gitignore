@@ -1,8 +1,10 @@
 # Local brand draft assets
 public/octopus-logos/
 
-# Generated / local artifact assets
-artifacts/
+# Generated artifacts at the client root only.
+# public/img/artifacts and public/icons/alerts/artifacts are static site files.
+# A bare `artifacts/` rule also matches those folders, so Netlify never publishes them.
+/artifacts/
 
 # Vite / React
 dist/

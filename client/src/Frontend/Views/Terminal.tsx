@@ -149,7 +149,11 @@ function TerminalImpl(
       let innerFragment: React.JSX.Element = <span>{str}</span>;
 
       if (onClick !== undefined) {
-        innerFragment = <Link onClick={onClick}>{innerFragment}</Link>;
+        innerFragment = (
+          <Link data-terminal-link onClick={onClick}>
+            {innerFragment}
+          </Link>
+        );
       }
 
       switch (style) {
@@ -727,7 +731,10 @@ const TerminalFrame = styled.div<{ $live: boolean }>`
     css`
       pointer-events: none;
 
-      & *:not([data-scroll-lane]):not([data-scroll-lane] *) {
+      &
+        *:not([data-scroll-lane]):not([data-scroll-lane] *):not(
+          [data-terminal-link]
+        ):not([data-terminal-link] *) {
         pointer-events: none !important;
       }
     `}

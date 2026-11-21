@@ -146,8 +146,8 @@ import {
 import { SerializedPlugin } from "../Plugins/SerializedPlugin";
 import PersistentChunkStore from "../Storage/PersistentChunkStore";
 import { easeInAnimation, emojiEaseOutAnimation } from "../Utils/Animation";
-import { ceilMoveDistance } from "../Utils/Coordinates";
 import { ChainClock } from "../Utils/ChainClock";
+import { ceilMoveDistance } from "../Utils/Coordinates";
 import { weiToEth } from "../Utils/Utils";
 import { hexifyBigIntNestedArray } from "../Utils/Utils";
 import { getEmojiMessage } from "./ArrivalUtils";
