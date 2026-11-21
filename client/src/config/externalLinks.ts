@@ -61,7 +61,7 @@ export const externalLinks = {
     feeJuiceBridges: [
       {
         name: "DFArchon FeeJuice Bridge",
-        url: "https://df-aztec-trans.vercel.app",
+        url: "https://aztec-dfarchon-kit-v6.netlify.app/",
         contactName: "DFArchon",
         contactUrl: "https://x.com/DFArchon",
       },
