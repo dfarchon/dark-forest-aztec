@@ -300,8 +300,8 @@ importers:
         specifier: 2.0.5
         version: 2.0.5
       fog-sdk:
-        specifier: 0.7.0
-        version: 0.7.0(@aztec-labs/aztec.js@6.0.0(typescript@5.9.3))(@aztec-labs/foundation@6.0.0)(@aztec-labs/noir-contracts.js@6.0.0(typescript@5.9.3))(@aztec-labs/stdlib@6.0.0(typescript@5.9.3))
+        specifier: 0.7.1
+        version: 0.7.1(@aztec-labs/aztec.js@6.0.0(typescript@5.9.3))(@aztec-labs/foundation@6.0.0)(@aztec-labs/noir-contracts.js@6.0.0(typescript@5.9.3))(@aztec-labs/stdlib@6.0.0(typescript@5.9.3))
       idb:
         specifier: 8.0.0
         version: 8.0.0
@@ -5148,8 +5148,8 @@ packages:
   focus-visible@5.2.1:
     resolution: {integrity: sha512-8Bx950VD1bWTQJEH/AM6SpEk+SU55aVnp4Ujhuuxy3eMEBCRwBnTBnVXr9YAPvZL3/CNjCa8u4IWfNmEO53whA==}
 
-  fog-sdk@0.7.0:
-    resolution: {integrity: sha512-5ftCTtJrXI3++Z32kYYhuMkWmwnEtT8iLs+guEBRsMmzMNYW/uYmlMwfWMNLojlfes7/ZlIwGSktmyXvk/E5qw==}
+  fog-sdk@0.7.1:
+    resolution: {integrity: sha512-cu1mEdE8ZqD6Xnv/SrCgBFRFxyLjGLXUd5bcYiSF5R+o42ENO03rMYcoWV+mQ5zz1B0X2ypvMccovwg/uhyMRQ==}
     peerDependencies:
       '@aztec-labs/aztec.js': 6.0.0
       '@aztec-labs/foundation': 6.0.0
@@ -13810,7 +13810,7 @@ snapshots:
 
   focus-visible@5.2.1: {}
 
-  fog-sdk@0.7.0(@aztec-labs/aztec.js@6.0.0(typescript@5.9.3))(@aztec-labs/foundation@6.0.0)(@aztec-labs/noir-contracts.js@6.0.0(typescript@5.9.3))(@aztec-labs/stdlib@6.0.0(typescript@5.9.3)):
+  fog-sdk@0.7.1(@aztec-labs/aztec.js@6.0.0(typescript@5.9.3))(@aztec-labs/foundation@6.0.0)(@aztec-labs/noir-contracts.js@6.0.0(typescript@5.9.3))(@aztec-labs/stdlib@6.0.0(typescript@5.9.3)):
     dependencies:
       '@aztec-labs/aztec.js': 6.0.0(typescript@5.9.3)
       '@aztec-labs/constants': 6.0.0
