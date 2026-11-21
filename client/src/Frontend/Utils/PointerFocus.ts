@@ -25,19 +25,30 @@ export type MapPointerAction = "place-miner" | "map";
 
 const MINIMAP_TARGET = "minimap";
 
+export type PointerPoint = {
+  clientX: number;
+  clientY: number;
+};
+
 type Overlay = {
   getRect: () => PointerRect | undefined;
+  /** When set, a point inside the rectangle still misses if this returns false. */
+  hit?: (point: PointerPoint) => boolean;
 };
 
 const overlays = new Map<number, Overlay>();
 let nextOverlayId = 1;
 
-/** A region that is not in the hit-test path, such as the live terminal. */
+/**
+ * A region that is not in the hit-test path, such as the live terminal.
+ * `hit` narrows that rectangle: empty space inside it can stay on the map.
+ */
 export function registerPointerOverlay(
-  getRect: () => PointerRect | undefined
+  getRect: () => PointerRect | undefined,
+  hit?: (point: PointerPoint) => boolean
 ): () => void {
   const id = nextOverlayId++;
-  overlays.set(id, { getRect });
+  overlays.set(id, { getRect, hit });
   return () => {
     overlays.delete(id);
   };
@@ -57,8 +68,8 @@ export function pointerTarget(event: PointerSample): {
       return { kind: "minimap" };
     if (canScrollVertically(node, deltaY)) return { kind: "pane" };
   }
-  // The live terminal does not appear in the hit path. Its rectangle covers
-  // the map underneath, not a pane that is actually receiving the pointer.
+  // The live terminal does not appear in the hit path. Only its text and
+  // scrollbar claim the wheel; empty space in the column stays on the map.
   if (hitsOverlay(event)) return { kind: "terminal" };
   return { kind: "map" };
 }
@@ -67,14 +78,14 @@ function hitsOverlay(event: PointerSample): boolean {
   for (const overlay of overlays.values()) {
     const rect = overlay.getRect();
     if (!rect) continue;
-    if (
+    const inside =
       event.clientX >= rect.left &&
       event.clientX <= rect.right &&
       event.clientY >= rect.top &&
-      event.clientY <= rect.bottom
-    ) {
-      return true;
-    }
+      event.clientY <= rect.bottom;
+    if (!inside) continue;
+    if (overlay.hit && !overlay.hit(event)) continue;
+    return true;
   }
   return false;
 }

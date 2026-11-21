@@ -118,6 +118,10 @@ const StyledTerminalWrapper = styled.div<{
               pointer-events: auto !important;
               cursor: pointer;
             }
+
+            & [data-scroll-lane][data-visible="true"] {
+              pointer-events: auto !important;
+            }
           `
         : ""}
       transition:

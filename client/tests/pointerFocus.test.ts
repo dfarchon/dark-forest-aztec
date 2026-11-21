@@ -39,3 +39,21 @@ test("a registered overlay claims the pointer even when nothing is hit underneat
   }
   assert.equal(pointerTarget(sample(20, 10)).kind, "map");
 });
+
+test("a point inside an overlay rectangle stays on the map when the custom hit misses", () => {
+  const unregister = registerPointerOverlay(
+    () => ({
+      left: 10,
+      right: 40,
+      top: 5,
+      bottom: 25,
+    }),
+    () => false
+  );
+  try {
+    assert.equal(pointerTarget(sample(20, 10)).kind, "map");
+    assert.equal(pointerTarget(sample(0, 0)).kind, "map");
+  } finally {
+    unregister();
+  }
+});

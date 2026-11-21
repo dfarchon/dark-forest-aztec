@@ -26,7 +26,7 @@ import {
 import { LoadingBarHandle, TextLoadingBar } from "../Components/TextLoadingBar";
 import dfstyles from "../Styles/dfstyles";
 import { isFirefox } from "../Utils/BrowserChecks";
-import { pointerTarget, registerPointerOverlay } from "../Utils/PointerFocus";
+import { registerPointerOverlay } from "../Utils/PointerFocus";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
 
 const ENTER_KEY_CODE = 13;
@@ -93,6 +93,56 @@ export const Terminal = React.forwardRef<TerminalHandle, TerminalProps>(
 
 let terminalLineKey = 0;
 
+function pointInClientRect(
+  x: number,
+  y: number,
+  rect: { left: number; right: number; top: number; bottom: number }
+): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+/** The text run under the point, or null when the point is in empty space. */
+function terminalTextAtPoint(
+  root: HTMLElement,
+  x: number,
+  y: number
+): { link: HTMLElement | null } | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current) {
+    const value = current.textContent ?? "";
+    if (value.trim().length > 0) {
+      const range = document.createRange();
+      range.selectNodeContents(current);
+      for (const rect of range.getClientRects()) {
+        if (!pointInClientRect(x, y, rect)) continue;
+        const link = current.parentElement?.closest("[data-terminal-link]");
+        return { link: link instanceof HTMLElement ? link : null };
+      }
+    }
+    current = walker.nextNode();
+  }
+  return null;
+}
+
+function visibleScrollLane(frame: HTMLElement): HTMLElement | null {
+  const lane = frame.querySelector("[data-scroll-lane][data-visible='true']");
+  return lane instanceof HTMLElement ? lane : null;
+}
+
+/** Wheel stays on the log only over real text or the visible scrollbar. */
+function terminalWheelHit(
+  frame: HTMLElement,
+  textRoot: HTMLElement,
+  x: number,
+  y: number
+): boolean {
+  if (terminalTextAtPoint(textRoot, x, y)) return true;
+  const lane = visibleScrollLane(frame);
+  if (!lane) return false;
+  return pointInClientRect(x, y, lane.getBoundingClientRect());
+}
+
 function TerminalImpl(
   {
     promptCharacter,
@@ -149,8 +199,22 @@ function TerminalImpl(
       let innerFragment: React.JSX.Element = <span>{str}</span>;
 
       if (onClick !== undefined) {
+        const openLink = onClick;
         innerFragment = (
-          <Link data-terminal-link onClick={onClick}>
+          <Link
+            data-terminal-link
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openLink();
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+          >
             {innerFragment}
           </Link>
         );
@@ -307,8 +371,11 @@ function TerminalImpl(
       }
     };
 
+    const frameOf = () => frameRef.current ?? node;
+
     const onPointerMove = (event: PointerEvent) => {
-      setReadingState(pointerTarget(event).kind === "terminal");
+      const rect = frameOf().getBoundingClientRect();
+      setReadingState(pointInClientRect(event.clientX, event.clientY, rect));
     };
 
     const onPointerLeave = () => {
@@ -316,7 +383,8 @@ function TerminalImpl(
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (pointerTarget(event).kind !== "terminal") return;
+      if (!terminalWheelHit(frameOf(), node, event.clientX, event.clientY))
+        return;
       const maxScroll = node.scrollHeight - node.clientHeight;
       if (maxScroll <= 1) return;
       event.preventDefault();
@@ -333,8 +401,32 @@ function TerminalImpl(
       syncScrollMetrics();
     };
 
-    const unregisterOverlay = registerPointerOverlay(() =>
-      (frameRef.current ?? node).getBoundingClientRect()
+    let claimedLinkClick = false;
+    const claimLinkPress = (event: MouseEvent, dispatchClick: boolean) => {
+      if (event.button !== 0) return;
+      const hit = terminalTextAtPoint(node, event.clientX, event.clientY);
+      const link = hit?.link;
+      if (!link) return;
+      if (event.target instanceof Node && link.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!dispatchClick || claimedLinkClick) return;
+      claimedLinkClick = true;
+      link.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      claimedLinkClick = false;
+      claimLinkPress(event, true);
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      claimLinkPress(event, true);
+    };
+
+    const unregisterOverlay = registerPointerOverlay(
+      () => frameOf().getBoundingClientRect(),
+      (point) => terminalWheelHit(frameOf(), node, point.clientX, point.clientY)
     );
     window.addEventListener("pointermove", onPointerMove);
     document.documentElement.addEventListener("pointerleave", onPointerLeave);
@@ -342,6 +434,8 @@ function TerminalImpl(
       capture: true,
       passive: false,
     });
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
     return () => {
       unregisterOverlay();
       window.removeEventListener("pointermove", onPointerMove);
@@ -350,6 +444,8 @@ function TerminalImpl(
         onPointerLeave
       );
       window.removeEventListener("wheel", onWheel, { capture: true });
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
     };
   }, [interactive, syncScrollMetrics]);
 
