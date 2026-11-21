@@ -250,6 +250,7 @@ test("self-paid Mainnet burner passes sponsoredFpc: undefined to connectFog", as
     assert.equal(connectCalls.length, 2);
     for (const call of connectCalls) {
       assert.equal(call.sponsoredFpc, undefined);
+      assert.equal(call.estimateGas, true);
       assert.deepEqual(call.deployment, {
         registry: FOG_DEPLOYMENT.registry,
         chainId: "1",
@@ -306,6 +307,7 @@ test("sponsored burner passes configured sponsoredFpcAddress and rejects missing
       connectCalls[0].sponsoredFpc?.toString(),
       SPONSOR_FPC_ADDR.toString()
     );
+    assert.equal(connectCalls[0].estimateGas, false);
 
     session = {
       wallet,

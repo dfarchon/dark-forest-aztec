@@ -438,6 +438,9 @@ export class FogNameService {
         rollupVersion: FOG_DEPLOYMENT.rollupVersionString,
       },
       sponsoredFpc,
+      // A self-paid burner declares its simulated gas (+10%) instead of the network's whole per-tx limit,
+      // so it only needs Fee Juice for real usage.
+      estimateGas: sponsoredFpc === undefined,
     });
     this.assertSessionUnchanged(session, initialNode);
 

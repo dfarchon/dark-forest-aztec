@@ -52,7 +52,7 @@
     "delay": "6.0.0",
     "emoji-picker-react": "4.12.0",
     "file-saver": "2.0.5",
-    "fog-sdk": "0.7.0",
+    "fog-sdk": "0.7.1",
     "idb": "8.0.0",
     "js-quadtree": "3.3.6",
     "json-stable-stringify": "1.0.2",
