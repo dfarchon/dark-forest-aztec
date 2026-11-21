@@ -29,7 +29,7 @@ import {
 
 export { FogError };
 
-export const FOG_NAMESERVER_URL = "https://fog-mainnet.huantian233.workers.dev";
+export const FOG_NAMESERVER_URL = "https://fog.dfarchon.xyz";
 
 export const FOG_DEPLOYMENT = {
   chainId: 1n,

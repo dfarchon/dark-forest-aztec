@@ -97,10 +97,7 @@ function createMockMainnetNode(overrides?: {
 }
 
 test("pins Aztec Mainnet NameRegistryV8 constants and Fog Nameserver URL", () => {
-  assert.equal(
-    FOG_NAMESERVER_URL,
-    "https://fog-mainnet.huantian233.workers.dev"
-  );
+  assert.equal(FOG_NAMESERVER_URL, "https://fog.dfarchon.xyz");
   assert.equal(FOG_DEPLOYMENT.chainId, 1n);
   assert.equal(FOG_DEPLOYMENT.chainIdString, "1");
   assert.equal(FOG_DEPLOYMENT.rollupVersion, 2070860440n);
