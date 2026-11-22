@@ -30,6 +30,7 @@ import {
   packWitness,
   unpackWitness,
 } from "./acvmWitness";
+import { settleCircuitAttempt } from "./circuitRetry";
 
 /**
  * PXE circuit simulator whose ACVM runs in a worker.
@@ -37,6 +38,10 @@ import {
  * Nested utility calls happen while a circuit is waiting on an oracle, so each
  * in-flight circuit gets its own worker. The worker WASM is not re-entered.
  * Oracle handlers stay on the main thread, where the PXE stores notes.
+ *
+ * A worker that fails before any oracle may be retried on the main thread.
+ * Once an oracle has run, the circuit is not executed again: replaying it
+ * would enter the revertible phase twice.
  */
 
 type ForeignHandler = (
@@ -57,6 +62,7 @@ class AcvmWorkerClient {
   readonly ready: Promise<void>;
   stopped = false;
   private readonly worker: Worker;
+  private oracleInvoked = false;
   private current?: {
     jobId: number;
     foreign: ForeignHandler;
@@ -82,6 +88,11 @@ class AcvmWorkerClient {
     };
   }
 
+  /** True while the active job has already called an oracle. */
+  hasInvokedOracle(): boolean {
+    return this.current !== undefined && this.oracleInvoked;
+  }
+
   execute(request: {
     jobId: number;
     kind: CircuitKind;
@@ -94,6 +105,7 @@ class AcvmWorkerClient {
         new Error("ACVM worker is already running a circuit")
       );
     }
+    this.oracleInvoked = false;
     const bytecode = request.bytecode.buffer;
     const witness = request.witness;
     return new Promise((resolve, reject) => {
@@ -146,6 +158,7 @@ class AcvmWorkerClient {
     if (message.type === "foreign") {
       const current = this.current;
       if (!current || current.jobId !== message.jobId) return;
+      this.oracleInvoked = true;
       void current.foreign(message.name, message.inputs).then(
         (outputs) => {
           if (this.stopped) return;
@@ -273,6 +286,7 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
     await initAbiWasm();
     const handler = callback ?? missingCallback;
     if (!this.workersDisabled) {
+      let oracleInvoked = false;
       try {
         const bytecode = await decodeBase64(artifact.bytecode);
         const packed = await packWitness(input);
@@ -282,7 +296,10 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
             kind: "circuit",
             bytecode: copyBytes(bytecode),
             witness: packed,
-            foreign: (name, inputs) => handler(name, inputs),
+            foreign: (name, inputs) => {
+              oracleInvoked = true;
+              return handler(name, inputs);
+            },
           })
         );
         if (result.kind !== "circuit") {
@@ -294,10 +311,28 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
           witness: await unpackWitness(result.witness),
         };
       } catch (err) {
-        if (err instanceof CircuitExecutionError) {
-          throw protocolError(artifact, err.fail);
-        }
-        this.noteWorkerFailure(err);
+        return await settleCircuitAttempt({
+          error: err,
+          oracleInvoked,
+          isCircuitExecutionError: err instanceof CircuitExecutionError,
+          onWorkerFailure: (failure, replay) => {
+            this.noteWorkerFailure(failure, replay);
+          },
+          fallback: () =>
+            this.local().executeProtocolCircuitToWitness(
+              input,
+              artifact,
+              handler
+            ),
+          rethrowCircuit: (failure) => {
+            if (!(failure instanceof CircuitExecutionError)) {
+              throw failure instanceof Error
+                ? failure
+                : new Error(String(failure));
+            }
+            throw protocolError(artifact, failure.fail);
+          },
+        });
       }
     }
     return this.local().executeProtocolCircuitToWitness(
@@ -316,6 +351,7 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
     // returns. That wasm used to be initialized by WASMSimulator.init().
     await initAbiWasm();
     if (!this.workersDisabled) {
+      let oracleInvoked = false;
       try {
         const packed = await packWitness(input);
         const result = await this.withWorker((worker) =>
@@ -325,6 +361,7 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
             bytecode: copyBytes(artifact.bytecode),
             witness: packed,
             foreign: (name, inputs) => {
+              oracleInvoked = true;
               const oracle = callback[name];
               if (!oracle) {
                 throw new Error(`Oracle callback ${name} not found`);
@@ -341,10 +378,24 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
           returnWitness: await unpackWitness(result.returned),
         };
       } catch (err) {
-        if (err instanceof CircuitExecutionError) {
-          throw attachFailure(new Error(err.fail.message), err.fail);
-        }
-        this.noteWorkerFailure(err);
+        return await settleCircuitAttempt({
+          error: err,
+          oracleInvoked,
+          isCircuitExecutionError: err instanceof CircuitExecutionError,
+          onWorkerFailure: (failure, replay) => {
+            this.noteWorkerFailure(failure, replay);
+          },
+          fallback: () =>
+            this.local().executeUserCircuit(input, artifact, callback),
+          rethrowCircuit: (failure) => {
+            if (!(failure instanceof CircuitExecutionError)) {
+              throw failure instanceof Error
+                ? failure
+                : new Error(String(failure));
+            }
+            throw attachFailure(new Error(failure.fail.message), failure.fail);
+          },
+        });
       }
     }
     return this.local().executeUserCircuit(input, artifact, callback);
@@ -355,15 +406,26 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
     return this.fallback;
   }
 
-  private noteWorkerFailure(err: unknown): void {
+  private noteWorkerFailure(err: unknown, replay: boolean): void {
     console.warn(
-      "[WalletManager] ACVM worker failed. Simulating on the main thread.",
+      replay
+        ? "[WalletManager] ACVM worker failed. Simulating on the main thread."
+        : "[WalletManager] ACVM worker failed after an oracle call. Not replaying the circuit.",
       err
     );
     this.workersDisabled = true;
-    for (const worker of this.workers) worker.destroy();
-    this.workers.length = 0;
-    this.idle.length = 0;
+    for (const worker of [...this.workers]) {
+      if (worker.hasInvokedOracle()) continue;
+      this.forget(worker);
+      worker.destroy();
+    }
+  }
+
+  private forget(worker: AcvmWorkerClient): void {
+    const index = this.workers.indexOf(worker);
+    if (index >= 0) this.workers.splice(index, 1);
+    const idleIndex = this.idle.indexOf(worker);
+    if (idleIndex >= 0) this.idle.splice(idleIndex, 1);
   }
 
   private async acquire(): Promise<AcvmWorkerClient> {
@@ -396,7 +458,11 @@ export class WorkerCircuitSimulator implements CircuitSimulator {
   }
 
   private release(worker: AcvmWorkerClient): void {
-    if (this.destroyed || this.workersDisabled || worker.stopped) return;
+    if (this.destroyed || this.workersDisabled || worker.stopped) {
+      this.forget(worker);
+      if (!worker.stopped) worker.destroy();
+      return;
+    }
     this.idle.push(worker);
   }
 
