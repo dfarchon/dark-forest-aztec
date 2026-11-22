@@ -642,7 +642,9 @@ class GameUIManager extends EventEmitter {
             false,
             from.lastUpdated
           ).catch((error: unknown) => {
-            console.error("[UI Move] Submission failed", error);
+            const message =
+              error instanceof Error ? error.message : String(error);
+            console.error(`[UI Move] Submission failed\n${message}`);
           });
           tutorialManager.acceptInput(TutorialState.SendFleet);
         } else {

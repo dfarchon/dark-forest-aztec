@@ -42,6 +42,7 @@ import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
+import { formatSimulationError, isStaleProofError } from "./simulationError";
 import { StateResolver, type StateResolverOptions } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
 import type {
@@ -88,14 +89,6 @@ function timeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 }
 
 const TX_SUBMIT_TIMEOUT = 300_000; // 5 minutes (includes ClientIVC proof generation)
-
-/** Contract assertions that a re-proof at the latest block time and state can clear. */
-const STALE_PROOF_ERRORS = ["Timestamp too old", "hash mismatch"];
-
-function isStaleProofError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return STALE_PROOF_ERRORS.some((s) => message.includes(s));
-}
 
 const DEFAULT_QUEUE_CONFIG: ConcurrentQueueConfiguration = {
   invocationIntervalMs: 500,
@@ -410,21 +403,18 @@ export class TxExecutor {
             simResult
           );
         } catch (simErr) {
+          const detail = formatSimulationError(simErr) || String(simErr);
           console.error(
-            `[TxExecutor] simulate ${tx.intent.methodName} FAILED:`,
+            `[TxExecutor] simulate ${tx.intent.methodName} FAILED\n${detail}`
+          );
+          console.error(
+            `[TxExecutor] simulate ${tx.intent.methodName} error object`,
             simErr
           );
-          if (simErr instanceof Error) {
-            console.error(`[TxExecutor] error message:`, simErr.message);
-            console.error(`[TxExecutor] error stack:`, simErr.stack);
-            if ("cause" in simErr) {
-              console.error(`[TxExecutor] error cause:`, simErr.cause);
-            }
-          }
-          if (attempt < MAX_RETRIES && isStaleProofError(simErr)) {
+          if (attempt < MAX_RETRIES && isStaleProofError(detail)) {
             continue;
           }
-          throw simErr;
+          throw new Error(detail, { cause: simErr });
         }
 
         const sendResult = (await timeout(
