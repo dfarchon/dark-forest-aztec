@@ -854,6 +854,7 @@ const TerminalContainer = styled.div<{ $live: boolean }>`
   min-height: 0;
   margin: 0 auto;
   overflow: auto;
+  overscroll-behavior: contain;
   white-space: pre-wrap;
   overflow-wrap: break-word;
 

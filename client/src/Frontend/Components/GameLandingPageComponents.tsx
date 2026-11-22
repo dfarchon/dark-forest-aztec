@@ -2,6 +2,7 @@ import { Setting } from "@dfpunk/types";
 import React, {
   Dispatch,
   SetStateAction,
+  useEffect,
   useLayoutEffect,
   useRef,
 } from "react";
@@ -25,17 +26,82 @@ type LandingWrapperProps = {
   terminalEnabled: boolean;
 };
 
+const PAGE_SCROLL_KEYS = new Set([
+  " ",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+]);
+
+/** Space and arrows scroll the document when it is even slightly taller than the window. */
+function blockPageScrollKey(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing) return;
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (!PAGE_SCROLL_KEYS.has(event.key)) return;
+  const target = event.target;
+  if (
+    target instanceof Element &&
+    target.closest(
+      "input, textarea, select, button, a, df-button, df-shortcut-button, df-text-input, df-number-input, df-slider, [contenteditable='true']"
+    )
+  ) {
+    return;
+  }
+  event.preventDefault();
+}
+
+function useLockViewport() {
+  useEffect(() => {
+    const html = document.documentElement;
+    const { body } = document;
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+      bodyOverscroll: body.style.overscrollBehavior,
+    };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
+
+    const pin = () => {
+      if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    pin();
+    window.addEventListener("scroll", pin);
+    window.addEventListener("keydown", blockPageScrollKey);
+    return () => {
+      window.removeEventListener("scroll", pin);
+      window.removeEventListener("keydown", blockPageScrollKey);
+      html.style.overflow = previous.htmlOverflow;
+      body.style.overflow = previous.bodyOverflow;
+      html.style.overscrollBehavior = previous.htmlOverscroll;
+      body.style.overscrollBehavior = previous.bodyOverscroll;
+    };
+  }, []);
+}
+
 const StyledWrapper = styled.div<{
   initRender: InitRenderState;
 }>`
-  width: 100%;
-  height: 100vh;
+  position: fixed;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: row;
   overflow: hidden;
-  position: relative;
+  overscroll-behavior: none;
   background: ${dfstyles.colors.background};
 
   justify-content: ${(props) =>
@@ -46,12 +112,12 @@ const StyledWrapper = styled.div<{
   ${(props) =>
     props.initRender !== InitRenderState.NONE &&
     css`
-      margin-top: ${NOTCH_BANNER_HEIGHT_PX}px;
-      height: calc(100vh - ${NOTCH_BANNER_HEIGHT_PX}px);
+      top: ${NOTCH_BANNER_HEIGHT_PX}px;
     `}
 `;
 
 export function Wrapper({ children, initRender }: LandingWrapperProps) {
+  useLockViewport();
   return <StyledWrapper initRender={initRender}>{children}</StyledWrapper>;
 }
 
@@ -102,8 +168,9 @@ const StyledTerminalWrapper = styled.div<{
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-height: 100vh;
+  max-height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: ${dfstyles.colors.background};
   position: relative;
 

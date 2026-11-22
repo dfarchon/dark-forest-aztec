@@ -108,7 +108,6 @@ function App() {
 
 const GlobalStyle = createGlobalStyle`
 body {
-  width: 100vw;
   min-height: 100vh;
   background-color: ${dfstyles.colors.background};
 }
