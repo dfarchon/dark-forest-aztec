@@ -68,8 +68,8 @@ export function pointerTarget(event: PointerSample): {
       return { kind: "minimap" };
     if (canScrollVertically(node, deltaY)) return { kind: "pane" };
   }
-  // The live terminal does not appear in the hit path. Only its text and
-  // scrollbar claim the wheel; empty space in the column stays on the map.
+  // The live terminal does not appear in the hit path. Its overlay claims the
+  // wheel only while the log overflows; otherwise the map keeps the wheel.
   if (hitsOverlay(event)) return { kind: "terminal" };
   return { kind: "map" };
 }

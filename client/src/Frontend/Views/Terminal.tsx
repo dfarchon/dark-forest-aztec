@@ -26,7 +26,7 @@ import {
 import { LoadingBarHandle, TextLoadingBar } from "../Components/TextLoadingBar";
 import dfstyles from "../Styles/dfstyles";
 import { isFirefox } from "../Utils/BrowserChecks";
-import { registerPointerOverlay } from "../Utils/PointerFocus";
+import { pointerTarget, registerPointerOverlay } from "../Utils/PointerFocus";
 import { TerminalTextStyle } from "../Utils/TerminalTypes";
 
 const ENTER_KEY_CODE = 13;
@@ -125,22 +125,19 @@ function terminalTextAtPoint(
   return null;
 }
 
-function visibleScrollLane(frame: HTMLElement): HTMLElement | null {
-  const lane = frame.querySelector("[data-scroll-lane][data-visible='true']");
-  return lane instanceof HTMLElement ? lane : null;
+function terminalOverflows(node: HTMLElement): boolean {
+  return node.scrollHeight > node.clientHeight + 1;
 }
 
-/** Wheel stays on the log only over real text or the visible scrollbar. */
+/** The log owns the wheel only while it overflows and the pointer is in the frame. */
 function terminalWheelHit(
   frame: HTMLElement,
   textRoot: HTMLElement,
   x: number,
   y: number
 ): boolean {
-  if (terminalTextAtPoint(textRoot, x, y)) return true;
-  const lane = visibleScrollLane(frame);
-  if (!lane) return false;
-  return pointInClientRect(x, y, lane.getBoundingClientRect());
+  if (!terminalOverflows(textRoot)) return false;
+  return pointInClientRect(x, y, frame.getBoundingClientRect());
 }
 
 function TerminalImpl(
@@ -350,7 +347,8 @@ function TerminalImpl(
       syncScrollMetrics();
     }
     if (!interactive) {
-      setShowScrollbar(readingRef.current);
+      const node = containerRef.current;
+      setShowScrollbar(!!node && readingRef.current && terminalOverflows(node));
     }
   }, [fragments, interactive, scrollToEnd, syncScrollMetrics]);
 
@@ -359,11 +357,17 @@ function TerminalImpl(
     const node = containerRef.current;
     if (!node) return;
 
+    const refreshScrollbar = () => {
+      if (draggingScrollRef.current) return;
+      setShowScrollbar(readingRef.current && terminalOverflows(node));
+    };
+
     const setReadingState = (readingNow: boolean) => {
       if (draggingScrollRef.current) return;
-      if (readingRef.current === readingNow) return;
+      const changed = readingRef.current !== readingNow;
       readingRef.current = readingNow;
-      setShowScrollbar(readingNow);
+      refreshScrollbar();
+      if (!changed) return;
       if (readingNow) syncScrollMetrics();
       if (!readingNow) {
         stickToEndRef.current = true;
@@ -383,8 +387,9 @@ function TerminalImpl(
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!terminalWheelHit(frameOf(), node, event.clientX, event.clientY))
-        return;
+      // Panes and the mini map win. The overlay claims the frame only when
+      // the log overflows, so a short log leaves the wheel on the map.
+      if (pointerTarget(event).kind !== "terminal") return;
       const maxScroll = node.scrollHeight - node.clientHeight;
       if (maxScroll <= 1) return;
       event.preventDefault();
@@ -428,6 +433,11 @@ function TerminalImpl(
       () => frameOf().getBoundingClientRect(),
       (point) => terminalWheelHit(frameOf(), node, point.clientX, point.clientY)
     );
+    const resizeObserver = new ResizeObserver(() => {
+      syncScrollMetrics();
+      refreshScrollbar();
+    });
+    resizeObserver.observe(node);
     window.addEventListener("pointermove", onPointerMove);
     document.documentElement.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("wheel", onWheel, {
@@ -437,6 +447,7 @@ function TerminalImpl(
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("mousedown", onMouseDown, true);
     return () => {
+      resizeObserver.disconnect();
       unregisterOverlay();
       window.removeEventListener("pointermove", onPointerMove);
       document.documentElement.removeEventListener(

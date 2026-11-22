@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import styled, { css } from "styled-components";
 
+import { NOTCH_BANNER_HEIGHT_PX } from "../Notch/notchBoard";
 import dfstyles from "../Styles/dfstyles";
 import { useUIManager } from "../Utils/AppHooks";
 import { useSetting } from "../Utils/SettingsHooks";
@@ -41,6 +42,13 @@ const StyledWrapper = styled.div<{
     props.initRender !== InitRenderState.NONE
       ? "space-between"
       : "space-around"};
+
+  ${(props) =>
+    props.initRender !== InitRenderState.NONE &&
+    css`
+      margin-top: ${NOTCH_BANNER_HEIGHT_PX}px;
+      height: calc(100vh - ${NOTCH_BANNER_HEIGHT_PX}px);
+    `}
 `;
 
 export function Wrapper({ children, initRender }: LandingWrapperProps) {
@@ -165,7 +173,7 @@ const StyledTerminalToggler = styled.div<{
 }>`
   position: fixed;
   right: 0;
-  top: 0.6em;
+  top: calc(${NOTCH_BANNER_HEIGHT_PX}px + 0.6em);
   bottom: 200px;
   height: auto;
   width: 1.3em;
@@ -204,7 +212,7 @@ const EdgeRevealStrip = styled.div<{
 }>`
   position: fixed;
   right: 0;
-  top: 0.6em;
+  top: calc(${NOTCH_BANNER_HEIGHT_PX}px + 0.6em);
   bottom: 200px;
   width: 6px;
   z-index: 1000;

@@ -10,7 +10,6 @@ import {
   WindowWrapper,
 } from "../Components/GameWindowComponents";
 import ControllableCanvas from "../Game/ControllableCanvas";
-import { NOTCH_BANNER_HEIGHT_PX } from "../Notch/NotchBanner";
 import { ArtifactHoverPane } from "../Panes/ArtifactHoverPane";
 import { DiagnosticsPane } from "../Panes/DiagnosticsPane";
 import { ExplorePane } from "../Panes/ExplorePane";
@@ -398,14 +397,14 @@ const TopBarPaneContainer = styled.div`
   align-items: flex-start;
   width: max-content;
   position: absolute;
-  top: ${NOTCH_BANNER_HEIGHT_PX}px;
+  top: 0;
   left: 0;
   z-index: ${DFZIndex.MenuBar};
 `;
 
 const TopRightStack = styled.div`
   position: absolute;
-  top: ${NOTCH_BANNER_HEIGHT_PX}px;
+  top: 0;
   right: 0;
   z-index: ${DFZIndex.Notification};
   display: flex;
