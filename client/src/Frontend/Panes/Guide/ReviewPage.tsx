@@ -35,7 +35,11 @@ export const reviewPage: GuidePage = {
     },
   },
   Intro: ReviewIntro,
-  open: () => {},
+  open: (_ui, step) => {
+    if (step === "readScoring") {
+      UIEmitter.getInstance().emit(UIEmitterEvent.SetStatusVisible, true);
+    }
+  },
   watch: ({ stepId, hidePointer }) => {
     if (stepId !== "readScoring") return () => {};
     const emitter = UIEmitter.getInstance();

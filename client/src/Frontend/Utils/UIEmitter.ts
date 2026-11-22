@@ -32,6 +32,7 @@ export const enum UIEmitterEvent {
   ExplorerChanged = "ExplorerChanged",
   SetTerminalVisible = "SetTerminalVisible",
   TerminalVisibilityChanged = "TerminalVisibilityChanged",
+  SetStatusVisible = "SetStatusVisible",
   OpenScoringHelp = "OpenScoringHelp",
 
   OpenScoreboard = "OpenScoreboard",

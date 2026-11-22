@@ -125,6 +125,8 @@ export function GameWindowLayout({
     useBooleanSetting(uiManager, Setting.TerminalVisible);
   const [minimapOpen, setMinimapOpen] = useState(true);
   const minimapEdgeArmed = useRef(true);
+  const [statusOpen, setStatusOpen] = useState(true);
+  const statusEdgeArmed = useRef(true);
 
   useEffect(() => {
     uiManager.setOverlayContainer(modalsContainer);
@@ -167,6 +169,14 @@ export function GameWindowLayout({
       );
     };
   }, [setTerminalVisible]);
+
+  useEffect(() => {
+    const emitter = UIEmitter.getInstance();
+    emitter.on(UIEmitterEvent.SetStatusVisible, setStatusOpen);
+    return () => {
+      emitter.removeListener(UIEmitterEvent.SetStatusVisible, setStatusOpen);
+    };
+  }, []);
 
   useEffect(() => {
     UIEmitter.getInstance().emit(
@@ -259,7 +269,7 @@ export function GameWindowLayout({
   return (
     <WindowWrapper>
       <UniverseFade $hidden={!showEdgeChrome}>
-        <TopBarPaneContainer>
+        <TopBarPaneContainer $open={statusOpen}>
           <BorderlessPane>
             <TopBar
               twitterVerifyHook={[
@@ -270,6 +280,16 @@ export function GameWindowLayout({
             />
           </BorderlessPane>
         </TopBarPaneContainer>
+        <StatusEdge
+          onMouseEnter={() => {
+            if (!showEdgeChrome || !statusEdgeArmed.current) return;
+            statusEdgeArmed.current = false;
+            setStatusOpen((open) => !open);
+          }}
+          onMouseLeave={() => {
+            statusEdgeArmed.current = true;
+          }}
+        />
         <SponsoredFpcBalanceWarning />
       </UniverseFade>
 
@@ -391,7 +411,7 @@ export function GameWindowLayout({
   );
 }
 
-const TopBarPaneContainer = styled.div`
+const TopBarPaneContainer = styled.div<{ $open: boolean }>`
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
@@ -400,6 +420,17 @@ const TopBarPaneContainer = styled.div`
   top: 0;
   left: 0;
   z-index: ${DFZIndex.MenuBar};
+  transform: translateX(${({ $open }) => ($open ? "0" : "calc(-100% - 8px)")});
+  transition: transform 0.4s cubic-bezier(0.22, 1.2, 0.36, 1);
+`;
+
+const StatusEdge = styled.div`
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 260px;
+  z-index: 1000;
 `;
 
 const TopRightStack = styled.div`
