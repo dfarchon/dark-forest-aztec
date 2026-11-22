@@ -8,6 +8,7 @@ import { createGlobalStyle } from "styled-components";
 
 import { Theme } from "../Components/Theme";
 import { ExternalWalletProvider } from "../Contexts/ExternalWalletContext";
+import { NotchBanner } from "../Notch/NotchBanner";
 import { LandingPageBackground } from "../Renderers/LandingPageCanvas";
 import dfstyles from "../Styles/dfstyles";
 import { EventsPage } from "./EventsPage";
@@ -63,6 +64,7 @@ function App() {
       {/* Provides theming for WebComponents from the `@dfpunk/ui` package */}
       <Theme color="dark" scale="medium">
         <ExternalWalletProvider>
+          <NotchBanner />
           <Routes>
             <Route
               path="/play"
