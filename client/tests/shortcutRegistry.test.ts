@@ -72,6 +72,35 @@ test("ignored presses do not arm a shortcut", () => {
   }
 });
 
+test("a range handle inside a slider still runs shortcuts", () => {
+  const seen: string[] = [];
+  const unregister = registerShortcut("q", (key) => seen.push(key));
+  try {
+    tap("q", [
+      { tagName: "INPUT", type: "range" } as EventTarget,
+      { tagName: "DF-SLIDER" } as EventTarget,
+    ]);
+    assert.deepEqual(seen, ["q"]);
+  } finally {
+    unregister();
+  }
+});
+
+test("typing in a slider number field does not run shortcuts", () => {
+  const seen: string[] = [];
+  const unregister = registerShortcut("q", (key) => seen.push(key));
+  try {
+    tap("q", [
+      { tagName: "INPUT", type: "text" } as EventTarget,
+      { tagName: "SP-NUMBER-FIELD" } as EventTarget,
+      { tagName: "DF-SLIDER" } as EventTarget,
+    ]);
+    assert.deepEqual(seen, []);
+  } finally {
+    unregister();
+  }
+});
+
 test("a keydown inside an input does not fire when the key is released outside it", () => {
   const seen: string[] = [];
   const unregister = registerShortcut("a", () => seen.push("a"));

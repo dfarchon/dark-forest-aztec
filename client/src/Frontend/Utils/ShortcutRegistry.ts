@@ -122,7 +122,12 @@ export function shouldIgnoreShortcut(event: ShortcutKeyEvent): boolean {
   }
   if (event.ctrlKey || event.metaKey || event.altKey) return true;
 
-  for (const node of event.composedPath()) {
+  const path = event.composedPath();
+  // A focused range handle lives inside df-slider. The host is only editable
+  // when the number field (a text input) is the target.
+  const targetIsRange = path.length > 0 && isRangeInput(path[0]);
+  for (const node of path) {
+    if (targetIsRange && tagNameOf(node) === "df-slider") continue;
     if (isEditableTarget(node)) return true;
   }
   return false;
@@ -148,6 +153,10 @@ function inputType(node: EventTarget): string {
   if (typeof node !== "object" || node === null || !("type" in node)) return "";
   const type = node.type;
   return typeof type === "string" ? type.toLowerCase() : "";
+}
+
+function isRangeInput(node: EventTarget): boolean {
+  return tagNameOf(node) === "input" && inputType(node) === "range";
 }
 
 function isContentEditable(node: EventTarget): boolean {

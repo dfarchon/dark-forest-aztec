@@ -6,6 +6,18 @@ import {
 import { css, CSSResultArray, unsafeCSS } from "lit";
 import * as dfstyles from "./styles";
 
+const SLIDER_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Tab",
+]);
+
 export class DarkForestSlider extends Slider {
   // Not part of LitElement but let's tack on the tagName for easier registration
   static tagName = "df-slider";
@@ -110,7 +122,17 @@ export class DarkForestSlider extends Slider {
     if (evt.target === this.numberField) {
       // This prevents typing from bubbling up to shortcut handler if typing in the numberField
       evt.stopPropagation();
+      return;
     }
+    // Spectrum highlights the handle on any key. Leave arrow-key adjustment
+    // alone, and drop focus for everything else so shortcuts such as Send
+    // are not captured by the energy handle. Do not stop propagation.
+    if (!(evt instanceof KeyboardEvent)) return;
+    const target = evt.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "range")
+      return;
+    if (SLIDER_KEYS.has(evt.key)) return;
+    target.blur();
   };
 }
 
