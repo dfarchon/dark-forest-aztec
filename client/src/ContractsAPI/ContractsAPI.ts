@@ -256,12 +256,19 @@ export class ContractsAPI extends EventEmitter {
   }
 
   public emitTransactionEvents(tx: Transaction): void {
+    let errored = false;
+    const emitErrored = () => {
+      if (errored) return;
+      errored = true;
+      this.emit(ContractsAPIEvent.TxErrored, tx);
+    };
+
     tx.submittedPromise
       .then(() => {
         this.emit(ContractsAPIEvent.TxSubmitted, tx);
       })
       .catch(() => {
-        this.emit(ContractsAPIEvent.TxErrored, tx);
+        emitErrored();
       });
 
     tx.confirmedPromise
@@ -269,7 +276,7 @@ export class ContractsAPI extends EventEmitter {
         this.emit(ContractsAPIEvent.TxConfirmed, tx);
       })
       .catch(() => {
-        this.emit(ContractsAPIEvent.TxErrored, tx);
+        emitErrored();
       });
   }
 

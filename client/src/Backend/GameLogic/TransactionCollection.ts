@@ -18,10 +18,9 @@ export class TxCollection implements TransactionCollection {
    * Removes the internal record of the given transaction.
    */
   public removeTransaction(tx: Transaction) {
-    this.transactions.splice(
-      this.transactions.findIndex((tx2) => tx === tx2),
-      1
-    );
+    const index = this.transactions.findIndex((tx2) => tx === tx2);
+    if (index < 0) return;
+    this.transactions.splice(index, 1);
   }
 
   /**

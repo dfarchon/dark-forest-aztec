@@ -130,7 +130,6 @@ export async function sendGuideShip(ui: GameUIManager): Promise<void> {
     0,
     ship.id,
     false,
-    false,
-    from.lastUpdated
+    false
   );
 }

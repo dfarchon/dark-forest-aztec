@@ -29,7 +29,6 @@ import type {
   TransactionId,
   TxIntent,
 } from "@dfpunk/types";
-import { unwrapSimulateResult } from "@dfpunk/utils";
 
 import type { ChainClock } from "../../Backend/Utils/ChainClock";
 import { getEffectiveUseSponsoredFpc } from "../../config/connection";
@@ -42,7 +41,7 @@ import type { IndexerConnection } from "../Indexer/IndexerConnection";
 import type { WalletManager } from "../WalletManager/WalletManager";
 import { ConfigCache } from "./ConfigCache";
 import { ContractResolver } from "./ContractResolver";
-import { formatSimulationError, isStaleProofError } from "./simulationError";
+import { formatSimulationError } from "./simulationError";
 import { StateResolver, type StateResolverOptions } from "./StateResolver";
 import { ThrottledConcurrentQueue } from "./ThrottledConcurrentQueue";
 import type {
@@ -288,203 +287,167 @@ export class TxExecutor {
     let tx_hash: string | undefined;
 
     const time_exec_called = Date.now();
-    const MAX_RETRIES = 1;
 
     try {
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (attempt > 0) {
-          console.warn(
-            `[TxExecutor] retrying tx ${tx.id} after revert (attempt ${attempt + 1})`
-          );
-          // A click-time timestamp can be outside the block-time window by the
-          // time the proof is simulated. Re-prove against the latest block.
-          tx.intent.uiTimestamp =
-            await this.chainClock.syncAndGetBlockTimestamp();
-        }
+      // Stamp the contract timestamp from the latest known block when this tx
+      // actually runs. A click-time or planet lastUpdated value is often outside
+      // the block-time window after the tx has waited in the queue.
+      await this.chainClock.resync();
+      const blockTimestamp = this.chainClock.lastBlockTimestamp();
+      tx.intent.uiTimestamp =
+        blockTimestamp > 0
+          ? blockTimestamp
+          : Math.floor(this.chainClock.nowSec());
 
-        // 1. Processing
-        tx.state = "Processing";
+      // 1. Processing
+      tx.state = "Processing";
 
-        if (this.beforeTransaction) {
-          await this.beforeTransaction(tx);
-        }
-
-        // 2. Resolve full contract args from indexer state + config + timestamp
-        const contractArgs = await this.stateResolver.resolve(tx.intent);
-
-        // 3. Get contract + method
-        const { contract, method } = this.contractResolver.resolve(
-          tx.intent.methodName
-        );
-
-        time_called = Date.now();
-
-        // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
-        const useSponsoredFpc = getEffectiveUseSponsoredFpc();
-        const sponsoredFpcAddress = useSponsoredFpc
-          ? this.walletManager.getSponsoredFpcAddress()
-          : undefined;
-        if (useSponsoredFpc) {
-          if (!sponsoredFpcAddress) {
-            throw new Error(
-              "[TxExecutor] SponsoredFPC payment is selected, but no SponsoredFPC is registered. Check Connection settings and refresh the page."
-            );
-          }
-          const sponsorFjBal =
-            await this.walletManager.getSponsoredFpcFeeJuiceBalance();
-          const minWei = getSponsoredFpcMinBalanceFjWei();
-          if (sponsorFjBal === undefined || sponsorFjBal < minWei) {
-            throw new Error(
-              `[TxExecutor] SponsoredFPC at ${sponsoredFpcAddress.toString()} FeeJuice balance is below minimum (${minWei.toString()} wei units). Fund SponsoredFPC or change SponsoredFPC address in Connection settings and refresh the page.`
-            );
-          }
-        } else {
-          const activeAddr = this.walletManager.getActiveAddress();
-          const minAccountFj = getAccountMinBalanceFjWei();
-          if (activeAddr) {
-            let bal: bigint;
-            try {
-              bal = await getFeeJuiceBalance(activeAddr, this.node);
-            } catch (e) {
-              throw new Error(
-                `[TxExecutor] Could not verify account FeeJuice balance: ${
-                  e instanceof Error ? e.message : String(e)
-                }`
-              );
-            }
-
-            if (bal < minAccountFj) {
-              throw new Error(
-                `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
-              );
-            }
-          }
-        }
-        const sendOptsNoWait = useSponsoredFpc
-          ? ({
-              from: this.walletManager.getActiveAddress()!,
-              fee: {
-                paymentMethod: new SponsoredFeePaymentMethod(
-                  sponsoredFpcAddress!
-                ),
-              },
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>)
-          : ({
-              from: this.walletManager.getActiveAddress()!,
-              wait: NO_WAIT,
-            } satisfies SendInteractionOptions<NoWait>);
-        const simulateOpts = {
-          from: sendOptsNoWait.from,
-          fee: sendOptsNoWait.fee,
-        };
-
-        // 5. Submit — send({ wait: NO_WAIT }) returns TxSendResultImmediate (txHash + offchain output)
-        //    v0.6 equivalent: tx.intent.contract[tx.intent.methodName](...args, opts)
-        const methodFn = contract.methods[method] as ContractMethod | undefined;
-        if (methodFn === undefined) {
-          throw new Error(`[TxExecutor] unknown contract method: ${method}`);
-        }
-        const invocation = methodFn(...contractArgs);
-
-        try {
-          console.debug(
-            `[TxExecutor] simulating ${tx.intent.methodName} (tx ${tx.id})...`
-          );
-          console.debug(
-            `[TxExecutor] contractArgs (${contractArgs.length}):`,
-            contractArgs
-          );
-          const simResult = unwrapSimulateResult(
-            await invocation.simulate(simulateOpts)
-          );
-          console.debug(
-            `[TxExecutor] simulate ${tx.intent.methodName} OK, result:`,
-            simResult
-          );
-        } catch (simErr) {
-          const detail = formatSimulationError(simErr) || String(simErr);
-          console.error(
-            `[TxExecutor] simulate ${tx.intent.methodName} FAILED\n${detail}`
-          );
-          console.error(
-            `[TxExecutor] simulate ${tx.intent.methodName} error object`,
-            simErr
-          );
-          if (attempt < MAX_RETRIES && isStaleProofError(detail)) {
-            continue;
-          }
-          throw new Error(detail, { cause: simErr });
-        }
-
-        const sendResult = (await timeout(
-          invocation.send(sendOptsNoWait),
-          TX_SUBMIT_TIMEOUT,
-          `tx request ${tx.id} failed to submit: timed out`
-        )) as unknown as { txHash: TxHash };
-        const submitted: TxHash = sendResult.txHash;
-
-        // 6. Submit state — v0.6 lines 376-383
-        tx.state = "Submit";
-        tx.hash = submitted;
-        time_submitted = Date.now();
-        tx.lastUpdatedAt = time_submitted;
-        tx_hash = submitted.toString();
-        tx.onTransactionResponse(submitted);
-
-        // 7. Wait for confirmation — v0.6 line 385
-        //    Aztec equivalent of ethConnection.waitForTransaction(hash)
-        const receipt = await waitForTx(this.node, submitted, {
-          timeout: 120,
-          dontThrowOnRevert: true,
-          waitForStatus: TxStatus.PROPOSED,
-        });
-
-        // 8. Check result — v0.6 lines 386-397
-        if (receipt.hasExecutionReverted() || receipt.isDropped()) {
-          time_errored = Date.now();
-          tx.lastUpdatedAt = time_errored;
-          tx.state = "Fail";
-          const reason = receipt.error || "transaction reverted";
-          console.error(
-            `[TxExecutor] tx ${tx.id} (${tx.intent.methodName}) reverted:`,
-            reason
-          );
-          console.error(
-            "[TxExecutor] receipt:",
-            JSON.stringify({
-              blockNumber: receipt.blockNumber,
-              error: receipt.error,
-              status: receipt.status,
-            })
-          );
-          if (attempt < MAX_RETRIES) {
-            const latestBlock = receipt.blockNumber ?? 0;
-            if (latestBlock > 0) {
-              this.stateResolver.setLastConfirmedBlock(latestBlock);
-            }
-            continue;
-          }
-          throw new Error(reason);
-        }
-
-        tx.state = "Confirm";
-        time_confirmed = Date.now();
-        tx.lastUpdatedAt = time_confirmed;
-        if (receipt.blockNumber != null) {
-          this.stateResolver.setLastConfirmedBlock(receipt.blockNumber);
-        }
-        tx.onReceipt(receipt);
-        break;
+      if (this.beforeTransaction) {
+        await this.beforeTransaction(tx);
       }
+
+      // 2. Resolve full contract args from indexer state + config + timestamp
+      const contractArgs = await this.stateResolver.resolve(tx.intent);
+
+      // 3. Get contract + method
+      const { contract, method } = this.contractResolver.resolve(
+        tx.intent.methodName
+      );
+
+      time_called = Date.now();
+
+      // 4. Build send options (explicit SendInteractionOptions<NoWait> so send() resolves to TxSendResultImmediate)
+      const useSponsoredFpc = getEffectiveUseSponsoredFpc();
+      const sponsoredFpcAddress = useSponsoredFpc
+        ? this.walletManager.getSponsoredFpcAddress()
+        : undefined;
+      if (useSponsoredFpc) {
+        if (!sponsoredFpcAddress) {
+          throw new Error(
+            "[TxExecutor] SponsoredFPC payment is selected, but no SponsoredFPC is registered. Check Connection settings and refresh the page."
+          );
+        }
+        const sponsorFjBal =
+          await this.walletManager.getSponsoredFpcFeeJuiceBalance();
+        const minWei = getSponsoredFpcMinBalanceFjWei();
+        if (sponsorFjBal === undefined || sponsorFjBal < minWei) {
+          throw new Error(
+            `[TxExecutor] SponsoredFPC at ${sponsoredFpcAddress.toString()} FeeJuice balance is below minimum (${minWei.toString()} wei units). Fund SponsoredFPC or change SponsoredFPC address in Connection settings and refresh the page.`
+          );
+        }
+      } else {
+        const activeAddr = this.walletManager.getActiveAddress();
+        const minAccountFj = getAccountMinBalanceFjWei();
+        if (activeAddr) {
+          let bal: bigint;
+          try {
+            bal = await getFeeJuiceBalance(activeAddr, this.node);
+          } catch (e) {
+            throw new Error(
+              `[TxExecutor] Could not verify account FeeJuice balance: ${
+                e instanceof Error ? e.message : String(e)
+              }`
+            );
+          }
+
+          if (bal < minAccountFj) {
+            throw new Error(
+              `[TxExecutor] Account FeeJuice balance (${formatFeeJuiceWei(bal)}) is below minimum (${formatFeeJuiceWei(minAccountFj)}). Bridge FeeJuice before sending transactions.`
+            );
+          }
+        }
+      }
+      const sendOptsNoWait = useSponsoredFpc
+        ? ({
+            from: this.walletManager.getActiveAddress()!,
+            fee: {
+              paymentMethod: new SponsoredFeePaymentMethod(
+                sponsoredFpcAddress!
+              ),
+            },
+            wait: NO_WAIT,
+          } satisfies SendInteractionOptions<NoWait>)
+        : ({
+            from: this.walletManager.getActiveAddress()!,
+            wait: NO_WAIT,
+          } satisfies SendInteractionOptions<NoWait>);
+
+      // 5. Submit — send({ wait: NO_WAIT }) proves and returns TxSendResultImmediate.
+      //    Private assertions fail during that execution, before a hash exists.
+      const methodFn = contract.methods[method] as ContractMethod | undefined;
+      if (methodFn === undefined) {
+        throw new Error(`[TxExecutor] unknown contract method: ${method}`);
+      }
+      const invocation = methodFn(...contractArgs);
+
+      console.debug(
+        `[TxExecutor] contractArgs (${contractArgs.length}):`,
+        contractArgs
+      );
+      const sendResult = (await timeout(
+        invocation.send(sendOptsNoWait),
+        TX_SUBMIT_TIMEOUT,
+        `tx request ${tx.id} failed to submit: timed out`
+      )) as unknown as { txHash: TxHash };
+      const submitted: TxHash = sendResult.txHash;
+
+      // 6. Submit state — v0.6 lines 376-383
+      tx.state = "Submit";
+      tx.hash = submitted;
+      time_submitted = Date.now();
+      tx.lastUpdatedAt = time_submitted;
+      tx_hash = submitted.toString();
+      tx.onTransactionResponse(submitted);
+
+      // 7. Wait for confirmation — v0.6 line 385
+      //    Aztec equivalent of ethConnection.waitForTransaction(hash)
+      const receipt = await waitForTx(this.node, submitted, {
+        timeout: 120,
+        dontThrowOnRevert: true,
+        waitForStatus: TxStatus.PROPOSED,
+      });
+
+      // 8. Check result — v0.6 lines 386-397
+      if (receipt.hasExecutionReverted() || receipt.isDropped()) {
+        time_errored = Date.now();
+        tx.lastUpdatedAt = time_errored;
+        tx.state = "Fail";
+        const reason = receipt.error || "transaction reverted";
+        console.error(
+          `[TxExecutor] tx ${tx.id} (${tx.intent.methodName}) reverted:`,
+          reason
+        );
+        console.error(
+          "[TxExecutor] receipt:",
+          JSON.stringify({
+            blockNumber: receipt.blockNumber,
+            error: receipt.error,
+            status: receipt.status,
+          })
+        );
+        const latestBlock = receipt.blockNumber ?? 0;
+        if (latestBlock > 0) {
+          this.stateResolver.setLastConfirmedBlock(latestBlock);
+        }
+        throw new Error(reason);
+      }
+
+      tx.state = "Confirm";
+      time_confirmed = Date.now();
+      tx.lastUpdatedAt = time_confirmed;
+      if (receipt.blockNumber != null) {
+        this.stateResolver.setLastConfirmedBlock(receipt.blockNumber);
+      }
+      tx.onReceipt(receipt);
     } catch (e) {
       // 9. Error handling — v0.6 lines 398-415
-      console.error(e);
+      const detail = formatSimulationError(e) || String(e);
+      console.error(`[TxExecutor] ${tx.intent.methodName} FAILED\n${detail}`);
       tx.state = "Fail";
-      error = e instanceof Error ? e : new Error(String(e));
+      error = e instanceof Error ? e : new Error(detail);
 
       if (!time_submitted) {
-        // Error before submission (resolve/simulate/send setup) — reject both
+        // Error before submission (resolve/send setup) — reject both
         // promises so callers awaiting only confirmedPromise still get the error.
         time_errored = Date.now();
         tx.onSubmissionError(error);

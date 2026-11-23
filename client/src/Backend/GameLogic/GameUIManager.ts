@@ -639,8 +639,7 @@ class GameUIManager extends EventEmitter {
             silver,
             artifact?.id,
             abandoning,
-            false,
-            from.lastUpdated
+            false
           ).catch((error: unknown) => {
             const message =
               error instanceof Error ? error.message : String(error);

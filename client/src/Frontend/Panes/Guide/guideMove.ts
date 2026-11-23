@@ -7,7 +7,7 @@ import {
 } from "../../../Backend/GameLogic/MoveRequest";
 import UIEmitter, { UIEmitterEvent } from "../../Utils/UIEmitter";
 
-/** Use the same energy accounting and timestamp as a manual move. */
+/** Use the same energy accounting as a manual move. */
 export async function sendGuideFleet(
   ui: GameUIManager,
   from: LocatablePlanet,
@@ -34,8 +34,7 @@ export async function sendGuideFleet(
     0,
     undefined,
     false,
-    false,
-    from.lastUpdated
+    false
   );
 }
 
