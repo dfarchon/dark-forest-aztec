@@ -1,5 +1,8 @@
 import { formatNumber, isSpaceShip } from "@dfpunk/gamelogic";
-import { isUnconfirmedMoveTx, isUnconfirmedReleaseTx } from "@dfpunk/serde";
+import {
+  isPendingUnconfirmedMoveTx,
+  isUnconfirmedReleaseTx,
+} from "@dfpunk/serde";
 import {
   Artifact,
   artifactNameFromArtifact,
@@ -338,7 +341,10 @@ export function SendResources({
   }
 
   let sendRow;
-  if (p.value && p.value.transactions?.hasTransaction(isUnconfirmedMoveTx)) {
+  if (
+    p.value &&
+    p.value.transactions?.hasTransaction(isPendingUnconfirmedMoveTx)
+  ) {
     sendRow = (
       <Btn size="stretch" disabled>
         <LoadingSpinner

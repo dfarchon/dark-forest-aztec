@@ -1,5 +1,5 @@
 import { isLocatable } from "@dfpunk/gamelogic";
-import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import { isPendingUnconfirmedMoveTx } from "@dfpunk/serde";
 import {
   Planet,
   RendererType,
@@ -63,7 +63,7 @@ export class UIRenderer implements UIRendererType {
           let effectiveEnergy = myPlanet.energy;
 
           for (const unconfirmedMove of myPlanet.transactions?.getTransactions(
-            isUnconfirmedMoveTx,
+            isPendingUnconfirmedMoveTx,
           ) ?? []) {
             effectiveEnergy -= unconfirmedMove.intent.forces;
           }

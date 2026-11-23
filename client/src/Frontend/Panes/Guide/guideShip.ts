@@ -1,5 +1,5 @@
 import { isActivated, isLocatable, isSpaceShip } from "@dfpunk/gamelogic";
-import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import { isPendingUnconfirmedMoveTx } from "@dfpunk/serde";
 import type { Artifact, LocatablePlanet } from "@dfpunk/types";
 
 import type GameUIManager from "../../../Backend/GameLogic/GameUIManager";
@@ -24,7 +24,7 @@ export function firstGuideShip(
         !isActivated(ship) &&
         ship.onPlanetId === planet.locationId &&
         ship.onVoyageId === undefined &&
-        !ship.transactions?.getTransactions(isUnconfirmedMoveTx).length
+        !ship.transactions?.getTransactions(isPendingUnconfirmedMoveTx).length
     );
 }
 
@@ -48,7 +48,7 @@ export function guideShipLesson(ui: GameUIManager): ShipMove | undefined {
     !ship ||
     ship.onPlanetId !== saved.from.locationId ||
     ship.onVoyageId !== undefined ||
-    ship.transactions?.getTransactions(isUnconfirmedMoveTx).length
+    ship.transactions?.getTransactions(isPendingUnconfirmedMoveTx).length
   )
     return undefined;
   return { ...saved, ship };
@@ -62,7 +62,7 @@ export function guideShip(
       !isSpaceShip(ship.artifactType) ||
       !ship.onPlanetId ||
       ship.onVoyageId !== undefined ||
-      ship.transactions?.getTransactions(isUnconfirmedMoveTx).length
+      ship.transactions?.getTransactions(isPendingUnconfirmedMoveTx).length
     )
       continue;
     const from = ui.getPlanetWithId(ship.onPlanetId);

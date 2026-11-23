@@ -7,7 +7,7 @@ import {
   isSpaceShip,
 } from "@dfpunk/gamelogic";
 import { getOwnerColorVec, getPlanetCosmetic } from "@dfpunk/procedural";
-import { isUnconfirmedMoveTx } from "@dfpunk/serde";
+import { isPendingUnconfirmedMoveTx } from "@dfpunk/serde";
 import {
   Artifact,
   HatType,
@@ -282,8 +282,9 @@ export class PlanetRenderManager implements PlanetRenderManagerType {
         };
       }
     ).transactions;
-    for (const unconfirmedMove of txCol?.getTransactions(isUnconfirmedMoveTx) ??
-      []) {
+    for (const unconfirmedMove of txCol?.getTransactions(
+      isPendingUnconfirmedMoveTx,
+    ) ?? []) {
       lockedEnergy += unconfirmedMove.intent.forces;
     }
 
@@ -301,7 +302,7 @@ export class PlanetRenderManager implements PlanetRenderManagerType {
 
     let effectiveEnergy = fromPlanet.energy;
     for (const unconfirmedMove of fromPlanet.transactions?.getTransactions(
-      isUnconfirmedMoveTx,
+      isPendingUnconfirmedMoveTx,
     ) ?? []) {
       effectiveEnergy -= unconfirmedMove.intent.forces;
     }

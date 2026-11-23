@@ -224,6 +224,7 @@ class GameUIManager extends EventEmitter {
     uiEmitter.on(UIEmitterEvent.SendInitiated, uiManager.onSendInit);
     uiEmitter.on(UIEmitterEvent.SendCancelled, uiManager.onSendCancel);
     uiEmitter.on(UIEmitterEvent.SendCompleted, uiManager.onSendComplete);
+    uiEmitter.on(UIEmitterEvent.MoveFailed, uiManager.onMoveFailed);
 
     gameManager.on(GameManagerEvent.PlanetUpdate, uiManager.updatePlanets);
     gameManager.on(
@@ -246,6 +247,7 @@ class GameUIManager extends EventEmitter {
     uiEmitter.removeListener(UIEmitterEvent.SendInitiated, this.onSendInit);
     uiEmitter.removeListener(UIEmitterEvent.SendCancelled, this.onSendCancel);
     uiEmitter.removeListener(UIEmitterEvent.SendCompleted, this.onSendComplete);
+    uiEmitter.removeListener(UIEmitterEvent.MoveFailed, this.onMoveFailed);
 
     this.gameManager.removeListener(
       GameManagerEvent.PlanetUpdate,
@@ -926,6 +928,11 @@ class GameUIManager extends EventEmitter {
 
     this.setSending(false);
     this.setAbandoning(false);
+  }
+
+  /** Drop the aim line when a move request or its submission fails. */
+  public onMoveFailed(): void {
+    this.onSendCancel();
   }
 
   public hasMinedChunk(chunkLocation: Rectangle): boolean {

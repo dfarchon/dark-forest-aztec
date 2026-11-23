@@ -21,6 +21,7 @@ import { fakeHash, initPoseidon2, perlin } from "@dfpunk/hashing";
 import { getPlanetName } from "@dfpunk/procedural";
 import {
   artifactIdToDecStr,
+  isPendingUnconfirmedMoveTx,
   isUnconfirmedActivateArtifactTx,
   isUnconfirmedBuyHatTx,
   isUnconfirmedCapturePlanetTx,
@@ -2096,11 +2097,13 @@ class GameManager extends EventEmitter {
   }
 
   /**
-   * Gets all moves that this client has queued to be uploaded to the contract, but
-   * have not been successfully confirmed yet.
+   * Moves still waiting to be submitted or confirmed. Failed and cancelled moves
+   * are left out, so their dashed voyage lines disappear.
    */
   getUnconfirmedMoves(): Transaction<UnconfirmedMove>[] {
-    return this.entityStore.transactions.getTransactions(isUnconfirmedMoveTx);
+    return this.entityStore.transactions.getTransactions(
+      isPendingUnconfirmedMoveTx
+    );
   }
 
   /**

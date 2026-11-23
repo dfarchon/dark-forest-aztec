@@ -168,6 +168,15 @@ export function isUnconfirmedMoveTx(
   return isUnconfirmedMove(tx.intent);
 }
 
+/** A move still waiting on proof, submission, or confirmation. */
+export function isPendingUnconfirmedMoveTx(
+  tx: Transaction,
+): tx is Transaction<UnconfirmedMove> {
+  return (
+    isUnconfirmedMoveTx(tx) && tx.state !== "Fail" && tx.state !== "Cancel"
+  );
+}
+
 export function isUnconfirmedReleaseTx(
   tx: Transaction,
 ): tx is Transaction<UnconfirmedMove> {
