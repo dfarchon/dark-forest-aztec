@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { blockTip, openDatabase } from "../sync/db.ts";
 import {
   analyticsPackageRoot,
@@ -15,7 +17,15 @@ import {
 import { createAztecChainSource } from "../sync/aztecSource.ts";
 import { collectStatus, formatStatus } from "../sync/status.ts";
 import { sync } from "../sync/sync.ts";
-import { buildPlanetInitReport, writePlanetInitFiles } from "../analysis/planetInits.ts";
+import {
+  buildPlanetInitReport,
+  writePlanetInitFiles,
+} from "../analysis/planetInits.ts";
+import {
+  buildDashboardReport,
+  dashboardJsonPath,
+  writeDashboardReport,
+} from "../analysis/dashboard.ts";
 
 function usage(): string {
   return `Usage:
@@ -28,7 +38,69 @@ function usage(): string {
   pnpm --filter analytics overview
   pnpm --filter analytics overview <from> <to>
   pnpm --filter analytics planets
-  pnpm --filter analytics planets <seconds>`;
+  pnpm --filter analytics planets <seconds>
+  pnpm --filter analytics dashboard
+  pnpm --filter analytics dashboard <seconds>
+  pnpm --filter analytics dashboard --out <path>`;
+}
+
+function parseDashboardArgs(args: string[]): {
+  bucketSeconds: number;
+  out?: string;
+} {
+  let bucketSeconds = 3600;
+  let out: string | undefined;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--out") {
+      const value = args[i + 1];
+      if (!value || value.startsWith("-")) {
+        throw new Error(
+          "[analytics] dashboard --out requires a path\n" + usage(),
+        );
+      }
+      out = value;
+      i += 1;
+      continue;
+    }
+    if (arg?.startsWith("-")) {
+      throw new Error(
+        `[analytics] unknown dashboard argument ${arg}\n${usage()}`,
+      );
+    }
+    if (arg !== undefined) positional.push(arg);
+  }
+  if (positional.length === 1) bucketSeconds = Number(positional[0]);
+  else if (positional.length !== 0) {
+    throw new Error(
+      "[analytics] dashboard takes no arguments, <seconds>, or --out <path>\n" +
+        usage(),
+    );
+  }
+  if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) {
+    throw new Error(
+      "[analytics] dashboard <seconds> must be a positive integer",
+    );
+  }
+  return { bucketSeconds, out: out ? resolveDashboardOut(out) : undefined };
+}
+
+function resolveDashboardOut(out: string): string {
+  if (path.isAbsolute(out)) return out;
+  const fromPackage = path.relative(analyticsPackageRoot(), process.cwd());
+  const insidePackage =
+    fromPackage === "" ||
+    (!fromPackage.startsWith("..") && !path.isAbsolute(fromPackage));
+  if (
+    insidePackage &&
+    (out === "analytics" ||
+      out.startsWith(`analytics${path.sep}`) ||
+      out.startsWith("analytics/"))
+  ) {
+    return path.resolve(analyticsPackageRoot(), "..", out);
+  }
+  return path.resolve(out);
 }
 
 function commandArgs(): string[] {
@@ -144,6 +216,18 @@ async function main(): Promise<void> {
       );
       console.log(`data: ${files.dataPath}`);
       console.log(`page: ${files.pagePath}`);
+      return;
+    }
+    if (command === "dashboard") {
+      const { bucketSeconds, out } = parseDashboardArgs(commandArgs());
+      const report = buildDashboardReport(db, bucketSeconds);
+      const outPath = out
+        ? path.resolve(out)
+        : dashboardJsonPath(config.dbPath);
+      writeDashboardReport(outPath, report);
+      console.log(`players: ${report.summary.players}`);
+      console.log(`operations: ${report.summary.operations}`);
+      console.log(`report: ${outPath}`);
       return;
     }
     throw new Error(`[analytics] unknown command ${command}\n${usage()}`);

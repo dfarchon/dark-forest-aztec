@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/cli.ts",
   "scripts": {
+    "dashboard": "tsx src/cli.ts dashboard",
     "derive": "tsx src/cli.ts derive",
     "derive:rebuild": "tsx src/cli.ts derive --rebuild",
     "format": "prettier --write \"src/**/*.ts\" \"config/**/*.ts\" \"sync/**/*.ts\" \"analysis/**/*.ts\" \"test/**/*.ts\"",

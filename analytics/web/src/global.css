@@ -1,0 +1,25 @@
+@font-face {
+  font-family: "perfect_dos_vga_437regular";
+  src: url("../../../client/src/Frontend/Styles/font/perfect_dos_vga_437-webfont.woff2")
+    format("woff2");
+  font-weight: normal;
+  font-style: normal;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #000;
+  color: #bbbbbb;
+  font-family: "Fira Sans", system-ui, sans-serif;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}

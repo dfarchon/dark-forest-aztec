@@ -1,5 +1,6 @@
 packages:
   - analytics
+  - analytics/web
   - bridge
   - client
   - contracts
