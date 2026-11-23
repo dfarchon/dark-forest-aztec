@@ -85,15 +85,14 @@ export const Subtitle = styled.p`
 `;
 
 export const Cards = styled.div`
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 12px;
   margin-bottom: 16px;
 `;
 
 export const Card = styled.div`
-  min-width: 150px;
-  flex: 1;
+  min-width: 0;
   background: ${colors.background};
   border: 1px solid ${colors.borderDark};
   border-radius: 3px;
@@ -102,10 +101,13 @@ export const Card = styled.div`
 
 export const CardValue = styled.b`
   display: block;
+  max-width: 100%;
   color: ${colors.dfwhite};
   font-size: 22px;
   font-weight: 600;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 `;
 
 export const CardLabel = styled.span`
