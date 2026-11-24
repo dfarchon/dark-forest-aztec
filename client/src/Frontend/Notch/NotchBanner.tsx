@@ -2,21 +2,25 @@ import {
   type AztecNode,
   createAztecNodeClient,
 } from "@aztec-labs/aztec.js/node";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import styled from "styled-components";
 
 import { getEffectiveNodeUrl } from "../../config/connection";
 import dfstyles from "../Styles/dfstyles";
 import {
   formatNotchTime,
+  mergeNotchTickerPosts,
   NOTCH_BANNER_HEIGHT_PX,
   NOTCH_HOME_URL,
   NOTCH_POLL_MS,
+  notchCanRetarget,
   type NotchFeed,
+  notchIdsGrow,
   notchNodeOptions,
   type NotchPost,
+  notchRetargetOffset,
   notchTickerText,
-  readRecentNotchPosts,
+  readNotchBoard,
 } from "./notchBoard";
 
 export { NOTCH_BANNER_HEIGHT_PX };
@@ -68,21 +72,22 @@ function useNotchFeed(): { phase: BannerPhase; feed?: NotchFeed } {
         if (!nodeUrl) throw new Error("No node URL");
         const previous =
           feedRef.current?.nodeUrl === nodeUrl ? feedRef.current : undefined;
-        const next = await readRecentNotchPosts(
-          nodeFor(nodeUrl),
-          nodeUrl,
-          previous
-        );
-        if (
+        const stale = () =>
           cancelled ||
           request !== generation.current ||
-          getEffectiveNodeUrl().trim() !== nodeUrl
-        ) {
-          return;
-        }
-        feedRef.current = next;
-        setFeed(next);
-        setPhase("ready");
+          getEffectiveNodeUrl().trim() !== nodeUrl;
+        await readNotchBoard(
+          nodeFor(nodeUrl),
+          nodeUrl,
+          previous,
+          (next) => {
+            if (stale()) return;
+            feedRef.current = next;
+            setFeed(next);
+            setPhase("ready");
+          },
+          stale
+        );
       } catch {
         if (cancelled || request !== generation.current) return;
         const current = feedRef.current;
@@ -129,37 +134,45 @@ function PostRun({
   );
 }
 
-function Ticker({ posts, reduced }: { posts: NotchPost[]; reduced: boolean }) {
-  const viewportRef = useRef<HTMLSpanElement>(null);
-  const copyRef = useRef<HTMLSpanElement>(null);
-  const [layout, setLayout] = useState<{
-    copies: number;
-    distance: number;
-  } | null>(null);
+function sameIds(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
 
-  useEffect(() => {
-    if (reduced) return;
-    const measure = () => {
-      const viewport = viewportRef.current;
-      const copy = copyRef.current;
-      if (!viewport || !copy) return;
-      const distance = Math.round(copy.getBoundingClientRect().width);
-      const viewportWidth = viewport.getBoundingClientRect().width;
-      if (distance <= 0) return;
-      const copies = Math.max(2, Math.ceil((viewportWidth * 2) / distance));
-      setLayout((current) =>
-        current?.copies === copies && current.distance === distance
-          ? current
-          : { copies, distance }
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    if (viewportRef.current) observer.observe(viewportRef.current);
-    if (copyRef.current) observer.observe(copyRef.current);
-    return () => observer.disconnect();
-  }, [posts, reduced]);
+function notchCopyCount(
+  distance: number,
+  viewportWidth: number,
+  lockLoop: boolean
+): number {
+  if (distance <= 0 || viewportWidth <= 0) return 0;
+  if (!lockLoop && distance <= viewportWidth) return 1;
+  return Math.max(2, Math.ceil((viewportWidth * 2) / distance));
+}
 
+function placeNotchTrack(
+  track: HTMLElement | null,
+  offset: number,
+  distance: number
+) {
+  if (!track) return;
+  const shift = distance > 0 ? offset % distance : 0;
+  track.style.transform = `translate3d(${-shift}px,0,0)`;
+}
+
+function Ticker({
+  posts,
+  reduced,
+  pausedRef,
+  complete,
+}: {
+  posts: NotchPost[];
+  reduced: boolean;
+  pausedRef: React.MutableRefObject<boolean>;
+  complete: boolean;
+}) {
   if (reduced) {
     return (
       <Viewport aria-hidden="true">
@@ -167,27 +180,177 @@ function Ticker({ posts, reduced }: { posts: NotchPost[]; reduced: boolean }) {
       </Viewport>
     );
   }
+  return (
+    <SmoothTicker posts={posts} pausedRef={pausedRef} complete={complete} />
+  );
+}
 
-  const copies = layout?.copies ?? 2;
-  const distance = layout?.distance ?? 0;
+function SmoothTicker({
+  posts,
+  pausedRef,
+  complete,
+}: {
+  posts: NotchPost[];
+  pausedRef: React.MutableRefObject<boolean>;
+  complete: boolean;
+}) {
+  const viewportRef = useRef<HTMLSpanElement>(null);
+  const trackRef = useRef<HTMLSpanElement>(null);
+  const copyRef = useRef<HTMLSpanElement>(null);
+  const [shown, setShown] = useState(posts);
+  const [copies, setCopies] = useState(1);
+  const shownRef = useRef(posts);
+  const pendingRef = useRef<NotchPost[] | null>(null);
+  const offsetRef = useRef(0);
+  const distanceRef = useRef(0);
+  const viewportWidthRef = useRef(0);
+  const prefixRef = useRef(0);
+  const loopRef = useRef(false);
+  const completeRef = useRef(complete);
+  const applyPendingRef = useRef(() => {});
+  completeRef.current = complete;
+
+  const shownIds = shownRef.current.map((post) => post.id);
+  const desired = mergeNotchTickerPosts(shownRef.current, posts);
+  const desiredIds = desired.map((post) => post.id);
+  pendingRef.current = sameIds(shownIds, desiredIds) ? null : desired;
+
+  applyPendingRef.current = () => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    const nextIds = pending.map((post) => post.id);
+    if (
+      sameIds(
+        shownRef.current.map((post) => post.id),
+        nextIds
+      )
+    ) {
+      pendingRef.current = null;
+      return;
+    }
+    const grow = notchIdsGrow(
+      shownRef.current.map((post) => post.id),
+      nextIds
+    );
+    if (
+      grow &&
+      !notchCanRetarget(
+        offsetRef.current,
+        distanceRef.current,
+        viewportWidthRef.current
+      )
+    ) {
+      return;
+    }
+    if (!grow) offsetRef.current = 0;
+    prefixRef.current = grow?.prefix ?? 0;
+    pendingRef.current = null;
+    shownRef.current = pending;
+    setShown(pending);
+  };
+
+  useLayoutEffect(() => {
+    const copy = copyRef.current;
+    const viewport = viewportRef.current;
+    if (!copy || !viewport) return;
+    const distance = copy.getBoundingClientRect().width;
+    const viewportWidth = viewport.getBoundingClientRect().width;
+    const prefix = prefixRef.current;
+    prefixRef.current = 0;
+    const looping = distance > viewportWidth && viewportWidth > 0;
+    if (looping && prefix > 0) {
+      let prefixWidth = 0;
+      const children = copy.children;
+      for (let index = 0; index < prefix && index < children.length; index++) {
+        prefixWidth += children[index].getBoundingClientRect().width;
+      }
+      offsetRef.current = notchRetargetOffset(
+        offsetRef.current,
+        distance,
+        viewportWidth,
+        prefixWidth
+      );
+    } else if (
+      !loopRef.current &&
+      viewportWidth > 0 &&
+      distance > 0 &&
+      !looping
+    ) {
+      offsetRef.current = 0;
+    } else if (distance > 0 && offsetRef.current >= distance) {
+      offsetRef.current %= distance;
+    }
+    distanceRef.current = distance;
+    viewportWidthRef.current = viewportWidth;
+    placeNotchTrack(trackRef.current, offsetRef.current, distance);
+    const lockLoop =
+      loopRef.current || (complete && pendingRef.current == null);
+    const needed = notchCopyCount(distance, viewportWidth, lockLoop);
+    if (needed >= 2) loopRef.current = true;
+    if (needed > 0 && needed !== copies) {
+      setCopies(needed);
+      return;
+    }
+    applyPendingRef.current();
+  }, [shown, copies, posts, complete]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const copy = copyRef.current;
+    if (!viewport || !copy) return;
+    const measure = () => {
+      const distance = copy.getBoundingClientRect().width;
+      const viewportWidth = viewport.getBoundingClientRect().width;
+      if (distance > 0 && offsetRef.current >= distance) {
+        offsetRef.current %= distance;
+      }
+      distanceRef.current = distance;
+      viewportWidthRef.current = viewportWidth;
+      placeNotchTrack(trackRef.current, offsetRef.current, distance);
+      const lockLoop =
+        loopRef.current || (completeRef.current && pendingRef.current == null);
+      const needed = notchCopyCount(distance, viewportWidth, lockLoop);
+      if (needed >= 2) loopRef.current = true;
+      if (needed > 0) {
+        setCopies((current) => (current === needed ? current : needed));
+      }
+      applyPendingRef.current();
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(copy);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      frame = requestAnimationFrame(tick);
+      const dt = Math.min(32, Math.max(0, now - last));
+      last = now;
+      applyPendingRef.current();
+      if (document.hidden || pausedRef.current) return;
+      const distance = distanceRef.current;
+      const viewportWidth = viewportWidthRef.current;
+      if (distance <= 0 || (!loopRef.current && distance <= viewportWidth)) {
+        return;
+      }
+      offsetRef.current += (SCROLL_PIXELS_PER_SECOND * dt) / 1000;
+      if (offsetRef.current >= distance) offsetRef.current %= distance;
+      placeNotchTrack(trackRef.current, offsetRef.current, distance);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [pausedRef]);
+
   return (
     <Viewport ref={viewportRef} aria-hidden="true">
-      <Track
-        className="notch-track"
-        $scroll={distance > 0}
-        style={
-          distance > 0
-            ? {
-                animationDuration: `${distance / SCROLL_PIXELS_PER_SECOND}s`,
-                ["--notch-shift" as string]: `-${distance}px`,
-              }
-            : undefined
-        }
-      >
+      <Track ref={trackRef} className="notch-track">
         {Array.from({ length: copies }, (_, index) => (
           <PostRun
             key={index}
-            posts={posts}
+            posts={shown}
             measureRef={index === 0 ? copyRef : undefined}
           />
         ))}
@@ -200,6 +363,7 @@ export function NotchBanner() {
   const reduced = useReducedMotion();
   const { phase, feed } = useNotchFeed();
   const posts = feed?.posts ?? [];
+  const pausedRef = useRef(false);
 
   const status =
     phase === "unavailable" && posts.length === 0 ? "board unavailable" : "";
@@ -207,11 +371,22 @@ export function NotchBanner() {
   return (
     <Bar
       aria-label={status ? "Notch board unavailable" : "Notch message board"}
+      onMouseEnter={() => {
+        pausedRef.current = true;
+      }}
+      onMouseLeave={() => {
+        pausedRef.current = false;
+      }}
     >
       <Mark>NOTCH</Mark>
       {status ? <Status>{status}</Status> : null}
       {posts.length > 0 ? (
-        <Ticker posts={posts} reduced={reduced} />
+        <Ticker
+          posts={posts}
+          reduced={reduced}
+          pausedRef={pausedRef}
+          complete={feed?.complete ?? false}
+        />
       ) : (
         <Viewport />
       )}
@@ -243,10 +418,6 @@ const Bar = styled.div`
   white-space: nowrap;
   text-decoration: none;
   user-select: none;
-
-  &:hover .notch-track {
-    animation-play-state: paused;
-  }
 `;
 
 const OpenLink = styled.a`
@@ -291,30 +462,10 @@ const Viewport = styled.span`
   overflow: hidden;
 `;
 
-const Track = styled.span<{ $scroll: boolean }>`
+const Track = styled.span`
   display: inline-flex;
   white-space: nowrap;
-  ${({ $scroll }) =>
-    $scroll
-      ? `
-    animation-name: notch-marquee;
-    animation-timing-function: linear;
-    animation-iteration-count: infinite;
-
-    @keyframes notch-marquee {
-      from {
-        transform: translateX(0);
-      }
-      to {
-        transform: translateX(var(--notch-shift));
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-    }
-  `
-      : ""}
+  will-change: transform;
 `;
 
 const Copy = styled.span`

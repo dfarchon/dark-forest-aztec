@@ -12,7 +12,7 @@ export const NOTCH_BOARD_ADDRESS =
   "0x090065f980667a9f5273c8b7e7ff31d234c375bfc172539f43d2c91284717c78";
 export const NOTCH_HOME_URL = "https://onenotch.xyz/";
 export const NOTCH_BANNER_HEIGHT_PX = 28;
-export const NOTCH_RECENT_LIMIT = 8;
+export const NOTCH_READ_BATCH = 8;
 export const NOTCH_POLL_MS = 60_000;
 
 const POST_COUNT_SLOT = 2n;
@@ -50,6 +50,8 @@ export interface NotchFeed {
   nodeUrl: string;
   total: number;
   posts: NotchPost[];
+  /** Every id in `[0, total)` has been read. Undecodable posts are omitted. */
+  complete: boolean;
 }
 
 /** Packs UTF-8 the way the board's `post` function writes `get_post`. */
@@ -134,6 +136,109 @@ export function formatNotchTickerItem(post: NotchPost): string {
   return `#${post.id}  ${text}  ${formatNotchTime(post.publishedAt)}`;
 }
 
+/** Newest published time first. Untimed posts follow; equal times use a higher id. */
+export function sortNotchPostsByRecency(
+  posts: readonly NotchPost[]
+): NotchPost[] {
+  return [...posts].sort((a, b) => compareNotchRecency(a, b));
+}
+
+/**
+ * Keeps posts already on the marquee in place. Posts newer than the current
+ * head join the front; every other new post joins the end.
+ */
+export function mergeNotchTickerPosts(
+  shown: readonly NotchPost[],
+  incoming: readonly NotchPost[]
+): NotchPost[] {
+  if (shown.length === 0) return sortNotchPostsByRecency(incoming);
+  const shownIds = new Set(shown.map((post) => post.id));
+  const fresh = incoming.filter((post) => !shownIds.has(post.id));
+  if (fresh.length === 0) return [...shown];
+  const newer: NotchPost[] = [];
+  const older: NotchPost[] = [];
+  for (const post of fresh) {
+    if (compareNotchRecency(post, shown[0]) < 0) newer.push(post);
+    else older.push(post);
+  }
+  return [
+    ...sortNotchPostsByRecency(newer),
+    ...shown,
+    ...sortNotchPostsByRecency(older),
+  ];
+}
+
+/** Ids still to read, highest first, skipping ones already decoded. */
+export function notchIdsToRead(
+  total: number,
+  already: readonly number[]
+): number[] {
+  const seen = new Set(already);
+  const ids: number[] = [];
+  for (let id = total - 1; id >= 0; id--) {
+    if (!seen.has(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * How many ids were inserted in front of `previous` when it remains a
+ * contiguous slice of `next`.
+ */
+export function notchIdsGrow(
+  previous: readonly number[],
+  next: readonly number[]
+): { prefix: number } | undefined {
+  if (previous.length === 0) return { prefix: 0 };
+  if (next.length < previous.length) return undefined;
+  for (let start = 0; start <= next.length - previous.length; start++) {
+    let matches = true;
+    for (let index = 0; index < previous.length; index++) {
+      if (next[start + index] !== previous[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return { prefix: start };
+  }
+  return undefined;
+}
+
+/**
+ * The repeated strip can change when its seam is outside the viewport.
+ * A strip that still fits on screen has no hidden seam, so it can grow in place.
+ */
+export function notchCanRetarget(
+  offset: number,
+  distance: number,
+  viewportWidth: number
+): boolean {
+  if (distance <= 0 || viewportWidth <= 0) return true;
+  if (distance <= viewportWidth) return true;
+  return offset + viewportWidth <= distance;
+}
+
+/** Keeps the same pixels on screen after `prefixWidth` is inserted at the head. */
+export function notchRetargetOffset(
+  offset: number,
+  distance: number,
+  viewportWidth: number,
+  prefixWidth: number
+): number {
+  const looping = distance > viewportWidth && viewportWidth > 0 && distance > 0;
+  if (!looping) return 0;
+  const next = offset + Math.max(0, prefixWidth);
+  return next >= distance ? next % distance : next;
+}
+
+function compareNotchRecency(a: NotchPost, b: NotchPost): number {
+  const aTime = a.publishedAt;
+  const bTime = b.publishedAt;
+  if (aTime != null && bTime != null && aTime !== bTime) return bTime - aTime;
+  if ((aTime != null) !== (bTime != null)) return aTime != null ? -1 : 1;
+  return b.id - a.id;
+}
+
 async function mapLimited<T, R>(
   items: readonly T[],
   limit: number,
@@ -204,14 +309,17 @@ async function readPost(
 }
 
 /**
- * Reads `get_post_count()`, then the latest posts via `get_post(id)` and
- * `get_post_timestamp(id)`. When `previous` is the same node and the same
- * count, the stored posts are reused.
+ * Reads `get_post_count()`, then every post from newest id to oldest, in
+ * batches. `onUpdate` runs as soon as a batch adds something readable, and
+ * again when the scan finishes. A finished feed for the same node and count
+ * is reused. `isCancelled` stops the scan between batches.
  */
-export async function readRecentNotchPosts(
+export async function readNotchBoard(
   node: AztecNode,
   nodeUrl: string,
-  previous?: NotchFeed
+  previous: NotchFeed | undefined,
+  onUpdate: (feed: NotchFeed) => void,
+  isCancelled?: () => boolean
 ): Promise<NotchFeed> {
   const block = await node.getBlockNumber();
   const total = Number(
@@ -226,19 +334,52 @@ export async function readRecentNotchPosts(
   if (!Number.isSafeInteger(total) || total < 0) {
     throw new Error("Invalid post count");
   }
-  if (previous?.nodeUrl === nodeUrl && previous.total === total) {
+  if (
+    previous?.nodeUrl === nodeUrl &&
+    previous.total === total &&
+    previous.complete
+  ) {
     return previous;
   }
-  const ids: number[] = [];
-  for (
-    let id = total - 1;
-    id >= Math.max(0, total - NOTCH_RECENT_LIMIT);
-    id--
-  ) {
-    ids.push(id);
+  const empty: NotchFeed = { nodeUrl, total, posts: [], complete: false };
+  if (isCancelled?.()) return previous ?? empty;
+
+  let posts =
+    previous?.nodeUrl === nodeUrl
+      ? previous.posts.filter((post) => post.id < total)
+      : [];
+  const ids = notchIdsToRead(
+    total,
+    posts.map((post) => post.id)
+  );
+  let feed: NotchFeed = {
+    nodeUrl,
+    total,
+    posts: sortNotchPostsByRecency(posts),
+    complete: ids.length === 0,
+  };
+  if (ids.length === 0) {
+    onUpdate(feed);
+    return feed;
   }
-  const posts = (
-    await mapLimited(ids, READ_CONCURRENCY, (id) => readPost(node, block, id))
-  ).filter((post): post is NotchPost => post !== undefined);
-  return { nodeUrl, total, posts };
+
+  for (let index = 0; index < ids.length; index += NOTCH_READ_BATCH) {
+    if (isCancelled?.()) return feed;
+    const chunk = ids.slice(index, index + NOTCH_READ_BATCH);
+    const read = await mapLimited(chunk, READ_CONCURRENCY, (id) =>
+      readPost(node, block, id)
+    );
+    if (isCancelled?.()) return feed;
+    posts = posts.concat(
+      read.filter((post): post is NotchPost => post !== undefined)
+    );
+    feed = {
+      nodeUrl,
+      total,
+      posts: sortNotchPostsByRecency(posts),
+      complete: index + NOTCH_READ_BATCH >= ids.length,
+    };
+    if (feed.posts.length > 0 || feed.complete) onUpdate(feed);
+  }
+  return feed;
 }
