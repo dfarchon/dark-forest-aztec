@@ -57,10 +57,16 @@ export const externalLinks = {
     },
   },
   aztecMainnet: {
-    /** Curated FeeJuice providers shown in Settings. Add fallback bridges here. */
+    /** Curated FeeJuice providers shown in Settings. First entry is primary; later entries are fallbacks. */
     feeJuiceBridges: [
       {
         name: "DFArchon FeeJuice Bridge",
+        url: "https://bridge.dfarchon.xyz/",
+        contactName: "DFArchon",
+        contactUrl: "https://x.com/DFArchon",
+      },
+      {
+        name: "DFArchon FeeJuice Bridge (backup)",
         url: "https://aztec-dfarchon-kit-v6.netlify.app/",
         contactName: "DFArchon",
         contactUrl: "https://x.com/DFArchon",
