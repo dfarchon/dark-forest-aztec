@@ -519,8 +519,7 @@ export function SettingsPane({
               <Spacer height={16} />
               <BridgeHeading>FeeJuice bridges</BridgeHeading>
               <div>
-                Bridge gas to your account using any verified provider below. If
-                one is unavailable, try another.
+                Bridge gas to your account using the verified provider below.
               </div>
               <Spacer height={8} />
               <BridgeList>
