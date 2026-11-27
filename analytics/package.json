@@ -14,6 +14,7 @@
     "overview": "tsx src/cli.ts overview",
     "planets": "tsx src/cli.ts planets",
     "player": "tsx src/cli.ts player",
+    "report": "tsx src/cli.ts dashboard --out web/public/report.json",
     "status": "tsx src/cli.ts status",
     "sync": "tsx src/cli.ts sync",
     "test": "node --test --experimental-transform-types analysis/*.test.ts test/*.test.ts"
